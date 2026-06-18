@@ -1,0 +1,165 @@
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+
+/**
+ * Dashboard — /dashboard
+ *
+ * Página protegida: só usuários logados acessam.
+ * Server Component pra verificar auth direto no servidor (sem flash de conteúdo).
+ *
+ * No futuro, vai mostrar conteúdo diferente baseado no papel:
+ * - admin: gestão geral, catálogo, usuários
+ * - representante: meus leads, link de afiliação, comissões
+ * - instalador: instalações agendadas, checklist
+ */
+export default async function DashboardPage() {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Se não logado, manda pra login
+  if (!user) {
+    redirect('/login')
+  }
+
+  // Busca perfil do usuário (com role) — tabela profiles
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('nome_completo, role, telefone')
+    .eq('id', user.id)
+    .single()
+
+  return (
+    <main className="min-h-screen p-8 md:p-12">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-12">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black text-white">
+              Olá, <span className="text-sol">{profile?.nome_completo?.split(' ')[0] || 'parceiro'}</span>
+            </h1>
+            <p className="text-white/60 mt-1">
+              Bem-vindo ao portal interno Spin Solar
+              {profile?.role && (
+                <span className="ml-2 text-xs uppercase tracking-wider bg-sol/10 text-sol px-2 py-1 rounded-full font-bold">
+                  {profile.role}
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* Avatar + menu */}
+          <div className="flex items-center gap-3">
+            <a
+              href="/conta"
+              className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold text-white hover:bg-white/10 transition-colors"
+            >
+              Minha conta
+            </a>
+            <form action="/api/auth/signout" method="post">
+              <button
+                type="submit"
+                className="px-4 py-2 text-sm font-semibold text-white/60 hover:text-coral transition-colors"
+              >
+                Sair
+              </button>
+            </form>
+          </div>
+        </header>
+
+        {/* Cards de atalho (mocados — vão ganhar funcionalidade nos próximos sprints) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <DashboardCard
+            titulo="OCR Fatura CELESC"
+            desc="Anexe a fatura do cliente e identifique consumo automaticamente."
+            disponivel={false}
+            href="/cliente/ocr"
+          />
+          <DashboardCard
+            titulo="Gerar Proposta PDF"
+            desc="Crie proposta personalizada em PDF a partir de um kit do catálogo."
+            disponivel={false}
+            href="/cliente/proposta"
+          />
+          <DashboardCard
+            titulo="Gerar Contrato"
+            desc="Contrato pronto pra assinatura do cliente."
+            disponivel={false}
+            href="/cliente/contrato"
+          />
+          <DashboardCard
+            titulo="Meus Leads"
+            desc="Acompanhe os leads atribuídos a você via link de afiliação."
+            disponivel={false}
+            href="/parceiro/leads"
+          />
+          <DashboardCard
+            titulo="Meu Link de Afiliação"
+            desc="Gere link único pra compartilhar nas redes sociais."
+            disponivel={false}
+            href="/parceiro/link"
+          />
+          <DashboardCard
+            titulo="Catálogo (Admin)"
+            desc="Adicionar/editar kits, placas, inversores e preços."
+            disponivel={false}
+            adminOnly
+            href="/admin/catalogo"
+          />
+        </div>
+
+        {/* Aviso construção */}
+        <div className="mt-12 p-6 bg-sol/5 border border-sol/20 rounded-xl">
+          <p className="text-sm text-white/70">
+            🚧 <strong className="text-sol">Sistema em construção.</strong> As funcionalidades acima
+            estão sendo migradas do menu-spin público pra cá. Em breve, todas estarão ativas.
+          </p>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+/**
+ * Card de atalho do dashboard.
+ * Quando `disponivel=false`, fica disabled visualmente.
+ */
+function DashboardCard({
+  titulo,
+  desc,
+  disponivel = false,
+  adminOnly = false,
+  href,
+}: {
+  titulo: string
+  desc: string
+  disponivel?: boolean
+  adminOnly?: boolean
+  href: string
+}) {
+  const Tag = disponivel ? 'a' : 'div'
+  return (
+    <Tag
+      href={disponivel ? href : undefined}
+      className={`
+        relative p-6 rounded-xl border transition-all
+        ${disponivel
+          ? 'bg-white/5 border-white/10 hover:border-sol/40 hover:bg-white/[0.07] cursor-pointer'
+          : 'bg-white/[0.02] border-white/5 opacity-60 cursor-not-allowed'
+        }
+      `}
+    >
+      {adminOnly && (
+        <span className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-wider text-weg-azul bg-white px-2 py-0.5 rounded-full">
+          Admin
+        </span>
+      )}
+      <h3 className="text-lg font-bold text-white mb-2">{titulo}</h3>
+      <p className="text-sm text-white/60 leading-relaxed">{desc}</p>
+      {!disponivel && (
+        <span className="mt-3 inline-block text-xs uppercase tracking-wider text-white/40 font-semibold">
+          Em breve
+        </span>
+      )}
+    </Tag>
+  )
+}

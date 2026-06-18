@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+   Design system Spin Solar — variáveis CSS reaproveitando paleta do menu-spin
+   ========================================================================= */
+:root {
+  --noite-0: #050B16;
+  --noite:   #0F1825;
+  --sol:     #F5B400;
+  --sol-claro: #FFD64A;
+  --sol-glow: rgba(245, 180, 0, 0.35);
+  --weg-azul: #0047BB;
+  --verde:   #4EDC8A;
+  --coral:   #E85C5C;
+}
+
+/* Reset + base */
+html, body {
+  background: var(--noite-0);
+  color: #fff;
+  min-height: 100vh;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+
+/* Inputs e botões padrão (vão herdar nas pages) */
+input, textarea, select, button {
+  font-family: inherit;
+}
+
+/* Scrollbar customizada (combinando com o tema escuro) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--noite);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(245, 180, 0, 0.3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sol);
+}
