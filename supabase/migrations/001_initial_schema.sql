@@ -89,52 +89,47 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.representantes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 
--- profiles: usuário lê só o próprio + admin lê todos
-CREATE POLICY "Usuário lê próprio perfil"
-  ON public.profiles FOR SELECT
-  USING (auth.uid() = id);
-
-CREATE POLICY "Admin lê todos os perfis"
-  ON public.profiles FOR SELECT
-  USING (EXISTS (
+-- =================================================================
+-- FUNÇÃO is_admin() — usada nas policies pra evitar RECURSÃO INFINITA.
+-- (Policy que faz SELECT em profiles, dentro de profiles, causa loop.)
+-- SECURITY DEFINER = bypassa RLS pra checar o role do user atual.
+-- =================================================================
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid() AND role = 'admin'
-  ));
+  );
+$$;
 
-CREATE POLICY "Usuário atualiza próprio perfil"
-  ON public.profiles FOR UPDATE
-  USING (auth.uid() = id);
+-- profiles: usuário lê/atualiza só o próprio + admin via is_admin()
+CREATE POLICY "profiles_self_read" ON public.profiles
+  FOR SELECT USING (auth.uid() = id);
 
-CREATE POLICY "Admin atualiza qualquer perfil"
-  ON public.profiles FOR UPDATE
-  USING (EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'admin'
-  ));
+CREATE POLICY "profiles_self_update" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "profiles_admin_all" ON public.profiles
+  FOR ALL USING (public.is_admin());
 
 -- representantes: leitura pública dos visíveis (pra vitrine)
-CREATE POLICY "Leitura pública de representantes visíveis"
-  ON public.representantes FOR SELECT
-  USING (visivel_na_vitrine = true);
+CREATE POLICY "representantes_public_read" ON public.representantes
+  FOR SELECT USING (visivel_na_vitrine = true);
 
-CREATE POLICY "Representante atualiza próprio cadastro"
-  ON public.representantes FOR UPDATE
-  USING (auth.uid() = id);
+CREATE POLICY "representantes_self_update" ON public.representantes
+  FOR UPDATE USING (auth.uid() = id);
 
-CREATE POLICY "Admin gerencia representantes"
-  ON public.representantes FOR ALL
-  USING (EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'admin'
-  ));
+CREATE POLICY "representantes_admin_all" ON public.representantes
+  FOR ALL USING (public.is_admin());
 
 -- audit_log: só admin lê
-CREATE POLICY "Admin lê audit log"
-  ON public.audit_log FOR SELECT
-  USING (EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'admin'
-  ));
+CREATE POLICY "audit_log_admin_read" ON public.audit_log
+  FOR SELECT USING (public.is_admin());
 
 -- =================================================================
 -- TRIGGER: updated_at automático em todas tabelas
