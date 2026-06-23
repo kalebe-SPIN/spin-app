@@ -58,10 +58,31 @@ export async function POST(request: NextRequest) {
 
     const edgeJson = await edgeRes.json()
 
+    // Log no servidor pra debug
+    console.log('[/api/analisar-fatura] Edge Function status:', edgeRes.status)
+    console.log('[/api/analisar-fatura] Edge Function response:', JSON.stringify(edgeJson).slice(0, 500))
+
+    // Detecta versão antiga (v1) — retornava apenas { sucesso, valor, mediaConsumoKwh, ... }
+    if (edgeJson.sucesso && !edgeJson.dados && (edgeJson.valor != null || edgeJson.mediaConsumoKwh != null)) {
+      console.warn('[/api/analisar-fatura] Edge Function ainda está na v1 — campo "dados" ausente')
+      // Repassa o JSON da v1 pro frontend tratar
+      return NextResponse.json({
+        sucesso: true,
+        edge_function_versao: 'v1',
+        edge_function_aviso: 'Edge Function ocr-fatura ainda está na versão antiga. Deploy a v2 pra extração completa.',
+        // Dados originais v1 (consumo + valor)
+        valor: edgeJson.valor,
+        mediaConsumoKwh: edgeJson.mediaConsumoKwh,
+        valorFaturaAtual: edgeJson.valorFaturaAtual,
+        historico: edgeJson.historico,
+      })
+    }
+
     if (!edgeRes.ok || !edgeJson.sucesso) {
       return NextResponse.json({
         error: edgeJson.erro || 'Edge Function falhou',
         edge_status: edgeRes.status,
+        edge_response: edgeJson,
       }, { status: 500 })
     }
 

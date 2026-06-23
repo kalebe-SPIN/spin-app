@@ -88,58 +88,92 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
 
       const json = await res.json()
 
+      // Logs pra debug (aparecem no Console do browser)
+      console.log('[OCR-FATURA] Resposta:', json)
+
       if (!res.ok) {
-        throw new Error(json.error || 'Erro ao analisar fatura')
+        throw new Error(json.error || json.erro || 'Erro ao analisar fatura')
+      }
+
+      if (!json.sucesso) {
+        throw new Error(json.error || json.erro || 'Análise não retornou sucesso')
       }
 
       // Marca se é stub (mock)
       setAnaliseStub(!!json.stub)
 
+      // Safe access — Edge Function pode estar na v1 antiga (sem campo "dados")
+      const d = json.dados || {}
+      const endereco = d.endereco || {}
+
+      // Detecta formato v1 antigo (só tem "valor" e "mediaConsumoKwh")
+      const formatoAntigo = !json.dados && (json.valor != null || json.mediaConsumoKwh != null)
+      if (formatoAntigo) {
+        setError(
+          'Edge Function ocr-fatura ainda está na versão antiga (v1). ' +
+          'Deploy a nova versão v2 no Supabase Dashboard para auto-preencher TODOS os campos. ' +
+          'Por enquanto, preencha manualmente.'
+        )
+        setFaturaAnalisada(true)
+        setAnalisandoFatura(false)
+        return
+      }
+
       // Auto-preenche os campos que vieram preenchidos da análise
       const novos: Partial<typeof form> = {}
       const marcados = new Set<string>()
 
-      if (json.dados.razao_social) {
-        novos.cliente_razao_social = json.dados.razao_social
+      if (d.razao_social) {
+        novos.cliente_razao_social = d.razao_social
         marcados.add('cliente_razao_social')
       }
-      if (json.dados.cpf_cnpj) {
-        novos.cliente_cpf_cnpj = maskCpfCnpj(json.dados.cpf_cnpj)
+      if (d.cpf_cnpj) {
+        novos.cliente_cpf_cnpj = maskCpfCnpj(d.cpf_cnpj)
         marcados.add('cliente_cpf_cnpj')
       }
-      if (json.dados.uc) {
-        novos.uc_geradora = maskUC(json.dados.uc)
+      if (d.uc) {
+        novos.uc_geradora = maskUC(d.uc)
         marcados.add('uc_geradora')
       }
-      if (json.dados.endereco) {
-        if (json.dados.endereco.logradouro) {
-          novos.cliente_logradouro = json.dados.endereco.logradouro
-          marcados.add('cliente_logradouro')
-        }
-        if (json.dados.endereco.bairro) {
-          novos.cliente_bairro = json.dados.endereco.bairro
-          marcados.add('cliente_bairro')
-        }
-        if (json.dados.endereco.cidade) {
-          novos.cliente_cidade = json.dados.endereco.cidade
-          marcados.add('cliente_cidade')
-        }
-        if (json.dados.endereco.uf) {
-          novos.cliente_uf = json.dados.endereco.uf
-          marcados.add('cliente_uf')
-        }
-        if (json.dados.endereco.cep) {
-          novos.cliente_cep = maskCep(json.dados.endereco.cep)
-          marcados.add('cliente_cep')
-        }
+      if (endereco.logradouro) {
+        novos.cliente_logradouro = endereco.logradouro
+        marcados.add('cliente_logradouro')
       }
+      if (endereco.bairro) {
+        novos.cliente_bairro = endereco.bairro
+        marcados.add('cliente_bairro')
+      }
+      if (endereco.cidade) {
+        novos.cliente_cidade = endereco.cidade
+        marcados.add('cliente_cidade')
+      }
+      if (endereco.uf) {
+        novos.cliente_uf = endereco.uf
+        marcados.add('cliente_uf')
+      }
+      if (endereco.cep) {
+        novos.cliente_cep = maskCep(endereco.cep)
+        marcados.add('cliente_cep')
+      }
+
+      console.log('[OCR-FATURA] Campos preenchidos:', Array.from(marcados))
 
       setForm((prev) => ({ ...prev, ...novos }))
       setAutoPreenchidos(marcados)
       setFaturaAnalisada(true)
+
+      // Alerta se NÃO conseguiu extrair nada
+      if (marcados.size === 0) {
+        setError(
+          'Análise concluída mas nenhum campo foi extraído. ' +
+          'Pode ser fatura com layout diferente ou regex precisa de ajuste. ' +
+          'Preencha manualmente.'
+        )
+      }
     } catch (err: any) {
-      setError(`Falha ao analisar fatura: ${err.message}`)
-      setFaturaArquivo(null)
+      console.error('[OCR-FATURA] Erro:', err)
+      setError(`Falha ao analisar fatura: ${err.message}. Você pode preencher manualmente — o arquivo continua anexado.`)
+      // ⚠️ NÃO reseta o arquivo — consultor pode tentar de novo ou preencher manual
     } finally {
       setAnalisandoFatura(false)
     }
