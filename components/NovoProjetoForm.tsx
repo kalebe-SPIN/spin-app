@@ -1,23 +1,49 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import {
+  maskCpfCnpj,
+  maskTelefone,
+  maskCep,
+  maskUC,
+  isValidCpfCnpj,
+  isValidEmail,
+  isValidTelefone,
+  unmask,
+} from '@/lib/utils/masks'
 
 /**
- * Formulário de criação do projeto (Passo 1 — Cliente).
+ * Formulário de criação do projeto (Passo 1 — Cliente + Fatura).
  *
- * Coleta dados básicos do cliente e UC.
- * Cria registro em `projetos` com status='rascunho' e redireciona pra /projetos/[id].
+ * Fluxo:
+ *   1. Consultor faz upload da fatura CELESC
+ *   2. Sistema chama /api/analisar-fatura → extrai dados estruturados
+ *   3. Campos do form pré-preenchidos com o que veio da fatura
+ *   4. Consultor completa o que faltar (telefone, email) e ajusta o que for necessário
+ *   5. Submit → cria projeto no Supabase + redireciona pra /projetos/[id]
  */
 export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Estado da análise de fatura
+  const [faturaArquivo, setFaturaArquivo] = useState<File | null>(null)
+  const [analisandoFatura, setAnalisandoFatura] = useState(false)
+  const [faturaAnalisada, setFaturaAnalisada] = useState(false)
+  const [analiseStub, setAnaliseStub] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Quais campos foram auto-preenchidos pela análise da fatura
+  const [autoPreenchidos, setAutoPreenchidos] = useState<Set<string>>(new Set())
+
+  // Estado do form
   const [form, setForm] = useState({
     cliente_razao_social: '',
     cliente_cpf_cnpj: '',
+    cliente_sem_documento: false,
     cliente_email: '',
     cliente_telefone: '',
     cliente_logradouro: '',
@@ -34,11 +60,135 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
 
   function update<K extends keyof typeof form>(k: K, v: typeof form[K]) {
     setForm((prev) => ({ ...prev, [k]: v }))
+    // Se o consultor editou um campo auto-preenchido, remove a marca
+    if (autoPreenchidos.has(k as string)) {
+      setAutoPreenchidos((prev) => {
+        const next = new Set(prev)
+        next.delete(k as string)
+        return next
+      })
+    }
   }
 
+  // ===== Upload e análise da fatura =====
+  async function handleArquivoSelecionado(file: File) {
+    setError(null)
+    setFaturaArquivo(file)
+    setAnalisandoFatura(true)
+    setFaturaAnalisada(false)
+
+    try {
+      const formData = new FormData()
+      formData.append('arquivo', file)
+
+      const res = await fetch('/api/analisar-fatura', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        throw new Error(json.error || 'Erro ao analisar fatura')
+      }
+
+      // Marca se é stub (mock)
+      setAnaliseStub(!!json.stub)
+
+      // Auto-preenche os campos que vieram preenchidos da análise
+      const novos: Partial<typeof form> = {}
+      const marcados = new Set<string>()
+
+      if (json.dados.razao_social) {
+        novos.cliente_razao_social = json.dados.razao_social
+        marcados.add('cliente_razao_social')
+      }
+      if (json.dados.cpf_cnpj) {
+        novos.cliente_cpf_cnpj = maskCpfCnpj(json.dados.cpf_cnpj)
+        marcados.add('cliente_cpf_cnpj')
+      }
+      if (json.dados.uc) {
+        novos.uc_geradora = maskUC(json.dados.uc)
+        marcados.add('uc_geradora')
+      }
+      if (json.dados.endereco) {
+        if (json.dados.endereco.logradouro) {
+          novos.cliente_logradouro = json.dados.endereco.logradouro
+          marcados.add('cliente_logradouro')
+        }
+        if (json.dados.endereco.bairro) {
+          novos.cliente_bairro = json.dados.endereco.bairro
+          marcados.add('cliente_bairro')
+        }
+        if (json.dados.endereco.cidade) {
+          novos.cliente_cidade = json.dados.endereco.cidade
+          marcados.add('cliente_cidade')
+        }
+        if (json.dados.endereco.uf) {
+          novos.cliente_uf = json.dados.endereco.uf
+          marcados.add('cliente_uf')
+        }
+        if (json.dados.endereco.cep) {
+          novos.cliente_cep = maskCep(json.dados.endereco.cep)
+          marcados.add('cliente_cep')
+        }
+      }
+
+      setForm((prev) => ({ ...prev, ...novos }))
+      setAutoPreenchidos(marcados)
+      setFaturaAnalisada(true)
+    } catch (err: any) {
+      setError(`Falha ao analisar fatura: ${err.message}`)
+      setFaturaArquivo(null)
+    } finally {
+      setAnalisandoFatura(false)
+    }
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) handleArquivoSelecionado(file)
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    const file = e.dataTransfer.files?.[0]
+    if (file) handleArquivoSelecionado(file)
+  }
+
+  // ===== Submit =====
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+
+    // Validações
+    if (!form.cliente_razao_social.trim()) {
+      setError('Nome / razão social obrigatório.')
+      return
+    }
+    if (!form.cliente_sem_documento) {
+      if (!form.cliente_cpf_cnpj.trim()) {
+        setError('CPF/CNPJ obrigatório (ou marque "Cliente sem documento informado").')
+        return
+      }
+      if (!isValidCpfCnpj(form.cliente_cpf_cnpj)) {
+        setError('CPF/CNPJ inválido (verifique os dígitos).')
+        return
+      }
+    }
+    if (!form.cliente_telefone.trim() || !isValidTelefone(form.cliente_telefone)) {
+      setError('Telefone WhatsApp inválido. Use formato (XX) 9XXXX-XXXX.')
+      return
+    }
+    if (form.cliente_email && !isValidEmail(form.cliente_email)) {
+      setError('Email com formato inválido.')
+      return
+    }
+    if (!form.uc_geradora.trim()) {
+      setError('UC geradora obrigatória.')
+      return
+    }
+
     setLoading(true)
 
     const supabase = createClient()
@@ -48,19 +198,19 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
       .map((x) => x.trim())
       .filter(Boolean)
 
-    const { data, error } = await supabase
+    const { data, error: dbError } = await supabase
       .from('projetos')
       .insert({
         cliente_razao_social: form.cliente_razao_social.trim(),
-        cliente_cpf_cnpj: form.cliente_cpf_cnpj.trim(),
+        cliente_cpf_cnpj: form.cliente_sem_documento ? null : unmask(form.cliente_cpf_cnpj),
         cliente_email: form.cliente_email.trim() || null,
-        cliente_telefone: form.cliente_telefone.trim(),
+        cliente_telefone: unmask(form.cliente_telefone),
         cliente_endereco: {
           logradouro: form.cliente_logradouro,
           bairro: form.cliente_bairro,
           cidade: form.cliente_cidade,
           uf: form.cliente_uf,
-          cep: form.cliente_cep,
+          cep: unmask(form.cliente_cep),
         },
         uc_geradora: form.uc_geradora.trim(),
         ucs_beneficiarias: beneficiarias,
@@ -68,15 +218,15 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
         motivacao_cliente: form.motivacao_cliente,
         observacoes_consultor: form.observacoes.trim() || null,
         consultor_id: consultorId,
-        status: 'rascunho',
+        status: faturaAnalisada ? 'fatura_analisada' : 'rascunho',
       })
       .select('id')
       .single()
 
     setLoading(false)
 
-    if (error) {
-      setError(`Erro ao criar projeto: ${error.message}`)
+    if (dbError) {
+      setError(`Erro ao criar projeto: ${dbError.message}`)
       return
     }
 
@@ -85,13 +235,77 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Bloco: identificação cliente */}
-      <fieldset className="space-y-4">
+      {/* ===== ZONA DE UPLOAD DE FATURA ===== */}
+      <fieldset className="space-y-3">
+        <legend className="text-xs font-bold uppercase tracking-wider text-sol mb-3">
+          📄 Fatura CELESC (auto-preenche os campos)
+        </legend>
+
+        {!faturaArquivo ? (
+          <div
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center cursor-pointer hover:border-sol/40 hover:bg-white/[0.02] transition-colors"
+          >
+            <div className="text-4xl mb-2">📎</div>
+            <p className="text-sm text-white/80 font-semibold">
+              Clique ou arraste a fatura aqui
+            </p>
+            <p className="text-xs text-white/40 mt-1">
+              PDF, JPG ou PNG · máx. 10MB
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleFileInput}
+              className="hidden"
+            />
+          </div>
+        ) : (
+          <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-center gap-3">
+            <div className="text-2xl">📄</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-white truncate">{faturaArquivo.name}</p>
+              <p className="text-xs text-white/40">
+                {(faturaArquivo.size / 1024).toFixed(0)} KB
+                {analisandoFatura && ' · Analisando...'}
+                {faturaAnalisada && ' · ✓ Analisada'}
+              </p>
+            </div>
+            {analisandoFatura ? (
+              <div className="text-sol animate-pulse text-sm font-bold">⏳</div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setFaturaArquivo(null)
+                  setFaturaAnalisada(false)
+                  setAutoPreenchidos(new Set())
+                }}
+                className="text-xs text-white/40 hover:text-coral transition-colors"
+              >
+                ✕ Remover
+              </button>
+            )}
+          </div>
+        )}
+
+        {analiseStub && faturaAnalisada && (
+          <div className="bg-coral/10 border border-coral/30 rounded-lg p-3 text-xs text-coral">
+            ⚠️ Análise automática ainda em desenvolvimento (stub). Preencha os campos manualmente por enquanto.
+          </div>
+        )}
+      </fieldset>
+
+      {/* ===== IDENTIFICAÇÃO DO CLIENTE ===== */}
+      <fieldset className="space-y-4 pt-4 border-t border-white/10">
         <legend className="text-xs font-bold uppercase tracking-wider text-sol mb-3">
           Identificação do cliente
         </legend>
 
-        <Field label="Razão social / Nome completo *" required>
+        <Field label="Razão social / Nome completo *" auto={autoPreenchidos.has('cliente_razao_social')}>
           <input
             type="text"
             required
@@ -102,48 +316,66 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
           />
         </Field>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="CPF / CNPJ *" required>
+        <div>
+          <Field
+            label={`${form.cliente_sem_documento ? 'CPF / CNPJ (opcional)' : 'CPF / CNPJ *'}`}
+            auto={autoPreenchidos.has('cliente_cpf_cnpj')}
+          >
             <input
               type="text"
-              required
+              required={!form.cliente_sem_documento}
+              disabled={form.cliente_sem_documento}
               value={form.cliente_cpf_cnpj}
-              onChange={(e) => update('cliente_cpf_cnpj', e.target.value)}
+              onChange={(e) => update('cliente_cpf_cnpj', maskCpfCnpj(e.target.value))}
               className="input-spin"
-              placeholder="000.000.000-00"
+              placeholder="000.000.000-00 ou 00.000.000/0000-00"
             />
           </Field>
+          <label className="mt-2 flex items-center gap-2 text-xs text-white/60 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.cliente_sem_documento}
+              onChange={(e) => {
+                update('cliente_sem_documento', e.target.checked)
+                if (e.target.checked) update('cliente_cpf_cnpj', '')
+              }}
+              className="rounded border-white/20 bg-white/5 text-sol focus:ring-sol"
+            />
+            <span>Cliente sem documento informado</span>
+          </label>
+        </div>
 
-          <Field label="WhatsApp *" required>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="WhatsApp *">
             <input
               type="tel"
               required
               value={form.cliente_telefone}
-              onChange={(e) => update('cliente_telefone', e.target.value)}
+              onChange={(e) => update('cliente_telefone', maskTelefone(e.target.value))}
               className="input-spin"
-              placeholder="+55 48 99999-9999"
+              placeholder="(48) 99999-9999"
+            />
+          </Field>
+
+          <Field label="Email">
+            <input
+              type="email"
+              value={form.cliente_email}
+              onChange={(e) => update('cliente_email', e.target.value)}
+              className="input-spin"
+              placeholder="cliente@email.com"
             />
           </Field>
         </div>
-
-        <Field label="Email">
-          <input
-            type="email"
-            value={form.cliente_email}
-            onChange={(e) => update('cliente_email', e.target.value)}
-            className="input-spin"
-            placeholder="cliente@email.com"
-          />
-        </Field>
       </fieldset>
 
-      {/* Bloco: endereço */}
+      {/* ===== ENDEREÇO ===== */}
       <fieldset className="space-y-4 pt-4 border-t border-white/10">
         <legend className="text-xs font-bold uppercase tracking-wider text-sol mb-3">
           Endereço da instalação
         </legend>
 
-        <Field label="Logradouro">
+        <Field label="Logradouro" auto={autoPreenchidos.has('cliente_logradouro')}>
           <input
             type="text"
             value={form.cliente_logradouro}
@@ -154,7 +386,7 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="Bairro">
+          <Field label="Bairro" auto={autoPreenchidos.has('cliente_bairro')}>
             <input
               type="text"
               value={form.cliente_bairro}
@@ -163,7 +395,7 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
             />
           </Field>
 
-          <Field label="Cidade">
+          <Field label="Cidade" auto={autoPreenchidos.has('cliente_cidade')}>
             <input
               type="text"
               value={form.cliente_cidade}
@@ -172,7 +404,7 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
             />
           </Field>
 
-          <Field label="UF">
+          <Field label="UF" auto={autoPreenchidos.has('cliente_uf')}>
             <select
               value={form.cliente_uf}
               onChange={(e) => update('cliente_uf', e.target.value)}
@@ -185,29 +417,29 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
           </Field>
         </div>
 
-        <Field label="CEP">
+        <Field label="CEP" auto={autoPreenchidos.has('cliente_cep')}>
           <input
             type="text"
             value={form.cliente_cep}
-            onChange={(e) => update('cliente_cep', e.target.value)}
+            onChange={(e) => update('cliente_cep', maskCep(e.target.value))}
             className="input-spin"
             placeholder="00000-000"
           />
         </Field>
       </fieldset>
 
-      {/* Bloco: UC + Tipo */}
+      {/* ===== UC + TIPO ===== */}
       <fieldset className="space-y-4 pt-4 border-t border-white/10">
         <legend className="text-xs font-bold uppercase tracking-wider text-sol mb-3">
           Unidade Consumidora (UC) CELESC
         </legend>
 
-        <Field label="UC geradora *" required>
+        <Field label="UC geradora *" auto={autoPreenchidos.has('uc_geradora')}>
           <input
             type="text"
             required
             value={form.uc_geradora}
-            onChange={(e) => update('uc_geradora', e.target.value)}
+            onChange={(e) => update('uc_geradora', maskUC(e.target.value))}
             className="input-spin"
             placeholder="Número da UC principal (na fatura)"
           />
@@ -224,7 +456,7 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
         </Field>
       </fieldset>
 
-      {/* Bloco: tipo de projeto */}
+      {/* ===== TIPO DE PROJETO ===== */}
       <fieldset className="space-y-4 pt-4 border-t border-white/10">
         <legend className="text-xs font-bold uppercase tracking-wider text-sol mb-3">
           Tipo de projeto desejado
@@ -268,7 +500,7 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
         </Field>
       </fieldset>
 
-      {/* Observações */}
+      {/* ===== OBSERVAÇÕES ===== */}
       <fieldset className="pt-4 border-t border-white/10">
         <Field label="Observações livres (opcional)">
           <textarea
@@ -280,14 +512,14 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
         </Field>
       </fieldset>
 
-      {/* Error */}
+      {/* ===== ERROR ===== */}
       {error && (
         <div className="p-4 bg-coral/10 border border-coral/30 rounded-lg text-sm text-coral">
           {error}
         </div>
       )}
 
-      {/* Submit */}
+      {/* ===== SUBMIT ===== */}
       <div className="flex gap-3 pt-4 border-t border-white/10">
         <button
           type="submit"
@@ -301,11 +533,27 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
   )
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+/**
+ * Field com indicador visual quando foi auto-preenchido pela análise da fatura.
+ */
+function Field({
+  label,
+  auto,
+  children,
+}: {
+  label: string
+  auto?: boolean
+  children: React.ReactNode
+}) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1.5 block">
-        {label} {required && <span className="text-coral">*</span>}
+      <span className="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1.5 flex items-center gap-2">
+        {label}
+        {auto && (
+          <span className="text-[9px] font-bold uppercase bg-verde/20 text-verde px-1.5 py-0.5 rounded">
+            ✨ auto-fatura
+          </span>
+        )}
       </span>
       {children}
     </label>
