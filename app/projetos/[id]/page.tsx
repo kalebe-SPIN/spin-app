@@ -1,0 +1,230 @@
+import { redirect, notFound } from 'next/navigation'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/server'
+
+/**
+ * Visualização de um projeto específico — /projetos/[id]
+ *
+ * Mostra o status atual + qual o próximo passo do workflow.
+ */
+export default async function ProjetoDetalhePage({ params }: { params: { id: string } }) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) redirect('/login')
+
+  const { data: projeto, error } = await supabase
+    .from('projetos')
+    .select('*')
+    .eq('id', params.id)
+    .single()
+
+  if (error || !projeto) notFound()
+
+  const proximoPasso = getProximoPasso(projeto.status)
+
+  return (
+    <main className="min-h-screen p-8 md:p-12">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <header className="mb-8">
+          <Link href="/projetos" className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
+            ← Projetos
+          </Link>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
+                <StatusBadge status={projeto.status} />
+              </div>
+              <h1 className="text-3xl md:text-4xl font-black text-white">
+                {projeto.cliente_razao_social}
+              </h1>
+              <p className="text-white/60 mt-1 text-sm">
+                UC {projeto.uc_geradora} · {projeto.tipo_projeto}
+              </p>
+            </div>
+          </div>
+        </header>
+
+        {/* Próximo passo CTA */}
+        {proximoPasso && (
+          <div className="mb-8 p-6 bg-sol/10 border border-sol/30 rounded-xl">
+            <div className="flex items-start gap-4">
+              <div className="text-2xl">⏭️</div>
+              <div className="flex-1">
+                <h2 className="text-lg font-bold text-white mb-1">
+                  Próximo passo: {proximoPasso.titulo}
+                </h2>
+                <p className="text-sm text-white/70 mb-3">{proximoPasso.descricao}</p>
+                <Link
+                  href={`/projetos/${projeto.id}/${proximoPasso.path}`}
+                  className="inline-block px-4 py-2 bg-sol text-noite font-bold text-sm rounded-lg hover:bg-sol/90 transition-colors"
+                >
+                  {proximoPasso.cta} →
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Dados do cliente */}
+        <Section title="Cliente">
+          <Info label="Razão social" value={projeto.cliente_razao_social} />
+          <Info label="CPF/CNPJ" value={projeto.cliente_cpf_cnpj} />
+          <Info label="WhatsApp" value={projeto.cliente_telefone} />
+          {projeto.cliente_email && <Info label="Email" value={projeto.cliente_email} />}
+          {projeto.cliente_endereco?.cidade && (
+            <Info label="Cidade" value={`${projeto.cliente_endereco.cidade}/${projeto.cliente_endereco.uf || 'SC'}`} />
+          )}
+        </Section>
+
+        {/* UCs */}
+        <Section title="Unidades Consumidoras">
+          <Info label="UC geradora" value={projeto.uc_geradora} />
+          {projeto.ucs_beneficiarias && projeto.ucs_beneficiarias.length > 0 && (
+            <Info label="Beneficiárias" value={projeto.ucs_beneficiarias.join(', ')} />
+          )}
+        </Section>
+
+        {/* Tipo */}
+        <Section title="Tipo de projeto">
+          <Info label="Modalidade" value={TIPO_PROJETO_LABEL[projeto.tipo_projeto] || projeto.tipo_projeto} />
+          {projeto.motivacao_cliente && (
+            <Info label="Motivação" value={MOTIVACOES_LABEL[projeto.motivacao_cliente] || projeto.motivacao_cliente} />
+          )}
+        </Section>
+
+        {projeto.observacoes_consultor && (
+          <Section title="Observações">
+            <p className="text-sm text-white/70">{projeto.observacoes_consultor}</p>
+          </Section>
+        )}
+
+        {/* Footer ações */}
+        <div className="mt-8 flex flex-col md:flex-row gap-3 pt-6 border-t border-white/10">
+          <Link
+            href={`/projetos/${projeto.id}/editar`}
+            className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold text-white hover:bg-white/10 transition-colors text-center"
+          >
+            ✏️ Editar dados básicos
+          </Link>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mb-6 p-6 bg-white/[0.03] border border-white/10 rounded-xl">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-sol mb-4">{title}</h2>
+      <div className="space-y-2.5">{children}</div>
+    </section>
+  )
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-3 gap-3 text-sm">
+      <span className="text-white/40">{label}</span>
+      <span className="col-span-2 text-white font-medium">{value}</span>
+    </div>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const info = STATUS_INFO[status as keyof typeof STATUS_INFO] || STATUS_INFO.rascunho
+  return (
+    <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full ${info.classe}`}>
+      {info.label}
+    </span>
+  )
+}
+
+const STATUS_INFO = {
+  rascunho:            { label: 'Rascunho',           classe: 'bg-white/10 text-white/60' },
+  fatura_analisada:    { label: 'Fatura OK',          classe: 'bg-weg-azul/10 text-weg-azul' },
+  telhado_preenchido:  { label: 'Telhado OK',         classe: 'bg-weg-azul/10 text-weg-azul' },
+  dimensionado:        { label: 'Dimensionado',       classe: 'bg-weg-azul/10 text-weg-azul' },
+  kit_selecionado:     { label: 'Kit escolhido',      classe: 'bg-weg-azul/10 text-weg-azul' },
+  lista_ca_confirmada: { label: 'Lista CA OK',        classe: 'bg-weg-azul/10 text-weg-azul' },
+  orcamento_gerado:    { label: 'Orçamento pronto',   classe: 'bg-sol/10 text-sol' },
+  proposta_enviada:    { label: 'Proposta enviada',   classe: 'bg-sol/10 text-sol' },
+  aceito:              { label: 'Aceito ✓',           classe: 'bg-verde/10 text-verde' },
+  recusado:            { label: 'Recusado',           classe: 'bg-coral/10 text-coral' },
+  cancelado:           { label: 'Cancelado',          classe: 'bg-white/10 text-white/40' },
+  expirado:            { label: 'Expirado',           classe: 'bg-coral/10 text-coral' },
+}
+
+const TIPO_PROJETO_LABEL: Record<string, string> = {
+  ongrid:           'On-grid puro',
+  hibrido_bess:     'Híbrido com BESS',
+  expansao_ongrid:  'Expansão on-grid',
+  expansao_hibrido: 'Expansão híbrida',
+}
+
+const MOTIVACOES_LABEL: Record<string, string> = {
+  reduzir_conta:    'Reduzir conta de luz',
+  sustentabilidade: 'Sustentabilidade / ESG',
+  independencia:    'Independência energética',
+  investimento:     'Investimento / valorização',
+  marketing:        'Marketing / imagem',
+  licenciamento:    'Exigência ambiental',
+}
+
+function getProximoPasso(status: string) {
+  switch (status) {
+    case 'rascunho':
+      return {
+        titulo: 'Anexar fatura(s) CELESC',
+        descricao: 'Faça upload das faturas pra análise automática do consumo, demanda e geração existente.',
+        cta: 'Anexar fatura',
+        path: 'fatura',
+      }
+    case 'fatura_analisada':
+      return {
+        titulo: 'Preencher dados do telhado',
+        descricao: 'Tipo de cobertura, orientação, área, sombreamento. Múltiplas seções se aplicável.',
+        cta: 'Preencher telhado',
+        path: 'telhado',
+      }
+    case 'telhado_preenchido':
+      return {
+        titulo: 'Padrão de entrada CELESC',
+        descricao: 'Foto do quadro, padrão de entrada, aterramento, distância até o ponto da string.',
+        cta: 'Preencher padrão',
+        path: 'padrao',
+      }
+    case 'dimensionado':
+      return {
+        titulo: 'Escolher kit (placa + inversor)',
+        descricao: 'Sistema apresenta candidatos compatíveis. Você escolhe baseado em estoque, preço, preferência do cliente.',
+        cta: 'Escolher kit',
+        path: 'kit',
+      }
+    case 'kit_selecionado':
+      return {
+        titulo: 'Revisar Lista CA',
+        descricao: 'Confira lista de materiais CA com preços cotados. Edite quantidades/itens se necessário.',
+        cta: 'Revisar Lista CA',
+        path: 'lista-ca',
+      }
+    case 'lista_ca_confirmada':
+      return {
+        titulo: 'Gerar orçamento final',
+        descricao: 'Calcula PV total com kit WEG + serviços Spin. Gera PDF da proposta.',
+        cta: 'Gerar orçamento',
+        path: 'orcamento',
+      }
+    case 'orcamento_gerado':
+      return {
+        titulo: 'Enviar proposta ao cliente',
+        descricao: 'PDF pronto. Envie por WhatsApp/Email pro cliente.',
+        cta: 'Ver e enviar',
+        path: 'proposta',
+      }
+    default:
+      return null
+  }
+}

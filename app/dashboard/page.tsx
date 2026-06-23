@@ -66,44 +66,45 @@ export default async function DashboardPage() {
           </div>
         </header>
 
-        {/* Cards de atalho (mocados — vão ganhar funcionalidade nos próximos sprints) */}
+        {/* Cards de atalho */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <DashboardCard
+            titulo="📋 Projetos"
+            desc="Workflow completo: fatura → telhado → kit → orçamento → PDF."
+            disponivel={true}
+            href="/projetos"
+          />
+          <DashboardCard
             titulo="OCR Fatura CELESC"
-            desc="Anexe a fatura do cliente e identifique consumo automaticamente."
+            desc="Análise standalone de fatura. Integrado ao fluxo de Projetos."
             disponivel={false}
             href="/cliente/ocr"
           />
           <DashboardCard
-            titulo="Gerar Proposta PDF"
-            desc="Crie proposta personalizada em PDF a partir de um kit do catálogo."
-            disponivel={false}
-            href="/cliente/proposta"
-          />
-          <DashboardCard
-            titulo="Gerar Contrato"
-            desc="Contrato pronto pra assinatura do cliente."
-            disponivel={false}
-            href="/cliente/contrato"
-          />
-          <DashboardCard
             titulo="Meus Leads"
-            desc="Acompanhe os leads atribuídos a você via link de afiliação."
+            desc="Acompanhe leads atribuídos via link de afiliação."
             disponivel={false}
             href="/parceiro/leads"
           />
           <DashboardCard
-            titulo="Meu Link de Afiliação"
-            desc="Gere link único pra compartilhar nas redes sociais."
-            disponivel={false}
-            href="/parceiro/link"
-          />
-          <DashboardCard
-            titulo="Catálogo (Admin)"
-            desc="Adicionar/editar kits, placas, inversores e preços."
+            titulo="Catálogo WEG (Admin)"
+            desc="Visualizar produtos + atualizar planilha WEG."
             disponivel={false}
             adminOnly
             href="/admin/catalogo"
+          />
+          <DashboardCard
+            titulo="Precificação (Admin)"
+            desc="Margens, comissões, tabelas, descontos — painel de controle."
+            disponivel={false}
+            adminOnly
+            href="/admin/precificacao"
+          />
+          <DashboardCard
+            titulo="Configurações"
+            desc="Sua conta, perfil profissional, foto."
+            disponivel={true}
+            href="/conta"
           />
         </div>
 

@@ -39,7 +39,7 @@ export async function middleware(request: NextRequest) {
   const pathname = url.pathname
 
   // Rotas protegidas (requerem login)
-  const rotasPrivadas = ['/dashboard', '/conta', '/admin', '/parceiro', '/cliente']
+  const rotasPrivadas = ['/dashboard', '/conta', '/admin', '/parceiro', '/cliente', '/projetos']
   const ehRotaPrivada = rotasPrivadas.some((r) => pathname.startsWith(r))
 
   // Não logado tentando acessar rota privada → manda pro login
