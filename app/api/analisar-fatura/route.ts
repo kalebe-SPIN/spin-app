@@ -4,18 +4,10 @@ import { createClient } from '@/lib/supabase/server'
 /**
  * POST /api/analisar-fatura
  *
- * Recebe arquivo PDF/imagem da fatura CELESC e retorna dados estruturados
- * pra preenchimento automático do form do projeto.
+ * Encaminha o arquivo da fatura pra Edge Function `ocr-fatura` (v2) do Supabase,
+ * que faz OCR via Google Vision + extração via regex CELESC.
  *
- * ⚠️ STUB inicial — a integração completa com Claude API (skill /analista-de-faturas)
- * está pendente. Por enquanto retorna estrutura mock pra desenvolvimento do frontend.
- *
- * Fluxo planejado (V2):
- *   1. Upload arquivo → Supabase Storage
- *   2. Extrair texto (pdftotext server-side ou OCR Google Vision)
- *   3. Chamar Claude API com prompt da skill analista-de-faturas
- *   4. Validar JSON retornado
- *   5. Devolver pro frontend
+ * Resposta normalizada pro frontend (passo 1 do form de projeto).
  */
 export async function POST(request: NextRequest) {
   const supabase = createClient()
@@ -33,67 +25,87 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 })
     }
 
-    // Valida tipo
     const validMimes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
     if (!validMimes.includes(file.type)) {
       return NextResponse.json({
-        error: 'Formato inválido. Aceitos: PDF, JPG, PNG'
+        error: 'Formato inválido. Aceitos: PDF, JPG, PNG',
       }, { status: 400 })
     }
 
-    // Valida tamanho (máx 10MB)
     if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json({
-        error: 'Arquivo muito grande. Máximo 10MB.'
+        error: 'Arquivo muito grande. Máximo 10MB.',
       }, { status: 400 })
     }
 
-    // ===== STUB — retorna mock por enquanto =====
-    // Em produção: passa pra Claude API com skill analista-de-faturas
-    //
-    // TODO: implementar integração real:
-    //   const response = await fetch('https://api.anthropic.com/v1/messages', {
-    //     method: 'POST',
-    //     headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY!, ... },
-    //     body: JSON.stringify({
-    //       model: 'claude-opus-4-8',
-    //       messages: [{
-    //         role: 'user',
-    //         content: [
-    //           { type: 'document', source: { type: 'base64', media_type: file.type, data: base64 } },
-    //           { type: 'text', text: 'Analise esta fatura conforme skill analista-de-faturas. Retorne JSON.' }
-    //         ]
-    //       }]
-    //     })
-    //   })
+    // Encaminha pra Edge Function ocr-fatura v2
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    const edgeUrl = `${supabaseUrl}/functions/v1/ocr-fatura`
+
+    // Recria FormData com campo nomeado 'file' (que a Edge Function espera)
+    const edgeFormData = new FormData()
+    edgeFormData.append('file', file)
+
+    const edgeRes = await fetch(edgeUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${supabaseAnon}`,
+        apikey: supabaseAnon,
+      },
+      body: edgeFormData,
+    })
+
+    const edgeJson = await edgeRes.json()
+
+    if (!edgeRes.ok || !edgeJson.sucesso) {
+      return NextResponse.json({
+        error: edgeJson.erro || 'Edge Function falhou',
+        edge_status: edgeRes.status,
+      }, { status: 500 })
+    }
+
+    // Estrutura normalizada pro frontend (compatível com NovoProjetoForm)
+    const d = edgeJson.dados || {}
 
     return NextResponse.json({
       sucesso: true,
-      stub: true,
-      mensagem: 'Análise de fatura via Claude API ainda não implementada. Dados retornados são exemplo (mock).',
+      stub: false,
       dados: {
-        uc: '',
-        razao_social: '',
-        cpf_cnpj: '',
+        uc: d.uc || '',
+        razao_social: d.razao_social || '',
+        cpf_cnpj: d.cpf_cnpj || '',
         endereco: {
-          logradouro: '',
-          bairro: '',
-          cidade: '',
-          uf: 'SC',
-          cep: '',
+          logradouro: d.endereco?.logradouro || '',
+          bairro: d.endereco?.bairro || '',
+          cidade: d.endereco?.cidade || '',
+          uf: d.endereco?.uf || 'SC',
+          cep: d.endereco?.cep || '',
         },
-        consumo_medio_mensal_kwh: null,
-        grupo: null,
-        subgrupo: null,
-        classe: null,
-        tipo_ligacao: null,
-        modalidade_tarifaria: null,
-      }
+        // Campos técnicos que vão ser usados nos próximos passos
+        grupo: d.grupo,
+        subgrupo: d.subgrupo,
+        classe: d.classe,
+        tipo_ligacao: d.tipo_ligacao,
+        modalidade_tarifaria: d.modalidade_tarifaria,
+        bandeira_tarifaria: d.bandeira_tarifaria,
+        tensao_fornecimento_kv: d.tensao_fornecimento_kv,
+        mes_referencia: d.mes_referencia,
+        data_vencimento: d.data_vencimento,
+        valor_total_reais: d.valor_total_reais,
+        consumo_mes_kwh: d.consumo_mes_kwh,
+        demanda_contratada_kw: d.demanda_contratada_kw,
+        demanda_medida_fp_kw: d.demanda_medida_fp_kw,
+        demanda_medida_ponta_kw: d.demanda_medida_ponta_kw,
+        historico_12_meses: d.historico_12_meses,
+        tem_geracao_propria: d.tem_geracao_propria,
+      },
+      meta: edgeJson.meta,
     })
   } catch (error: any) {
     console.error('Erro ao analisar fatura:', error)
     return NextResponse.json({
-      error: `Erro ao processar arquivo: ${error?.message || 'desconhecido'}`
+      error: `Erro ao processar arquivo: ${error?.message || 'desconhecido'}`,
     }, { status: 500 })
   }
 }
