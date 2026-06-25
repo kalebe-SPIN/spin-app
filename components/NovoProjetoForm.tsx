@@ -315,9 +315,13 @@ export function NovoProjetoForm({
       return
     }
 
-    // Força revalidação do server component (sem cache stale)
-    router.refresh()
-    router.push(`/projetos/${resultId}`)
+    // Em modo edit, força full page reload (router.push retorna cache stale)
+    // Em modo create, router.push funciona pq é primeira visita à URL
+    if (isEdit) {
+      window.location.href = `/projetos/${resultId}`
+    } else {
+      router.push(`/projetos/${resultId}`)
+    }
   }
 
   return (
