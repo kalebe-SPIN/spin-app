@@ -310,10 +310,13 @@ export function NovoProjetoForm({
     setLoading(false)
 
     if (dbError) {
+      console.error('[Projeto] Erro no DB:', dbError)
       setError(`Erro ao ${isEdit ? 'atualizar' : 'criar'} projeto: ${dbError.message}`)
       return
     }
 
+    // Força revalidação do server component (sem cache stale)
+    router.refresh()
     router.push(`/projetos/${resultId}`)
   }
 

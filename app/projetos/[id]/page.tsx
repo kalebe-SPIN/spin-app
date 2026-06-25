@@ -2,6 +2,10 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 
+// Sempre buscar dados frescos do banco (sem cache stale após edição)
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 /**
  * Visualização de um projeto específico — /projetos/[id]
  *
