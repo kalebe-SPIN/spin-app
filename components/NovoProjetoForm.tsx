@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { atualizarProjetoAction } from '@/app/projetos/[id]/editar/actions'
 import {
   maskCpfCnpj,
   maskTelefone,
@@ -281,47 +282,38 @@ export function NovoProjetoForm({
       observacoes_consultor: form.observacoes.trim() || null,
     }
 
-    let resultId: string | undefined
-    let dbError: any
-
     if (isEdit && projetoExistente) {
-      // MODO EDITAR — UPDATE
-      const { error } = await supabase
-        .from('projetos')
-        .update(payload)
-        .eq('id', projetoExistente.id)
-      dbError = error
-      resultId = projetoExistente.id
-    } else {
-      // MODO CRIAR — INSERT
-      const { data, error } = await supabase
-        .from('projetos')
-        .insert({
-          ...payload,
-          consultor_id: consultorId,
-          status: faturaAnalisada ? 'fatura_analisada' : 'rascunho',
-        })
-        .select('id')
-        .single()
-      dbError = error
-      resultId = data?.id
+      // MODO EDITAR — usa Server Action (revalida cache + redirect server-side)
+      const result = await atualizarProjetoAction(projetoExistente.id, payload)
+      // Server Action faz redirect direto. Se voltou aqui, é porque deu erro.
+      setLoading(false)
+      if (result && !result.sucesso) {
+        console.error('[Projeto] Erro no UPDATE:', result.erro)
+        setError(`Erro ao atualizar projeto: ${result.erro}`)
+      }
+      return
     }
+
+    // MODO CRIAR — INSERT
+    const { data, error: dbError } = await supabase
+      .from('projetos')
+      .insert({
+        ...payload,
+        consultor_id: consultorId,
+        status: faturaAnalisada ? 'fatura_analisada' : 'rascunho',
+      })
+      .select('id')
+      .single()
 
     setLoading(false)
 
     if (dbError) {
-      console.error('[Projeto] Erro no DB:', dbError)
-      setError(`Erro ao ${isEdit ? 'atualizar' : 'criar'} projeto: ${dbError.message}`)
+      console.error('[Projeto] Erro no INSERT:', dbError)
+      setError(`Erro ao criar projeto: ${dbError.message}`)
       return
     }
 
-    // Em modo edit, força full page reload (router.push retorna cache stale)
-    // Em modo create, router.push funciona pq é primeira visita à URL
-    if (isEdit) {
-      window.location.href = `/projetos/${resultId}`
-    } else {
-      router.push(`/projetos/${resultId}`)
-    }
+    router.push(`/projetos/${data.id}`)
   }
 
   return (
