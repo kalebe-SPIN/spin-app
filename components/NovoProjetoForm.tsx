@@ -14,18 +14,43 @@ import {
   unmask,
 } from '@/lib/utils/masks'
 
+type ProjetoExistente = {
+  id: string
+  cliente_razao_social: string
+  cliente_cpf_cnpj: string | null
+  cliente_email: string | null
+  cliente_telefone: string
+  cliente_endereco: any
+  uc_geradora: string
+  ucs_beneficiarias: string[] | null
+  tipo_projeto: string
+  motivacao_cliente: string | null
+  observacoes_consultor: string | null
+}
+
 /**
- * Formulário de criação do projeto (Passo 1 — Cliente + Fatura).
+ * Formulário de criação OU edição do projeto.
  *
- * Fluxo:
+ * Modo CRIAR (sem projetoExistente):
  *   1. Consultor faz upload da fatura CELESC
- *   2. Sistema chama /api/analisar-fatura → extrai dados estruturados
- *   3. Campos do form pré-preenchidos com o que veio da fatura
- *   4. Consultor completa o que faltar (telefone, email) e ajusta o que for necessário
- *   5. Submit → cria projeto no Supabase + redireciona pra /projetos/[id]
+ *   2. Sistema chama /api/analisar-fatura → extrai dados
+ *   3. Campos pré-preenchidos + completados manualmente
+ *   4. INSERT em projetos + redirect /projetos/[id]
+ *
+ * Modo EDITAR (com projetoExistente):
+ *   1. Campos pré-populados com dados do projeto
+ *   2. Consultor altera o que precisar
+ *   3. UPDATE em projetos + redirect /projetos/[id]
  */
-export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
+export function NovoProjetoForm({
+  consultorId,
+  projetoExistente,
+}: {
+  consultorId: string
+  projetoExistente?: ProjetoExistente
+}) {
   const router = useRouter()
+  const isEdit = !!projetoExistente
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,23 +64,28 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
   // Quais campos foram auto-preenchidos pela análise da fatura
   const [autoPreenchidos, setAutoPreenchidos] = useState<Set<string>>(new Set())
 
-  // Estado do form
+  // Estado do form — inicializa com projeto existente se for edição
+  const end = projetoExistente?.cliente_endereco || {}
   const [form, setForm] = useState({
-    cliente_razao_social: '',
-    cliente_cpf_cnpj: '',
-    cliente_sem_documento: false,
-    cliente_email: '',
-    cliente_telefone: '',
-    cliente_logradouro: '',
-    cliente_bairro: '',
-    cliente_cidade: '',
-    cliente_uf: 'SC',
-    cliente_cep: '',
-    uc_geradora: '',
-    ucs_beneficiarias: '',
-    tipo_projeto: 'ongrid',
-    motivacao_cliente: 'reduzir_conta',
-    observacoes: '',
+    cliente_razao_social: projetoExistente?.cliente_razao_social || '',
+    cliente_cpf_cnpj: projetoExistente?.cliente_cpf_cnpj
+      ? maskCpfCnpj(projetoExistente.cliente_cpf_cnpj)
+      : '',
+    cliente_sem_documento: projetoExistente ? !projetoExistente.cliente_cpf_cnpj : false,
+    cliente_email: projetoExistente?.cliente_email || '',
+    cliente_telefone: projetoExistente?.cliente_telefone
+      ? maskTelefone(projetoExistente.cliente_telefone)
+      : '',
+    cliente_logradouro: end.logradouro || '',
+    cliente_bairro: end.bairro || '',
+    cliente_cidade: end.cidade || '',
+    cliente_uf: end.uf || 'SC',
+    cliente_cep: end.cep ? maskCep(end.cep) : '',
+    uc_geradora: projetoExistente?.uc_geradora || '',
+    ucs_beneficiarias: (projetoExistente?.ucs_beneficiarias || []).join(', '),
+    tipo_projeto: projetoExistente?.tipo_projeto || 'ongrid',
+    motivacao_cliente: projetoExistente?.motivacao_cliente || 'reduzir_conta',
+    observacoes: projetoExistente?.observacoes_consultor || '',
   })
 
   function update<K extends keyof typeof form>(k: K, v: typeof form[K]) {
@@ -232,39 +262,59 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
       .map((x) => x.trim())
       .filter(Boolean)
 
-    const { data, error: dbError } = await supabase
-      .from('projetos')
-      .insert({
-        cliente_razao_social: form.cliente_razao_social.trim(),
-        cliente_cpf_cnpj: form.cliente_sem_documento ? null : unmask(form.cliente_cpf_cnpj),
-        cliente_email: form.cliente_email.trim() || null,
-        cliente_telefone: unmask(form.cliente_telefone),
-        cliente_endereco: {
-          logradouro: form.cliente_logradouro,
-          bairro: form.cliente_bairro,
-          cidade: form.cliente_cidade,
-          uf: form.cliente_uf,
-          cep: unmask(form.cliente_cep),
-        },
-        uc_geradora: form.uc_geradora.trim(),
-        ucs_beneficiarias: beneficiarias,
-        tipo_projeto: form.tipo_projeto,
-        motivacao_cliente: form.motivacao_cliente,
-        observacoes_consultor: form.observacoes.trim() || null,
-        consultor_id: consultorId,
-        status: faturaAnalisada ? 'fatura_analisada' : 'rascunho',
-      })
-      .select('id')
-      .single()
+    const payload = {
+      cliente_razao_social: form.cliente_razao_social.trim(),
+      cliente_cpf_cnpj: form.cliente_sem_documento ? null : unmask(form.cliente_cpf_cnpj),
+      cliente_email: form.cliente_email.trim() || null,
+      cliente_telefone: unmask(form.cliente_telefone),
+      cliente_endereco: {
+        logradouro: form.cliente_logradouro,
+        bairro: form.cliente_bairro,
+        cidade: form.cliente_cidade,
+        uf: form.cliente_uf,
+        cep: unmask(form.cliente_cep),
+      },
+      uc_geradora: form.uc_geradora.trim(),
+      ucs_beneficiarias: beneficiarias,
+      tipo_projeto: form.tipo_projeto,
+      motivacao_cliente: form.motivacao_cliente,
+      observacoes_consultor: form.observacoes.trim() || null,
+    }
+
+    let resultId: string | undefined
+    let dbError: any
+
+    if (isEdit && projetoExistente) {
+      // MODO EDITAR — UPDATE
+      const { error } = await supabase
+        .from('projetos')
+        .update(payload)
+        .eq('id', projetoExistente.id)
+      dbError = error
+      resultId = projetoExistente.id
+    } else {
+      // MODO CRIAR — INSERT
+      const { data, error } = await supabase
+        .from('projetos')
+        .insert({
+          ...payload,
+          consultor_id: consultorId,
+          status: faturaAnalisada ? 'fatura_analisada' : 'rascunho',
+        })
+        .select('id')
+        .single()
+      dbError = error
+      resultId = data?.id
+    }
 
     setLoading(false)
 
     if (dbError) {
-      setError(`Erro ao criar projeto: ${dbError.message}`)
+      setError(`Erro ao ${isEdit ? 'atualizar' : 'criar'} projeto: ${dbError.message}`)
       return
     }
 
-    router.push(`/projetos/${data.id}`)
+    router.push(`/projetos/${resultId}`)
   }
 
   return (
@@ -560,7 +610,9 @@ export function NovoProjetoForm({ consultorId }: { consultorId: string }) {
           disabled={loading}
           className="flex-1 px-6 py-3 bg-sol text-noite font-bold rounded-lg hover:bg-sol/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Criando...' : 'Criar projeto e continuar →'}
+          {loading
+            ? (isEdit ? 'Salvando...' : 'Criando...')
+            : (isEdit ? 'Salvar alterações' : 'Criar projeto e continuar →')}
         </button>
       </div>
     </form>
