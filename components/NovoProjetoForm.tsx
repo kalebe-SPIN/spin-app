@@ -195,8 +195,7 @@ export function NovoProjetoForm({
       if (marcados.size === 0) {
         setError(
           'Análise concluída mas nenhum campo foi extraído. ' +
-          'Pode ser fatura com layout diferente ou regex precisa de ajuste. ' +
-          'Preencha manualmente.'
+          'Pode ser fatura com layout diferente. Preencha manualmente.'
         )
       }
     } catch (err: any) {
@@ -377,6 +376,25 @@ export function NovoProjetoForm({
             ⚠️ Análise automática ainda em desenvolvimento (stub). Preencha os campos manualmente por enquanto.
           </div>
         )}
+
+        {/* Aviso destacado quando há campos auto-preenchidos */}
+        {faturaAnalisada && autoPreenchidos.size > 0 && (
+          <div className="bg-verde/10 border border-verde/30 rounded-lg p-4 text-sm">
+            <div className="flex items-start gap-3">
+              <span className="text-xl">✨</span>
+              <div className="flex-1">
+                <p className="font-bold text-verde mb-1">
+                  {autoPreenchidos.size} campo(s) preenchidos automaticamente
+                </p>
+                <p className="text-white/70 text-xs leading-relaxed">
+                  Os campos marcados com <span className="text-verde font-bold">✨ auto-fatura</span> vieram
+                  da análise. <strong className="text-white">Confira com atenção o endereço</strong> — a fatura
+                  CELESC normalmente abrevia (ex: "R. JOAO SAMPAIO S/N 4 LO") e pode precisar de complemento.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </fieldset>
 
       {/* ===== IDENTIFICAÇÃO DO CLIENTE ===== */}
@@ -455,15 +473,22 @@ export function NovoProjetoForm({
           Endereço da instalação
         </legend>
 
-        <Field label="Logradouro" auto={autoPreenchidos.has('cliente_logradouro')}>
-          <input
-            type="text"
-            value={form.cliente_logradouro}
-            onChange={(e) => update('cliente_logradouro', e.target.value)}
-            className="input-spin"
-            placeholder="Rua, número, complemento"
-          />
-        </Field>
+        <div>
+          <Field label="Logradouro" auto={autoPreenchidos.has('cliente_logradouro')}>
+            <input
+              type="text"
+              value={form.cliente_logradouro}
+              onChange={(e) => update('cliente_logradouro', e.target.value)}
+              className={`input-spin ${autoPreenchidos.has('cliente_logradouro') ? 'border-sol/50 bg-sol/5' : ''}`}
+              placeholder="Rua, número, complemento"
+            />
+          </Field>
+          {autoPreenchidos.has('cliente_logradouro') && (
+            <p className="mt-1.5 text-xs text-sol/80">
+              ⚠️ Endereço extraído da fatura — pode estar abreviado. Confirme se está completo e correto.
+            </p>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Field label="Bairro" auto={autoPreenchidos.has('cliente_bairro')}>
