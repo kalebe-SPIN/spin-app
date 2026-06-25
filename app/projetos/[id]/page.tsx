@@ -94,9 +94,6 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
         {/* Tipo */}
         <Section title="Tipo de projeto">
           <Info label="Modalidade" value={TIPO_PROJETO_LABEL[projeto.tipo_projeto] || projeto.tipo_projeto} />
-          {projeto.motivacao_cliente && (
-            <Info label="Motivação" value={MOTIVACOES_LABEL[projeto.motivacao_cliente] || projeto.motivacao_cliente} />
-          )}
         </Section>
 
         {projeto.observacoes_consultor && (
@@ -166,15 +163,6 @@ const TIPO_PROJETO_LABEL: Record<string, string> = {
   hibrido_bess:     'Híbrido com BESS',
   expansao_ongrid:  'Expansão on-grid',
   expansao_hibrido: 'Expansão híbrida',
-}
-
-const MOTIVACOES_LABEL: Record<string, string> = {
-  reduzir_conta:    'Reduzir conta de luz',
-  sustentabilidade: 'Sustentabilidade / ESG',
-  independencia:    'Independência energética',
-  investimento:     'Investimento / valorização',
-  marketing:        'Marketing / imagem',
-  licenciamento:    'Exigência ambiental',
 }
 
 function getProximoPasso(status: string) {

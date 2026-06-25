@@ -23,7 +23,6 @@ export async function atualizarProjetoAction(
     uc_geradora: string
     ucs_beneficiarias: string[]
     tipo_projeto: string
-    motivacao_cliente: string
     observacoes_consultor: string | null
   }
 ) {

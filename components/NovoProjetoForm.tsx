@@ -25,7 +25,6 @@ type ProjetoExistente = {
   uc_geradora: string
   ucs_beneficiarias: string[] | null
   tipo_projeto: string
-  motivacao_cliente: string | null
   observacoes_consultor: string | null
 }
 
@@ -85,7 +84,6 @@ export function NovoProjetoForm({
     uc_geradora: projetoExistente?.uc_geradora || '',
     ucs_beneficiarias: (projetoExistente?.ucs_beneficiarias || []).join(', '),
     tipo_projeto: projetoExistente?.tipo_projeto || 'ongrid',
-    motivacao_cliente: projetoExistente?.motivacao_cliente || 'reduzir_conta',
     observacoes: projetoExistente?.observacoes_consultor || '',
   })
 
@@ -278,7 +276,6 @@ export function NovoProjetoForm({
       uc_geradora: form.uc_geradora.trim(),
       ucs_beneficiarias: beneficiarias,
       tipo_projeto: form.tipo_projeto,
-      motivacao_cliente: form.motivacao_cliente,
       observacoes_consultor: form.observacoes.trim() || null,
     }
 
@@ -570,17 +567,6 @@ export function NovoProjetoForm({
           ))}
         </div>
 
-        <Field label="Motivação principal do cliente">
-          <select
-            value={form.motivacao_cliente}
-            onChange={(e) => update('motivacao_cliente', e.target.value)}
-            className="input-spin"
-          >
-            {MOTIVACOES.map((m) => (
-              <option key={m.value} value={m.value} className="bg-noite">{m.label}</option>
-            ))}
-          </select>
-        </Field>
       </fieldset>
 
       {/* ===== OBSERVAÇÕES ===== */}
@@ -650,15 +636,6 @@ const TIPOS_PROJETO = [
   { value: 'hibrido_bess', label: 'Híbrido com BESS', desc: 'Gera + bateria + interage com rede.' },
   { value: 'expansao_ongrid', label: 'Expansão on-grid', desc: 'Cliente já tem solar; vai aumentar potência.' },
   { value: 'expansao_hibrido', label: 'Expansão híbrida', desc: 'Expansão existente + adicionar BESS.' },
-]
-
-const MOTIVACOES = [
-  { value: 'reduzir_conta', label: 'Reduzir conta de luz' },
-  { value: 'sustentabilidade', label: 'Sustentabilidade / ESG' },
-  { value: 'independencia', label: 'Independência energética (apagão)' },
-  { value: 'investimento', label: 'Investimento / valorização imóvel' },
-  { value: 'marketing', label: 'Marketing / imagem da empresa' },
-  { value: 'licenciamento', label: 'Cumprir exigência ambiental' },
 ]
 
 const UFS = ['SC', 'RS', 'PR', 'SP', 'RJ', 'MG', 'ES', 'BA', 'GO', 'DF', 'MT', 'MS', 'PA', 'AM', 'CE', 'PE', 'AL', 'PB', 'RN', 'PI', 'MA', 'SE', 'AC', 'RO', 'RR', 'AP', 'TO']
