@@ -51,7 +51,8 @@ export function TelhadoSecoesManager({
   enderecoCliente?: string
 }) {
   const [secoes, setSecoes] = useState<Secao[]>(secoesIniciais)
-  const [mostrandoForm, setMostrandoForm] = useState(secoesIniciais.length === 0)
+  // Por padrão começa fechado — mostra os 2 cards de escolha (Manual vs Mapa)
+  const [mostrandoForm, setMostrandoForm] = useState(false)
   const [mostrandoMapa, setMostrandoMapa] = useState(false)
   const [form, setForm] = useState<SecaoTelhadoInput>(FORM_INICIAL)
   const [salvando, setSalvando] = useState(false)
