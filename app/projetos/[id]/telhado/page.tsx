@@ -16,11 +16,22 @@ export default async function TelhadoPage({ params }: { params: { id: string } }
 
   const { data: projeto, error } = await supabase
     .from('projetos')
-    .select('id, codigo, cliente_razao_social')
+    .select('id, codigo, cliente_razao_social, cliente_endereco')
     .eq('id', params.id)
     .single()
 
   if (error || !projeto) notFound()
+
+  // Monta string de endereço pra geocoding
+  const end = projeto.cliente_endereco || {}
+  const enderecoCompleto = [
+    end.logradouro,
+    end.bairro,
+    end.cidade,
+    end.uf,
+    end.cep,
+    'Brasil',
+  ].filter(Boolean).join(', ')
 
   const { data: secoes } = await supabase
     .from('projetos_telhado_secoes')
@@ -60,6 +71,7 @@ export default async function TelhadoPage({ params }: { params: { id: string } }
         <TelhadoSecoesManager
           projetoId={projeto.id}
           secoesIniciais={secoes || []}
+          enderecoCliente={enderecoCompleto || undefined}
         />
       </div>
     </main>

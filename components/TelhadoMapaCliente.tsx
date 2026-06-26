@@ -1,0 +1,244 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { MapContainer, TileLayer, useMapEvents, Marker, Polygon, Popup, useMap } from 'react-leaflet'
+import L from 'leaflet'
+import type { LatLngExpression } from 'leaflet'
+import area from '@turf/area'
+import centroid from '@turf/centroid'
+import { polygon as turfPolygon, point as turfPoint } from '@turf/helpers'
+import 'leaflet/dist/leaflet.css'
+import type { Props, FaceDesenhada } from './TelhadoMapa'
+
+// Fix do ícone padrão do Leaflet em bundlers
+if (typeof window !== 'undefined') {
+  // @ts-ignore
+  delete L.Icon.Default.prototype._getIconUrl
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  })
+}
+
+const DEFAULT_CENTER: [number, number] = [-27.2406, -48.6359] // Tijucas/SC fallback
+const DEFAULT_ZOOM = 19
+
+export default function TelhadoMapaCliente({
+  endereco,
+  coordenadasIniciais,
+  onFaceDesenhada,
+}: Props) {
+  const [centro, setCentro] = useState<[number, number]>(
+    coordenadasIniciais || DEFAULT_CENTER
+  )
+  const [buscandoEndereco, setBuscandoEndereco] = useState(false)
+  const [erroEndereco, setErroEndereco] = useState<string | null>(null)
+  const [pontos, setPontos] = useState<[number, number][]>([])
+  const [areaCalculada, setAreaCalculada] = useState<number | null>(null)
+  const [centroide, setCentroide] = useState<[number, number] | null>(null)
+
+  // Geocoda endereço inicial via Nominatim (gratuito)
+  useEffect(() => {
+    if (!endereco || coordenadasIniciais) return
+    let cancelado = false
+    setBuscandoEndereco(true)
+    setErroEndereco(null)
+
+    fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(endereco)}`,
+      { headers: { 'User-Agent': 'spin-solar-portal/1.0' } }
+    )
+      .then((r) => r.json())
+      .then((data: any[]) => {
+        if (cancelado) return
+        if (data && data.length > 0) {
+          const lat = parseFloat(data[0].lat)
+          const lon = parseFloat(data[0].lon)
+          setCentro([lat, lon])
+        } else {
+          setErroEndereco('Endereço não encontrado. Use o zoom/arraste pra ajustar o mapa.')
+        }
+      })
+      .catch(() => {
+        if (!cancelado) setErroEndereco('Falha ao buscar endereço. Use o mapa manualmente.')
+      })
+      .finally(() => {
+        if (!cancelado) setBuscandoEndereco(false)
+      })
+
+    return () => { cancelado = true }
+  }, [endereco, coordenadasIniciais])
+
+  // Recalcula área quando pontos mudam (precisa ≥3)
+  useEffect(() => {
+    if (pontos.length < 3) {
+      setAreaCalculada(null)
+      setCentroide(null)
+      return
+    }
+    // Fecha polígono (último ponto = primeiro)
+    const coords = [...pontos, pontos[0]].map(([lat, lng]) => [lng, lat])
+    try {
+      const poly = turfPolygon([coords])
+      const areaM2 = area(poly)
+      const c = centroid(poly)
+      const [lng, lat] = c.geometry.coordinates
+      setAreaCalculada(Math.round(areaM2 * 100) / 100)
+      setCentroide([lat, lng])
+    } catch {
+      setAreaCalculada(null)
+    }
+  }, [pontos])
+
+  function handleClickMapa(latlng: { lat: number; lng: number }) {
+    setPontos((prev) => [...prev, [latlng.lat, latlng.lng]])
+  }
+
+  function desfazerUltimoPonto() {
+    setPontos((prev) => prev.slice(0, -1))
+  }
+
+  function limparTudo() {
+    setPontos([])
+  }
+
+  function confirmarFace() {
+    if (pontos.length < 3 || !areaCalculada || !centroide) return
+    onFaceDesenhada({
+      coordenadas: pontos,
+      area_m2: areaCalculada,
+      centroide,
+    })
+    setPontos([]) // Reset pra próxima face
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Instruções */}
+      <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-lg p-3 text-sm text-white/80">
+        <strong className="text-white">Como usar:</strong> Use o zoom (scroll do mouse) pra
+        chegar perto do telhado.{' '}
+        <strong className="text-white">Clique em cada canto</strong> da face do telhado em ordem.
+        Mínimo 3 pontos pra formar área. Depois clica em "Confirmar face".
+      </div>
+
+      {/* Mapa */}
+      <div className="relative rounded-xl overflow-hidden border border-white/10">
+        <MapContainer
+          center={centro as LatLngExpression}
+          zoom={DEFAULT_ZOOM}
+          maxZoom={22}
+          style={{ height: '500px', width: '100%' }}
+          scrollWheelZoom
+        >
+          <RecentralizarMapa centro={centro} />
+          <TileLayer
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            attribution="© Esri World Imagery"
+            maxNativeZoom={19}
+            maxZoom={22}
+          />
+          <ClickHandler onClick={handleClickMapa} />
+
+          {/* Polígono em construção */}
+          {pontos.length >= 2 && (
+            <Polygon
+              positions={pontos as LatLngExpression[]}
+              pathOptions={{
+                color: '#F5B400',
+                fillColor: '#F5B400',
+                fillOpacity: 0.3,
+                weight: 3,
+              }}
+            />
+          )}
+
+          {/* Marcadores dos pontos */}
+          {pontos.map((p, i) => (
+            <Marker key={i} position={p as LatLngExpression}>
+              <Popup>Ponto {i + 1}</Popup>
+            </Marker>
+          ))}
+        </MapContainer>
+
+        {buscandoEndereco && (
+          <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-3 py-1.5 rounded">
+            🔍 Localizando endereço...
+          </div>
+        )}
+      </div>
+
+      {erroEndereco && (
+        <div className="bg-coral/10 border border-coral/30 rounded-lg p-3 text-xs text-coral">
+          {erroEndereco}
+        </div>
+      )}
+
+      {/* Painel de status */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+          <div className="text-xs text-white/40 uppercase tracking-wider">Pontos marcados</div>
+          <div className="text-xl font-bold text-white">{pontos.length}</div>
+        </div>
+        <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+          <div className="text-xs text-white/40 uppercase tracking-wider">Área calculada</div>
+          <div className="text-xl font-bold text-sol">
+            {areaCalculada != null ? `${areaCalculada} m²` : '—'}
+          </div>
+        </div>
+        <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+          <div className="text-xs text-white/40 uppercase tracking-wider">Status</div>
+          <div className="text-sm font-bold text-white">
+            {pontos.length < 3 ? `Faltam ${3 - pontos.length} pontos` : 'Pronto pra confirmar ✓'}
+          </div>
+        </div>
+      </div>
+
+      {/* Botões */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={desfazerUltimoPonto}
+          disabled={pontos.length === 0}
+          className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold text-white hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          ↶ Desfazer último ponto
+        </button>
+        <button
+          type="button"
+          onClick={limparTudo}
+          disabled={pontos.length === 0}
+          className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold text-white hover:bg-white/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          ✕ Limpar tudo
+        </button>
+        <button
+          type="button"
+          onClick={confirmarFace}
+          disabled={pontos.length < 3 || !areaCalculada}
+          className="ml-auto px-6 py-2 bg-sol text-noite font-bold rounded-lg hover:bg-sol/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          ✓ Confirmar esta face
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ClickHandler({ onClick }: { onClick: (latlng: { lat: number; lng: number }) => void }) {
+  useMapEvents({
+    click(e) {
+      onClick(e.latlng)
+    },
+  })
+  return null
+}
+
+function RecentralizarMapa({ centro }: { centro: [number, number] }) {
+  const map = useMap()
+  useEffect(() => {
+    map.setView(centro, DEFAULT_ZOOM)
+  }, [centro, map])
+  return null
+}

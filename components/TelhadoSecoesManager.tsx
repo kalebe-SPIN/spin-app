@@ -7,6 +7,7 @@ import {
   concluirTelhadoAction,
   type SecaoTelhadoInput,
 } from '@/app/projetos/[id]/telhado/actions'
+import { TelhadoMapa, type FaceDesenhada } from './TelhadoMapa'
 
 type Secao = {
   id: string
@@ -43,15 +44,25 @@ const FORM_INICIAL: SecaoTelhadoInput = {
 export function TelhadoSecoesManager({
   projetoId,
   secoesIniciais,
+  enderecoCliente,
 }: {
   projetoId: string
   secoesIniciais: Secao[]
+  enderecoCliente?: string
 }) {
   const [secoes, setSecoes] = useState<Secao[]>(secoesIniciais)
   const [mostrandoForm, setMostrandoForm] = useState(secoesIniciais.length === 0)
+  const [mostrandoMapa, setMostrandoMapa] = useState(false)
   const [form, setForm] = useState<SecaoTelhadoInput>(FORM_INICIAL)
   const [salvando, setSalvando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function handleFaceDesenhada(face: FaceDesenhada) {
+    // Auto-popula área no formulário
+    setForm((prev) => ({ ...prev, area_m2: face.area_m2 }))
+    setMostrandoMapa(false)
+    setMostrandoForm(true)
+  }
 
   function update<K extends keyof SecaoTelhadoInput>(k: K, v: SecaoTelhadoInput[K]) {
     setForm((prev) => ({ ...prev, [k]: v }))
@@ -105,18 +116,53 @@ export function TelhadoSecoesManager({
         </div>
       )}
 
-      {/* Botão pra adicionar nova OU formulário */}
-      {!mostrandoForm && (
-        <button
-          type="button"
-          onClick={() => {
-            setForm(FORM_INICIAL)
-            setMostrandoForm(true)
-          }}
-          className="w-full p-6 border-2 border-dashed border-white/20 rounded-xl text-white/60 hover:border-sol/40 hover:text-white hover:bg-white/[0.02] transition-all"
-        >
-          + Adicionar outra seção de telhado
-        </button>
+      {/* Mapa interativo */}
+      {mostrandoMapa && (
+        <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-sol">
+              📍 Desenhar face no mapa
+            </h3>
+            <button
+              type="button"
+              onClick={() => setMostrandoMapa(false)}
+              className="text-xs text-white/40 hover:text-coral transition-colors"
+            >
+              ✕ Fechar
+            </button>
+          </div>
+          <TelhadoMapa
+            endereco={enderecoCliente}
+            onFaceDesenhada={handleFaceDesenhada}
+          />
+        </div>
+      )}
+
+      {/* Botões pra adicionar nova OU formulário */}
+      {!mostrandoForm && !mostrandoMapa && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setForm(FORM_INICIAL)
+              setMostrandoForm(true)
+            }}
+            className="p-6 border-2 border-dashed border-white/20 rounded-xl text-white/60 hover:border-sol/40 hover:text-white hover:bg-white/[0.02] transition-all"
+          >
+            ✏️<br />
+            <span className="text-sm font-bold">Preencher manualmente</span>
+            <div className="text-xs text-white/40 mt-1">Você sabe a área e orientação</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMostrandoMapa(true)}
+            className="p-6 border-2 border-dashed border-sol/30 rounded-xl text-white hover:border-sol/60 hover:bg-sol/5 transition-all"
+          >
+            🛰️<br />
+            <span className="text-sm font-bold text-sol">Desenhar no mapa satélite</span>
+            <div className="text-xs text-white/60 mt-1">Sistema calcula a área pra você</div>
+          </button>
+        </div>
       )}
 
       {mostrandoForm && (
