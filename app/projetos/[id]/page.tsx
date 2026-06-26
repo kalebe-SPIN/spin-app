@@ -53,7 +53,7 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
 
         {/* Próximo passo CTA */}
         {proximoPasso && (
-          <div className="mb-8 p-6 bg-sol/10 border border-sol/30 rounded-xl">
+          <div className="mb-6 p-6 bg-sol/10 border border-sol/30 rounded-xl">
             <div className="flex items-start gap-4">
               <div className="text-2xl">⏭️</div>
               <div className="flex-1">
@@ -71,6 +71,28 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             </div>
           </div>
         )}
+
+        {/* Workflow — 8 passos navegáveis */}
+        <section className="mb-8 p-6 bg-white/[0.03] border border-white/10 rounded-xl">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-sol mb-4">
+            Workflow do projeto
+          </h2>
+          <p className="text-xs text-white/40 mb-4">
+            Clique em qualquer passo pra trabalhar nele. Pode pular passos sem perder progresso.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {PASSOS_WORKFLOW.map((p) => (
+              <PassoCard
+                key={p.path}
+                numero={p.numero}
+                titulo={p.titulo}
+                href={`/projetos/${projeto.id}/${p.path}`}
+                statusProjeto={projeto.status}
+                statusRequerido={p.statusAposCompleto}
+              />
+            ))}
+          </div>
+        </section>
 
         {/* Dados do cliente */}
         <Section title="Cliente">
@@ -163,6 +185,75 @@ const TIPO_PROJETO_LABEL: Record<string, string> = {
   hibrido_bess:     'Híbrido com BESS',
   expansao_ongrid:  'Expansão on-grid',
   expansao_hibrido: 'Expansão híbrida',
+}
+
+const PASSOS_WORKFLOW = [
+  { numero: 1, titulo: 'Cliente',       path: 'editar',       statusAposCompleto: 'rascunho' },
+  { numero: 2, titulo: 'Fatura',        path: 'fatura',       statusAposCompleto: 'fatura_analisada' },
+  { numero: 3, titulo: 'Telhado',       path: 'telhado',      statusAposCompleto: 'telhado_preenchido' },
+  { numero: 4, titulo: 'Padrão',        path: 'padrao',       statusAposCompleto: 'dimensionado' },
+  { numero: 5, titulo: 'Dimensionar',   path: 'dimensionar',  statusAposCompleto: 'dimensionado' },
+  { numero: 6, titulo: 'Kit',           path: 'kit',          statusAposCompleto: 'kit_selecionado' },
+  { numero: 7, titulo: 'Lista CA',      path: 'lista-ca',     statusAposCompleto: 'lista_ca_confirmada' },
+  { numero: 8, titulo: 'Orçamento',     path: 'orcamento',    statusAposCompleto: 'orcamento_gerado' },
+]
+
+// Ordem dos status (índice define quão "avançado" está)
+const STATUS_ORDEM: Record<string, number> = {
+  rascunho: 0,
+  fatura_analisada: 1,
+  telhado_preenchido: 2,
+  dimensionado: 3,
+  kit_selecionado: 4,
+  lista_ca_confirmada: 5,
+  orcamento_gerado: 6,
+  proposta_enviada: 7,
+  aceito: 8,
+  recusado: 8,
+  cancelado: 8,
+  expirado: 8,
+}
+
+function PassoCard({
+  numero,
+  titulo,
+  href,
+  statusProjeto,
+  statusRequerido,
+}: {
+  numero: number
+  titulo: string
+  href: string
+  statusProjeto: string
+  statusRequerido: string
+}) {
+  const ordemAtual = STATUS_ORDEM[statusProjeto] ?? 0
+  const ordemRequerida = STATUS_ORDEM[statusRequerido] ?? 0
+  const concluido = ordemAtual >= ordemRequerida && ordemRequerida > 0
+
+  return (
+    <Link
+      href={href}
+      className={`
+        p-3 rounded-lg border text-center transition-all
+        ${concluido
+          ? 'bg-verde/10 border-verde/30 hover:border-verde/60'
+          : 'bg-white/[0.02] border-white/10 hover:border-sol/40 hover:bg-white/[0.05]'
+        }
+      `}
+    >
+      <div className={`
+        w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-1.5 border-2
+        ${concluido
+          ? 'bg-verde/20 text-verde border-verde/40'
+          : 'bg-transparent text-white/60 border-white/20'
+        }
+      `}>
+        {concluido ? '✓' : numero}
+      </div>
+      <div className="text-xs font-semibold text-white">{titulo}</div>
+    </Link>
+  )
 }
 
 function getProximoPasso(status: string) {
