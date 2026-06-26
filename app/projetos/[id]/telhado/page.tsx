@@ -60,6 +60,13 @@ export default async function TelhadoPage({ params }: { params: { id: string } }
           </p>
         </header>
 
+        {/* Banner v2 — confirma que você está vendo o build novo com mapa */}
+        <div className="bg-verde/10 border border-verde/30 rounded-xl p-4 mb-4">
+          <p className="text-sm text-verde font-bold">
+            🛰️ v2.0 ATIVO — Mapa satélite disponível! Você verá 2 opções abaixo.
+          </p>
+        </div>
+
         <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-xl p-4 mb-6">
           <p className="text-sm text-white/80">
             <strong className="text-white">Telhado pode ter múltiplas seções</strong> com tipos
