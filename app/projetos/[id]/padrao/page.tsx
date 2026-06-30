@@ -13,11 +13,27 @@ export default async function PadraoPage({ params }: { params: { id: string } })
 
   const { data: projeto, error } = await supabase
     .from('projetos')
-    .select('id, codigo, cliente_razao_social, padrao_entrada, analise_fatura')
+    .select('*')
     .eq('id', params.id)
     .single()
 
-  if (error || !projeto) notFound()
+  if (error) {
+    console.error('[padrao/page] Erro Supabase:', error)
+    return (
+      <main className="min-h-screen p-8 md:p-12">
+        <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
+          <h1 className="text-2xl font-bold text-coral mb-2">Erro ao carregar projeto</h1>
+          <p className="text-white/70 text-sm mb-4">{error.message}</p>
+          <p className="text-white/40 text-xs">Code: {error.code}</p>
+          <Link href={`/projetos/${params.id}`} className="mt-4 inline-block px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white hover:bg-white/10">
+            ← Voltar ao projeto
+          </Link>
+        </div>
+      </main>
+    )
+  }
+
+  if (!projeto) notFound()
 
   // Sugere tipo_ligacao da fatura (se já analisada)
   const tipoLigacaoSugerido = projeto.analise_fatura?.tipo_ligacao || null
