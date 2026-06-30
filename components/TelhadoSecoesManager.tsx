@@ -169,7 +169,7 @@ export function TelhadoSecoesManager({
       {mostrandoForm && (
         <form onSubmit={handleAdicionar} className="bg-white/[0.03] border border-white/10 rounded-xl p-6 space-y-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-sol">
-            🆕 TESTE V3 - NOVA SEÇÃO DE TELHADO 🆕
+            Nova seção de telhado
           </h3>
 
           <Field label="Identificador (opcional)">
