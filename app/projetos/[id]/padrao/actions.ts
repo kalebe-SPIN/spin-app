@@ -6,12 +6,11 @@ import { redirect } from 'next/navigation'
 
 export type PadraoInput = {
   tipo_ligacao: 'monofasico' | 'bifasico' | 'trifasico' | ''
-  tensao_fornecimento: '127_220' | '220_380' | ''
+  tensao_fornecimento: '127_380'  // padrão CELESC fixo
   amperagem_disjuntor_geral_a: number | null
   medidor_bidirecional: boolean
   tem_cabine_primaria: boolean
   qgbt_tem_espaco_disjuntor_solar: boolean
-  qgbt_marca_modelo: string
   qtd_hastes_aterramento: number | null
   hastes_interligadas: boolean
   tem_spda: boolean

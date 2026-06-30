@@ -14,12 +14,11 @@ export function PadraoForm({
 }) {
   const [form, setForm] = useState<PadraoInput>({
     tipo_ligacao: padraoSalvo?.tipo_ligacao || tipoLigacaoSugerido || '',
-    tensao_fornecimento: padraoSalvo?.tensao_fornecimento || '',
+    tensao_fornecimento: '127_380',  // padrão CELESC sempre
     amperagem_disjuntor_geral_a: padraoSalvo?.amperagem_disjuntor_geral_a || null,
     medidor_bidirecional: padraoSalvo?.medidor_bidirecional ?? false,
     tem_cabine_primaria: padraoSalvo?.tem_cabine_primaria ?? false,
     qgbt_tem_espaco_disjuntor_solar: padraoSalvo?.qgbt_tem_espaco_disjuntor_solar ?? false,
-    qgbt_marca_modelo: padraoSalvo?.qgbt_marca_modelo || '',
     qtd_hastes_aterramento: padraoSalvo?.qtd_hastes_aterramento || null,
     hastes_interligadas: padraoSalvo?.hastes_interligadas ?? false,
     tem_spda: padraoSalvo?.tem_spda ?? false,
@@ -84,16 +83,10 @@ export function PadraoForm({
           ))}
         </div>
 
-        <Field label="Tensão fornecida">
-          <select
-            value={form.tensao_fornecimento}
-            onChange={(e) => update('tensao_fornecimento', e.target.value as any)}
-            className="input-spin"
-          >
-            <option value="" className="bg-noite">— Selecionar —</option>
-            <option value="127_220" className="bg-noite">127V / 220V (mono e bi)</option>
-            <option value="220_380" className="bg-noite">220V / 380V (trifásico padrão CELESC)</option>
-          </select>
+        <Field label="Tensão fornecida (padrão CELESC)">
+          <div className="input-spin opacity-60 cursor-not-allowed">
+            127V / 380V — padrão CELESC
+          </div>
         </Field>
       </fieldset>
 
@@ -111,7 +104,11 @@ export function PadraoForm({
             required
           >
             <option value="" className="bg-noite">— Selecionar —</option>
-            {[50, 70, 100, 200, 400, 600, 800, 1000].map((a) => (
+            {[
+              16, 20, 25, 32, 40, 50, 60, 63, 70, 80, 90,
+              100, 125, 150, 160, 175, 200, 225, 250, 300, 350,
+              400, 500, 600, 630, 700, 800, 900, 1000,
+            ].map((a) => (
               <option key={a} value={a} className="bg-noite">{a} A</option>
             ))}
           </select>
@@ -148,16 +145,6 @@ export function PadraoForm({
         <legend className="text-xs font-bold uppercase tracking-wider text-sol mb-3">
           Quadro de proteção (QGBT)
         </legend>
-
-        <Field label="Marca / modelo do quadro (opcional)">
-          <input
-            type="text"
-            value={form.qgbt_marca_modelo}
-            onChange={(e) => update('qgbt_marca_modelo', e.target.value)}
-            className="input-spin"
-            placeholder="Ex: Schneider QDM 24 módulos"
-          />
-        </Field>
 
         <Checkbox
           label="QGBT tem espaço pra disjuntor solar dedicado"
