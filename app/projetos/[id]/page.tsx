@@ -27,6 +27,16 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
 
   const proximoPasso = getProximoPasso(projeto.status)
 
+  // Permissão pra gerador de diagramas — admin OU flag explícita
+  const { data: perfil } = await supabase
+    .from('profiles')
+    .select('role, pode_gerar_diagramas')
+    .eq('id', user.id)
+    .single()
+
+  const podeGerarDiagramas = perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
+  const clienteFechou = projeto.status === 'aceito'
+
   return (
     <main className="min-h-screen p-8 md:p-12">
       <div className="max-w-4xl mx-auto">
@@ -50,6 +60,29 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             </div>
           </div>
         </header>
+
+        {/* Cliente fechou → Gerador de diagramas (só admin/autorizado) */}
+        {clienteFechou && podeGerarDiagramas && (
+          <div className="mb-6 p-6 bg-verde/10 border border-verde/40 rounded-xl">
+            <div className="flex items-start gap-4">
+              <div className="text-2xl">🖨️</div>
+              <div className="flex-1">
+                <h2 className="text-lg font-bold text-white mb-1">
+                  Cliente fechou · Gerar diagramas técnicos para CELESC
+                </h2>
+                <p className="text-sm text-white/70 mb-3">
+                  Unifilar em PDF/DXF com selo da Spin e dados do responsável técnico.
+                </p>
+                <Link
+                  href={`/projetos/${projeto.id}/diagrama`}
+                  className="inline-block px-4 py-2 bg-verde text-noite font-bold text-sm rounded-lg hover:bg-verde/90 transition-colors"
+                >
+                  Abrir gerador →
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Próximo passo CTA */}
         {proximoPasso && (
