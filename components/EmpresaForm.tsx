@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { salvarConfigEmpresaAction, type EmpresaInput } from '@/app/admin/empresa/actions'
+import { UploadImagem } from '@/components/UploadImagem'
 
 type Props = {
   configSalva: Partial<EmpresaInput> | null
@@ -61,13 +62,15 @@ export function EmpresaForm({ configSalva }: Props) {
           <Field label="Telefone" value={form.telefone || ''} onChange={v => setForm({ ...form, telefone: v })} />
           <Field label="E-mail" value={form.email || ''} onChange={v => setForm({ ...form, email: v })} />
           <Field label="Site" value={form.site || ''} onChange={v => setForm({ ...form, site: v })} className="md:col-span-2" />
-          <Field
-            label="URL do logo (selo Spin)"
-            value={form.logo_url || ''}
-            onChange={v => setForm({ ...form, logo_url: v })}
-            placeholder="https://... (PNG transparente, min 300px)"
-            className="md:col-span-2"
-          />
+          <div className="md:col-span-2">
+            <UploadImagem
+              label="Logo da empresa (selo Spin)"
+              valorAtual={form.logo_url || ''}
+              onChange={url => setForm({ ...form, logo_url: url })}
+              pasta="logo"
+              ajuda="PNG transparente, min 300px. Aparece no canto superior de cada diagrama."
+            />
+          </div>
         </div>
       </section>
 
@@ -89,13 +92,15 @@ export function EmpresaForm({ configSalva }: Props) {
           <Field label="Nº ART padrão (opcional)" value={form.rt_art_padrao || ''} onChange={v => setForm({ ...form, rt_art_padrao: v })} />
           <Field label="Telefone" value={form.rt_telefone || ''} onChange={v => setForm({ ...form, rt_telefone: v })} />
           <Field label="E-mail" value={form.rt_email || ''} onChange={v => setForm({ ...form, rt_email: v })} />
-          <Field
-            label="URL da assinatura digital"
-            value={form.rt_assinatura_url || ''}
-            onChange={v => setForm({ ...form, rt_assinatura_url: v })}
-            placeholder="https://... (PNG assinatura escaneada)"
-            className="md:col-span-2"
-          />
+          <div className="md:col-span-2">
+            <UploadImagem
+              label="Assinatura digital"
+              valorAtual={form.rt_assinatura_url || ''}
+              onChange={url => setForm({ ...form, rt_assinatura_url: url })}
+              pasta="assinatura"
+              ajuda="PNG da assinatura escaneada (fundo transparente ou branco). Estampada no selo de cada diagrama."
+            />
+          </div>
         </div>
       </section>
 
