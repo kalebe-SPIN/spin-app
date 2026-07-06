@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 
 // Sempre buscar dados frescos do banco (sem cache stale após edição)
 export const dynamic = 'force-dynamic'
@@ -28,13 +29,17 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
   const proximoPasso = getProximoPasso(projeto.status)
 
   // Permissão pra gerador de diagramas — admin OU flag explícita
+  // MAS respeita o modo de visualização: se admin está em modo consultor, esconde
   const { data: perfil } = await supabase
     .from('profiles')
     .select('role, pode_gerar_diagramas')
     .eq('id', user.id)
     .single()
 
-  const podeGerarDiagramas = perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
+  const { modo: modoAtivo } = await getModoVisualizacao()
+
+  const temPermissaoReal = perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
+  const podeGerarDiagramas = temPermissaoReal && modoAtivo === 'admin'
   const clienteFechou = projeto.status === 'aceito'
 
   return (

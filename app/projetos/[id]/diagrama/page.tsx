@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { GeradorDiagramaClient } from '@/components/GeradorDiagramaClient'
+import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -17,7 +18,9 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
     .eq('id', user.id)
     .single()
 
-  const podeGerar = perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
+  const temPermissaoReal = perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
+  const { modo: modoAtivo } = await getModoVisualizacao()
+  const podeGerar = temPermissaoReal && modoAtivo === 'admin'
 
   if (!podeGerar) {
     return (
