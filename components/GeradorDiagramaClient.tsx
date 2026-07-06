@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { gerarDiagramaAction } from '@/app/projetos/[id]/diagrama/actions'
 
@@ -45,6 +45,14 @@ export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk }
   // Sugere tipo baseado no tipo_projeto
   const tipoSugerido = projeto.tipo_projeto === 'hibrido_bess' ? 'unifilar_hibrido' : 'unifilar_ongrid'
   const [tipoSelecionado, setTipoSelecionado] = useState<'unifilar_ongrid' | 'unifilar_hibrido'>(tipoSugerido)
+
+  // Auto-refresh a cada 5s enquanto houver diagrama em 'gerando'
+  useEffect(() => {
+    const temGerando = diagramasExistentes.some(d => d.status === 'gerando')
+    if (!temGerando) return
+    const interval = setInterval(() => router.refresh(), 5000)
+    return () => clearInterval(interval)
+  }, [diagramasExistentes, router])
 
   function handleGerar() {
     setErro(null)
@@ -174,28 +182,39 @@ function DiagramaCard({ d }: { d: Diagrama }) {
       )}
 
       {d.status === 'pronto' && (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {d.url_pdf && (
-            <a href={d.url_pdf} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
-              📄 PDF
-            </a>
-          )}
-          {d.url_dxf && (
-            <a href={d.url_dxf} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
-              ✏️ DXF (AutoCAD)
-            </a>
-          )}
-          {d.url_dwg && (
-            <a href={d.url_dwg} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
-              ✏️ DWG
-            </a>
-          )}
+        <>
           {d.url_svg && (
-            <a href={d.url_svg} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
-              🖼️ SVG
-            </a>
+            <div className="mt-3 p-2 bg-white rounded-lg overflow-auto max-h-[500px]">
+              <img
+                src={d.url_svg}
+                alt={`Unifilar v${d.versao}`}
+                className="w-full h-auto"
+              />
+            </div>
           )}
-        </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {d.url_pdf && (
+              <a href={d.url_pdf} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
+                📄 PDF
+              </a>
+            )}
+            {d.url_dxf && (
+              <a href={d.url_dxf} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
+                ✏️ DXF (AutoCAD)
+              </a>
+            )}
+            {d.url_dwg && (
+              <a href={d.url_dwg} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
+                ✏️ DWG
+              </a>
+            )}
+            {d.url_svg && (
+              <a href={d.url_svg} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
+                🖼️ SVG (abrir)
+              </a>
+            )}
+          </div>
+        </>
       )}
     </div>
   )

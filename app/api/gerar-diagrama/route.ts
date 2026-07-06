@@ -1,35 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
+import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { buildSystemPrompt, buildUserPrompt } from '@/lib/prompts/gerar-diagrama'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-/**
- * API que orquestra a geração do diagrama.
- *
- * Fluxo (a ser implementado):
- *   1. Carrega projeto + kit + config empresa (snapshot já capturado em actions.ts)
- *   2. Chama Claude API com skill /mestre-da-eletrica → consolida dimensionamento
- *   3. Chama skill projetista-spin → produz SVG do unifilar
- *   4. Renderiza SVG em PDF (via headless chrome ou lib)
- *   5. Converte SVG em DXF (via svg2dxf ou geração direta com ezdxf)
- *   6. Upload no Supabase Storage → grava URLs em projetos_diagramas
- *   7. Atualiza status = 'pronto'
- *
- * Este stub apenas marca o registro como "aguardando_backend" pra provar o fluxo end-to-end.
- * Substitua o bloco TODO abaixo pela integração real com Claude API.
- */
+const BUCKET_DIAGRAMAS = 'projetos-diagramas'
+
 export async function POST(req: NextRequest) {
+  let diagramaId: string | null = null
+
   try {
-    const { diagrama_id, projeto_id, tipo_desenho } = await req.json()
+    const body = await req.json()
+    const { diagrama_id, projeto_id, tipo_desenho } = body
 
     if (!diagrama_id || !projeto_id) {
       return NextResponse.json({ erro: 'diagrama_id e projeto_id obrigatórios' }, { status: 400 })
     }
 
+    diagramaId = diagrama_id
     const supabase = createClient()
+    const supabaseAdmin = createAdminClient()
 
-    // 1. Carrega dados do projeto
+    // Chave Anthropic
+    const anthropicKey = process.env.ANTHROPIC_API_KEY
+    if (!anthropicKey) {
+      await marcarErro(supabaseAdmin, diagrama_id, 'ANTHROPIC_API_KEY não configurada no Vercel. Configure em Settings → Environment Variables.')
+      return NextResponse.json({ erro: 'ANTHROPIC_API_KEY faltando' }, { status: 500 })
+    }
+
+    // 1. Carrega projeto
     const { data: projeto, error: pErr } = await supabase
       .from('projetos')
       .select('*')
@@ -37,49 +39,138 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (pErr || !projeto) {
-      await marcarErro(supabase, diagrama_id, `Projeto não encontrado: ${pErr?.message}`)
+      await marcarErro(supabaseAdmin, diagrama_id, `Projeto não encontrado: ${pErr?.message}`)
       return NextResponse.json({ erro: 'Projeto não encontrado' }, { status: 404 })
     }
 
-    // 2. Validação mínima — precisa dos dados dos 4 passos
+    // 2. Carrega config empresa
+    const { data: configEmpresa } = await supabase
+      .from('configuracoes_empresa')
+      .select('*')
+      .eq('singleton', true)
+      .single()
+
+    if (!configEmpresa || !configEmpresa.rt_nome) {
+      await marcarErro(supabaseAdmin, diagrama_id, 'Configuração da empresa incompleta')
+      return NextResponse.json({ erro: 'Config empresa incompleta' }, { status: 400 })
+    }
+
+    // 3. Validação mínima
     const faltando: string[] = []
     if (!projeto.analise_fatura) faltando.push('análise da fatura (Passo 2)')
     if (!projeto.telhado_secoes || projeto.telhado_secoes.length === 0) faltando.push('telhado (Passo 3)')
     if (!projeto.padrao_entrada) faltando.push('padrão de entrada (Passo 4)')
-    if (!projeto.kit_selecionado) faltando.push('kit vendido')
+    // kit_selecionado é ideal mas não bloqueia — Claude pode sugerir a partir do dimensionado
 
     if (faltando.length > 0) {
-      const msg = `Dados incompletos: falta ${faltando.join(', ')}`
-      await marcarErro(supabase, diagrama_id, msg)
+      const msg = `Dados incompletos: falta ${faltando.join(', ')}. Preencha antes de gerar o diagrama.`
+      await marcarErro(supabaseAdmin, diagrama_id, msg)
       return NextResponse.json({ erro: msg }, { status: 400 })
     }
 
-    // TODO: integração real com Claude API + skills
-    // Por ora, apenas marca como aguardando backend real
-    const { error: upErr } = await supabase
+    // 4. Chama Claude API
+    const anthropic = new Anthropic({ apiKey: anthropicKey })
+
+    const systemPrompt = buildSystemPrompt()
+    const userPrompt = buildUserPrompt({
+      projeto,
+      configEmpresa,
+      tipoDesenho: tipo_desenho as 'unifilar_ongrid' | 'unifilar_hibrido',
+    })
+
+    let response
+    try {
+      response = await anthropic.messages.create({
+        model: 'claude-sonnet-5',
+        max_tokens: 16000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      })
+    } catch (aiErr: any) {
+      console.error('[gerar-diagrama] Anthropic error:', aiErr)
+      await marcarErro(supabaseAdmin, diagrama_id, `Erro na API Claude: ${aiErr.message}`)
+      return NextResponse.json({ erro: aiErr.message }, { status: 500 })
+    }
+
+    // 5. Extrai JSON da resposta
+    const textBlock = response.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
+    const rawText = textBlock?.text || ''
+
+    // Extrai bloco JSON (dentro de ```json ... ``` ou solto)
+    const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/) || rawText.match(/(\{[\s\S]*\})/)
+    if (!jsonMatch) {
+      await marcarErro(supabaseAdmin, diagrama_id, 'Claude não retornou JSON válido')
+      return NextResponse.json({ erro: 'Resposta inválida do Claude', raw: rawText.slice(0, 500) }, { status: 500 })
+    }
+
+    let parsed: { svg: string; memoria_calculo: any; avisos: string[] }
+    try {
+      parsed = JSON.parse(jsonMatch[1])
+    } catch (parseErr: any) {
+      await marcarErro(supabaseAdmin, diagrama_id, `JSON inválido: ${parseErr.message}`)
+      return NextResponse.json({ erro: 'JSON parse failed', raw: jsonMatch[1].slice(0, 500) }, { status: 500 })
+    }
+
+    if (!parsed.svg || !parsed.svg.includes('<svg')) {
+      await marcarErro(supabaseAdmin, diagrama_id, 'SVG ausente ou inválido na resposta')
+      return NextResponse.json({ erro: 'SVG inválido' }, { status: 500 })
+    }
+
+    // 6. Upload do SVG
+    const path = `${projeto_id}/${diagrama_id}/unifilar.svg`
+    const { error: upErr } = await supabaseAdmin.storage
+      .from(BUCKET_DIAGRAMAS)
+      .upload(path, parsed.svg, {
+        contentType: 'image/svg+xml',
+        upsert: true,
+      })
+
+    if (upErr) {
+      console.error('[gerar-diagrama] upload error:', upErr)
+      await marcarErro(supabaseAdmin, diagrama_id, `Upload falhou: ${upErr.message}`)
+      return NextResponse.json({ erro: upErr.message }, { status: 500 })
+    }
+
+    const { data: urlData } = supabaseAdmin.storage.from(BUCKET_DIAGRAMAS).getPublicUrl(path)
+    const publicUrl = urlData.publicUrl
+
+    // 7. Atualiza registro como PRONTO
+    const { error: updErr } = await supabaseAdmin
       .from('projetos_diagramas')
       .update({
-        status: 'erro',
-        erro_mensagem: 'Backend de renderização ainda não conectado. Fluxo validado — próximo passo: acoplar Claude API com skills /mestre-da-eletrica + projetista-spin.',
+        status: 'pronto',
+        url_svg: publicUrl,
+        memoria_calculo: parsed.memoria_calculo,
+        avisos: parsed.avisos || [],
+        erro_mensagem: null,
       })
       .eq('id', diagrama_id)
 
-    if (upErr) console.error('[gerar-diagrama] erro update:', upErr)
+    if (updErr) {
+      console.error('[gerar-diagrama] update error:', updErr)
+      return NextResponse.json({ erro: updErr.message }, { status: 500 })
+    }
 
     return NextResponse.json({
       sucesso: true,
-      status: 'aguardando_backend',
-      mensagem: 'Fluxo validado. Backend real precisa ser conectado.',
-      dados_projeto_ok: true,
+      url_svg: publicUrl,
+      memoria_calculo: parsed.memoria_calculo,
+      avisos: parsed.avisos,
     })
   } catch (e: any) {
     console.error('[gerar-diagrama] exception:', e)
+    if (diagramaId) {
+      try {
+        const supabaseAdmin = createAdminClient()
+        await marcarErro(supabaseAdmin, diagramaId, `Exception: ${e.message}`)
+      } catch {}
+    }
     return NextResponse.json({ erro: e.message || 'Erro desconhecido' }, { status: 500 })
   }
 }
 
-async function marcarErro(supabase: any, diagramaId: string, mensagem: string) {
-  await supabase
+async function marcarErro(supabaseAdmin: any, diagramaId: string, mensagem: string) {
+  await supabaseAdmin
     .from('projetos_diagramas')
     .update({ status: 'erro', erro_mensagem: mensagem })
     .eq('id', diagramaId)
