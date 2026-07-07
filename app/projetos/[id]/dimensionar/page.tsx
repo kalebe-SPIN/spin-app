@@ -130,11 +130,11 @@ export default async function DimensionarPage({ params }: { params: { id: string
           <DetalheCard titulo="⚡ Padrão CELESC (Passo 4)" ok={!!padrao} link={`/projetos/${projeto.id}/padrao`}>
             {padrao ? (
               <div className="grid grid-cols-2 gap-2 text-xs text-white/70">
-                <span>Amperagem: <strong>{padrao.amperagem} A</strong></span>
-                <span>Tensão: <strong>{padrao.tensao_fornecimento || '127/380 V'}</strong></span>
-                <span>Ligação: <strong>{padrao.tipo_ligacao || '—'}</strong></span>
-                <span>Dist. string-QGBT: <strong>{padrao.distancia_string_qgbt_m || '—'} m</strong></span>
-                {potLimitePadrao && (
+                <span>Amperagem: <strong>{padrao.amperagem ? `${padrao.amperagem} A` : '—'}</strong></span>
+                <span>Tensão: <strong>{formatarTensao(padrao.tensao_fornecimento)}</strong></span>
+                <span>Ligação: <strong>{formatarLigacao(padrao.tipo_ligacao)}</strong></span>
+                <span>Dist. string-QGBT: <strong>{padrao.distancia_string_qgbt_m ? `${padrao.distancia_string_qgbt_m} m` : '—'}</strong></span>
+                {potLimitePadrao > 0 && (
                   <span className="col-span-2">Suporta até <strong className="text-sol">{potLimitePadrao.toFixed(1)} kWp</strong></span>
                 )}
               </div>
@@ -164,6 +164,31 @@ export default async function DimensionarPage({ params }: { params: { id: string
       </div>
     </main>
   )
+}
+
+function formatarTensao(v?: string): string {
+  if (!v) return '—'
+  const m: Record<string, string> = {
+    '127_380': '127V / 380V',
+    '220_380': '220V / 380V',
+    '127_220': '127V / 220V',
+    '220': '220V',
+    '380': '380V',
+  }
+  return m[v] || v
+}
+
+function formatarLigacao(v?: string): string {
+  if (!v) return '—'
+  const m: Record<string, string> = {
+    'monofasico': 'Monofásico',
+    'monofásico': 'Monofásico',
+    'bifasico': 'Bifásico',
+    'bifásico': 'Bifásico',
+    'trifasico': 'Trifásico',
+    'trifásico': 'Trifásico',
+  }
+  return m[v.toLowerCase()] || v
 }
 
 function estimarPotenciaPadrao(padrao: any): number {

@@ -3,6 +3,9 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { NovoProjetoForm } from '@/components/NovoProjetoForm'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 /**
  * Edição dos dados básicos do projeto — /projetos/[id]/editar
  *
