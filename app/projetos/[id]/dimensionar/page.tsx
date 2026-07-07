@@ -31,7 +31,7 @@ export default async function DimensionarPage({ params }: { params: { id: string
 
   const areaTotal = (telhado || []).reduce((sum: number, s: any) => sum + (Number(s.area_m2) || 0), 0)
   const potEstruturaKwp = Math.floor(areaTotal / 5)  // ~5 m²/kWp médio
-  const potLimitePadrao = padrao ? estimarPotenciaPadrao(padrao) : null
+  const potLimitePadrao: number = padrao ? estimarPotenciaPadrao(padrao) : 0
 
   const potFinal = Math.min(
     potCcSugeridaKwp || Infinity,
