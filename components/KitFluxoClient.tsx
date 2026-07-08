@@ -32,6 +32,38 @@ function precoDe(p: ProdutoRow): number {
   return ps.slice().sort((a, b) => (a.vigente_de < b.vigente_de ? 1 : -1))[0].preco_venda
 }
 
+type CategoriaSistema = 'ongrid' | 'hibrido_bess' | 'offgrid'
+
+const CATEGORIAS: Array<{
+  id: CategoriaSistema
+  emoji: string
+  titulo: string
+  desc: string
+  disponivel: boolean
+}> = [
+  {
+    id: 'ongrid',
+    emoji: '☀️',
+    titulo: 'On-grid (conectado à rede)',
+    desc: 'Sistema convencional conectado à CELESC. Compensa consumo pela injeção de energia. Sem baterias.',
+    disponivel: true,
+  },
+  {
+    id: 'hibrido_bess',
+    emoji: '🔋',
+    titulo: 'Híbrido com armazenamento (BESS)',
+    desc: 'Conectado à rede + banco de baterias. Mantém energia crítica durante queda de luz. Requer SIW400H + SBW.',
+    disponivel: false, // MVP: só ongrid por enquanto
+  },
+  {
+    id: 'offgrid',
+    emoji: '🏝️',
+    titulo: 'Off-grid (isolado)',
+    desc: 'Sem conexão com CELESC. 100% baterias. Ideal pra local sem rede elétrica.',
+    disponivel: false, // futuro
+  },
+]
+
 export function KitFluxoClient({
   projetoId,
   placas,
@@ -44,6 +76,9 @@ export function KitFluxoClient({
   const [isPending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
 
+  const [categoria, setCategoria] = useState<CategoriaSistema | null>(
+    (kitSalvo?.tipo_projeto as CategoriaSistema) || null
+  )
   const [potCcAlvo, setPotCcAlvo] = useState<number>(potCcAlvoAuto)
   const [placaId, setPlacaId] = useState<string | null>(kitSalvo?.placa?.id || null)
   const [kitEscolhidoId, setKitEscolhidoId] = useState<string | null>(null)
@@ -121,7 +156,7 @@ export function KitFluxoClient({
     }
 
     startTransition(async () => {
-      const result = await salvarKitAction(projetoId, payload)
+      const result = await salvarKitAction(projetoId, payload, categoria || undefined)
       if (result && !result.sucesso) setErro(result.erro || 'Erro ao salvar')
     })
   }
@@ -149,10 +184,47 @@ export function KitFluxoClient({
         </Metric>
       </section>
 
-      {/* ETAPA 1: Escolher placa */}
+      {/* ETAPA 0: Escolher categoria de sistema */}
       <section>
         <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
           <span className="bg-sol text-noite w-6 h-6 rounded-full flex items-center justify-center text-xs font-black">1</span>
+          Escolha a categoria do sistema
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {CATEGORIAS.map(cat => (
+            <button
+              key={cat.id}
+              type="button"
+              disabled={!cat.disponivel}
+              onClick={() => cat.disponivel && setCategoria(cat.id)}
+              className={`text-left p-5 rounded-lg border transition ${
+                categoria === cat.id
+                  ? 'bg-sol/15 border-sol/60 ring-1 ring-sol/40'
+                  : cat.disponivel
+                    ? 'bg-white/[0.02] border-white/10 hover:border-white/20'
+                    : 'bg-white/[0.01] border-white/5 opacity-40 cursor-not-allowed'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-3xl">{cat.emoji}</span>
+                {!cat.disponivel && (
+                  <span className="text-[10px] uppercase font-bold text-white/40 bg-white/5 px-2 py-0.5 rounded">
+                    Em breve
+                  </span>
+                )}
+              </div>
+              <p className="text-sm font-bold text-white mb-1">{cat.titulo}</p>
+              <p className="text-xs text-white/60">{cat.desc}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* ETAPA 2: Escolher placa (só aparece após escolher categoria) */}
+      {categoria && (
+      <section>
+        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <span className="bg-sol text-noite w-6 h-6 rounded-full flex items-center justify-center text-xs font-black">2</span>
           Escolha a placa fotovoltaica
           <span className="text-xs font-normal text-white/40">({placasVisiveis.length} opções)</span>
         </h2>
@@ -181,12 +253,13 @@ export function KitFluxoClient({
           ))}
         </div>
       </section>
+      )}
 
-      {/* ETAPA 2: Kits sugeridos */}
-      {placaEscolhida && (
+      {/* ETAPA 3: Kits sugeridos */}
+      {categoria && placaEscolhida && (
         <section>
           <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <span className="bg-sol text-noite w-6 h-6 rounded-full flex items-center justify-center text-xs font-black">2</span>
+            <span className="bg-sol text-noite w-6 h-6 rounded-full flex items-center justify-center text-xs font-black">3</span>
             Escolha uma configuração de kit
             <span className="text-xs font-normal text-white/40">({kitsSugeridos.length} sugeridos)</span>
           </h2>

@@ -15,17 +15,20 @@ export type KitSelecionado = {
   observacoes?: string | null
 }
 
-export async function salvarKitAction(projetoId: string, kit: KitSelecionado) {
+export async function salvarKitAction(projetoId: string, kit: KitSelecionado, tipoProjeto?: string) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { sucesso: false, erro: 'Não autenticado' }
 
+  const patch: any = {
+    kit_selecionado: kit,
+    status: 'kit_selecionado',
+  }
+  if (tipoProjeto) patch.tipo_projeto = tipoProjeto
+
   const { error } = await supabase
     .from('projetos')
-    .update({
-      kit_selecionado: kit,
-      status: 'kit_selecionado',
-    })
+    .update(patch)
     .eq('id', projetoId)
 
   if (error) return { sucesso: false, erro: error.message }
