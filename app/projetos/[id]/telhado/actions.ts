@@ -17,6 +17,7 @@ export type SecaoTelhadoInput = {
   material_estrutura: string | null
   altura_telhado_m: number | null
   observacoes: string | null
+  url_satelite?: string | null
 }
 
 /** Adiciona uma seção de telhado ao projeto */

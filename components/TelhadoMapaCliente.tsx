@@ -7,8 +7,27 @@ import type { LatLngExpression } from 'leaflet'
 import area from '@turf/area'
 import centroid from '@turf/centroid'
 import { polygon as turfPolygon, point as turfPoint } from '@turf/helpers'
+import { toPng } from 'html-to-image'
+import { createClient } from '@/lib/supabase/client'
 import 'leaflet/dist/leaflet.css'
 import type { Props, FaceDesenhada } from './TelhadoMapa'
+
+// Ícone customizado do alfinete (SVG inline pra não depender de CDN)
+const PIN_ENDERECO = L.divIcon({
+  className: 'pin-endereco',
+  html: `
+    <div style="position: relative;">
+      <svg width="36" height="48" viewBox="0 0 36 48" xmlns="http://www.w3.org/2000/svg">
+        <path d="M18 0C8.06 0 0 8.06 0 18c0 13.5 18 30 18 30s18-16.5 18-30C36 8.06 27.94 0 18 0z"
+              fill="#F5B400" stroke="#0B0F1A" stroke-width="2"/>
+        <circle cx="18" cy="18" r="7" fill="#0B0F1A"/>
+      </svg>
+    </div>
+  `,
+  iconSize: [36, 48],
+  iconAnchor: [18, 48],
+  popupAnchor: [0, -44],
+})
 
 // Fix do ícone padrão do Leaflet em bundlers
 if (typeof window !== 'undefined') {
@@ -131,14 +150,71 @@ export default function TelhadoMapaCliente({
     setPontos([])
   }
 
-  function confirmarFace() {
+  // Ref pro container do mapa (pra capturar imagem)
+  const mapaContainerRef = useRef<HTMLDivElement>(null)
+  const [capturando, setCapturando] = useState(false)
+  const [imagemCapturada, setImagemCapturada] = useState<string | null>(null)
+  const [erroCaptura, setErroCaptura] = useState<string | null>(null)
+
+  async function capturarImagemSatelite(): Promise<string | null> {
+    if (!mapaContainerRef.current) return null
+    setCapturando(true)
+    setErroCaptura(null)
+    try {
+      // Gera PNG do container do mapa (com pin + polígono desenhado)
+      const dataUrl = await toPng(mapaContainerRef.current, {
+        quality: 0.9,
+        pixelRatio: 1.5,
+        cacheBust: true,
+        // Ignora tiles com CORS que podem quebrar a captura
+        filter: (node: HTMLElement) => {
+          if (node.classList?.contains('leaflet-control-attribution')) return false
+          return true
+        },
+      })
+
+      // Converte data URL em Blob
+      const blob = await (await fetch(dataUrl)).blob()
+
+      // Upload no Supabase Storage
+      const supabase = createClient()
+      const nomeArquivo = `telhado-${Date.now()}.png`
+      const { data, error } = await supabase.storage
+        .from('telhado-satelite')
+        .upload(nomeArquivo, blob, { contentType: 'image/png', upsert: false })
+
+      if (error) throw error
+
+      const { data: urlData } = supabase.storage
+        .from('telhado-satelite')
+        .getPublicUrl(data.path)
+
+      setImagemCapturada(urlData.publicUrl)
+      return urlData.publicUrl
+    } catch (e: any) {
+      console.error('[capturarImagemSatelite] erro:', e)
+      setErroCaptura(e.message || 'Falha ao capturar imagem')
+      return null
+    } finally {
+      setCapturando(false)
+    }
+  }
+
+  async function confirmarFace() {
     if (pontos.length < 3 || !areaCalculada || !centroide) return
+
+    // Captura a imagem satélite ANTES de resetar os pontos
+    const urlSatelite = await capturarImagemSatelite()
+
     onFaceDesenhada({
       coordenadas: pontos,
       area_m2: areaCalculada,
       centroide,
-    })
+      url_satelite: urlSatelite || undefined,
+    } as any)
+
     setPontos([]) // Reset pra próxima face
+    setImagemCapturada(null)
   }
 
   // Busca manual de endereço (quando o auto-preenchimento não funciona)
@@ -254,7 +330,7 @@ export default function TelhadoMapaCliente({
       </div>
 
       {/* Mapa */}
-      <div className="relative rounded-xl overflow-hidden border border-white/10">
+      <div ref={mapaContainerRef} className="relative rounded-xl overflow-hidden border border-white/10">
         <MapContainer
           center={centro as LatLngExpression}
           zoom={DEFAULT_ZOOM}
@@ -277,6 +353,15 @@ export default function TelhadoMapaCliente({
             maxZoom={22}
           />
           <ClickHandler onClick={handleClickMapa} />
+
+          {/* 📍 Alfinete do endereço encontrado (referência visual fixa) */}
+          <Marker position={centro as LatLngExpression} icon={PIN_ENDERECO}>
+            <Popup>
+              <strong>📍 Endereço do cliente</strong>
+              <br />
+              {enderecoIdentificado || endereco || 'Localização identificada'}
+            </Popup>
+          </Marker>
 
           {/* Polígono em construção */}
           {pontos.length >= 2 && (
@@ -353,12 +438,19 @@ export default function TelhadoMapaCliente({
         <button
           type="button"
           onClick={confirmarFace}
-          disabled={pontos.length < 3 || !areaCalculada}
+          disabled={pontos.length < 3 || !areaCalculada || capturando}
           className="ml-auto px-6 py-2 bg-sol text-noite font-bold rounded-lg hover:bg-sol/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          ✓ Confirmar esta face
+          {capturando ? '📸 Capturando imagem...' : '✓ Confirmar esta face'}
         </button>
       </div>
+
+      {erroCaptura && (
+        <div className="bg-coral/10 border border-coral/30 rounded-lg p-3 text-xs text-coral">
+          ⚠️ Falha ao capturar imagem satélite: {erroCaptura}. A área foi salva mesmo assim, mas
+          sem imagem pro PDF. Continue normalmente.
+        </div>
+      )}
     </div>
   )
 }

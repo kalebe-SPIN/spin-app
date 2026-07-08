@@ -31,6 +31,7 @@ export type FaceDesenhada = {
   coordenadas: [number, number][]  // [[lat, lng], ...]
   area_m2: number
   centroide: [number, number]
+  url_satelite?: string  // URL pública da imagem satélite capturada
 }
 
 export type Props = {

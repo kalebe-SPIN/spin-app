@@ -39,6 +39,7 @@ const FORM_INICIAL: SecaoTelhadoInput = {
   material_estrutura: null,
   altura_telhado_m: null,
   observacoes: null,
+  url_satelite: null,
 }
 
 export function TelhadoSecoesManager({
@@ -59,8 +60,12 @@ export function TelhadoSecoesManager({
   const [error, setError] = useState<string | null>(null)
 
   function handleFaceDesenhada(face: FaceDesenhada) {
-    // Auto-popula área no formulário
-    setForm((prev) => ({ ...prev, area_m2: face.area_m2 }))
+    // Auto-popula área + URL da imagem satélite capturada no formulário
+    setForm((prev) => ({
+      ...prev,
+      area_m2: face.area_m2,
+      url_satelite: face.url_satelite || null,
+    }))
     setMostrandoMapa(false)
     setMostrandoForm(true)
   }

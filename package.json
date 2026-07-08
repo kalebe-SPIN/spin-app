@@ -17,6 +17,7 @@
     "@turf/area": "^7.3.5",
     "@turf/centroid": "^7.3.5",
     "@turf/helpers": "^7.3.5",
+    "html-to-image": "^1.11.13",
     "leaflet": "^1.9.4",
     "next": "14.2.18",
     "pdf-parse": "^2.4.5",
