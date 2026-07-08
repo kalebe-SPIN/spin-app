@@ -123,16 +123,54 @@ export function FaturaForm({ projetoId, analiseSalva }: Props) {
             {alertaEndereco && <p className="text-xs text-sol">{alertaEndereco}</p>}
           </div>
 
+          {/* Avisos automáticos (histórico incompleto etc) */}
+          {Array.isArray(analise._avisos) && analise._avisos.length > 0 && (
+            <div className="bg-sol/10 border border-sol/40 rounded-lg p-4">
+              <p className="text-xs font-bold uppercase text-sol mb-2">⚠️ Atenção do consultor</p>
+              <ul className="space-y-1.5">
+                {analise._avisos.map((av: string, i: number) => (
+                  <li key={i} className="text-xs text-white/80 flex gap-2">
+                    <span className="text-sol">•</span>
+                    <span>{av}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Info label="Titular" value={analise.razao_social || analise.titular || analise.cliente_razao_social || '—'} />
             <Info label="Grupo tarifário" value={analise.grupo || analise.grupo_tarifario || '—'} />
             <Info label="Tipo ligação" value={analise.tipo_ligacao || '—'} />
-            <Info label="Consumo médio" value={(analise.consumo_mes_kwh || analise.consumo_medio_kwh) ? `${(analise.consumo_mes_kwh || analise.consumo_medio_kwh).toFixed(0)} kWh/mês` : '—'} highlight />
+            <Info
+              label={`Consumo médio ${analise.meses_com_dados ? `(${analise.meses_com_dados}m)` : ''}`}
+              value={analise.consumo_medio_12m_kwh ? `${Math.round(analise.consumo_medio_12m_kwh)} kWh/mês` : '—'}
+              highlight
+            />
+            <Info label="Consumo mês atual" value={analise.consumo_mes_kwh ? `${Math.round(analise.consumo_mes_kwh)} kWh` : '—'} />
             <Info label="Demanda contratada" value={analise.demanda_contratada_kw ? `${analise.demanda_contratada_kw} kW` : '—'} />
             <Info label="Geração atual" value={analise.tem_geracao_propria ? 'Sim (ver histórico)' : 'Não tem'} />
             <Info label="UC" value={analise.uc || analise.unidade_consumidora || '—'} />
             <Info label="Cidade/UF" value={`${analise.endereco?.cidade || analise.cidade || '—'}${(analise.endereco?.uf || analise.uf) ? '/' + (analise.endereco?.uf || analise.uf) : ''}`} />
           </div>
+
+          {/* Histórico visual — quando disponível */}
+          {Array.isArray(analise.historico_12_meses) && analise.historico_12_meses.length > 0 && (
+            <details className="bg-white/[0.02] border border-white/10 rounded-lg p-4">
+              <summary className="cursor-pointer text-xs font-bold uppercase text-white/50 tracking-wider">
+                📊 Histórico de consumo ({analise.historico_12_meses.length} mês{analise.historico_12_meses.length > 1 ? 'es' : ''})
+              </summary>
+              <div className="mt-3 grid grid-cols-4 md:grid-cols-6 gap-2">
+                {analise.historico_12_meses.map((h: any, i: number) => (
+                  <div key={i} className="text-center p-2 bg-white/[0.02] border border-white/10 rounded">
+                    <p className="text-[10px] text-white/50">{h.mes_ano}</p>
+                    <p className="text-sm font-bold text-white">{Math.round(h.consumo_kwh)}</p>
+                    <p className="text-[9px] text-white/40">kWh</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
 
           {analise.observacoes && (
             <div className="bg-white/[0.02] border border-white/10 rounded-lg p-4">

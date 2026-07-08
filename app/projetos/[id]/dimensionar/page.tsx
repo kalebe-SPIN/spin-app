@@ -22,7 +22,7 @@ export default async function DimensionarPage({ params }: { params: { id: string
   const telhado = projeto.telhado_secoes
   const padrao = projeto.padrao_entrada
 
-  const consumoMedio = fatura?.consumo_mes_kwh || fatura?.consumo_medio_kwh || fatura?.consumo_kwh || 0
+  const consumoMedio = fatura?.consumo_medio_12m_kwh || fatura?.consumo_mes_kwh || fatura?.consumo_medio_kwh || fatura?.consumo_kwh || 0
   const horasSol = 4.5
   const perdas = 0.20
   const potCcSugeridaKwp = consumoMedio > 0

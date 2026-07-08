@@ -116,6 +116,31 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
+    // Calcula média server-side como fallback (garantia)
+    const historico = Array.isArray(dados.historico_12_meses) ? dados.historico_12_meses : []
+    const mesesValidos = historico.filter((h: any) => Number(h.consumo_kwh) > 0)
+    const somaConsumo = mesesValidos.reduce((sum: number, h: any) => sum + Number(h.consumo_kwh), 0)
+    const mediaCalculada = mesesValidos.length > 0
+      ? Math.round(somaConsumo / mesesValidos.length)
+      : Number(dados.consumo_mes_kwh) || 0
+
+    // Se Claude não retornou média, usa a calculada. Se retornou, mantém.
+    const consumoMedio12m = Number(dados.consumo_medio_12m_kwh) || mediaCalculada
+    const mesesComDados = Number(dados.meses_com_dados) || mesesValidos.length || 1
+
+    // Avisos automáticos
+    const avisos: string[] = []
+    if (mesesComDados < 12) {
+      avisos.push(
+        `Histórico com apenas ${mesesComDados} mês(es) de dados. Ideal usar 12 meses pra média confiável — considere pedir mais faturas ao cliente.`
+      )
+    }
+    if (mesesComDados === 1) {
+      avisos.push(
+        `Média calculada a partir de UM único mês (o atual). Dimensionamento pode não refletir consumo real do cliente ao longo do ano.`
+      )
+    }
+
     // Normaliza estrutura pro formato do frontend
     return NextResponse.json({
       sucesso: true,
@@ -143,13 +168,16 @@ export async function POST(request: NextRequest) {
         data_vencimento: dados.data_vencimento,
         valor_total_reais: dados.valor_total_reais,
         consumo_mes_kwh: dados.consumo_mes_kwh,
+        consumo_medio_12m_kwh: consumoMedio12m,
+        meses_com_dados: mesesComDados,
         demanda_contratada_kw: dados.demanda_contratada_kw,
         demanda_medida_fp_kw: dados.demanda_medida_fp_kw,
         demanda_medida_ponta_kw: dados.demanda_medida_ponta_kw,
-        historico_12_meses: dados.historico_12_meses,
+        historico_12_meses: historico,
         tem_geracao_propria: dados.tem_geracao_propria,
         // Aviso sobre endereço — sempre mostrar
         _aviso_endereco: 'Endereço extraído pode estar abreviado. Confira atentamente antes de salvar.',
+        _avisos: avisos,
       },
       meta: {
         model: 'claude-sonnet-4-6',
@@ -210,6 +238,8 @@ RETORNE APENAS UM BLOCO JSON, sem texto antes ou depois:
   "data_vencimento": "AAAA-MM-DD",
   "valor_total_reais": number,
   "consumo_mes_kwh": number,
+  "consumo_medio_12m_kwh": number,
+  "meses_com_dados": number,
   "demanda_contratada_kw": number | null,
   "demanda_medida_fp_kw": number | null,
   "demanda_medida_ponta_kw": number | null,
@@ -218,4 +248,9 @@ RETORNE APENAS UM BLOCO JSON, sem texto antes ou depois:
   ],
   "tem_geracao_propria": boolean
 }
-\`\`\``
+\`\`\`
+
+INSTRUÇÃO EXTRA PARA MÉDIA:
+- "consumo_medio_12m_kwh": média aritmética dos consumos válidos (>0) do histórico dos últimos 12 meses. Ignore meses zerados ou nulos.
+- "meses_com_dados": quantos meses do histórico têm consumo válido (>0). Se a fatura só mostra 6 meses, retorne 6.
+- Se a fatura NÃO mostrar histórico, "consumo_medio_12m_kwh" = valor do "consumo_mes_kwh" e "meses_com_dados" = 1.`
