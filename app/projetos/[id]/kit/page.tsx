@@ -19,12 +19,17 @@ export default async function KitPage({ params }: { params: { id: string } }) {
 
   if (error || !projeto) notFound()
 
-  // Consumo médio 12m (preferível) → potência CC alvo
-  const consumoMedio =
+  // Consumo consolidado: UC principal + soma das beneficiárias
+  const consumoPrincipal =
     projeto.analise_fatura?.consumo_medio_12m_kwh ||
     projeto.analise_fatura?.consumo_mes_kwh ||
     projeto.analise_fatura?.consumo_medio_kwh ||
     0
+  const consumoBeneficiarias = (projeto.beneficiarias || []).reduce(
+    (sum: number, b: any) => sum + (b.analise?.consumo_medio_12m_kwh || b.analise?.consumo_mes_kwh || 0),
+    0
+  )
+  const consumoMedio = consumoPrincipal + consumoBeneficiarias
   const horasSol = 4.5
   const perdas = 0.20
   const potCcAlvoAuto = consumoMedio > 0

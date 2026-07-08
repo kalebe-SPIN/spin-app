@@ -52,6 +52,7 @@ export default async function FaturaPage({ params }: { params: { id: string } })
           <FaturaForm
             projetoId={projeto.id}
             analiseSalva={projeto.analise_fatura}
+            beneficiariasSalvas={projeto.beneficiarias || []}
           />
         </div>
       </div>
