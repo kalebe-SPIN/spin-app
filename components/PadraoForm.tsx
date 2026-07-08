@@ -14,7 +14,7 @@ export function PadraoForm({
 }) {
   const [form, setForm] = useState<PadraoInput>({
     tipo_ligacao: padraoSalvo?.tipo_ligacao || tipoLigacaoSugerido || '',
-    tensao_fornecimento: '127_380',  // padrão CELESC sempre
+    tensao_fornecimento: '220_380',  // padrão CELESC sempre
     amperagem_disjuntor_geral_a: padraoSalvo?.amperagem_disjuntor_geral_a || null,
     medidor_bidirecional: padraoSalvo?.medidor_bidirecional ?? false,
     tem_cabine_primaria: padraoSalvo?.tem_cabine_primaria ?? false,
@@ -52,9 +52,9 @@ export function PadraoForm({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[
-            { v: 'monofasico', label: 'Monofásico', desc: '127V, 1 fase + neutro' },
+            { v: 'monofasico', label: 'Monofásico', desc: '220V, 1 fase + neutro (CELESC não atende 127V)' },
             { v: 'bifasico', label: 'Bifásico', desc: '220V, 2 fases' },
-            { v: 'trifasico', label: 'Trifásico', desc: '220V ou 380V, 3 fases' },
+            { v: 'trifasico', label: 'Trifásico', desc: '380V, 3 fases' },
           ].map((t) => (
             <label
               key={t.v}
@@ -83,9 +83,9 @@ export function PadraoForm({
           ))}
         </div>
 
-        <Field label="Tensão fornecida (padrão CELESC)">
+        <Field label="Tensão fornecida (padrão CELESC-SC)">
           <div className="input-spin opacity-60 cursor-not-allowed">
-            127V / 380V — padrão CELESC
+            220V (mono/bi) / 380V (tri) — CELESC não atende 127V em SC
           </div>
         </Field>
       </fieldset>

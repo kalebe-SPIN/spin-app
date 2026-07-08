@@ -169,8 +169,8 @@ export default async function DimensionarPage({ params }: { params: { id: string
 function formatarTensao(v?: string): string {
   if (!v) return '—'
   const m: Record<string, string> = {
-    '127_380': '127V / 380V',
     '220_380': '220V / 380V',
+    '127_380': '127V / 380V',  // legado
     '127_220': '127V / 220V',
     '220': '220V',
     '380': '380V',

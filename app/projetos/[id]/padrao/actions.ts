@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 
 export type PadraoInput = {
   tipo_ligacao: 'monofasico' | 'bifasico' | 'trifasico' | ''
-  tensao_fornecimento: '127_380'  // padrão CELESC fixo
+  tensao_fornecimento: '220_380'  // padrão CELESC fixo
   amperagem_disjuntor_geral_a: number | null
   medidor_bidirecional: boolean
   tem_cabine_primaria: boolean
