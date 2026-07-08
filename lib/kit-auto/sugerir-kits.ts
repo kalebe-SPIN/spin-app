@@ -89,6 +89,17 @@ const FCI_SWEET_MIN = 120
 const FCI_SWEET_MAX = 135
 const FATOR_SEGURANCA_DISJUNTOR = 0.8
 
+// Linhas WEG por categoria (ongrid)
+// SIW100 = microinversor
+// SIW200, SIW300 = inversor string monofásico
+// SIW400, SIW500 = inversor string trifásico
+// SIW600+ = híbrido/BESS (não entra em ongrid puro)
+const LINHAS_ONGRID = {
+  micro: /^SIW100/i,
+  mono: /^SIW(200|300)/i,
+  tri: /^SIW(400|500)/i,
+}
+
 // ==========================================================
 // PONTO DE ENTRADA
 // ==========================================================
@@ -138,8 +149,8 @@ export function sugerirKits(input: {
     }
   }
 
-  // 4b. String trifásico (só se cliente tri ou bi)
-  if (padrao.tipo_ligacao === 'trifasico' || padrao.tipo_ligacao === 'bifasico') {
+  // 4b. String trifásico — SÓ pra cliente TRI (bifásico NÃO usa inversor tri)
+  if (padrao.tipo_ligacao === 'trifasico') {
     for (const inv of inversoresPorTipo.tri) {
       for (let qtd = 1; qtd <= 2; qtd++) {
         const kit = tentarComposicao({
@@ -158,29 +169,38 @@ export function sugerirKits(input: {
     }
   }
 
-  // 4c. Combinação 2 mono balanceados (pra tri/bi)
+  // 4c. Combinação 2-3 mono balanceados (pra tri/bi)
+  // Bifásico: 2 mono um em cada fase, balanceado
+  // Trifásico: 2 ou 3 mono distribuídos entre 3 fases
   if (padrao.tipo_ligacao === 'trifasico' || padrao.tipo_ligacao === 'bifasico') {
     for (const inv of inversoresPorTipo.mono) {
-      const kit = tentarComposicao({
-        placa,
-        qtdPlacas,
-        potCcRealKwp,
-        inversorPrincipal: inv,
-        qtdInversorPrincipal: 2,
-        padrao,
-        potCaMax,
-        categoria: 'string',
-        idPrefix: `2mono-${inv.codigo_weg}`,
-        distribuirEntreFases: true,
-      })
-      if (kit) candidatos.push(kit)
+      const qtdsPossiveis = padrao.tipo_ligacao === 'bifasico' ? [2] : [2, 3]
+      for (const qtd of qtdsPossiveis) {
+        const kit = tentarComposicao({
+          placa,
+          qtdPlacas,
+          potCcRealKwp,
+          inversorPrincipal: inv,
+          qtdInversorPrincipal: qtd,
+          padrao,
+          potCaMax,
+          categoria: 'string',
+          idPrefix: `${qtd}mono-${inv.codigo_weg}`,
+          distribuirEntreFases: true,
+        })
+        if (kit) candidatos.push(kit)
+      }
     }
   }
 
-  // 4d. Microinversor (distribuído entre fases se tri/bi)
+  // 4d. Microinversor
+  // Mono: um por placa (ou grupo). Bi/Tri: distribuído entre fases balanceado.
   for (const inv of inversoresPorTipo.micro) {
-    const potInvKw = inv.potencia_kw
-    for (let qtd = 1; qtd <= 10; qtd++) {
+    for (let qtd = 1; qtd <= 12; qtd++) {
+      // Pra bi/tri: só qtd divisível pelo número de fases (equilibrio perfeito)
+      if (padrao.tipo_ligacao === 'bifasico' && qtd % 2 !== 0) continue
+      if (padrao.tipo_ligacao === 'trifasico' && qtd % 3 !== 0) continue
+
       const kit = tentarComposicao({
         placa,
         qtdPlacas,
@@ -324,14 +344,18 @@ function agruparPorTipo(inversores: InversorInput[], _faseCliente: string) {
   const micro: InversorInput[] = []
 
   for (const inv of inversores) {
-    const desc = inv.tensao_desc.toLowerCase()
-    const isMicro = inv.subcategoria === 'microinversor'
-    const isTri = /trif/i.test(desc)
-    const isMono = /monof/i.test(desc)
+    const modelo = inv.modelo || ''
 
-    if (isMicro) micro.push(inv)
-    else if (isTri) tri.push(inv)
-    else if (isMono) mono.push(inv)
+    // Classifica pela LINHA (SIW1xx, SIW2xx, SIW3xx, SIW4xx, SIW5xx)
+    // Independente da descrição de tensão
+    if (LINHAS_ONGRID.micro.test(modelo)) {
+      micro.push(inv)
+    } else if (LINHAS_ONGRID.mono.test(modelo)) {
+      mono.push(inv)
+    } else if (LINHAS_ONGRID.tri.test(modelo)) {
+      tri.push(inv)
+    }
+    // Outras linhas (SIW600+, híbridos) ignoradas em ongrid puro
   }
 
   return { mono, tri, micro }
