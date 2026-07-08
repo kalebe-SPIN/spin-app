@@ -124,14 +124,14 @@ export function FaturaForm({ projetoId, analiseSalva }: Props) {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Info label="Titular" value={analise.titular || analise.cliente_razao_social || '—'} />
-            <Info label="Grupo tarifário" value={analise.grupo_tarifario || analise.grupo || '—'} />
+            <Info label="Titular" value={analise.razao_social || analise.titular || analise.cliente_razao_social || '—'} />
+            <Info label="Grupo tarifário" value={analise.grupo || analise.grupo_tarifario || '—'} />
             <Info label="Tipo ligação" value={analise.tipo_ligacao || '—'} />
-            <Info label="Consumo médio" value={analise.consumo_medio_kwh ? `${analise.consumo_medio_kwh.toFixed(0)} kWh/mês` : '—'} highlight />
+            <Info label="Consumo médio" value={(analise.consumo_mes_kwh || analise.consumo_medio_kwh) ? `${(analise.consumo_mes_kwh || analise.consumo_medio_kwh).toFixed(0)} kWh/mês` : '—'} highlight />
             <Info label="Demanda contratada" value={analise.demanda_contratada_kw ? `${analise.demanda_contratada_kw} kW` : '—'} />
-            <Info label="Geração atual" value={analise.geracao_media_kwh ? `${analise.geracao_media_kwh.toFixed(0)} kWh/mês` : 'Não tem'} />
+            <Info label="Geração atual" value={analise.tem_geracao_propria ? 'Sim (ver histórico)' : 'Não tem'} />
             <Info label="UC" value={analise.uc || analise.unidade_consumidora || '—'} />
-            <Info label="Cidade/UF" value={`${analise.cidade || '—'}${analise.uf ? '/' + analise.uf : ''}`} />
+            <Info label="Cidade/UF" value={`${analise.endereco?.cidade || analise.cidade || '—'}${(analise.endereco?.uf || analise.uf) ? '/' + (analise.endereco?.uf || analise.uf) : ''}`} />
           </div>
 
           {analise.observacoes && (

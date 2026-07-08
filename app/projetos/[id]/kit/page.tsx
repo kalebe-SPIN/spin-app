@@ -21,7 +21,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
 
   // ===== Estimar potência CC necessária =====
   // Regra: consumo médio kWh / (30 dias * 4.5 horas de sol/dia médio SC) = kWp CC
-  const consumoMedio = projeto.analise_fatura?.consumo_medio_kwh || projeto.analise_fatura?.consumo_kwh || 0
+  const consumoMedio = projeto.analise_fatura?.consumo_mes_kwh || projeto.analise_fatura?.consumo_medio_kwh || projeto.analise_fatura?.consumo_kwh || 0
   const horasSol = 4.5  // SC média anual
   const perdas = 0.20   // 20% perdas totais
   const potCcSugeridaKwp = consumoMedio > 0

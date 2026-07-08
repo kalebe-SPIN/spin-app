@@ -22,7 +22,7 @@ export default async function DimensionarPage({ params }: { params: { id: string
   const telhado = projeto.telhado_secoes
   const padrao = projeto.padrao_entrada
 
-  const consumoMedio = fatura?.consumo_medio_kwh || fatura?.consumo_kwh || 0
+  const consumoMedio = fatura?.consumo_mes_kwh || fatura?.consumo_medio_kwh || fatura?.consumo_kwh || 0
   const horasSol = 4.5
   const perdas = 0.20
   const potCcSugeridaKwp = consumoMedio > 0
@@ -106,8 +106,8 @@ export default async function DimensionarPage({ params }: { params: { id: string
           <DetalheCard titulo="🧾 Fatura (Passo 2)" ok={!!fatura} link={`/projetos/${projeto.id}/fatura`}>
             {fatura ? (
               <div className="grid grid-cols-2 gap-2 text-xs text-white/70">
-                <span>Grupo: <strong>{fatura.grupo_tarifario || fatura.grupo || '—'}</strong></span>
-                <span>Ligação: <strong>{fatura.tipo_ligacao || '—'}</strong></span>
+                <span>Grupo: <strong>{fatura.grupo || fatura.grupo_tarifario || '—'}</strong></span>
+                <span>Ligação: <strong>{formatarLigacao(fatura.tipo_ligacao)}</strong></span>
                 <span>Consumo médio: <strong>{consumoMedio.toFixed(0)} kWh/mês</strong></span>
                 <span>Demanda: <strong>{fatura.demanda_contratada_kw ? fatura.demanda_contratada_kw + 'kW' : '—'}</strong></span>
               </div>
