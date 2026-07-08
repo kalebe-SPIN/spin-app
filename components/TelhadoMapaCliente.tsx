@@ -263,10 +263,17 @@ export default function TelhadoMapaCliente({
           scrollWheelZoom
         >
           <RecentralizarMapa centro={centro} />
+          {/*
+            Camada satélite: Google Satellite (URL não-oficial mas amplamente usada)
+            Cobertura MUITO superior à Esri no Brasil, especialmente cidades pequenas.
+            Subdomínios mt0-mt3 distribuem carga.
+            Fallback: Esri World Imagery via segundo TileLayer.
+          */}
           <TileLayer
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            attribution="© Esri World Imagery"
-            maxNativeZoom={19}
+            url="https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+            subdomains={['0', '1', '2', '3']}
+            attribution="© Google"
+            maxNativeZoom={20}
             maxZoom={22}
           />
           <ClickHandler onClick={handleClickMapa} />
