@@ -113,8 +113,71 @@ export default function TelhadoMapaCliente({
     setPontos([]) // Reset pra próxima face
   }
 
+  // Busca manual de endereço (quando o auto-preenchimento não funciona)
+  const [buscaManual, setBuscaManual] = useState('')
+  const [enderecoIdentificado, setEnderecoIdentificado] = useState<string | null>(null)
+
+  async function buscarEnderecoManual(e: React.FormEvent) {
+    e.preventDefault()
+    if (!buscaManual.trim()) return
+    setBuscandoEndereco(true)
+    setErroEndereco(null)
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(buscaManual + ', Brasil')}`,
+        { headers: { 'User-Agent': 'spin-solar-portal/1.0' } }
+      )
+      const data = await res.json()
+      if (data && data.length > 0) {
+        const lat = parseFloat(data[0].lat)
+        const lon = parseFloat(data[0].lon)
+        setCentro([lat, lon])
+        setEnderecoIdentificado(data[0].display_name)
+      } else {
+        setErroEndereco('Endereço não encontrado. Tente ser mais específico (ex: rua + número + cidade).')
+      }
+    } catch {
+      setErroEndereco('Falha ao buscar. Verifique sua internet.')
+    } finally {
+      setBuscandoEndereco(false)
+    }
+  }
+
   return (
     <div className="space-y-3">
+      {/* Busca de endereço (fatura CELESC costuma vir abreviada) */}
+      <div className="bg-white/[0.03] border border-white/10 rounded-lg p-4">
+        <label className="text-xs uppercase tracking-wider text-white/60 font-bold block mb-2">
+          🔍 Buscar endereço no mapa
+        </label>
+        <form onSubmit={buscarEnderecoManual} className="flex flex-col md:flex-row gap-2">
+          <input
+            type="text"
+            value={buscaManual}
+            onChange={e => setBuscaManual(e.target.value)}
+            placeholder={endereco || 'Ex: Rua das Flores, 123, Ilhota, SC'}
+            className="flex-1 px-3 py-2 bg-noite/40 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-sol/50"
+          />
+          <button
+            type="submit"
+            disabled={buscandoEndereco || !buscaManual.trim()}
+            className="px-4 py-2 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40 whitespace-nowrap"
+          >
+            {buscandoEndereco ? '⏳ Buscando...' : 'Buscar no mapa →'}
+          </button>
+        </form>
+        {enderecoIdentificado && (
+          <div className="mt-3 bg-verde/10 border border-verde/30 rounded p-2.5 text-xs">
+            <p className="text-verde font-bold mb-0.5">✓ Endereço encontrado:</p>
+            <p className="text-white/80">{enderecoIdentificado}</p>
+          </div>
+        )}
+        <p className="text-[10px] text-white/40 mt-2">
+          💡 A CELESC costuma abreviar endereço na fatura. Se o mapa não caiu no local certo,
+          digite o endereço completo aqui pra reposicionar.
+        </p>
+      </div>
+
       {/* Instruções */}
       <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-lg p-3 text-sm text-white/80">
         <strong className="text-white">Como usar:</strong> Use o zoom (scroll do mouse) pra
