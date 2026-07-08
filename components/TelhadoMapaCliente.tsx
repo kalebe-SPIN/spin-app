@@ -22,7 +22,35 @@ if (typeof window !== 'undefined') {
 }
 
 const DEFAULT_CENTER: [number, number] = [-27.2406, -48.6359] // Tijucas/SC fallback
-const DEFAULT_ZOOM = 19
+const DEFAULT_ZOOM = 17
+
+/**
+ * Gera variações progressivas da query pra tentar encontrar endereço no OSM.
+ * Vai do mais específico ao mais genérico.
+ */
+function gerarVariacoesQuery(original: string): string[] {
+  const s = original.replace(/\s+/g, ' ').trim()
+  const variacoes = new Set<string>()
+
+  // 1. Original + Brasil
+  variacoes.add(`${s}, Brasil`)
+
+  // 2. Só a parte "rua/av + número + cidade" (sem bairro no meio, se detectar)
+  const partes = s.split(',').map(p => p.trim()).filter(Boolean)
+  if (partes.length > 1) {
+    variacoes.add(`${partes[0]}, ${partes[partes.length - 1]}, Brasil`)
+  }
+
+  // 3. Trocar acentos (algumas bases indexam sem)
+  const semAcento = s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+  variacoes.add(`${semAcento}, Brasil`)
+
+  // 4. Só cidade + UF (última tentativa, cai perto do endereço)
+  const lastPart = partes[partes.length - 1] || s
+  variacoes.add(`${lastPart}, Brasil`)
+
+  return Array.from(variacoes)
+}
 
 export default function TelhadoMapaCliente({
   endereco,
@@ -116,31 +144,57 @@ export default function TelhadoMapaCliente({
   // Busca manual de endereço (quando o auto-preenchimento não funciona)
   const [buscaManual, setBuscaManual] = useState('')
   const [enderecoIdentificado, setEnderecoIdentificado] = useState<string | null>(null)
+  const [tentativasFalhadas, setTentativasFalhadas] = useState<string[]>([])
+
+  async function buscarComQuery(query: string): Promise<any> {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`,
+        { headers: { 'User-Agent': 'spin-solar-portal/1.0' } }
+      )
+      const data = await res.json()
+      return data && data.length > 0 ? data[0] : null
+    } catch {
+      return null
+    }
+  }
 
   async function buscarEnderecoManual(e: React.FormEvent) {
     e.preventDefault()
     if (!buscaManual.trim()) return
     setBuscandoEndereco(true)
     setErroEndereco(null)
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(buscaManual + ', Brasil')}`,
-        { headers: { 'User-Agent': 'spin-solar-portal/1.0' } }
-      )
-      const data = await res.json()
-      if (data && data.length > 0) {
-        const lat = parseFloat(data[0].lat)
-        const lon = parseFloat(data[0].lon)
+    setEnderecoIdentificado(null)
+    setTentativasFalhadas([])
+
+    const original = buscaManual.trim()
+
+    // Gera variações da query pra tentar em ordem (mais específica → menos)
+    const variacoes = gerarVariacoesQuery(original)
+    const tentadas: string[] = []
+
+    for (const query of variacoes) {
+      tentadas.push(query)
+      const resultado = await buscarComQuery(query)
+      if (resultado) {
+        const lat = parseFloat(resultado.lat)
+        const lon = parseFloat(resultado.lon)
         setCentro([lat, lon])
-        setEnderecoIdentificado(data[0].display_name)
-      } else {
-        setErroEndereco('Endereço não encontrado. Tente ser mais específico (ex: rua + número + cidade).')
+        setEnderecoIdentificado(resultado.display_name)
+        setBuscandoEndereco(false)
+        return
       }
-    } catch {
-      setErroEndereco('Falha ao buscar. Verifique sua internet.')
-    } finally {
-      setBuscandoEndereco(false)
+      // Espera 200ms entre tentativas pra não abusar da API
+      await new Promise(r => setTimeout(r, 200))
     }
+
+    setTentativasFalhadas(tentadas)
+    setErroEndereco(
+      'Endereço não encontrado no OpenStreetMap. A base é limitada em endereços brasileiros específicos. ' +
+      'Tente: (1) trocar acento; (2) adicionar CEP; (3) usar apenas bairro + cidade + UF; ' +
+      '(4) buscar só a cidade e navegar manualmente no mapa.'
+    )
+    setBuscandoEndereco(false)
   }
 
   return (
@@ -172,9 +226,22 @@ export default function TelhadoMapaCliente({
             <p className="text-white/80">{enderecoIdentificado}</p>
           </div>
         )}
-        <p className="text-[10px] text-white/40 mt-2">
-          💡 A CELESC costuma abreviar endereço na fatura. Se o mapa não caiu no local certo,
-          digite o endereço completo aqui pra reposicionar.
+        {tentativasFalhadas.length > 0 && (
+          <details className="mt-3 bg-coral/5 border border-coral/20 rounded p-2.5 text-[10px]">
+            <summary className="cursor-pointer text-coral font-bold">
+              Tentativas de busca ({tentativasFalhadas.length})
+            </summary>
+            <ul className="mt-1 space-y-0.5 text-white/60">
+              {tentativasFalhadas.map((t, i) => <li key={i}>• {t}</li>)}
+            </ul>
+          </details>
+        )}
+        <p className="text-[10px] text-white/40 mt-2 leading-relaxed">
+          💡 A CELESC costuma abreviar endereço na fatura. Se não achar, tente formatos como:
+          <br />
+          <span className="text-white/60">
+            "Rua Coronel Marcos, Ilhota, SC" · "Centro, Tijucas, SC" · "88760-000" · "Ilhota, SC"
+          </span>
         </p>
       </div>
 
