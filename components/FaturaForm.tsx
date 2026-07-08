@@ -155,8 +155,8 @@ export function FaturaForm({ projetoId, analiseSalva }: Props) {
           </div>
 
           {/* Histórico visual — quando disponível */}
-          {Array.isArray(analise.historico_12_meses) && analise.historico_12_meses.length > 0 && (
-            <details className="bg-white/[0.02] border border-white/10 rounded-lg p-4">
+          {Array.isArray(analise.historico_12_meses) && analise.historico_12_meses.length > 0 ? (
+            <details className="bg-white/[0.02] border border-white/10 rounded-lg p-4" open>
               <summary className="cursor-pointer text-xs font-bold uppercase text-white/50 tracking-wider">
                 📊 Histórico de consumo ({analise.historico_12_meses.length} mês{analise.historico_12_meses.length > 1 ? 'es' : ''})
               </summary>
@@ -169,8 +169,25 @@ export function FaturaForm({ projetoId, analiseSalva }: Props) {
                   </div>
                 ))}
               </div>
+              <p className="text-[10px] text-white/40 mt-3 text-center">
+                Média = soma ÷ meses. Se ver valor estranho, compare com o que aparece na sua fatura CELESC (seção "Histórico de Consumo").
+              </p>
             </details>
+          ) : (
+            <div className="bg-coral/10 border border-coral/30 rounded-lg p-3 text-xs text-coral">
+              ⚠️ A IA não conseguiu extrair o histórico dos 12 meses dessa fatura. A média está sendo calculada só do mês atual.
+            </div>
           )}
+
+          {/* Debug — ver JSON bruto (colapsado por default) */}
+          <details className="bg-white/[0.02] border border-white/10 rounded-lg p-3">
+            <summary className="cursor-pointer text-[10px] font-bold uppercase text-white/40 tracking-wider">
+              🔧 Ver dados brutos extraídos pela IA (debug)
+            </summary>
+            <pre className="mt-3 text-[10px] text-white/60 font-mono overflow-auto max-h-96 bg-noite/40 p-3 rounded border border-white/5">
+              {JSON.stringify(analise, null, 2)}
+            </pre>
+          </details>
 
           {analise.observacoes && (
             <div className="bg-white/[0.02] border border-white/10 rounded-lg p-4">
