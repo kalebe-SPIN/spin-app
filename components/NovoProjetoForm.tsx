@@ -154,17 +154,32 @@ export function NovoProjetoForm({
           <input
             type="text"
             value={form.cliente_cpf_cnpj}
-            onChange={e => update('cliente_cpf_cnpj', maskCpfCnpj(e.target.value))}
+            onChange={e => {
+              const masked = maskCpfCnpj(e.target.value)
+              setForm(prev => ({
+                ...prev,
+                cliente_cpf_cnpj: masked,
+                // Se começou a digitar, desmarca automaticamente "sem documento"
+                cliente_sem_documento: masked.length > 0 ? false : prev.cliente_sem_documento,
+              }))
+            }}
             placeholder="000.000.000-00 ou 00.000.000/0000-00"
-            disabled={form.cliente_sem_documento}
-            className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 disabled:opacity-40"
+            className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30"
           />
         </label>
         <label className="flex items-center gap-2 mt-2 text-xs text-white/60 cursor-pointer">
           <input
             type="checkbox"
             checked={form.cliente_sem_documento}
-            onChange={e => update('cliente_sem_documento', e.target.checked)}
+            onChange={e => {
+              const marcado = e.target.checked
+              setForm(prev => ({
+                ...prev,
+                cliente_sem_documento: marcado,
+                // Se marcou "sem documento", limpa o campo
+                cliente_cpf_cnpj: marcado ? '' : prev.cliente_cpf_cnpj,
+              }))
+            }}
             className="rounded"
           />
           Cliente ainda não forneceu documento (pode preencher depois)
