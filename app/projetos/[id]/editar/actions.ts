@@ -19,10 +19,6 @@ export async function atualizarProjetoAction(
     cliente_cpf_cnpj: string | null
     cliente_email: string | null
     cliente_telefone: string
-    cliente_endereco: any
-    uc_geradora: string
-    ucs_beneficiarias: string[]
-    tipo_projeto: string
     observacoes_consultor: string | null
   }
 ) {
