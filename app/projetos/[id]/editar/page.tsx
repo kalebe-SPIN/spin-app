@@ -18,26 +18,33 @@ export default async function EditarProjetoPage({ params }: { params: { id: stri
 
   if (!user) redirect('/login')
 
+  // Usa SELECT * pra não quebrar se alguma coluna foi removida do schema
   const { data: projeto, error } = await supabase
     .from('projetos')
-    .select(`
-      id,
-      cliente_razao_social,
-      cliente_cpf_cnpj,
-      cliente_email,
-      cliente_telefone,
-      cliente_endereco,
-      uc_geradora,
-      ucs_beneficiarias,
-      tipo_projeto,
-      motivacao_cliente,
-      observacoes_consultor,
-      codigo
-    `)
+    .select('*')
     .eq('id', params.id)
     .single()
 
-  if (error || !projeto) notFound()
+  if (error) {
+    console.error('[editar/page] Erro Supabase:', error)
+    return (
+      <main className="min-h-screen p-8 md:p-12">
+        <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
+          <h1 className="text-xl font-bold text-coral mb-2">Erro ao carregar projeto</h1>
+          <p className="text-white/70 text-sm mb-2">{error.message}</p>
+          <p className="text-white/40 text-xs mb-4">Código: {error.code}</p>
+          <Link
+            href={`/projetos/${params.id}`}
+            className="inline-block px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm"
+          >
+            ← Voltar ao projeto
+          </Link>
+        </div>
+      </main>
+    )
+  }
+
+  if (!projeto) notFound()
 
   return (
     <main className="min-h-screen p-8 md:p-12">
