@@ -3,6 +3,7 @@
 import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { salvarAnaliseFaturaAction } from '@/app/projetos/[id]/fatura/actions'
+import { HistoricoConsumo } from '@/components/HistoricoConsumo'
 
 type Props = {
   projetoId: string
@@ -154,25 +155,12 @@ export function FaturaForm({ projetoId, analiseSalva }: Props) {
             <Info label="Cidade/UF" value={`${analise.endereco?.cidade || analise.cidade || '—'}${(analise.endereco?.uf || analise.uf) ? '/' + (analise.endereco?.uf || analise.uf) : ''}`} />
           </div>
 
-          {/* Histórico visual — quando disponível */}
+          {/* Gráfico do histórico + ponto de equilíbrio */}
           {Array.isArray(analise.historico_12_meses) && analise.historico_12_meses.length > 0 ? (
-            <details className="bg-white/[0.02] border border-white/10 rounded-lg p-4" open>
-              <summary className="cursor-pointer text-xs font-bold uppercase text-white/50 tracking-wider">
-                📊 Histórico de consumo ({analise.historico_12_meses.length} mês{analise.historico_12_meses.length > 1 ? 'es' : ''})
-              </summary>
-              <div className="mt-3 grid grid-cols-4 md:grid-cols-6 gap-2">
-                {analise.historico_12_meses.map((h: any, i: number) => (
-                  <div key={i} className="text-center p-2 bg-white/[0.02] border border-white/10 rounded">
-                    <p className="text-[10px] text-white/50">{h.mes_ano}</p>
-                    <p className="text-sm font-bold text-white">{Math.round(h.consumo_kwh)}</p>
-                    <p className="text-[9px] text-white/40">kWh</p>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10px] text-white/40 mt-3 text-center">
-                Média = soma ÷ meses. Se ver valor estranho, compare com o que aparece na sua fatura CELESC (seção "Histórico de Consumo").
-              </p>
-            </details>
+            <HistoricoConsumo
+              historico={analise.historico_12_meses}
+              media={analise.consumo_medio_12m_kwh || analise.consumo_mes_kwh || 0}
+            />
           ) : (
             <div className="bg-coral/10 border border-coral/30 rounded-lg p-3 text-xs text-coral">
               ⚠️ A IA não conseguiu extrair o histórico dos 12 meses dessa fatura. A média está sendo calculada só do mês atual.
