@@ -87,9 +87,9 @@ export default async function DashboardPage() {
             href="/parceiro/leads"
           />
           <DashboardCard
-            titulo="Catálogo WEG (Admin)"
-            desc="Visualizar produtos + atualizar planilha WEG."
-            disponivel={false}
+            titulo="📊 Catálogo WEG (Admin)"
+            desc="Upload de planilha, PDF de estoque e datasheets dos produtos."
+            disponivel={true}
             adminOnly
             href="/admin/catalogo"
           />
