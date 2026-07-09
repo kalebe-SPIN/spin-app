@@ -387,17 +387,7 @@ function KitSugeridoCard({
         <p className="text-[10px] text-white/50">{kit.racional}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-        <div className="bg-white/[0.02] p-2 rounded">
-          <p className="text-[9px] text-white/40 uppercase">Placas</p>
-          <p className="text-sm font-bold text-white">{kit.placa.qtd}× {kit.placa.potencia_wp}Wp</p>
-        </div>
-        <div className="bg-white/[0.02] p-2 rounded">
-          <p className="text-[9px] text-white/40 uppercase">{isMicro ? 'Microinversores' : 'Inversor'}</p>
-          <p className="text-sm font-bold text-white">{inv.qtd}× {inv.potencia_kw}kW</p>
-        </div>
-      </div>
-
+      {/* Métricas principais */}
       <div className="grid grid-cols-3 gap-2 text-xs mb-3">
         <div>
           <p className="text-[9px] text-white/40 uppercase">CC</p>
@@ -408,7 +398,7 @@ function KitSugeridoCard({
           <p className="text-sm font-bold text-weg-azul">{kit.pot_ca_kw.toFixed(2)} kW</p>
         </div>
         <div>
-          <p className="text-[9px] text-white/40 uppercase">FCI</p>
+          <p className="text-[9px] text-white/40 uppercase">Carregamento</p>
           <p className={`text-sm font-bold ${
             kit.validacoes.fci_ideal ? 'text-verde' : kit.fci_pct > 145 || kit.fci_pct < 100 ? 'text-coral' : 'text-sol'
           }`}>
@@ -417,18 +407,40 @@ function KitSugeridoCard({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 mb-3">
+      {/* Composição completa do kit (itens que compramos WEG) */}
+      <div className="bg-white/[0.02] rounded p-2 mb-3 text-[10px] space-y-1">
+        <p className="text-[9px] text-white/40 uppercase font-bold mb-1">Composição WEG</p>
+        <div className="flex gap-1.5"><span>☀️</span><span className="text-white/80">{kit.composicao.placas}</span></div>
+        <div className="flex gap-1.5"><span>⚡</span><span className="text-white/80">{kit.composicao.inversores}</span></div>
+        <div className="flex gap-1.5"><span>🏗️</span><span className="text-white/80">{kit.composicao.estrutura}</span></div>
+        <div className="flex gap-1.5"><span>🔴</span><span className="text-white/80">{kit.composicao.cabo_cc}</span></div>
+        <div className="flex gap-1.5"><span>🛡️</span><span className="text-white/80">{kit.composicao.disjuntor}</span></div>
+        <div className="flex gap-1.5"><span>⚠️</span><span className="text-white/80">{kit.composicao.dps}</span></div>
+        <div className="flex gap-1.5"><span>📦</span><span className="text-white/80">{kit.composicao.quadro}</span></div>
+        <div className="flex gap-1.5"><span>⚓</span><span className="text-white/80">{kit.composicao.aterramento}</span></div>
+      </div>
+
+      {/* Alertas */}
+      {kit.validacoes.precisa_upgrade_disjuntor && (
+        <div className="bg-sol/10 border border-sol/40 rounded p-2 mb-2 text-[10px] flex gap-2">
+          <span>⚠️</span>
+          <div>
+            <p className="text-sol font-bold">Upgrade de disjuntor necessário</p>
+            <p className="text-white/70">
+              Sistema exige <strong>{kit.validacoes.corrente_sistema_a}A</strong> — padrão atual {kit.validacoes.disjuntor_atual_a}A.
+              Trocar disjuntor de entrada pra <strong>{kit.validacoes.disjuntor_sugerido_a}A</strong>.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Badges de validação */}
+      <div className="flex flex-wrap gap-1">
         <BadgeValidacao ok={kit.validacoes.dentro_limite_celesc} texto="CELESC" />
-        <BadgeValidacao ok={kit.validacoes.dentro_disjuntor_cliente} texto="Disjuntor" />
         {kit.desbalanceamento_kw > 0 && (
           <BadgeValidacao ok={kit.validacoes.desbalanceamento_ok} texto={`Δ ${kit.desbalanceamento_kw.toFixed(1)}kW`} />
         )}
-        <BadgeValidacao ok={kit.validacoes.fci_ideal} texto="FCI ideal" />
-      </div>
-
-      <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-        <span className="text-[10px] text-white/40 uppercase">Kit WEG</span>
-        <span className="text-sm font-black text-verde">R$ {kit.preco_total_kit_weg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+        <BadgeValidacao ok={kit.validacoes.fci_ideal} texto="Carreg. ideal" />
       </div>
     </button>
   )

@@ -73,6 +73,20 @@ export type KitSugerido = {
     desbalanceamento_ok: boolean
     fci_ideal: boolean            // 120-135%
     is_subdimensionado: boolean   // FCI < 100% — "kit de entrada"
+    precisa_upgrade_disjuntor: boolean
+    disjuntor_atual_a: number
+    disjuntor_sugerido_a: number
+    corrente_sistema_a: number
+  }
+  composicao: {
+    placas: string          // "34× 615Wp WEG BIFACIAL"
+    inversores: string      // "1× SIW300 M100 W00"
+    estrutura: string       // "9 kits estrutura fibrocimento"
+    cabo_cc: string         // "50m cabo solar 6mm² preto + 50m vermelho"
+    disjuntor: string       // "1× disjuntor CA 50A MDWH-C50-2"
+    dps: string             // "1× DPS classe II 2P 275V 20kA"
+    quadro: string          // "1× QPCA + acessórios"
+    aterramento: string     // "haste 5/8 × 2,4m + cabo cobre nu 16mm²"
   }
   racional: string              // "melhor custo-benefício" etc
   score: number                 // ranking interno
@@ -83,8 +97,7 @@ export type KitSugerido = {
 // ==========================================================
 
 const CELESC_LIMITE_MONO_KW = 8              // Rede monofásica: máx 8 kW CA total
-const CELESC_MONO_EM_BI_TRI_MAX_KW = 5       // Rede bi/tri: cada inversor mono ≤ 5 kW
-const DESBALANCEAMENTO_MAX_KW = 5            // Diferença entre fases ≤ 5 kW
+const DESBALANCEAMENTO_MAX_KW = 5            // Diferença entre fases ≤ 5 kW (bi/tri)
 const FCI_MIN_SUBDIMENSIONADO = 80           // FCI mínimo aceito como "kit de entrada"
 const FCI_MIN_ACEITAVEL = 100                // FCI mínimo pra kit normal
 const FCI_MAX_ACEITAVEL = 145
@@ -267,24 +280,16 @@ function tentarComposicao(args: {
   if (fci < FCI_MIN_SUBDIMENSIONADO || fci > FCI_MAX_ACEITAVEL) return null
   const isSubdimensionado = fci < FCI_MIN_ACEITAVEL
 
-  // Limite pelo disjuntor de entrada
-  if (potCaTotal > potCaMax) return null
-
   // Limite CELESC pra rede monofásica: 8 kW CA total
   if (padrao.tipo_ligacao === 'monofasico' && potCaTotal > CELESC_LIMITE_MONO_KW) return null
 
-  // CELESC: em rede tri/bi, cada inversor monofásico ≤ 5 kW individualmente
-  // (não é só desbalanceamento — é regra absoluta por unidade)
-  const invIsMonoUsadoEmBiTri = padrao.tipo_ligacao !== 'monofasico' &&
-    LINHAS_ONGRID.mono.test(inversorPrincipal.modelo)
-  if (invIsMonoUsadoEmBiTri && inversorPrincipal.potencia_kw > CELESC_MONO_EM_BI_TRI_MAX_KW) {
-    return null
-  }
-
-  // Desbalanceamento (só faz sentido se >1 inversor em bi/tri)
+  // Desbalanceamento (só faz sentido se >1 inversor em bi/tri usando MONO)
+  // Regra CELESC: diferença entre fases não pode ultrapassar 5 kW
   // NOTA: NÃO filtra fases zeradas — se uma fase fica sem inversor, isso É desbalanceamento
   let desbalanceamento = 0
-  if (qtdInversorPrincipal > 1 && padrao.tipo_ligacao !== 'monofasico') {
+  const usaMonoEmBiTri = padrao.tipo_ligacao !== 'monofasico' &&
+    LINHAS_ONGRID.mono.test(inversorPrincipal.modelo)
+  if (usaMonoEmBiTri && qtdInversorPrincipal > 1) {
     const numFases = padrao.tipo_ligacao === 'trifasico' ? 3 : 2
     const porFase = distribuirPorFases(inversorPrincipal.potencia_kw, qtdInversorPrincipal, numFases)
     const maxFase = Math.max(...porFase)
@@ -292,18 +297,38 @@ function tentarComposicao(args: {
     desbalanceamento = maxFase - minFase
     if (desbalanceamento > DESBALANCEAMENTO_MAX_KW) return null
   }
+  // Se usa 1 único inversor mono numa rede bi/tri, o desbalanceamento é a própria pot dele
+  if (usaMonoEmBiTri && qtdInversorPrincipal === 1) {
+    desbalanceamento = inversorPrincipal.potencia_kw
+    if (desbalanceamento > DESBALANCEAMENTO_MAX_KW) return null
+  }
+
+  // Verificar necessidade de upgrade do disjuntor de entrada
+  const correnteCaA = calcularCorrenteCA(potCaTotal, padrao)
+  const disjuntorAtualA = Number(padrao.amperagem) || 0
+  const correnteMaxSuportadaA = disjuntorAtualA * FATOR_SEGURANCA_DISJUNTOR
+  const precisaUpgradeDisjuntor = correnteCaA > correnteMaxSuportadaA
+  const disjuntorSugeridoA = precisaUpgradeDisjuntor ? arredondarDisjuntorComercial(correnteCaA / FATOR_SEGURANCA_DISJUNTOR) : disjuntorAtualA
 
   const precoTotal = (placa.preco_venda * qtdPlacas) + (inversorPrincipal.preco_venda * qtdInversorPrincipal)
 
   const validacoes = {
     dentro_limite_celesc: padrao.tipo_ligacao !== 'monofasico' || potCaTotal <= CELESC_LIMITE_MONO_KW,
-    dentro_disjuntor_cliente: potCaTotal <= potCaMax,
+    dentro_disjuntor_cliente: !precisaUpgradeDisjuntor,
     desbalanceamento_ok: desbalanceamento <= DESBALANCEAMENTO_MAX_KW,
     fci_ideal: fci >= FCI_SWEET_MIN && fci <= FCI_SWEET_MAX,
     is_subdimensionado: isSubdimensionado,
+    precisa_upgrade_disjuntor: precisaUpgradeDisjuntor,
+    disjuntor_atual_a: disjuntorAtualA,
+    disjuntor_sugerido_a: disjuntorSugeridoA,
+    corrente_sistema_a: Math.round(correnteCaA * 10) / 10,
   }
 
   const score = calcularScore(fci, desbalanceamento, qtdInversorPrincipal, precoTotal, isSubdimensionado)
+
+  // Composição extra do kit (estrutura, cabos, disjuntor, DPS, quadros)
+  // Baseada no que a Spin compra da WEG pra montar o kit CA
+  const composicao = gerarComposicao(placa, qtdPlacas, inversorPrincipal, qtdInversorPrincipal, padrao)
 
   return {
     id: idPrefix,
@@ -330,9 +355,72 @@ function tentarComposicao(args: {
     desbalanceamento_kw: desbalanceamento,
     preco_total_kit_weg: precoTotal,
     validacoes,
+    composicao,
     racional: '',
     score,
   }
+}
+
+// ==========================================================
+// HELPERS DE CÁLCULO
+// ==========================================================
+
+function calcularCorrenteCA(potKw: number, padrao: PadraoCliente): number {
+  const isTri = padrao.tipo_ligacao === 'trifasico'
+  const tensao = isTri ? 380 : 220
+  const fator = isTri ? Math.sqrt(3) : 1
+  return (potKw * 1000) / (tensao * fator)
+}
+
+function arredondarDisjuntorComercial(a: number): number {
+  const opcoes = [16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 300]
+  for (const o of opcoes) if (a <= o) return o
+  return 400
+}
+
+function gerarComposicao(
+  placa: PlacaInput,
+  qtdPlacas: number,
+  inversor: InversorInput,
+  qtdInversor: number,
+  padrao: PadraoCliente
+) {
+  const isTri = /trif/i.test(inversor.tensao_desc) || LINHAS_ONGRID.tri.test(inversor.modelo)
+  const isMicro = LINHAS_ONGRID.micro.test(inversor.modelo)
+
+  // Estrutura: 1 kit por 4 placas
+  const qtdKitsEstrutura = Math.ceil(qtdPlacas / 4)
+
+  // Cabos CC: distância padrão 15m ida+volta com folga 15%
+  const distanciaBase = Number(padrao.amperagem) > 0 ? 15 : 15
+  const numStrings = Math.max(1, inversor.entradas_mppt || 2)
+  const cabocc = Math.ceil(distanciaBase * 2 * numStrings * 1.15)
+
+  // Disjuntor CA
+  const disjuntorRef = inversor.disjuntor_equivalente || estimarDisjuntor(inversor, padrao)
+
+  // DPS
+  const dpsPolos = isTri ? '4P' : '2P'
+
+  return {
+    placas: `${qtdPlacas}× ${placa.potencia_wp}Wp ${placa.fabricante || 'WEG'} (${placa.modelo})`,
+    inversores: isMicro
+      ? `${qtdInversor}× Microinversor ${inversor.modelo}`
+      : `${qtdInversor}× ${inversor.modelo} (${inversor.potencia_kw}kW)`,
+    estrutura: `${qtdKitsEstrutura} kit(s) estrutura WEG p/ 4 placas`,
+    cabo_cc: `${cabocc}m cabo solar 6mm² preto + ${cabocc}m vermelho`,
+    disjuntor: `${qtdInversor}× disjuntor CA — ${disjuntorRef}`,
+    dps: `1× DPS classe II ${dpsPolos} 275V 20kA`,
+    quadro: '1× Quadro de Proteção CA (QPCA) + acessórios',
+    aterramento: 'Haste 5/8" × 2,4m + cabo cobre nu 16mm²',
+  }
+}
+
+function estimarDisjuntor(inversor: InversorInput, padrao: PadraoCliente): string {
+  const corrente = calcularCorrenteCA(inversor.potencia_kw, padrao)
+  const disjuntor = arredondarDisjuntorComercial(corrente * 1.25)
+  const isTri = padrao.tipo_ligacao === 'trifasico'
+  return `MDW${isTri ? 'H' : 'P'}-C${disjuntor}-${isTri ? '3' : '2'}`
 }
 
 // ==========================================================
