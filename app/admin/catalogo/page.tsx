@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { CatalogoClient } from '@/components/CatalogoClient'
 
 export const dynamic = 'force-dynamic'
@@ -18,17 +17,15 @@ export default async function CatalogoAdminPage() {
     .eq('id', user.id)
     .single()
 
-  const { modo } = await getModoVisualizacao()
-
-  if (perfil?.role !== 'admin' || modo !== 'admin') {
+  // Gate: só role admin no banco. Modo consultor NÃO bloqueia URLs diretas
+  // (só esconde botões na UI). Admin sempre pode acessar tudo.
+  if (perfil?.role !== 'admin') {
     return (
       <main className="min-h-screen p-8 md:p-12">
         <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-coral">Acesso restrito</h1>
           <p className="text-white/60 text-sm mt-2">
-            {modo === 'consultor'
-              ? 'Você está em modo Consultor. Alterne pra Admin no header.'
-              : 'Só administradores podem gerenciar o catálogo.'}
+            Só administradores podem gerenciar o catálogo.
           </p>
         </div>
       </main>

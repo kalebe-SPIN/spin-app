@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,18 +15,12 @@ export default async function AdminHomePage() {
     .eq('id', user.id)
     .single()
 
-  const { modo: modoAtivo } = await getModoVisualizacao()
-
-  if (perfil?.role !== 'admin' || modoAtivo !== 'admin') {
+  if (perfil?.role !== 'admin') {
     return (
       <main className="min-h-screen p-8 md:p-12">
         <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-coral">Acesso restrito</h1>
-          <p className="text-white/60 text-sm mt-2">
-            {modoAtivo === 'consultor' && perfil?.role === 'admin'
-              ? 'Você está no modo Consultor. Alterne pra modo Admin no botão do header pra acessar.'
-              : 'Área exclusiva do administrador.'}
-          </p>
+          <p className="text-white/60 text-sm mt-2">Área exclusiva do administrador.</p>
         </div>
       </main>
     )

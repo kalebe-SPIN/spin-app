@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { EmpresaForm } from '@/components/EmpresaForm'
-import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -18,17 +17,13 @@ export default async function AdminEmpresaPage() {
     .eq('id', user.id)
     .single()
 
-  const { modo: modoAtivo } = await getModoVisualizacao()
-
-  if (perfil?.role !== 'admin' || modoAtivo !== 'admin') {
+  if (perfil?.role !== 'admin') {
     return (
       <main className="min-h-screen p-8 md:p-12">
         <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-coral">Acesso restrito</h1>
           <p className="text-white/60 text-sm mt-2">
-            {modoAtivo === 'consultor' && perfil?.role === 'admin'
-              ? 'Você está no modo Consultor. Alterne pra modo Admin no botão do header.'
-              : 'Só administradores podem configurar dados da empresa.'}
+            Só administradores podem configurar dados da empresa.
           </p>
         </div>
       </main>
