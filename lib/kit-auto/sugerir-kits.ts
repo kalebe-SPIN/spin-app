@@ -32,6 +32,7 @@ export type InversorInput = {
   entradas_mppt: number | null
   preco_venda: number
   disponivel_estoque: boolean
+  url_datasheet?: string | null
 }
 
 export type PadraoCliente = {
@@ -48,6 +49,7 @@ export type ItemKit = {
   qtd: number
   preco_unitario: number
   fase_alocada?: 'R' | 'S' | 'T' | 'R+S' | 'R+S+T' // pra tri/bi
+  url_datasheet?: string | null
 }
 
 export type KitSugerido = {
@@ -348,6 +350,7 @@ function tentarComposicao(args: {
       potencia_kw: inversorPrincipal.potencia_kw,
       qtd: qtdInversorPrincipal,
       preco_unitario: inversorPrincipal.preco_venda,
+      url_datasheet: inversorPrincipal.url_datasheet,
     }],
     pot_cc_kwp: potCcRealKwp,
     pot_ca_kw: potCaTotal,

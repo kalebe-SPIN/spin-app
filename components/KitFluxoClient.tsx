@@ -13,6 +13,7 @@ type ProdutoRow = {
   descricao_curta: string
   specs: any
   disponivel_estoque: boolean
+  url_datasheet: string | null
   precos_produtos: Array<{ preco_venda: number; vigente_de: string }>
 }
 
@@ -115,6 +116,7 @@ export function KitFluxoClient({
         entradas_mppt: i.specs?.entradas_mppt || null,
         preco_venda: precoDe(i),
         disponivel_estoque: i.disponivel_estoque,
+        url_datasheet: i.url_datasheet,
       })),
     })
   }, [placaEscolhida, potCcAlvo, padrao, inversores])
@@ -320,42 +322,60 @@ export function KitFluxoClient({
 function PlacaCard({
   placa, selecionada, onSelect,
 }: { placa: ProdutoRow; selecionada: boolean; onSelect: () => void }) {
-  const preco = precoDe(placa)
   const wp = placa.specs?.potencia_wp || 0
   const area = placa.specs?.area_m2 || 0
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`text-left p-4 rounded-lg border transition ${
+    <div
+      className={`p-4 rounded-lg border transition ${
         selecionada
           ? 'bg-sol/15 border-sol/60 ring-1 ring-sol/40'
           : 'bg-white/[0.02] border-white/10 hover:border-white/20'
       }`}
     >
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="font-bold text-white text-sm">{placa.modelo}</span>
-            <span className="text-xs font-mono text-white/40">{placa.codigo_weg}</span>
+      <button
+        type="button"
+        onClick={onSelect}
+        className="w-full text-left"
+      >
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-bold text-white text-sm">{placa.modelo}</span>
+              <span className="text-xs font-mono text-white/40">{placa.codigo_weg}</span>
+            </div>
+            <p className="text-xs text-white/70">{placa.descricao_curta}</p>
+            <p className="text-xs text-white/40 mt-0.5">{placa.fabricante}</p>
           </div>
-          <p className="text-xs text-white/70">{placa.descricao_curta}</p>
-          <p className="text-xs text-white/40 mt-0.5">{placa.fabricante}</p>
+          <div className="text-right">
+            <p className="text-2xl font-black text-sol">{wp}</p>
+            <p className="text-[10px] text-white/40 uppercase">Wp</p>
+          </div>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-black text-sol">{wp}</p>
-          <p className="text-[10px] text-white/40 uppercase">Wp</p>
+        <div className="flex items-center justify-between text-xs pt-2 border-t border-white/5">
+          <span className="text-white/50">Área: <strong className="text-white">{area.toFixed(2)} m²</strong></span>
+          {!placa.disponivel_estoque && (
+            <span className="text-[10px] text-coral font-bold uppercase">● Fora de estoque</span>
+          )}
         </div>
-      </div>
-      <div className="flex items-center justify-between text-xs pt-2 border-t border-white/5">
-        <span className="text-white/50">Área: <strong className="text-white">{area.toFixed(2)} m²</strong></span>
-        <span className="text-verde font-bold">R$ {preco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-      </div>
-      {!placa.disponivel_estoque && (
-        <div className="mt-2 text-[10px] text-coral font-bold uppercase">● Fora de estoque</div>
+      </button>
+      {/* Botão datasheet fora do onSelect */}
+      {placa.url_datasheet ? (
+        <a
+          href={placa.url_datasheet}
+          target="_blank"
+          rel="noreferrer"
+          onClick={e => e.stopPropagation()}
+          className="mt-2 block text-center text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded text-white hover:bg-white/10"
+        >
+          📄 Ver datasheet
+        </a>
+      ) : (
+        <div className="mt-2 text-center text-[10px] text-white/30 italic">
+          Datasheet ainda não cadastrado
+        </div>
       )}
-    </button>
+    </div>
   )
 }
 
@@ -419,6 +439,19 @@ function KitSugeridoCard({
         <div className="flex gap-1.5"><span>📦</span><span className="text-white/80">{kit.composicao.quadro}</span></div>
         <div className="flex gap-1.5"><span>⚓</span><span className="text-white/80">{kit.composicao.aterramento}</span></div>
       </div>
+
+      {/* Botão datasheet do inversor */}
+      {kit.inversores[0].url_datasheet && (
+        <a
+          href={kit.inversores[0].url_datasheet}
+          target="_blank"
+          rel="noreferrer"
+          onClick={e => e.stopPropagation()}
+          className="block mb-3 text-center text-[10px] px-2 py-1.5 bg-white/5 border border-white/10 rounded text-white hover:bg-white/10"
+        >
+          📄 Datasheet do inversor
+        </a>
+      )}
 
       {/* Alertas */}
       {kit.validacoes.precisa_upgrade_disjuntor && (

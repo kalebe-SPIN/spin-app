@@ -63,11 +63,10 @@ export default async function AdminHomePage() {
             emBreve
           />
           <AdminCard
-            href="/admin/planilha-weg"
+            href="/admin/catalogo"
             icon="📊"
-            titulo="Upload planilha WEG"
-            desc="Atualizar catálogo de produtos e preços."
-            emBreve
+            titulo="Catálogo WEG"
+            desc="Uploads de planilha, estoque e datasheets dos produtos."
           />
         </div>
       </div>

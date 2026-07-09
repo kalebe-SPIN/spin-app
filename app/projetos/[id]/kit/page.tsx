@@ -62,7 +62,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
   const { data: placas } = await supabase
     .from('produtos')
     .select(`
-      id, codigo_weg, modelo, fabricante, descricao_curta, specs, disponivel_estoque,
+      id, codigo_weg, modelo, fabricante, descricao_curta, specs, disponivel_estoque, url_datasheet,
       precos_produtos!inner(preco_venda, vigente_de)
     `)
     .eq('categoria', 'placa')
