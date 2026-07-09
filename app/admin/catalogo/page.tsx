@@ -35,36 +35,40 @@ export default async function CatalogoAdminPage() {
     )
   }
 
-  // Estatísticas atuais do catálogo
-  const [
-    { count: totalProdutos },
-    { count: totalPlacas },
-    { count: totalInversores },
-    { count: emEstoque },
-    { count: comDatasheet },
-  ] = await Promise.all([
-    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('ativo', true),
-    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('categoria', 'placa').eq('ativo', true),
-    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('categoria', 'inversor').eq('ativo', true),
-    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('ativo', true).eq('disponivel_estoque', true),
-    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('ativo', true).not('url_datasheet', 'is', null),
-  ])
+  // Cada query em try individual pra não derrubar a página se schema tá desatualizado
+  const safeCount = async (fn: () => any) => {
+    try { const r = await fn(); return r.count || 0 } catch { return 0 }
+  }
+  const safeData = async (fn: () => any) => {
+    try { const r = await fn(); return r.data || [] } catch { return [] }
+  }
 
-  // Histórico dos últimos uploads
-  const { data: historico } = await supabase
-    .from('catalogo_uploads_historico')
-    .select('id, tipo, arquivo_nome_original, status, produtos_atualizados, produtos_criados, erro_mensagem, created_at, processado_em')
-    .order('created_at', { ascending: false })
-    .limit(10)
+  const totalProdutos = await safeCount(() =>
+    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('ativo', true))
+  const totalPlacas = await safeCount(() =>
+    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('categoria', 'placa').eq('ativo', true))
+  const totalInversores = await safeCount(() =>
+    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('categoria', 'inversor').eq('ativo', true))
+  const emEstoque = await safeCount(() =>
+    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('ativo', true).eq('disponivel_estoque', true))
+  const comDatasheet = await safeCount(() =>
+    supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('ativo', true).not('url_datasheet', 'is', null))
 
-  // Produtos sem datasheet (pra facilitar upload em lote)
-  const { data: produtosSemDatasheet } = await supabase
-    .from('produtos')
-    .select('id, codigo_weg, modelo, categoria, subcategoria, url_datasheet')
-    .eq('ativo', true)
-    .order('categoria')
-    .order('modelo')
-    .limit(100)
+  const historico = await safeData(() =>
+    supabase.from('catalogo_uploads_historico')
+      .select('id, tipo, arquivo_nome_original, status, produtos_atualizados, produtos_criados, erro_mensagem, created_at, processado_em')
+      .order('created_at', { ascending: false })
+      .limit(10))
+
+  const produtosSemDatasheet = await safeData(() =>
+    supabase.from('produtos')
+      .select('id, codigo_weg, modelo, categoria, subcategoria, url_datasheet')
+      .eq('ativo', true)
+      .order('categoria')
+      .order('modelo')
+      .limit(100))
+
+  const migrationPendente = totalProdutos > 0 && produtosSemDatasheet.length === 0
 
   return (
     <main className="min-h-screen p-8 md:p-12">
@@ -81,18 +85,29 @@ export default async function CatalogoAdminPage() {
           </p>
         </header>
 
+        {migrationPendente && (
+          <div className="bg-coral/10 border border-coral/30 rounded-xl p-4 mb-6">
+            <p className="text-sm font-bold text-coral mb-1">⚠️ Migration pendente</p>
+            <p className="text-xs text-white/70">
+              Rode a Migration 016 no Supabase SQL Editor pra ativar as colunas de datasheet
+              e a tabela de histórico. O botão de upload de planilha e PDF já funciona
+              (só os dados adicionais ficam indisponíveis).
+            </p>
+          </div>
+        )}
+
         {/* Estatísticas */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
-          <Stat label="Total ativos" value={totalProdutos || 0} />
-          <Stat label="Placas" value={totalPlacas || 0} />
-          <Stat label="Inversores" value={totalInversores || 0} />
-          <Stat label="Em estoque" value={emEstoque || 0} cor="verde" />
-          <Stat label="Com datasheet" value={comDatasheet || 0} cor="sol" />
+          <Stat label="Total ativos" value={totalProdutos} />
+          <Stat label="Placas" value={totalPlacas} />
+          <Stat label="Inversores" value={totalInversores} />
+          <Stat label="Em estoque" value={emEstoque} cor="verde" />
+          <Stat label="Com datasheet" value={comDatasheet} cor="sol" />
         </div>
 
         <CatalogoClient
-          historico={historico || []}
-          produtos={produtosSemDatasheet || []}
+          historico={historico}
+          produtos={produtosSemDatasheet}
         />
       </div>
     </main>
