@@ -72,6 +72,7 @@ export type KitSugerido = {
     dentro_disjuntor_cliente: boolean
     desbalanceamento_ok: boolean
     fci_ideal: boolean            // 120-135%
+    is_subdimensionado: boolean   // FCI < 100% — "kit de entrada"
   }
   racional: string              // "melhor custo-benefício" etc
   score: number                 // ranking interno
@@ -81,9 +82,11 @@ export type KitSugerido = {
 // CONSTANTES DE REGRAS
 // ==========================================================
 
-const CELESC_LIMITE_MONO_KW = 8
-const DESBALANCEAMENTO_MAX_KW = 5
-const FCI_MIN_ACEITAVEL = 100
+const CELESC_LIMITE_MONO_KW = 8              // Rede monofásica: máx 8 kW CA total
+const CELESC_MONO_EM_BI_TRI_MAX_KW = 5       // Rede bi/tri: cada inversor mono ≤ 5 kW
+const DESBALANCEAMENTO_MAX_KW = 5            // Diferença entre fases ≤ 5 kW
+const FCI_MIN_SUBDIMENSIONADO = 80           // FCI mínimo aceito como "kit de entrada"
+const FCI_MIN_ACEITAVEL = 100                // FCI mínimo pra kit normal
 const FCI_MAX_ACEITAVEL = 145
 const FCI_SWEET_MIN = 120
 const FCI_SWEET_MAX = 135
@@ -260,18 +263,32 @@ function tentarComposicao(args: {
   const potCaTotal = inversorPrincipal.potencia_kw * qtdInversorPrincipal
   const fci = (potCcRealKwp / potCaTotal) * 100
 
-  // Filtros de aceitação
-  if (fci < FCI_MIN_ACEITAVEL || fci > FCI_MAX_ACEITAVEL) return null
+  // FCI: aceita 80-145% (100-145 normal, 80-99 subdimensionado "kit de entrada")
+  if (fci < FCI_MIN_SUBDIMENSIONADO || fci > FCI_MAX_ACEITAVEL) return null
+  const isSubdimensionado = fci < FCI_MIN_ACEITAVEL
+
+  // Limite pelo disjuntor de entrada
   if (potCaTotal > potCaMax) return null
+
+  // Limite CELESC pra rede monofásica: 8 kW CA total
   if (padrao.tipo_ligacao === 'monofasico' && potCaTotal > CELESC_LIMITE_MONO_KW) return null
 
+  // CELESC: em rede tri/bi, cada inversor monofásico ≤ 5 kW individualmente
+  // (não é só desbalanceamento — é regra absoluta por unidade)
+  const invIsMonoUsadoEmBiTri = padrao.tipo_ligacao !== 'monofasico' &&
+    LINHAS_ONGRID.mono.test(inversorPrincipal.modelo)
+  if (invIsMonoUsadoEmBiTri && inversorPrincipal.potencia_kw > CELESC_MONO_EM_BI_TRI_MAX_KW) {
+    return null
+  }
+
   // Desbalanceamento (só faz sentido se >1 inversor em bi/tri)
+  // NOTA: NÃO filtra fases zeradas — se uma fase fica sem inversor, isso É desbalanceamento
   let desbalanceamento = 0
   if (qtdInversorPrincipal > 1 && padrao.tipo_ligacao !== 'monofasico') {
     const numFases = padrao.tipo_ligacao === 'trifasico' ? 3 : 2
     const porFase = distribuirPorFases(inversorPrincipal.potencia_kw, qtdInversorPrincipal, numFases)
     const maxFase = Math.max(...porFase)
-    const minFase = Math.min(...porFase.filter(p => p > 0))
+    const minFase = Math.min(...porFase) // sem filtro de zeros!
     desbalanceamento = maxFase - minFase
     if (desbalanceamento > DESBALANCEAMENTO_MAX_KW) return null
   }
@@ -283,9 +300,10 @@ function tentarComposicao(args: {
     dentro_disjuntor_cliente: potCaTotal <= potCaMax,
     desbalanceamento_ok: desbalanceamento <= DESBALANCEAMENTO_MAX_KW,
     fci_ideal: fci >= FCI_SWEET_MIN && fci <= FCI_SWEET_MAX,
+    is_subdimensionado: isSubdimensionado,
   }
 
-  const score = calcularScore(fci, desbalanceamento, qtdInversorPrincipal, precoTotal)
+  const score = calcularScore(fci, desbalanceamento, qtdInversorPrincipal, precoTotal, isSubdimensionado)
 
   return {
     id: idPrefix,
@@ -370,13 +388,16 @@ function distribuirPorFases(potCadaKw: number, qtd: number, numFases: number): n
   return fases
 }
 
-function calcularScore(fci: number, desbalanceamento: number, qtdInv: number, precoTotal: number): number {
+function calcularScore(fci: number, desbalanceamento: number, qtdInv: number, precoTotal: number, isSubdimensionado: boolean): number {
   let score = 100
 
   // FCI ideal (peso alto)
   if (fci >= FCI_SWEET_MIN && fci <= FCI_SWEET_MAX) score += 40
   else if (fci >= 115 && fci <= 140) score += 20
   else score -= 10
+
+  // Subdimensionado (FCI < 100%) — penaliza mas ainda aparece
+  if (isSubdimensionado) score -= 30
 
   // Menos inversores = simpler = melhor
   score -= (qtdInv - 1) * 5
@@ -407,8 +428,14 @@ function gerarNomeKit(kit: KitSugerido, idx: number): string {
 
 function gerarRacional(kit: KitSugerido): string {
   const partes: string[] = []
-  if (kit.validacoes.fci_ideal) partes.push('FCI ideal (120-135%)')
-  else partes.push(`FCI ${kit.fci_pct.toFixed(0)}%`)
+
+  if (kit.validacoes.is_subdimensionado) {
+    partes.push('⚠️ Kit de entrada (subdimensionado)')
+  } else if (kit.validacoes.fci_ideal) {
+    partes.push('FCI ideal (120-135%)')
+  } else {
+    partes.push(`FCI ${kit.fci_pct.toFixed(0)}%`)
+  }
 
   if (kit.inversores[0].qtd === 1) partes.push('menor complexidade')
   if (kit.desbalanceamento_kw > 0 && kit.desbalanceamento_kw < 3) partes.push('bem balanceado')

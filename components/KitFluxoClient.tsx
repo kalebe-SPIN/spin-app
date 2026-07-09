@@ -376,7 +376,14 @@ function KitSugeridoCard({
       }`}
     >
       <div className="mb-2">
-        <p className="text-xs font-bold text-white mb-1">{kit.nome}</p>
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <p className="text-xs font-bold text-white">{kit.nome}</p>
+          {kit.validacoes.is_subdimensionado && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase bg-sol/20 text-sol border border-sol/40">
+              Entrada
+            </span>
+          )}
+        </div>
         <p className="text-[10px] text-white/50">{kit.racional}</p>
       </div>
 
