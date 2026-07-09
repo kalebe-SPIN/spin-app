@@ -36,7 +36,7 @@ export type InversorInput = {
 
 export type PadraoCliente = {
   tipo_ligacao: 'monofasico' | 'bifasico' | 'trifasico'
-  amperagem: number
+  amperagem_disjuntor_geral_a: number
   tensao_fornecimento?: string
 }
 
@@ -305,7 +305,7 @@ function tentarComposicao(args: {
 
   // Verificar necessidade de upgrade do disjuntor de entrada
   const correnteCaA = calcularCorrenteCA(potCaTotal, padrao)
-  const disjuntorAtualA = Number(padrao.amperagem) || 0
+  const disjuntorAtualA = Number(padrao.amperagem_disjuntor_geral_a) || 0
   const correnteMaxSuportadaA = disjuntorAtualA * FATOR_SEGURANCA_DISJUNTOR
   const precisaUpgradeDisjuntor = correnteCaA > correnteMaxSuportadaA
   const disjuntorSugeridoA = precisaUpgradeDisjuntor ? arredondarDisjuntorComercial(correnteCaA / FATOR_SEGURANCA_DISJUNTOR) : disjuntorAtualA
@@ -392,7 +392,7 @@ function gerarComposicao(
   const qtdKitsEstrutura = Math.ceil(qtdPlacas / 4)
 
   // Cabos CC: distância padrão 15m ida+volta com folga 15%
-  const distanciaBase = Number(padrao.amperagem) > 0 ? 15 : 15
+  const distanciaBase = Number(padrao.amperagem_disjuntor_geral_a) > 0 ? 15 : 15
   const numStrings = Math.max(1, inversor.entradas_mppt || 2)
   const cabocc = Math.ceil(distanciaBase * 2 * numStrings * 1.15)
 
@@ -433,7 +433,7 @@ function calcularLimiteCelesc(fase: string): number {
 }
 
 function calcularLimiteDisjuntor(padrao: PadraoCliente): number {
-  const amp = Number(padrao.amperagem) || 0
+  const amp = Number(padrao.amperagem_disjuntor_geral_a) || 0
   if (amp === 0) return 999
   const tensao = padrao.tipo_ligacao === 'trifasico' ? 380 : 220
   const fatorFase = padrao.tipo_ligacao === 'trifasico' ? Math.sqrt(3) : 1

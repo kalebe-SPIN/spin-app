@@ -51,7 +51,7 @@ export default async function DimensionarPage({ params }: { params: { id: string
   if (potEstruturaKwp && potCcSugeridaKwp > potEstruturaKwp)
     gargalos.push({ tipo: 'telhado', msg: `Área do telhado limita a ${potEstruturaKwp.toFixed(1)} kWp` })
   if (potLimitePadrao && potCcSugeridaKwp > potLimitePadrao)
-    gargalos.push({ tipo: 'padrao', msg: `Padrão CELESC atual (${padrao.amperagem}A) suporta ~${potLimitePadrao.toFixed(1)} kWp — considerar upgrade` })
+    gargalos.push({ tipo: 'padrao', msg: `Padrão CELESC atual (${padrao.amperagem_disjuntor_geral_a}A) suporta ~${potLimitePadrao.toFixed(1)} kWp — considerar upgrade` })
 
   const camposFaltando: string[] = []
   if (!fatura) camposFaltando.push('Passo 2: fatura')
@@ -137,7 +137,7 @@ export default async function DimensionarPage({ params }: { params: { id: string
           <DetalheCard titulo="⚡ Padrão CELESC (Passo 4)" ok={!!padrao} link={`/projetos/${projeto.id}/padrao`}>
             {padrao ? (
               <div className="grid grid-cols-2 gap-2 text-xs text-white/70">
-                <span>Amperagem: <strong>{padrao.amperagem ? `${padrao.amperagem} A` : '—'}</strong></span>
+                <span>Amperagem: <strong>{padrao.amperagem_disjuntor_geral_a ? `${padrao.amperagem_disjuntor_geral_a} A` : '—'}</strong></span>
                 <span>Tensão: <strong>{formatarTensao(padrao.tensao_fornecimento)}</strong></span>
                 <span>Ligação: <strong>{formatarLigacao(padrao.tipo_ligacao)}</strong></span>
                 <span>Dist. string-QGBT: <strong>{padrao.distancia_string_qgbt_m ? `${padrao.distancia_string_qgbt_m} m` : '—'}</strong></span>

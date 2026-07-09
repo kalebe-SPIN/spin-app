@@ -100,7 +100,7 @@ export function KitFluxoClient({
       },
       padrao: {
         tipo_ligacao: padrao.tipo_ligacao,
-        amperagem: padrao.amperagem,
+        amperagem_disjuntor_geral_a: padrao.amperagem_disjuntor_geral_a,
         tensao_fornecimento: padrao.tensao_fornecimento,
       },
       potCcAlvoKwp: potCcAlvo,
@@ -167,7 +167,7 @@ export function KitFluxoClient({
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Metric label="Consumo médio" value={consumoMedio > 0 ? `${consumoMedio.toFixed(0)} kWh/mês` : '—'} />
         <Metric label="Rede CELESC" value={formatarLigacao(padrao.tipo_ligacao)} />
-        <Metric label="Disjuntor entrada" value={padrao.amperagem ? `${padrao.amperagem} A` : '—'} />
+        <Metric label="Disjuntor entrada" value={padrao.amperagem_disjuntor_geral_a ? `${padrao.amperagem_disjuntor_geral_a} A` : '—'} />
         <Metric label="Pot. CC alvo" value={`${potCcAlvo.toFixed(2)} kWp`} highlight editavel>
           <input
             type="number"
