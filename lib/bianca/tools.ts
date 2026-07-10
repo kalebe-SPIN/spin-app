@@ -2,8 +2,18 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 export const BIANCA_TOOLS: Anthropic.Tool[] = [
   {
+    name: 'listar_projetos_ativos',
+    description: 'Lista projetos ativos do consultor (não cancelados). SEMPRE use ANTES de criar evento/tarefa quando o usuário mencionar um cliente por nome — pra encontrar o projeto e vincular. Se achar match único, use o id no projeto_id do criar_evento/criar_tarefa. Se achar múltiplos, pergunta qual.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        busca: { type: 'string', description: 'Filtrar por nome do cliente (opcional, ex: "Vanildo", "Wagner"). Se não passar, retorna 20 mais recentes.' },
+      },
+    },
+  },
+  {
     name: 'criar_evento',
-    description: 'Cria um novo evento na agenda do usuário (reunião, visita, ligação, apresentação). Use quando o usuário pedir para agendar algum compromisso.',
+    description: 'Cria um novo evento na agenda (reunião, visita, ligação, apresentação). Se for sobre um cliente com projeto, use listar_projetos_ativos ANTES pra achar o projeto_id.',
     input_schema: {
       type: 'object',
       properties: {
@@ -15,13 +25,14 @@ export const BIANCA_TOOLS: Anthropic.Tool[] = [
         url_reuniao: { type: 'string', description: 'Link do Meet/Zoom se for online.' },
         tipo: { type: 'string', enum: ['reuniao', 'visita', 'ligacao', 'geral'], description: 'Categoria. Padrão: geral' },
         cliente_nome: { type: 'string', description: 'Nome do cliente (se aplicável).' },
+        projeto_id: { type: 'string', description: 'UUID do projeto vinculado (obtido via listar_projetos_ativos). Deixa vazio se não for de um projeto específico.' },
       },
       required: ['titulo', 'data_hora_inicio'],
     },
   },
   {
     name: 'criar_tarefa',
-    description: 'Cria uma tarefa (to-do). Use quando o usuário pedir para lembrar de algo, adicionar pendência ou marcar algo a fazer.',
+    description: 'Cria uma tarefa (to-do). Se for sobre cliente com projeto, use listar_projetos_ativos ANTES pra achar o projeto_id.',
     input_schema: {
       type: 'object',
       properties: {
@@ -29,6 +40,7 @@ export const BIANCA_TOOLS: Anthropic.Tool[] = [
         descricao: { type: 'string' },
         data_prazo: { type: 'string', description: 'Data limite YYYY-MM-DD (opcional).' },
         prioridade: { type: 'string', enum: ['baixa', 'media', 'alta', 'urgente'], description: 'Padrão: media' },
+        projeto_id: { type: 'string', description: 'UUID do projeto vinculado (obtido via listar_projetos_ativos). Deixa vazio se não for de projeto específico.' },
       },
       required: ['titulo'],
     },

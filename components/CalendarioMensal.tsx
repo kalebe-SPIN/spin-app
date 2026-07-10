@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 type Evento = {
   id: string
@@ -14,6 +15,12 @@ type Evento = {
   criado_por_bianca: boolean
   descricao?: string | null
   contexto_conversa?: string | null
+  projeto_id?: string | null
+  projeto?: {
+    id: string
+    codigo: string
+    cliente_razao_social: string
+  } | null
 }
 
 const CORES_TIPO: Record<string, string> = {
@@ -263,6 +270,14 @@ export function CalendarioMensal({
                     )}
                     {ev.descricao && (
                       <p className="text-[10px] text-white/60 mt-1 italic">{ev.descricao}</p>
+                    )}
+                    {ev.projeto && (
+                      <Link
+                        href={`/projetos/${ev.projeto.id}`}
+                        className="mt-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-sol/10 border border-sol/30 rounded text-sol hover:bg-sol/20"
+                      >
+                        📁 {ev.projeto.cliente_razao_social}
+                      </Link>
                     )}
                     <div className="flex items-center justify-between mt-1">
                       <p className="text-[9px] uppercase text-white/40">{ev.tipo}</p>

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-type ResultadoTool = { sucesso: boolean; dados?: any; erro?: string }
+type ResultadoTool = { sucesso: boolean; dados?: any; erro?: string; _hint?: string }
 
 export async function executarTool(
   supabase: SupabaseClient,
@@ -10,6 +10,30 @@ export async function executarTool(
 ): Promise<ResultadoTool> {
   try {
     switch (toolName) {
+      case 'listar_projetos_ativos': {
+        const busca = input.busca?.trim()
+        let query = supabase
+          .from('projetos')
+          .select('id, codigo, cliente_razao_social, tipo_projeto, status')
+          .neq('status', 'cancelado')
+          .order('created_at', { ascending: false })
+          .limit(20)
+
+        if (busca) {
+          query = query.ilike('cliente_razao_social', `%${busca}%`)
+        }
+
+        const { data, error } = await query
+        if (error) return { sucesso: false, erro: error.message }
+        return {
+          sucesso: true,
+          dados: data,
+          _hint: busca && data && data.length === 0
+            ? `Nenhum projeto encontrado com "${busca}". Pergunte ao usuário se ele quer criar sem vincular a projeto ou tentar outro nome.`
+            : undefined,
+        }
+      }
+
       case 'criar_evento': {
         const { data, error } = await supabase
           .from('agenda_eventos')
@@ -23,9 +47,10 @@ export async function executarTool(
             url_reuniao: input.url_reuniao || null,
             tipo: input.tipo || 'geral',
             cliente_nome: input.cliente_nome || null,
+            projeto_id: input.projeto_id || null,
             criado_por_bianca: true,
           })
-          .select('id, titulo, data_hora_inicio, local')
+          .select('id, titulo, data_hora_inicio, local, projeto_id')
           .single()
         if (error) return { sucesso: false, erro: error.message }
         return { sucesso: true, dados: data }
@@ -40,9 +65,10 @@ export async function executarTool(
             descricao: input.descricao || null,
             data_prazo: input.data_prazo || null,
             prioridade: input.prioridade || 'media',
+            projeto_id: input.projeto_id || null,
             criada_por_bianca: true,
           })
-          .select('id, titulo, data_prazo, prioridade')
+          .select('id, titulo, data_prazo, prioridade, projeto_id')
           .single()
         if (error) return { sucesso: false, erro: error.message }
         return { sucesso: true, dados: data }

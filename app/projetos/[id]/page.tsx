@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
+import { AgendaDoProjeto } from '@/components/AgendaDoProjeto'
 
 // Sempre buscar dados frescos do banco (sem cache stale após edição)
 export const dynamic = 'force-dynamic'
@@ -161,6 +162,9 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             <p className="text-sm text-white/70">{projeto.observacoes_consultor}</p>
           </Section>
         )}
+
+        {/* Agenda vinculada (Bianca) */}
+        <AgendaDoProjeto projetoId={projeto.id} />
 
         {/* Footer ações */}
         <div className="mt-8 flex flex-col md:flex-row gap-3 pt-6 border-t border-white/10">
