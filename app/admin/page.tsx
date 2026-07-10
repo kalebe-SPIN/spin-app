@@ -61,6 +61,18 @@ export default async function AdminHomePage() {
             titulo="Catálogo WEG"
             desc="Uploads de planilha, estoque e datasheets dos produtos."
           />
+          <AdminCard
+            href="/admin/homologacoes"
+            icon="⚡"
+            titulo="Homologações CELESC"
+            desc="Pipeline de aprovação — 6 etapas por projeto aceito."
+          />
+          <AdminCard
+            href="/agenda"
+            icon="👩‍💼"
+            titulo="Agenda com Bianca"
+            desc="Secretária IA + agendas de todos usuários (em treinamento)."
+          />
         </div>
       </div>
     </main>
