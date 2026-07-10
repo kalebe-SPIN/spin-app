@@ -1,6 +1,10 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
+import { StatsProjetos } from '@/components/stats/StatsProjetos'
+import { StatsCatalogo } from '@/components/stats/StatsCatalogo'
+import { StatsHomologacoes } from '@/components/stats/StatsHomologacoes'
+import { StatsAgenda } from '@/components/stats/StatsAgenda'
 
 /**
  * Dashboard — /dashboard
@@ -77,7 +81,9 @@ export default async function DashboardPage() {
             desc="Workflow completo: fatura → telhado → kit → orçamento → PDF."
             disponivel={true}
             href="/projetos"
-          />
+          >
+            <StatsProjetos />
+          </DashboardCard>
           <DashboardCard
             titulo="OCR Fatura CELESC"
             desc="Análise standalone de fatura. Integrado ao fluxo de Projetos."
@@ -98,7 +104,9 @@ export default async function DashboardPage() {
                 disponivel={true}
                 adminOnly
                 href="/admin/catalogo"
-              />
+              >
+                <StatsCatalogo />
+              </DashboardCard>
               <DashboardCard
                 titulo="💰 Precificação (Admin)"
                 desc="Margens, comissões, tabelas, descontos — painel de controle."
@@ -112,7 +120,9 @@ export default async function DashboardPage() {
                 disponivel={true}
                 adminOnly
                 href="/admin/homologacoes"
-              />
+              >
+                <StatsHomologacoes />
+              </DashboardCard>
             </>
           )}
           <DashboardCard
@@ -120,7 +130,9 @@ export default async function DashboardPage() {
             desc="Sua secretária executiva IA — eventos, tarefas e resumo diário."
             disponivel={true}
             href="/agenda"
-          />
+          >
+            <StatsAgenda />
+          </DashboardCard>
           <DashboardCard
             titulo="Configurações"
             desc="Sua conta, perfil profissional, foto."
@@ -151,19 +163,21 @@ function DashboardCard({
   disponivel = false,
   adminOnly = false,
   href,
+  children,
 }: {
   titulo: string
   desc: string
   disponivel?: boolean
   adminOnly?: boolean
   href: string
+  children?: React.ReactNode
 }) {
   const Tag = disponivel ? 'a' : 'div'
   return (
     <Tag
       href={disponivel ? href : undefined}
       className={`
-        relative p-6 rounded-xl border transition-all
+        relative p-6 rounded-xl border transition-all flex flex-col
         ${disponivel
           ? 'bg-white/5 border-white/10 hover:border-sol/40 hover:bg-white/[0.07] cursor-pointer'
           : 'bg-white/[0.02] border-white/5 opacity-60 cursor-not-allowed'
@@ -182,6 +196,7 @@ function DashboardCard({
           Em breve
         </span>
       )}
+      {children}
     </Tag>
   )
 }
