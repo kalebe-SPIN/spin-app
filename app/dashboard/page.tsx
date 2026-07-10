@@ -141,6 +141,23 @@ export default async function DashboardPage() {
           />
         </div>
 
+        {/* ERP Módulos */}
+        <div className="mt-10 mb-4">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-sol">ERP Módulos</h2>
+          <p className="text-xs text-white/50 mt-0.5">CRM, financeiro, operações, fiscal e pós-venda</p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <ModuloAtalho href="/crm" emoji="👥" titulo="CRM" desc="Clientes + leads" />
+          {mostraAdmin && (
+            <ModuloAtalho href="/financeiro" emoji="💰" titulo="Financeiro" desc="Receber + pagar" adminOnly />
+          )}
+          <ModuloAtalho href="/operacoes" emoji="🔧" titulo="Operações" desc="Compras + equipe" />
+          {mostraAdmin && (
+            <ModuloAtalho href="/fiscal" emoji="📄" titulo="Fiscal" desc="NF + contratos" adminOnly />
+          )}
+          <ModuloAtalho href="/pos-venda" emoji="🛠️" titulo="Pós-venda" desc="OS + garantias" />
+        </div>
+
         {/* Aviso construção */}
         <div className="mt-12 p-6 bg-sol/5 border border-sol/20 rounded-xl">
           <p className="text-sm text-white/70">
@@ -157,6 +174,28 @@ export default async function DashboardPage() {
  * Card de atalho do dashboard.
  * Quando `disponivel=false`, fica disabled visualmente.
  */
+function ModuloAtalho({
+  href, emoji, titulo, desc, adminOnly,
+}: {
+  href: string; emoji: string; titulo: string; desc: string; adminOnly?: boolean
+}) {
+  return (
+    <a
+      href={href}
+      className="relative p-3 rounded-lg bg-white/[0.03] border border-white/10 hover:border-sol/40 hover:bg-white/[0.06] transition-all block"
+    >
+      {adminOnly && (
+        <span className="absolute top-1.5 right-1.5 text-[8px] font-bold uppercase text-weg-azul bg-white px-1 py-0.5 rounded">
+          Admin
+        </span>
+      )}
+      <div className="text-2xl mb-1">{emoji}</div>
+      <p className="text-sm font-bold text-white">{titulo}</p>
+      <p className="text-[10px] text-white/50 mt-0.5">{desc}</p>
+    </a>
+  )
+}
+
 function DashboardCard({
   titulo,
   desc,
