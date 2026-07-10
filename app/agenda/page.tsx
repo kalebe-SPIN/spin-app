@@ -68,9 +68,17 @@ export default async function AgendaPage() {
               Olá {primeiroNome}, sua secretária executiva IA
             </p>
           </div>
-          <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/60 mt-2">
-            ← Voltar
-          </Link>
+          <div className="flex gap-2 mt-2">
+            <Link
+              href="/agenda/calendario"
+              className="text-xs px-3 py-1.5 bg-sol/10 border border-sol/30 rounded-lg text-sol hover:bg-sol/20"
+            >
+              📅 Ver calendário
+            </Link>
+            <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/60 pt-1">
+              ← Voltar
+            </Link>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

@@ -9,21 +9,89 @@ type Mensagem = {
   timestamp?: string
 }
 
+// Web Speech API types (não existem no TypeScript padrão)
+type SpeechRecognitionType = any
+
 export function BiancaChat({ historicoInicial }: { historicoInicial: Mensagem[] }) {
   const router = useRouter()
   const [mensagens, setMensagens] = useState<Mensagem[]>(historicoInicial)
   const [input, setInput] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [gravando, setGravando] = useState(false)
+  const [suportaVoz, setSuportaVoz] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const recognitionRef = useRef<SpeechRecognitionType>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [mensagens])
 
-  async function enviar() {
-    const texto = input.trim()
-    if (!texto || enviando) return
+  // Detecta se navegador suporta Web Speech API
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      setSuportaVoz(!!SR)
+    }
+  }, [])
 
+  function iniciarGravacao() {
+    if (gravando || enviando) return
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      alert('Seu navegador não suporta reconhecimento de voz. Use Chrome ou Edge.')
+      return
+    }
+
+    const rec = new SR()
+    rec.lang = 'pt-BR'
+    rec.continuous = false
+    rec.interimResults = true
+    rec.maxAlternatives = 1
+
+    let textoFinal = ''
+
+    rec.onresult = (e: any) => {
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i]
+        if (res.isFinal) textoFinal += res[0].transcript + ' '
+        else interim += res[0].transcript
+      }
+      setInput((textoFinal + interim).trim())
+    }
+
+    rec.onerror = (e: any) => {
+      console.error('[Bianca] Erro voz:', e.error)
+      setGravando(false)
+      if (e.error === 'not-allowed') {
+        alert('Permissão de microfone negada. Ative nas configurações do site.')
+      }
+    }
+
+    rec.onend = () => {
+      setGravando(false)
+      recognitionRef.current = null
+      const textoFinalTrimado = textoFinal.trim()
+      if (textoFinalTrimado.length > 0) {
+        // Auto-envia se transcreveu algo
+        setInput(textoFinalTrimado)
+        setTimeout(() => enviarComTexto(textoFinalTrimado), 100)
+      }
+    }
+
+    recognitionRef.current = rec
+    setInput('')
+    setGravando(true)
+    rec.start()
+  }
+
+  function pararGravacao() {
+    recognitionRef.current?.stop()
+    setGravando(false)
+  }
+
+  async function enviarComTexto(texto: string) {
+    if (!texto.trim() || enviando) return
     setInput('')
     setMensagens((prev) => [...prev, { papel: 'usuario', conteudo: texto }])
     setEnviando(true)
@@ -47,6 +115,10 @@ export function BiancaChat({ historicoInicial }: { historicoInicial: Mensagem[] 
     } finally {
       setEnviando(false)
     }
+  }
+
+  async function enviar() {
+    await enviarComTexto(input.trim())
   }
 
   return (
@@ -91,14 +163,32 @@ export function BiancaChat({ historicoInicial }: { historicoInicial: Mensagem[] 
               enviar()
             }
           }}
-          placeholder="Escreve pra Bianca..."
-          disabled={enviando}
+          placeholder={gravando ? '🎤 Ouvindo...' : 'Escreve pra Bianca...'}
+          disabled={enviando || gravando}
           autoFocus
-          className="flex-1 px-3 py-2 bg-noite/40 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-sol/40 focus:outline-none disabled:opacity-50"
+          className={`flex-1 px-3 py-2 border rounded-lg text-sm text-white placeholder:text-white/30 focus:outline-none disabled:opacity-50 ${
+            gravando
+              ? 'bg-coral/10 border-coral/40 placeholder:text-coral animate-pulse'
+              : 'bg-noite/40 border-white/10 focus:border-sol/40'
+          }`}
         />
+        {suportaVoz && (
+          <button
+            onClick={gravando ? pararGravacao : iniciarGravacao}
+            disabled={enviando}
+            title={gravando ? 'Parar gravação' : 'Falar com Bianca'}
+            className={`w-11 py-2 rounded-lg text-lg transition disabled:opacity-40 disabled:cursor-not-allowed ${
+              gravando
+                ? 'bg-coral/20 border border-coral/50 text-coral animate-pulse'
+                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            {gravando ? '⏹' : '🎤'}
+          </button>
+        )}
         <button
           onClick={enviar}
-          disabled={!input.trim() || enviando}
+          disabled={!input.trim() || enviando || gravando}
           className="px-4 py-2 bg-sol/20 border border-sol/40 rounded-lg text-sm font-bold text-sol hover:bg-sol/30 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {enviando ? '...' : 'Enviar'}
