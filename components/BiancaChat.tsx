@@ -105,7 +105,15 @@ export function BiancaChat({ historicoInicial }: { historicoInicial: Mensagem[] 
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erro no servidor')
-      setMensagens((prev) => [...prev, { papel: 'bianca', conteudo: data.resposta }])
+      if (data.chatArquivado) {
+        // Bianca criou item — limpa chat local (mensagens migraram pro evento/tarefa)
+        setMensagens([{
+          papel: 'bianca',
+          conteudo: `✓ Contexto salvo em ${data.itensCriados > 1 ? 'suas criações' : 'sua criação'}. Chat limpo — pode começar de novo!`,
+        }])
+      } else {
+        setMensagens((prev) => [...prev, { papel: 'bianca', conteudo: data.resposta }])
+      }
       router.refresh()
     } catch (e: any) {
       setMensagens((prev) => [

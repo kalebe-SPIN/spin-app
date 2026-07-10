@@ -27,7 +27,7 @@ export default async function CalendarioPage(props: {
 
   const { data: eventos } = await supabase
     .from('agenda_eventos')
-    .select('id, titulo, data_hora_inicio, data_hora_fim, local, tipo, cor, criado_por_bianca')
+    .select('id, titulo, data_hora_inicio, data_hora_fim, local, tipo, cor, criado_por_bianca, descricao, contexto_conversa')
     .eq('usuario_id', user.id)
     .gte('data_hora_inicio', inicioGrid.toISOString())
     .lt('data_hora_inicio', fimGrid.toISOString())

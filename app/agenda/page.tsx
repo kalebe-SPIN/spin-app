@@ -23,6 +23,7 @@ export default async function AgendaPage() {
     .select('papel, conteudo, created_at')
     .eq('usuario_id', user.id)
     .eq('canal', 'chat')
+    .eq('arquivada', false)
     .order('created_at', { ascending: false })
     .limit(20)
 

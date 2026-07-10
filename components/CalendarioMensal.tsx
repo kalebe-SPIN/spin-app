@@ -12,6 +12,8 @@ type Evento = {
   tipo: string
   cor: string | null
   criado_por_bianca: boolean
+  descricao?: string | null
+  contexto_conversa?: string | null
 }
 
 const CORES_TIPO: Record<string, string> = {
@@ -39,6 +41,7 @@ export function CalendarioMensal({
 }) {
   const router = useRouter()
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null)
+  const [contextoAberto, setContextoAberto] = useState<string | null>(null)
 
   const hoje = new Date()
   const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`
@@ -258,7 +261,25 @@ export function CalendarioMensal({
                     {ev.local && (
                       <p className="text-[10px] text-white/50 mt-0.5">📍 {ev.local}</p>
                     )}
-                    <p className="text-[9px] uppercase text-white/40 mt-1">{ev.tipo}</p>
+                    {ev.descricao && (
+                      <p className="text-[10px] text-white/60 mt-1 italic">{ev.descricao}</p>
+                    )}
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-[9px] uppercase text-white/40">{ev.tipo}</p>
+                      {ev.contexto_conversa && (
+                        <button
+                          onClick={() => setContextoAberto(contextoAberto === ev.id ? null : ev.id)}
+                          className="text-[9px] text-sol/70 hover:text-sol"
+                        >
+                          {contextoAberto === ev.id ? '▲ fechar' : '💬 ver conversa'}
+                        </button>
+                      )}
+                    </div>
+                    {contextoAberto === ev.id && ev.contexto_conversa && (
+                      <div className="mt-2 p-2 bg-noite/60 border border-white/10 rounded text-[10px] text-white/70 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                        {ev.contexto_conversa}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

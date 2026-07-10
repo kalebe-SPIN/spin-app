@@ -110,6 +110,7 @@ INTERAÇÕES CASUAIS:
 
     let iteracoes = 0
     const MAX_ITER = 6
+    const itensCriados: { tipo: 'evento' | 'tarefa'; id: string }[] = []
 
     while (response.stop_reason === 'tool_use' && iteracoes < MAX_ITER) {
       iteracoes++
@@ -125,6 +126,15 @@ INTERAÇÕES CASUAIS:
             block.name,
             block.input as any,
           )
+
+          if (resultado.sucesso && resultado.dados?.id) {
+            if (block.name === 'criar_evento') {
+              itensCriados.push({ tipo: 'evento', id: resultado.dados.id })
+            } else if (block.name === 'criar_tarefa') {
+              itensCriados.push({ tipo: 'tarefa', id: resultado.dados.id })
+            }
+          }
+
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
@@ -158,9 +168,57 @@ INTERAÇÕES CASUAIS:
       canal: 'chat',
     })
 
+    // Se criou algum evento/tarefa, arquiva a conversa nesse item
+    let chatArquivado = false
+    if (itensCriados.length > 0) {
+      const { data: msgsAtivas } = await supabase
+        .from('bianca_conversas')
+        .select('id, papel, conteudo, created_at')
+        .eq('usuario_id', user.id)
+        .eq('canal', 'chat')
+        .eq('arquivada', false)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (msgsAtivas && msgsAtivas.length > 0) {
+        const textoContexto = msgsAtivas
+          .slice()
+          .reverse()
+          .map((m: any) => {
+            const quem = m.papel === 'usuario' ? nomeUsuario : 'Bianca'
+            const quando = new Date(m.created_at).toLocaleString('pt-BR', {
+              timeZone: 'America/Sao_Paulo',
+              day: '2-digit',
+              month: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+            return `[${quando}] ${quem}: ${m.conteudo}`
+          })
+          .join('\n\n')
+
+        for (const item of itensCriados) {
+          const tabela = item.tipo === 'evento' ? 'agenda_eventos' : 'agenda_tarefas'
+          await supabase
+            .from(tabela)
+            .update({ contexto_conversa: textoContexto })
+            .eq('id', item.id)
+        }
+
+        await supabase
+          .from('bianca_conversas')
+          .update({ arquivada: true })
+          .in('id', msgsAtivas.map((m: any) => m.id))
+
+        chatArquivado = true
+      }
+    }
+
     return NextResponse.json({
       resposta: textoResposta,
       iteracoes,
+      chatArquivado,
+      itensCriados: itensCriados.length,
     })
   } catch (e: any) {
     console.error('[Bianca] Erro:', e)
