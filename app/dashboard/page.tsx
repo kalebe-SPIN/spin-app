@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getModoVisualizacao } from '@/lib/modo-visualizacao'
+import { AlternarModoButton } from '@/components/AlternarModoButton'
 
 /**
  * Dashboard — /dashboard
@@ -28,6 +30,8 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .single()
 
+  const { modo, ehAdminReal } = await getModoVisualizacao()
+
   return (
     <main className="min-h-screen p-8 md:p-12">
       <div className="max-w-6xl mx-auto">
@@ -49,6 +53,7 @@ export default async function DashboardPage() {
 
           {/* Avatar + menu */}
           <div className="flex items-center gap-3">
+            {ehAdminReal && <AlternarModoButton modoAtual={modo} />}
             <a
               href="/conta"
               className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold text-white hover:bg-white/10 transition-colors"
