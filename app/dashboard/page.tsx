@@ -101,6 +101,12 @@ export default async function DashboardPage() {
             href="/admin/precificacao"
           />
           <DashboardCard
+            titulo="👩‍💼 Agenda (Bianca)"
+            desc="Sua secretária executiva IA — eventos, tarefas e resumo diário."
+            disponivel={true}
+            href="/agenda"
+          />
+          <DashboardCard
             titulo="Configurações"
             desc="Sua conta, perfil profissional, foto."
             disponivel={true}
