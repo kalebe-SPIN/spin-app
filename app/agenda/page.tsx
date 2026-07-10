@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { BiancaChat } from '@/components/BiancaChat'
+import { BomDiaBotao } from '@/components/BomDiaBotao'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -69,16 +70,19 @@ export default async function AgendaPage() {
               Olá {primeiroNome}, sua secretária executiva IA
             </p>
           </div>
-          <div className="flex gap-2 mt-2">
-            <Link
-              href="/agenda/calendario"
-              className="text-xs px-3 py-1.5 bg-sol/10 border border-sol/30 rounded-lg text-sol hover:bg-sol/20"
-            >
-              📅 Ver calendário
-            </Link>
-            <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/60 pt-1">
-              ← Voltar
-            </Link>
+          <div className="flex flex-col items-end gap-2 mt-2">
+            <BomDiaBotao />
+            <div className="flex gap-2">
+              <Link
+                href="/agenda/calendario"
+                className="text-xs px-3 py-1.5 bg-sol/10 border border-sol/30 rounded-lg text-sol hover:bg-sol/20"
+              >
+                📅 Ver calendário
+              </Link>
+              <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/60 pt-1">
+                ← Voltar
+              </Link>
+            </div>
           </div>
         </header>
 
