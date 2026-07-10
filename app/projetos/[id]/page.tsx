@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { AgendaDoProjeto } from '@/components/AgendaDoProjeto'
+import { TimelineProjeto } from '@/components/TimelineProjeto'
 
 // Sempre buscar dados frescos do banco (sem cache stale após edição)
 export const dynamic = 'force-dynamic'
@@ -51,11 +52,10 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           <Link href="/projetos" className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
             ← Projetos
           </Link>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
             <div>
               <div className="flex items-center gap-3 mb-1">
                 <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
-                <StatusBadge status={projeto.status} />
               </div>
               <h1 className="text-3xl md:text-4xl font-black text-white">
                 {projeto.cliente_razao_social}
@@ -64,6 +64,9 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
                 UC {projeto.uc_geradora} · {projeto.tipo_projeto}
               </p>
             </div>
+          </div>
+          <div className="p-4 bg-white/[0.02] border border-white/10 rounded-xl">
+            <TimelineProjeto status={projeto.status} />
           </div>
         </header>
 

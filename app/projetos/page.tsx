@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { TimelineProjeto } from '@/components/TimelineProjeto'
 
 /**
  * Listagem de projetos — /projetos
@@ -68,20 +69,16 @@ export default async function ProjetosPage() {
 
 function ProjetoCard({ projeto }: { projeto: any }) {
   const dataFmt = new Date(projeto.created_at).toLocaleDateString('pt-BR')
-  const statusInfo = STATUS_INFO[projeto.status as keyof typeof STATUS_INFO] || STATUS_INFO.rascunho
 
   return (
     <Link
       href={`/projetos/${projeto.id}`}
       className="block p-5 bg-white/5 border border-white/10 rounded-xl hover:border-sol/40 hover:bg-white/[0.07] transition-all"
     >
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
             <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
-            <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full ${statusInfo.classe}`}>
-              {statusInfo.label}
-            </span>
           </div>
           <h3 className="text-lg font-bold text-white">{projeto.cliente_razao_social}</h3>
           <p className="text-sm text-white/60 mt-1">
@@ -94,6 +91,7 @@ function ProjetoCard({ projeto }: { projeto: any }) {
           {dataFmt}
         </div>
       </div>
+      <TimelineProjeto status={projeto.status} />
     </Link>
   )
 }
