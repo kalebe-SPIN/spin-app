@@ -99,6 +99,7 @@ export default async function AgendaPage() {
                         {new Date(e.data_hora_inicio).toLocaleTimeString('pt-BR', {
                           hour: '2-digit',
                           minute: '2-digit',
+                          timeZone: 'America/Sao_Paulo',
                         })}
                         {e.local && ` · ${e.local}`}
                       </p>
@@ -134,7 +135,7 @@ export default async function AgendaPage() {
                           </span>
                         )}
                         {t.data_prazo && (
-                          <span>até {new Date(t.data_prazo).toLocaleDateString('pt-BR')}</span>
+                          <span>até {new Date(t.data_prazo + 'T12:00:00-03:00').toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span>
                         )}
                       </p>
                     </div>
