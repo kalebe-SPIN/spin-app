@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 type ResultadoTool = { sucesso: boolean; dados?: any; erro?: string; _hint?: string }
 
 const TOOLS_ADMIN = new Set([
+  'listar_projetos_ativos',
   'listar_projetos_parados',
   'listar_homologacoes_em_andamento',
   'listar_etapas_homologacao_atrasadas',

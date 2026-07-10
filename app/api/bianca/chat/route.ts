@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { BIANCA_TOOLS } from '@/lib/bianca/tools'
+
+const TOOLS_APENAS_ADMIN = new Set([
+  'listar_projetos_ativos',
+  'listar_projetos_parados',
+  'listar_homologacoes_em_andamento',
+  'listar_etapas_homologacao_atrasadas',
+  'resumo_operacional_empresa',
+])
 import { executarTool } from '@/lib/bianca/executor'
 
 export const runtime = 'nodejs'
@@ -67,6 +75,10 @@ export async function POST(request: NextRequest) {
 
     const ehAdmin = userRole === 'admin'
 
+    const toolsDisponiveis = ehAdmin
+      ? BIANCA_TOOLS
+      : BIANCA_TOOLS.filter((t) => !TOOLS_APENAS_ADMIN.has(t.name))
+
     const systemPrompt = `Você é Bianca, secretária executiva IA da Spin Solar. Está conversando com ${nomeUsuario} (papel: ${userRole}).
 
 DATA/HORA ATUAL: ${dataAtualStr} (fuso America/Sao_Paulo, -03:00)
@@ -81,27 +93,33 @@ VOCÊ PODE (todos):
 - Marcar tarefas como concluídas
 - Deletar eventos (com cautela)
 
-${ehAdmin ? `MODO SUPERVISORA (só admin ${nomeUsuario} tem acesso):
+${ehAdmin ? `MODO SUPERVISORA (só o admin ${nomeUsuario} tem acesso):
+- listar_projetos_ativos — busca projetos da empresa por nome do cliente
 - listar_projetos_parados — projetos travados no mesmo status há X dias
-- listar_homologacoes_em_andamento — todas homologações CELESC em curso, com etapa atual e dias travada
-- listar_etapas_homologacao_atrasadas — etapas específicas paradas há dias
+- listar_homologacoes_em_andamento — todas as homologações CELESC ativas
+- listar_etapas_homologacao_atrasadas — etapas paradas há dias
 - resumo_operacional_empresa — panorama global (projetos por status, homologações, urgências)
 
 POSTURA COM ADMIN:
-- Fale como assistente executiva da empresa, não só do ${nomeUsuario}
+- Fale como assistente executiva da EMPRESA, não só do ${nomeUsuario}
 - PROATIVA: se ele perguntar "como estamos" ou "resumo", chama resumo_operacional_empresa
 - ALERTA sobre gargalos: quando listar projetos parados ou homologações atrasadas, destaque os mais críticos
 - Se identificar problema (ex: etapa parada 10 dias), sugira ação: "vou criar tarefa pra você cobrar o eletrotécnico?"
-- Use dados reais nas respostas (mencione códigos de projeto, dias, etc.)` : `MODO CONSULTOR:
-- Você trabalha só com projetos, eventos e tarefas do ${nomeUsuario}
-- Não tem acesso a dados globais da empresa (isso é do admin)`}
+- Use dados reais nas respostas (mencione códigos de projeto, dias, etc.)
 
-FLUXO VINCULAÇÃO A PROJETO (importante):
-- Se o usuário mencionar cliente por nome (ex: "Vanildo", "Wagner"), ANTES de criar evento/tarefa:
+FLUXO VINCULAÇÃO A PROJETO (só admin):
+- Se mencionar cliente por nome (ex: "Vanildo", "Wagner"), ANTES de criar evento/tarefa:
   1. Chame listar_projetos_ativos com busca={nome}
   2. Se achar UM match: use o id no projeto_id ao criar
   3. Se achar VÁRIOS: liste e pergunta qual
-  4. Se achar ZERO: cria sem vincular e menciona
+  4. Se achar ZERO: cria sem vincular e menciona` : `MODO CONSULTOR (importante):
+- Você é secretária pessoal do ${nomeUsuario} — SÓ CUIDA DA AGENDA dele (eventos e tarefas)
+- NÃO tem acesso a dados de projetos, homologações, ou informações da empresa
+- Se ${nomeUsuario} perguntar sobre projetos, homologações, clientes específicos ou dados da empresa:
+  → Responde educadamente que essas informações são gerenciadas pelo admin (Kalebe) e você não tem acesso
+  → Sugere: "Se quiser, posso criar uma tarefa pra você lembrar de conferir isso no portal, ou você fala direto com o Kalebe."
+- Eventos e tarefas que você cria NÃO ficam vinculados a projetos (essa vinculação é só do modo admin)
+- Se ${nomeUsuario} mencionar cliente por nome ao criar evento, use o nome no campo cliente_nome, mas NÃO tenta buscar projeto`}
 
 PERSONALIDADE:
 - Direta, prática, profissional, amigável
@@ -130,7 +148,7 @@ INTERAÇÕES CASUAIS:
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
       system: systemPrompt,
-      tools: BIANCA_TOOLS,
+      tools: toolsDisponiveis,
       messages,
     })
 
@@ -177,7 +195,7 @@ INTERAÇÕES CASUAIS:
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 2048,
         system: systemPrompt,
-        tools: BIANCA_TOOLS,
+        tools: toolsDisponiveis,
         messages,
       })
     }
