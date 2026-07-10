@@ -101,6 +101,13 @@ export default async function DashboardPage() {
             href="/admin/precificacao"
           />
           <DashboardCard
+            titulo="⚡ Homologações CELESC"
+            desc="Pipeline de aprovação — 6 etapas por projeto aceito."
+            disponivel={true}
+            adminOnly
+            href="/admin/homologacoes"
+          />
+          <DashboardCard
             titulo="👩‍💼 Agenda (Bianca)"
             desc="Sua secretária executiva IA — eventos, tarefas e resumo diário."
             disponivel={true}
