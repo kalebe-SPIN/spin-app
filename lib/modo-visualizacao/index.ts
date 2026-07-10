@@ -27,7 +27,7 @@ export async function getModoVisualizacao(): Promise<{
 
   const { data: perfil } = await supabase
     .from('profiles')
-    .select('role, pode_gerar_diagramas, nome')
+    .select('role, pode_gerar_diagramas, nome_completo')
     .eq('id', user.id)
     .single()
 
