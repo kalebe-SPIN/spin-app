@@ -9,6 +9,23 @@ export default async function PosVendaHubPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const { data: perfil } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (perfil?.role !== 'admin') {
+    return (
+      <main className="min-h-screen p-8 md:p-12">
+        <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
+          <h1 className="text-xl font-bold text-coral">Área restrita</h1>
+          <p className="text-white/60 text-sm mt-2">Pós-venda é exclusivo do admin.</p>
+        </div>
+      </main>
+    )
+  }
+
   const hojeYMD = new Date().toISOString().slice(0, 10)
   const em30dias = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
 

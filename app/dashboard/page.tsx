@@ -141,22 +141,22 @@ export default async function DashboardPage() {
           />
         </div>
 
-        {/* ERP Módulos */}
-        <div className="mt-10 mb-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-sol">ERP Módulos</h2>
-          <p className="text-xs text-white/50 mt-0.5">CRM, financeiro, operações, fiscal e pós-venda</p>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <ModuloAtalho href="/crm" emoji="👥" titulo="CRM" desc="Clientes + leads" />
-          {mostraAdmin && (
-            <ModuloAtalho href="/financeiro" emoji="💰" titulo="Financeiro" desc="Receber + pagar" adminOnly />
-          )}
-          <ModuloAtalho href="/operacoes" emoji="🔧" titulo="Operações" desc="Compras + equipe" />
-          {mostraAdmin && (
-            <ModuloAtalho href="/fiscal" emoji="📄" titulo="Fiscal" desc="NF + contratos" adminOnly />
-          )}
-          <ModuloAtalho href="/pos-venda" emoji="🛠️" titulo="Pós-venda" desc="OS + garantias" />
-        </div>
+        {/* ERP Módulos — só admin */}
+        {mostraAdmin && (
+          <>
+            <div className="mt-10 mb-4">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-sol">ERP Módulos</h2>
+              <p className="text-xs text-white/50 mt-0.5">CRM, financeiro, operações, fiscal e pós-venda</p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <ModuloAtalho href="/crm" emoji="👥" titulo="CRM" desc="Clientes + leads" adminOnly />
+              <ModuloAtalho href="/financeiro" emoji="💰" titulo="Financeiro" desc="Receber + pagar" adminOnly />
+              <ModuloAtalho href="/operacoes" emoji="🔧" titulo="Operações" desc="Compras + equipe" adminOnly />
+              <ModuloAtalho href="/fiscal" emoji="📄" titulo="Fiscal" desc="NF + contratos" adminOnly />
+              <ModuloAtalho href="/pos-venda" emoji="🛠️" titulo="Pós-venda" desc="OS + garantias" adminOnly />
+            </div>
+          </>
+        )}
 
         {/* Aviso construção */}
         <div className="mt-12 p-6 bg-sol/5 border border-sol/20 rounded-xl">
