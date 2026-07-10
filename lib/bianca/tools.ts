@@ -3,13 +3,48 @@ import type Anthropic from '@anthropic-ai/sdk'
 export const BIANCA_TOOLS: Anthropic.Tool[] = [
   {
     name: 'listar_projetos_ativos',
-    description: 'Lista projetos ativos do consultor (não cancelados). SEMPRE use ANTES de criar evento/tarefa quando o usuário mencionar um cliente por nome — pra encontrar o projeto e vincular. Se achar match único, use o id no projeto_id do criar_evento/criar_tarefa. Se achar múltiplos, pergunta qual.',
+    description: 'Lista projetos ativos (não cancelados). CONSULTOR vê só os próprios; ADMIN vê da empresa toda. SEMPRE use ANTES de criar evento/tarefa quando mencionar cliente por nome.',
     input_schema: {
       type: 'object',
       properties: {
-        busca: { type: 'string', description: 'Filtrar por nome do cliente (opcional, ex: "Vanildo", "Wagner"). Se não passar, retorna 20 mais recentes.' },
+        busca: { type: 'string', description: 'Filtrar por nome do cliente (opcional, ex: "Vanildo").' },
       },
     },
+  },
+  {
+    name: 'listar_projetos_parados',
+    description: 'ADMIN APENAS. Lista projetos que estão parados há mais de X dias no mesmo status (não avançaram). Use pra alertar sobre gargalos comerciais.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        dias_minimos: { type: 'number', description: 'Mínimo de dias parado (padrão: 7)' },
+      },
+    },
+  },
+  {
+    name: 'listar_homologacoes_em_andamento',
+    description: 'ADMIN APENAS. Lista todas as homologações CELESC ativas (não aprovadas nem canceladas) e mostra em que etapa cada uma está, quem é responsável, e há quantos dias está travada.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        atrasadas_apenas: { type: 'boolean', description: 'Se true, filtra só as com etapa parada há mais de 5 dias.' },
+      },
+    },
+  },
+  {
+    name: 'listar_etapas_homologacao_atrasadas',
+    description: 'ADMIN APENAS. Detalha etapas de homologação em andamento há muito tempo — ajuda supervisão de prazos.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        dias_alerta: { type: 'number', description: 'Alertar etapas em_andamento há mais de X dias (padrão: 5)' },
+      },
+    },
+  },
+  {
+    name: 'resumo_operacional_empresa',
+    description: 'ADMIN APENAS. Panorama geral: nº projetos por status, homologações abertas, tarefas urgentes vencidas, eventos da semana. Use pra brief executivo.',
+    input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'criar_evento',

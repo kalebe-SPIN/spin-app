@@ -2,12 +2,27 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 type ResultadoTool = { sucesso: boolean; dados?: any; erro?: string; _hint?: string }
 
+const TOOLS_ADMIN = new Set([
+  'listar_projetos_parados',
+  'listar_homologacoes_em_andamento',
+  'listar_etapas_homologacao_atrasadas',
+  'resumo_operacional_empresa',
+])
+
 export async function executarTool(
   supabase: SupabaseClient,
   userId: string,
   toolName: string,
   input: any,
+  userRole: string = 'consultor',
 ): Promise<ResultadoTool> {
+  if (TOOLS_ADMIN.has(toolName) && userRole !== 'admin') {
+    return {
+      sucesso: false,
+      erro: 'Essa consulta é exclusiva de admin. Fale com o Kalebe se precisar dessa informação.',
+    }
+  }
+
   try {
     switch (toolName) {
       case 'listar_projetos_ativos': {
@@ -17,7 +32,7 @@ export async function executarTool(
           .select('id, codigo, cliente_razao_social, tipo_projeto, status')
           .neq('status', 'cancelado')
           .order('created_at', { ascending: false })
-          .limit(20)
+          .limit(30)
 
         if (busca) {
           query = query.ilike('cliente_razao_social', `%${busca}%`)
@@ -29,8 +44,143 @@ export async function executarTool(
           sucesso: true,
           dados: data,
           _hint: busca && data && data.length === 0
-            ? `Nenhum projeto encontrado com "${busca}". Pergunte ao usuário se ele quer criar sem vincular a projeto ou tentar outro nome.`
+            ? `Nenhum projeto encontrado com "${busca}".`
             : undefined,
+        }
+      }
+
+      case 'listar_projetos_parados': {
+        const diasMinimos = input.dias_minimos || 7
+        const dataCorte = new Date()
+        dataCorte.setDate(dataCorte.getDate() - diasMinimos)
+
+        const { data, error } = await supabase
+          .from('projetos')
+          .select('id, codigo, cliente_razao_social, status, tipo_projeto, updated_at, consultor_id')
+          .neq('status', 'aceito')
+          .neq('status', 'recusado')
+          .neq('status', 'cancelado')
+          .neq('status', 'expirado')
+          .lt('updated_at', dataCorte.toISOString())
+          .order('updated_at', { ascending: true })
+          .limit(30)
+        if (error) return { sucesso: false, erro: error.message }
+        return {
+          sucesso: true,
+          dados: (data || []).map((p: any) => ({
+            ...p,
+            dias_parado: Math.floor(
+              (Date.now() - new Date(p.updated_at).getTime()) / 86400000,
+            ),
+          })),
+        }
+      }
+
+      case 'listar_homologacoes_em_andamento': {
+        const { data: homologacoes, error } = await supabase
+          .from('homologacoes')
+          .select(`
+            id, status_geral, etapa_atual, protocolo_celesc, data_solicitacao,
+            updated_at,
+            projeto:projeto_id (codigo, cliente_razao_social),
+            etapas:homologacao_etapas (id, ordem, chave, nome_exibicao, status, iniciado_em, concluido_em)
+          `)
+          .neq('status_geral', 'aprovada')
+          .neq('status_geral', 'cancelada')
+          .neq('status_geral', 'rejeitada')
+          .order('created_at', { ascending: false })
+        if (error) return { sucesso: false, erro: error.message }
+
+        const agora = Date.now()
+        const dados = (homologacoes || []).map((h: any) => {
+          const etapasOrdenadas = (h.etapas || []).sort((a: any, b: any) => a.ordem - b.ordem)
+          const emAndamento = etapasOrdenadas.find((e: any) => e.status === 'em_andamento')
+          const diasEtapaAtual = emAndamento?.iniciado_em
+            ? Math.floor((agora - new Date(emAndamento.iniciado_em).getTime()) / 86400000)
+            : null
+          return {
+            id: h.id,
+            cliente: h.projeto?.cliente_razao_social,
+            codigo_projeto: h.projeto?.codigo,
+            status_geral: h.status_geral,
+            etapa_atual: emAndamento?.nome_exibicao || `Etapa ${h.etapa_atual}/6`,
+            dias_na_etapa_atual: diasEtapaAtual,
+            protocolo: h.protocolo_celesc,
+          }
+        }).filter((h: any) => {
+          if (!input.atrasadas_apenas) return true
+          return h.dias_na_etapa_atual !== null && h.dias_na_etapa_atual >= 5
+        })
+
+        return { sucesso: true, dados }
+      }
+
+      case 'listar_etapas_homologacao_atrasadas': {
+        const diasAlerta = input.dias_alerta || 5
+        const dataCorte = new Date()
+        dataCorte.setDate(dataCorte.getDate() - diasAlerta)
+
+        const { data, error } = await supabase
+          .from('homologacao_etapas')
+          .select(`
+            id, chave, nome_exibicao, status, iniciado_em,
+            homologacao:homologacao_id (
+              id,
+              projeto:projeto_id (codigo, cliente_razao_social)
+            )
+          `)
+          .eq('status', 'em_andamento')
+          .lt('iniciado_em', dataCorte.toISOString())
+          .order('iniciado_em', { ascending: true })
+        if (error) return { sucesso: false, erro: error.message }
+
+        const agora = Date.now()
+        return {
+          sucesso: true,
+          dados: (data || []).map((e: any) => ({
+            etapa: e.nome_exibicao,
+            cliente: e.homologacao?.projeto?.cliente_razao_social,
+            codigo_projeto: e.homologacao?.projeto?.codigo,
+            dias_travada: Math.floor((agora - new Date(e.iniciado_em).getTime()) / 86400000),
+          })),
+        }
+      }
+
+      case 'resumo_operacional_empresa': {
+        const [
+          { data: projetos },
+          { data: homologacoes },
+          { data: tarefasUrgentes },
+        ] = await Promise.all([
+          supabase.from('projetos').select('status'),
+          supabase.from('homologacoes').select('status_geral'),
+          supabase
+            .from('agenda_tarefas')
+            .select('id, titulo, data_prazo, prioridade')
+            .eq('status', 'pendente')
+            .in('prioridade', ['alta', 'urgente'])
+            .limit(20),
+        ])
+
+        const contarPorStatus = (arr: any[], campo: string) => {
+          const c: Record<string, number> = {}
+          for (const item of arr || []) {
+            const s = item[campo] || 'desconhecido'
+            c[s] = (c[s] || 0) + 1
+          }
+          return c
+        }
+
+        return {
+          sucesso: true,
+          dados: {
+            total_projetos: projetos?.length || 0,
+            projetos_por_status: contarPorStatus(projetos || [], 'status'),
+            total_homologacoes: homologacoes?.length || 0,
+            homologacoes_por_status: contarPorStatus(homologacoes || [], 'status_geral'),
+            tarefas_urgentes_pendentes: tarefasUrgentes?.length || 0,
+            tarefas_urgentes: (tarefasUrgentes || []).slice(0, 5),
+          },
         }
       }
 
