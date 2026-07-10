@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 
 /**
  * Dashboard — /dashboard
@@ -27,6 +28,9 @@ export default async function DashboardPage() {
     .select('nome_completo, role, telefone')
     .eq('id', user.id)
     .single()
+
+  const { modo } = await getModoVisualizacao()
+  const mostraAdmin = profile?.role === 'admin' && modo === 'admin'
 
   return (
     <main className="min-h-screen p-8 md:p-12">
@@ -86,27 +90,31 @@ export default async function DashboardPage() {
             disponivel={false}
             href="/parceiro/leads"
           />
-          <DashboardCard
-            titulo="📊 Catálogo WEG (Admin)"
-            desc="Upload de planilha, PDF de estoque e datasheets dos produtos."
-            disponivel={true}
-            adminOnly
-            href="/admin/catalogo"
-          />
-          <DashboardCard
-            titulo="Precificação (Admin)"
-            desc="Margens, comissões, tabelas, descontos — painel de controle."
-            disponivel={false}
-            adminOnly
-            href="/admin/precificacao"
-          />
-          <DashboardCard
-            titulo="⚡ Homologações CELESC"
-            desc="Pipeline de aprovação — 6 etapas por projeto aceito."
-            disponivel={true}
-            adminOnly
-            href="/admin/homologacoes"
-          />
+          {mostraAdmin && (
+            <>
+              <DashboardCard
+                titulo="📊 Catálogo WEG (Admin)"
+                desc="Upload de planilha, PDF de estoque e datasheets dos produtos."
+                disponivel={true}
+                adminOnly
+                href="/admin/catalogo"
+              />
+              <DashboardCard
+                titulo="💰 Precificação (Admin)"
+                desc="Margens, comissões, tabelas, descontos — painel de controle."
+                disponivel={false}
+                adminOnly
+                href="/admin/precificacao"
+              />
+              <DashboardCard
+                titulo="⚡ Homologações CELESC"
+                desc="Pipeline de aprovação — 6 etapas por projeto aceito."
+                disponivel={true}
+                adminOnly
+                href="/admin/homologacoes"
+              />
+            </>
+          )}
           <DashboardCard
             titulo="👩‍💼 Agenda (Bianca)"
             desc="Sua secretária executiva IA — eventos, tarefas e resumo diário."
