@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { atualizarProjetoAction } from '@/app/projetos/[id]/editar/actions'
+import { criarProjetoAction } from '@/app/projetos/actions'
+import { SeletorCliente } from '@/components/SeletorCliente'
 import {
   maskCpfCnpj,
   maskTelefone,
@@ -15,6 +17,7 @@ import {
 
 type ProjetoExistente = {
   id: string
+  cliente_id?: string | null
   cliente_razao_social: string
   cliente_cpf_cnpj: string | null
   cliente_email: string | null
@@ -23,227 +26,318 @@ type ProjetoExistente = {
 }
 
 /**
- * Formulário SIMPLIFICADO do cliente.
- *
- * Passo 1 do fluxo — só dados de contato + observações.
- * Endereço, UC, beneficiárias, tipo de projeto e fatura são coletados
- * nos passos seguintes (2 Fatura, 3 Telhado, 6 Kit).
+ * Passo 1: escolhe cliente (existente ou novo) + observações.
  */
 export function NovoProjetoForm({
-  consultorId,
   projetoExistente,
 }: {
-  consultorId: string
+  consultorId?: string  // não usa mais mas mantém pra compat
   projetoExistente?: ProjetoExistente
 }) {
   const router = useRouter()
   const isEdit = !!projetoExistente
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+  const [erro, setErro] = useState<string | null>(null)
+  const [modo, setModo] = useState<'existente' | 'novo'>(
+    projetoExistente?.cliente_id ? 'existente' : 'novo',
+  )
+  const [clienteEscolhido, setClienteEscolhido] = useState<any>(null)
 
-  const [form, setForm] = useState({
-    cliente_razao_social: projetoExistente?.cliente_razao_social || '',
-    cliente_cpf_cnpj: projetoExistente?.cliente_cpf_cnpj
+  const [formNovo, setFormNovo] = useState({
+    tipo: 'pf' as 'pf' | 'pj',
+    razao_social: projetoExistente?.cliente_razao_social || '',
+    cpf_cnpj: projetoExistente?.cliente_cpf_cnpj
       ? maskCpfCnpj(projetoExistente.cliente_cpf_cnpj)
       : '',
     cliente_sem_documento: projetoExistente ? !projetoExistente.cliente_cpf_cnpj : false,
-    cliente_email: projetoExistente?.cliente_email || '',
-    cliente_telefone: projetoExistente?.cliente_telefone
+    email: projetoExistente?.cliente_email || '',
+    telefone: projetoExistente?.cliente_telefone
       ? maskTelefone(projetoExistente.cliente_telefone)
       : '',
-    observacoes: projetoExistente?.observacoes_consultor || '',
   })
 
-  function update<K extends keyof typeof form>(k: K, v: typeof form[K]) {
-    setForm((prev) => ({ ...prev, [k]: v }))
+  const [observacoes, setObservacoes] = useState(projetoExistente?.observacoes_consultor || '')
+
+  function updateNovo<K extends keyof typeof formNovo>(k: K, v: typeof formNovo[K]) {
+    setFormNovo((prev) => ({ ...prev, [k]: v }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
-
-    // Validações mínimas
-    if (!form.cliente_razao_social.trim()) {
-      setError('Nome / razão social é obrigatório.')
-      return
-    }
-    if (!form.cliente_sem_documento && !isValidCpfCnpj(form.cliente_cpf_cnpj)) {
-      setError('CPF/CNPJ inválido. Se o cliente ainda não tem, marque "Sem documento".')
-      return
-    }
-    if (!isValidTelefone(form.cliente_telefone)) {
-      setError('WhatsApp inválido. Formato: (48) 99999-9999')
-      return
-    }
-    if (form.cliente_email && !isValidEmail(form.cliente_email)) {
-      setError('E-mail inválido.')
-      return
-    }
-
-    setLoading(true)
-
-    const payload = {
-      cliente_razao_social: form.cliente_razao_social.trim(),
-      cliente_cpf_cnpj: form.cliente_sem_documento ? null : unmask(form.cliente_cpf_cnpj),
-      cliente_email: form.cliente_email.trim() || null,
-      cliente_telefone: unmask(form.cliente_telefone),
-      observacoes_consultor: form.observacoes.trim() || null,
-    }
+    setErro(null)
 
     if (isEdit && projetoExistente) {
-      const result = await atualizarProjetoAction(projetoExistente.id, payload)
-      if (result && 'sucesso' in result && !result.sucesso) {
-        setError(result.erro || 'Erro ao atualizar projeto.')
-        setLoading(false)
+      // Edit — mantém fluxo antigo (só campos denormalizados)
+      if (!formNovo.razao_social.trim()) {
+        setErro('Nome/razão social é obrigatório')
+        return
       }
-      // Server Action faz redirect
-      return
-    }
+      if (!formNovo.cliente_sem_documento && !isValidCpfCnpj(formNovo.cpf_cnpj)) {
+        setErro('CPF/CNPJ inválido')
+        return
+      }
+      if (!isValidTelefone(formNovo.telefone)) {
+        setErro('WhatsApp inválido')
+        return
+      }
 
-    // Modo CRIAR
-    const supabase = createClient()
-    const { data, error: insertError } = await supabase
-      .from('projetos')
-      .insert({
-        ...payload,
-        consultor_id: consultorId,
-        status: 'rascunho',
+      startTransition(async () => {
+        const result = await atualizarProjetoAction(projetoExistente.id, {
+          cliente_razao_social: formNovo.razao_social.trim(),
+          cliente_cpf_cnpj: formNovo.cliente_sem_documento ? null : unmask(formNovo.cpf_cnpj),
+          cliente_email: formNovo.email.trim() || null,
+          cliente_telefone: unmask(formNovo.telefone),
+          observacoes_consultor: observacoes.trim() || null,
+        })
+        if (result && 'sucesso' in result && !result.sucesso) {
+          setErro((result as any).erro || 'Erro ao atualizar')
+        }
       })
-      .select('id')
-      .single()
-
-    if (insertError || !data) {
-      setError(insertError?.message || 'Erro ao criar projeto.')
-      setLoading(false)
       return
     }
 
-    router.push(`/projetos/${data.id}`)
+    // Criar novo projeto
+    if (modo === 'existente') {
+      if (!clienteEscolhido) {
+        setErro('Escolha um cliente da lista ou troque para "Novo cliente"')
+        return
+      }
+      startTransition(async () => {
+        const result = await criarProjetoAction({
+          cliente_id: clienteEscolhido.id,
+          observacoes: observacoes.trim() || null,
+        })
+        if (result && 'erro' in result) setErro(result.erro)
+      })
+    } else {
+      // Cliente novo
+      if (!formNovo.razao_social.trim()) {
+        setErro('Nome/razão social é obrigatório')
+        return
+      }
+      if (!formNovo.cliente_sem_documento && formNovo.cpf_cnpj && !isValidCpfCnpj(formNovo.cpf_cnpj)) {
+        setErro('CPF/CNPJ inválido. Marque "sem documento" se ainda não tem.')
+        return
+      }
+      if (!isValidTelefone(formNovo.telefone)) {
+        setErro('WhatsApp inválido. Formato: (48) 99999-9999')
+        return
+      }
+      if (formNovo.email && !isValidEmail(formNovo.email)) {
+        setErro('E-mail inválido')
+        return
+      }
+
+      startTransition(async () => {
+        const result = await criarProjetoAction({
+          novo_cliente: {
+            tipo: formNovo.tipo,
+            razao_social: formNovo.razao_social.trim(),
+            cpf_cnpj: formNovo.cliente_sem_documento ? null : unmask(formNovo.cpf_cnpj),
+            email: formNovo.email.trim() || null,
+            telefone: unmask(formNovo.telefone),
+            whatsapp: unmask(formNovo.telefone),
+          },
+          observacoes: observacoes.trim() || null,
+        })
+        if (result && 'erro' in result) setErro(result.erro)
+      })
+    }
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-lg p-4 text-sm text-white/80">
-        <p><strong className="text-white">Passo 1 de 8:</strong> apenas dados de contato do cliente.</p>
+        <p><strong className="text-white">Passo 1 de 8:</strong> escolhe o cliente.</p>
         <p className="text-xs text-white/50 mt-1">
-          Endereço, UC, fatura e tipo de sistema serão preenchidos nos próximos passos.
+          Endereço, UC, fatura e kit serão preenchidos nos próximos passos.
         </p>
       </div>
 
-      {/* Nome / Razão social */}
-      <label className="block">
-        <span className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
-          Nome completo ou Razão social <span className="text-coral">*</span>
-        </span>
-        <input
-          type="text"
-          value={form.cliente_razao_social}
-          onChange={e => update('cliente_razao_social', e.target.value)}
-          placeholder="Ex: João da Silva OU Padaria Ilhota Ltda"
-          className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30"
-          required
-        />
-      </label>
+      {/* Toggle novo vs existente (só na criação) */}
+      {!isEdit && (
+        <div className="grid grid-cols-2 gap-2 p-1 bg-white/[0.03] border border-white/10 rounded-lg">
+          <button
+            type="button"
+            onClick={() => setModo('existente')}
+            className={`px-3 py-2 rounded text-sm font-bold transition ${
+              modo === 'existente'
+                ? 'bg-sol/20 border border-sol/40 text-sol'
+                : 'text-white/60 hover:bg-white/5'
+            }`}
+          >
+            🔍 Cliente já cadastrado
+          </button>
+          <button
+            type="button"
+            onClick={() => setModo('novo')}
+            className={`px-3 py-2 rounded text-sm font-bold transition ${
+              modo === 'novo'
+                ? 'bg-sol/20 border border-sol/40 text-sol'
+                : 'text-white/60 hover:bg-white/5'
+            }`}
+          >
+            ➕ Cadastrar cliente novo
+          </button>
+        </div>
+      )}
 
-      {/* CPF/CNPJ */}
-      <div>
-        <label className="block">
-          <span className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
-            CPF ou CNPJ {!form.cliente_sem_documento && <span className="text-coral">*</span>}
-          </span>
-          <input
-            type="text"
-            value={form.cliente_cpf_cnpj}
-            onChange={e => {
-              const masked = maskCpfCnpj(e.target.value)
-              setForm(prev => ({
-                ...prev,
-                cliente_cpf_cnpj: masked,
-                // Se começou a digitar, desmarca automaticamente "sem documento"
-                cliente_sem_documento: masked.length > 0 ? false : prev.cliente_sem_documento,
-              }))
-            }}
-            placeholder="000.000.000-00 ou 00.000.000/0000-00"
-            className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30"
-          />
-        </label>
-        <label className="flex items-center gap-2 mt-2 text-xs text-white/60 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.cliente_sem_documento}
-            onChange={e => {
-              const marcado = e.target.checked
-              setForm(prev => ({
-                ...prev,
-                cliente_sem_documento: marcado,
-                // Se marcou "sem documento", limpa o campo
-                cliente_cpf_cnpj: marcado ? '' : prev.cliente_cpf_cnpj,
-              }))
-            }}
-            className="rounded"
-          />
-          Cliente ainda não forneceu documento (pode preencher depois)
-        </label>
-      </div>
+      {/* Modo: escolher existente */}
+      {!isEdit && modo === 'existente' && (
+        <div>
+          <label className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
+            Buscar cliente
+          </label>
+          <SeletorCliente onEscolher={setClienteEscolhido} />
+          <p className="text-[10px] text-white/40 mt-2">
+            Não achou? <Link href="/crm/clientes/novo" className="text-sol hover:underline">
+              Cadastra no CRM →
+            </Link>{' '}
+            ou clica em "Cadastrar cliente novo" acima.
+          </p>
+        </div>
+      )}
 
-      {/* WhatsApp + Email lado a lado */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <label className="block">
-          <span className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
-            WhatsApp <span className="text-coral">*</span>
-          </span>
-          <input
-            type="tel"
-            value={form.cliente_telefone}
-            onChange={e => update('cliente_telefone', maskTelefone(e.target.value))}
-            placeholder="(48) 99999-9999"
-            className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30"
-            required
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
-            E-mail (opcional)
-          </span>
-          <input
-            type="email"
-            value={form.cliente_email}
-            onChange={e => update('cliente_email', e.target.value)}
-            placeholder="cliente@email.com"
-            className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30"
-          />
-        </label>
-      </div>
+      {/* Modo: novo cliente (form inline) OU edit */}
+      {(isEdit || modo === 'novo') && (
+        <>
+          {/* Tipo PF/PJ (só criação) */}
+          {!isEdit && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => updateNovo('tipo', 'pf')}
+                className={`px-3 py-2 rounded-lg border text-sm font-bold transition ${
+                  formNovo.tipo === 'pf'
+                    ? 'bg-sol/10 border-sol/40 text-sol'
+                    : 'bg-white/[0.02] border-white/10 text-white/50 hover:bg-white/5'
+                }`}
+              >
+                👤 Pessoa Física
+              </button>
+              <button
+                type="button"
+                onClick={() => updateNovo('tipo', 'pj')}
+                className={`px-3 py-2 rounded-lg border text-sm font-bold transition ${
+                  formNovo.tipo === 'pj'
+                    ? 'bg-sol/10 border-sol/40 text-sol'
+                    : 'bg-white/[0.02] border-white/10 text-white/50 hover:bg-white/5'
+                }`}
+              >
+                🏢 Empresa (PJ)
+              </button>
+            </div>
+          )}
 
-      {/* Observações do consultor */}
+          <label className="block">
+            <span className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
+              {formNovo.tipo === 'pj' ? 'Razão social' : 'Nome completo'} <span className="text-coral">*</span>
+            </span>
+            <input
+              type="text"
+              value={formNovo.razao_social}
+              onChange={e => updateNovo('razao_social', e.target.value)}
+              placeholder={formNovo.tipo === 'pj' ? 'Ex: Padaria Ilhota Ltda' : 'Ex: João da Silva'}
+              className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30"
+              required
+            />
+          </label>
+
+          <div>
+            <label className="block">
+              <span className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
+                {formNovo.tipo === 'pj' ? 'CNPJ' : 'CPF'} {!formNovo.cliente_sem_documento && <span className="text-coral">*</span>}
+              </span>
+              <input
+                type="text"
+                value={formNovo.cpf_cnpj}
+                onChange={e => {
+                  const masked = maskCpfCnpj(e.target.value)
+                  setFormNovo(prev => ({
+                    ...prev,
+                    cpf_cnpj: masked,
+                    cliente_sem_documento: masked.length > 0 ? false : prev.cliente_sem_documento,
+                  }))
+                }}
+                placeholder={formNovo.tipo === 'pj' ? '00.000.000/0000-00' : '000.000.000-00'}
+                className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30"
+              />
+            </label>
+            <label className="flex items-center gap-2 mt-2 text-xs text-white/60 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formNovo.cliente_sem_documento}
+                onChange={e => {
+                  const marcado = e.target.checked
+                  setFormNovo(prev => ({
+                    ...prev,
+                    cliente_sem_documento: marcado,
+                    cpf_cnpj: marcado ? '' : prev.cpf_cnpj,
+                  }))
+                }}
+                className="rounded"
+              />
+              Cliente ainda não forneceu documento
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block">
+              <span className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
+                WhatsApp <span className="text-coral">*</span>
+              </span>
+              <input
+                type="tel"
+                value={formNovo.telefone}
+                onChange={e => updateNovo('telefone', maskTelefone(e.target.value))}
+                placeholder="(48) 99999-9999"
+                className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30"
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
+                E-mail (opcional)
+              </span>
+              <input
+                type="email"
+                value={formNovo.email}
+                onChange={e => updateNovo('email', e.target.value)}
+                placeholder="cliente@email.com"
+                className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30"
+              />
+            </label>
+          </div>
+        </>
+      )}
+
+      {/* Observações comuns */}
       <label className="block">
         <span className="text-xs font-medium text-white/60 uppercase tracking-wider block mb-1.5">
           Observações do consultor (opcional)
         </span>
         <textarea
-          value={form.observacoes}
-          onChange={e => update('observacoes', e.target.value)}
+          value={observacoes}
+          onChange={e => setObservacoes(e.target.value)}
           rows={3}
-          placeholder="Anote qualquer contexto útil: 'cliente indicado por João', 'quer instalar até dezembro', etc"
+          placeholder="'cliente indicado por João', 'quer instalar até dezembro', etc"
           className="w-full px-3 py-2.5 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 resize-y"
         />
       </label>
 
-      {/* Erro */}
-      {error && (
+      {erro && (
         <div className="bg-coral/10 border border-coral/30 rounded-lg p-4 text-sm text-coral">
-          ❌ {error}
+          ❌ {erro}
         </div>
       )}
 
-      {/* Submit */}
       <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
         <button
           type="submit"
-          disabled={loading}
+          disabled={isPending}
           className="px-6 py-3 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40"
         >
-          {loading ? 'Salvando...' : isEdit ? 'Salvar alterações' : 'Criar projeto → Passo 2 Fatura'}
+          {isPending ? 'Salvando...' : isEdit ? 'Salvar alterações' : 'Criar projeto → Passo 2 Fatura'}
         </button>
       </div>
     </form>

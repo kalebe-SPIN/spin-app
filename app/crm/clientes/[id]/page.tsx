@@ -36,13 +36,22 @@ export default async function ClienteDetalhePage({ params }: { params: { id: str
 
   if (!cliente) notFound()
 
-  // Projetos vinculados (busca por razão social — sem FK ainda pra clientes)
-  const { data: projetos } = await supabase
+  // Projetos vinculados: FK cliente_id (preferido) OU match por razão social (compat)
+  const { data: projetosPorFk } = await supabase
     .from('projetos')
     .select('id, codigo, status, tipo_projeto, created_at')
+    .eq('cliente_id', cliente.id)
+    .order('created_at', { ascending: false })
+
+  const { data: projetosPorNome } = await supabase
+    .from('projetos')
+    .select('id, codigo, status, tipo_projeto, created_at')
+    .is('cliente_id', null)
     .ilike('cliente_razao_social', cliente.razao_social)
     .order('created_at', { ascending: false })
     .limit(10)
+
+  const projetos = [...(projetosPorFk || []), ...(projetosPorNome || [])]
 
   // Interações
   const { data: interacoes } = await supabase
