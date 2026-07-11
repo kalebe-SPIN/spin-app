@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { criarClienteAction, atualizarClienteAction, type ClienteFormData } from '@/app/crm/clientes/actions'
+import { formatarCpfCnpj, formatarCpf, formatarCnpj, formatarTelefone, formatarCep } from '@/lib/formatters'
 
 type Props = {
   clienteExistente?: any
@@ -135,14 +136,32 @@ export function ClienteForm({ clienteExistente }: Props) {
         {!ehPF && (
           <Input label="Nome fantasia" value={form.nome_fantasia || ''} onChange={(v) => set('nome_fantasia', v)} />
         )}
-        <Input label={labelDoc} value={form.cpf_cnpj || ''} onChange={(v) => set('cpf_cnpj', v)} placeholder={ehPF ? '000.000.000-00' : '00.000.000/0000-00'} />
+        <Input
+          label={labelDoc}
+          value={form.cpf_cnpj || ''}
+          onChange={(v) => set('cpf_cnpj', ehPF ? formatarCpf(v) : formatarCnpj(v))}
+          placeholder={ehPF ? '000.000.000-00' : '00.000.000/0000-00'}
+          inputMode="numeric"
+        />
       </Section>
 
       {/* Contato */}
       <Section title="Contato">
         <Input label="Email" type="email" value={form.email || ''} onChange={(v) => set('email', v)} />
-        <Input label="Telefone" value={form.telefone || ''} onChange={(v) => set('telefone', v)} placeholder="(47) 3333-4444" />
-        <Input label="WhatsApp" value={form.whatsapp || ''} onChange={(v) => set('whatsapp', v)} placeholder="(47) 99999-8888" />
+        <Input
+          label="Telefone"
+          value={form.telefone || ''}
+          onChange={(v) => set('telefone', formatarTelefone(v))}
+          placeholder="(47) 3333-4444"
+          inputMode="tel"
+        />
+        <Input
+          label="WhatsApp"
+          value={form.whatsapp || ''}
+          onChange={(v) => set('whatsapp', formatarTelefone(v))}
+          placeholder="(47) 99999-8888"
+          inputMode="tel"
+        />
       </Section>
 
       {/* Endereço */}
@@ -152,9 +171,10 @@ export function ClienteForm({ clienteExistente }: Props) {
             <Input
               label="CEP"
               value={form.endereco?.cep || ''}
-              onChange={(v) => setEnd('cep', v)}
+              onChange={(v) => setEnd('cep', formatarCep(v))}
               onBlur={buscarCep}
               placeholder="00000-000"
+              inputMode="numeric"
             />
           </div>
           <div className="col-span-2 flex items-end">
@@ -242,7 +262,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Input({
-  label, value, onChange, onBlur, type = 'text', placeholder,
+  label, value, onChange, onBlur, type = 'text', placeholder, inputMode,
 }: {
   label: string
   value: string
@@ -250,6 +270,7 @@ function Input({
   onBlur?: () => void
   type?: string
   placeholder?: string
+  inputMode?: 'numeric' | 'tel' | 'email' | 'text' | 'decimal' | 'search' | 'url' | 'none'
 }) {
   return (
     <div>
@@ -260,6 +281,7 @@ function Input({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         placeholder={placeholder}
+        inputMode={inputMode}
         className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-sol/40 focus:outline-none"
       />
     </div>
