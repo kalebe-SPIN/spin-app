@@ -14,6 +14,9 @@ import {
   isValidTelefone,
   unmask,
 } from '@/lib/utils/masks'
+import { formatarCep } from '@/lib/formatters'
+
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 type ProjetoExistente = {
   id: string
@@ -57,6 +60,45 @@ export function NovoProjetoForm({
   })
 
   const [observacoes, setObservacoes] = useState(projetoExistente?.observacoes_consultor || '')
+
+  // Titular do projeto (pode ser diferente do cliente)
+  const [titularIgual, setTitularIgual] = useState(true)
+  const [titularEscolhido, setTitularEscolhido] = useState<any>(null)
+  const [novoTitular, setNovoTitular] = useState({
+    tipo: 'pf' as 'pf' | 'pj',
+    razao_social: '',
+    cpf_cnpj: '',
+  })
+  const [modoTitular, setModoTitular] = useState<'existente' | 'novo'>('novo')
+
+  // Endereço da instalação
+  const [enderecoIgual, setEnderecoIgual] = useState(true)
+  const [enderecoInst, setEnderecoInst] = useState({
+    cep: '',
+    rua: '',
+    numero: '',
+    complemento: '',
+    bairro: '',
+    cidade: '',
+    uf: 'SC',
+  })
+
+  async function buscarCepInstalacao() {
+    const cep = enderecoInst.cep.replace(/\D/g, '')
+    if (cep.length !== 8) return
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+      const data = await res.json()
+      if (data.erro) return
+      setEnderecoInst((e) => ({
+        ...e,
+        rua: data.logradouro || '',
+        bairro: data.bairro || '',
+        cidade: data.localidade || '',
+        uf: data.uf || 'SC',
+      }))
+    } catch {}
+  }
 
   function updateNovo<K extends keyof typeof formNovo>(k: K, v: typeof formNovo[K]) {
     setFormNovo((prev) => ({ ...prev, [k]: v }))
@@ -105,6 +147,15 @@ export function NovoProjetoForm({
       startTransition(async () => {
         const result = await criarProjetoAction({
           cliente_id: clienteEscolhido.id,
+          titular_igual_cliente: titularIgual,
+          titular_cliente_id: !titularIgual && modoTitular === 'existente' ? titularEscolhido?.id : undefined,
+          novo_titular: !titularIgual && modoTitular === 'novo' ? {
+            razao_social: novoTitular.razao_social.trim(),
+            cpf_cnpj: novoTitular.cpf_cnpj || null,
+            tipo: novoTitular.tipo,
+          } : undefined,
+          endereco_igual_titular: enderecoIgual,
+          endereco_instalacao: !enderecoIgual ? enderecoInst : undefined,
           observacoes: observacoes.trim() || null,
         })
         if (result && 'erro' in result) setErro(result.erro)
@@ -138,6 +189,15 @@ export function NovoProjetoForm({
             telefone: unmask(formNovo.telefone),
             whatsapp: unmask(formNovo.telefone),
           },
+          titular_igual_cliente: titularIgual,
+          titular_cliente_id: !titularIgual && modoTitular === 'existente' ? titularEscolhido?.id : undefined,
+          novo_titular: !titularIgual && modoTitular === 'novo' ? {
+            razao_social: novoTitular.razao_social.trim(),
+            cpf_cnpj: novoTitular.cpf_cnpj || null,
+            tipo: novoTitular.tipo,
+          } : undefined,
+          endereco_igual_titular: enderecoIgual,
+          endereco_instalacao: !enderecoIgual ? enderecoInst : undefined,
           observacoes: observacoes.trim() || null,
         })
         if (result && 'erro' in result) setErro(result.erro)
@@ -309,6 +369,216 @@ export function NovoProjetoForm({
             </label>
           </div>
         </>
+      )}
+
+      {/* Titular do projeto (só na criação) */}
+      {!isEdit && (
+        <section className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+          <h3 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
+            📋 Titular do projeto
+          </h3>
+          <p className="text-[10px] text-white/50 mb-3">
+            Titular = quem consta na UC/fatura CELESC (importante pra homologação).
+          </p>
+
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => setTitularIgual(true)}
+              className={`px-3 py-2 rounded text-xs font-bold transition border ${
+                titularIgual
+                  ? 'bg-sol/20 border-sol/40 text-sol'
+                  : 'bg-white/[0.02] border-white/10 text-white/60 hover:bg-white/5'
+              }`}
+            >
+              ✓ É o próprio cliente
+            </button>
+            <button
+              type="button"
+              onClick={() => setTitularIgual(false)}
+              className={`px-3 py-2 rounded text-xs font-bold transition border ${
+                !titularIgual
+                  ? 'bg-sol/20 border-sol/40 text-sol'
+                  : 'bg-white/[0.02] border-white/10 text-white/60 hover:bg-white/5'
+              }`}
+            >
+              ✗ Outra pessoa (PF/PJ)
+            </button>
+          </div>
+
+          {!titularIgual && (
+            <div className="space-y-3 mt-3 p-3 bg-noite/40 border border-white/5 rounded">
+              <div className="grid grid-cols-2 gap-1 p-1 bg-white/[0.03] border border-white/10 rounded">
+                <button
+                  type="button"
+                  onClick={() => setModoTitular('existente')}
+                  className={`px-2 py-1 rounded text-[10px] font-bold ${
+                    modoTitular === 'existente' ? 'bg-sol/20 text-sol' : 'text-white/50'
+                  }`}
+                >
+                  Já cadastrado
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoTitular('novo')}
+                  className={`px-2 py-1 rounded text-[10px] font-bold ${
+                    modoTitular === 'novo' ? 'bg-sol/20 text-sol' : 'text-white/50'
+                  }`}
+                >
+                  Cadastrar novo
+                </button>
+              </div>
+
+              {modoTitular === 'existente' ? (
+                <SeletorCliente onEscolher={setTitularEscolhido} />
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNovoTitular((t) => ({ ...t, tipo: 'pf' }))}
+                      className={`px-2 py-1 rounded text-[10px] font-bold border ${
+                        novoTitular.tipo === 'pf' ? 'bg-sol/10 border-sol/40 text-sol' : 'border-white/10 text-white/50'
+                      }`}
+                    >
+                      👤 PF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNovoTitular((t) => ({ ...t, tipo: 'pj' }))}
+                      className={`px-2 py-1 rounded text-[10px] font-bold border ${
+                        novoTitular.tipo === 'pj' ? 'bg-sol/10 border-sol/40 text-sol' : 'border-white/10 text-white/50'
+                      }`}
+                    >
+                      🏢 PJ
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder={novoTitular.tipo === 'pj' ? 'Razão social' : 'Nome completo'}
+                    value={novoTitular.razao_social}
+                    onChange={(e) => setNovoTitular((t) => ({ ...t, razao_social: e.target.value }))}
+                    className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30"
+                  />
+                  <input
+                    type="text"
+                    placeholder={novoTitular.tipo === 'pj' ? '00.000.000/0000-00' : '000.000.000-00'}
+                    value={novoTitular.cpf_cnpj}
+                    onChange={(e) => setNovoTitular((t) => ({ ...t, cpf_cnpj: maskCpfCnpj(e.target.value) }))}
+                    className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Endereço da instalação (só na criação) */}
+      {!isEdit && (
+        <section className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+          <h3 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
+            📍 Endereço da instalação
+          </h3>
+          <p className="text-[10px] text-white/50 mb-3">
+            Onde vai instalar o sistema — pra visita técnica e entrega dos equipamentos.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => setEnderecoIgual(true)}
+              className={`px-3 py-2 rounded text-xs font-bold transition border ${
+                enderecoIgual
+                  ? 'bg-sol/20 border-sol/40 text-sol'
+                  : 'bg-white/[0.02] border-white/10 text-white/60 hover:bg-white/5'
+              }`}
+            >
+              ✓ Mesmo endereço do titular
+            </button>
+            <button
+              type="button"
+              onClick={() => setEnderecoIgual(false)}
+              className={`px-3 py-2 rounded text-xs font-bold transition border ${
+                !enderecoIgual
+                  ? 'bg-sol/20 border-sol/40 text-sol'
+                  : 'bg-white/[0.02] border-white/10 text-white/60 hover:bg-white/5'
+              }`}
+            >
+              ✗ Endereço diferente
+            </button>
+          </div>
+
+          {!enderecoIgual && (
+            <div className="space-y-2 p-3 bg-noite/40 border border-white/5 rounded">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="CEP"
+                  value={enderecoInst.cep}
+                  onChange={(e) => setEnderecoInst((s) => ({ ...s, cep: formatarCep(e.target.value) }))}
+                  onBlur={buscarCepInstalacao}
+                  className="w-32 px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30"
+                />
+                <button
+                  type="button"
+                  onClick={buscarCepInstalacao}
+                  className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10"
+                >
+                  🔍 Buscar CEP
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  type="text"
+                  placeholder="Rua"
+                  value={enderecoInst.rua}
+                  onChange={(e) => setEnderecoInst((s) => ({ ...s, rua: e.target.value }))}
+                  className="col-span-2 px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30"
+                />
+                <input
+                  type="text"
+                  placeholder="Nº"
+                  value={enderecoInst.numero}
+                  onChange={(e) => setEnderecoInst((s) => ({ ...s, numero: e.target.value }))}
+                  className="px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="Complemento"
+                  value={enderecoInst.complemento}
+                  onChange={(e) => setEnderecoInst((s) => ({ ...s, complemento: e.target.value }))}
+                  className="px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30"
+                />
+                <input
+                  type="text"
+                  placeholder="Bairro"
+                  value={enderecoInst.bairro}
+                  onChange={(e) => setEnderecoInst((s) => ({ ...s, bairro: e.target.value }))}
+                  className="px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  type="text"
+                  placeholder="Cidade"
+                  value={enderecoInst.cidade}
+                  onChange={(e) => setEnderecoInst((s) => ({ ...s, cidade: e.target.value }))}
+                  className="col-span-2 px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30"
+                />
+                <select
+                  value={enderecoInst.uf}
+                  onChange={(e) => setEnderecoInst((s) => ({ ...s, uf: e.target.value }))}
+                  className="px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white"
+                >
+                  {UFS.map(uf => <option key={uf}>{uf}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+        </section>
       )}
 
       {/* Observações comuns */}

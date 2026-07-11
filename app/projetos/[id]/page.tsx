@@ -147,6 +147,24 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           )}
         </Section>
 
+        {/* Titular do projeto (se diferente do cliente) */}
+        {!projeto.titular_igual_cliente && projeto.titular_cliente_id && (
+          <Section title="Titular do projeto (UC CELESC)">
+            <TitularInfo titularId={projeto.titular_cliente_id} />
+          </Section>
+        )}
+
+        {/* Endereço da instalação (se diferente) */}
+        {!projeto.endereco_igual_titular && projeto.endereco_instalacao && (
+          <Section title="Endereço da instalação">
+            <Info label="Rua" value={`${projeto.endereco_instalacao.rua || '—'}, ${projeto.endereco_instalacao.numero || 's/n'}`} />
+            {projeto.endereco_instalacao.complemento && <Info label="Complemento" value={projeto.endereco_instalacao.complemento} />}
+            {projeto.endereco_instalacao.bairro && <Info label="Bairro" value={projeto.endereco_instalacao.bairro} />}
+            <Info label="Cidade" value={`${projeto.endereco_instalacao.cidade || '—'}/${projeto.endereco_instalacao.uf || 'SC'}`} />
+            {projeto.endereco_instalacao.cep && <Info label="CEP" value={projeto.endereco_instalacao.cep} />}
+          </Section>
+        )}
+
         {/* UCs */}
         <Section title="Unidades Consumidoras">
           <Info label="UC geradora" value={projeto.uc_geradora} />
@@ -189,6 +207,24 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="text-xs font-bold uppercase tracking-wider text-sol mb-4">{title}</h2>
       <div className="space-y-2.5">{children}</div>
     </section>
+  )
+}
+
+async function TitularInfo({ titularId }: { titularId: string }) {
+  const { createClient } = await import('@/lib/supabase/server')
+  const supabase = createClient()
+  const { data: titular } = await supabase
+    .from('clientes')
+    .select('razao_social, cpf_cnpj, tipo')
+    .eq('id', titularId)
+    .single()
+
+  if (!titular) return <p className="text-sm text-white/40">Titular não encontrado.</p>
+  return (
+    <>
+      <Info label="Nome/Razão" value={titular.razao_social} />
+      <Info label={titular.tipo === 'pj' ? 'CNPJ' : 'CPF'} value={titular.cpf_cnpj || '—'} />
+    </>
   )
 }
 
