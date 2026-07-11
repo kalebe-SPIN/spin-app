@@ -46,6 +46,13 @@ export default async function CrmHubPage() {
       descricao="Clientes, leads, comissões e metas"
       cards={[
         {
+          href: '/crm/pipeline',
+          emoji: '🎯',
+          titulo: 'Pipeline Comercial',
+          desc: 'Kanban de todos os projetos por fase (projeto → negócio → venda → execução → pós-venda).',
+          stats: <MiniStat valor={leads || 0} label="em movimento" cor="sol" />,
+        },
+        {
           href: '/crm/clientes',
           emoji: '🏢',
           titulo: 'Clientes',
