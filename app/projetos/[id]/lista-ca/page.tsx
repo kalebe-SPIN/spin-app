@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { montarListaComplementarCA } from '@/lib/kit-auto/montar-kit'
 import { precificarLista } from '@/lib/kit-auto/precificar-lista'
+import { aplicarPrecosEstimados } from '@/lib/kit-auto/precos-estimados'
 import { ListaCaForm } from '@/components/ListaCaForm'
 
 export const dynamic = 'force-dynamic'
@@ -85,8 +86,11 @@ export default async function ListaCaPage({ params }: { params: { id: string } }
     }
   )
 
-  // Precifica: busca preços no catálogo pra cada item
-  const listaComPrecos = await precificarLista(supabase, listaSalva || listaAuto)
+  // Precifica em 2 etapas:
+  //  1. Busca preços no catálogo Supabase (pra produtos cadastrados)
+  //  2. Aplica estimativas de mercado nos itens que ficaram sem preço
+  const listaDoCatalogo = await precificarLista(supabase, listaSalva || listaAuto)
+  const listaComPrecos = aplicarPrecosEstimados(listaDoCatalogo)
 
   return (
     <main className="min-h-screen p-8 md:p-12">
