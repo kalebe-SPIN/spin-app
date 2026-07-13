@@ -276,7 +276,7 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
         </table>
       </div>
 
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex items-center justify-between pt-2 flex-wrap gap-2">
         <button
           type="button"
           onClick={adicionarItem}
@@ -284,9 +284,22 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
         >
           + Adicionar item manual
         </button>
-        <span className="text-xs text-white/40">
-          {itens.length} itens · {semPreco > 0 ? <span className="text-coral">{semPreco} sem preço</span> : 'todos com preço ✓'}
-        </span>
+
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-white/40">
+            {itens.length} itens · {semPreco > 0 ? <span className="text-coral">{semPreco} sem preço</span> : 'todos com preço ✓'}
+          </span>
+          {semPreco > 0 && (
+            <button
+              type="button"
+              onClick={pedirCotacaoDavi}
+              disabled={cotandoDavi}
+              className="text-xs px-3 py-1.5 bg-weg-azul/20 border border-weg-azul/40 text-weg-azul font-bold rounded-lg hover:bg-weg-azul/30 disabled:opacity-40 whitespace-nowrap"
+            >
+              {cotandoDavi ? '👔 Cotando…' : '👔 Cotar via Davi'}
+            </button>
+          )}
+        </div>
       </div>
 
       {erro && (
