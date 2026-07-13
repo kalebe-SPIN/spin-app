@@ -12,15 +12,19 @@ export async function salvarTiposProjetoAction(projetoId: string, tipos: TipoIte
 
   if (tipos.length === 0) return { erro: 'Escolha pelo menos 1 tipo' }
 
-  // Busca itens já existentes pra não duplicar
+  const tiposSelecionados = new Set(tipos)
+
+  // Busca ATIVOS (não removidos) pra fazer sync completo
   const { data: existentes } = await supabase
     .from('projeto_itens')
-    .select('tipo')
+    .select('id, tipo')
     .eq('projeto_id', projetoId)
+    .neq('status', 'removido')
 
   const tiposExistentes = new Set((existentes || []).map((x) => x.tipo as TipoItem))
-  const novos = tipos.filter((t) => !tiposExistentes.has(t))
 
+  // 1. INSERE tipos novos que não existem
+  const novos = tipos.filter((t) => !tiposExistentes.has(t))
   if (novos.length > 0) {
     const registros = novos.map((tipo, idx) => ({
       projeto_id: projetoId,
@@ -30,6 +34,17 @@ export async function salvarTiposProjetoAction(projetoId: string, tipos: TipoIte
       dados: {},
     }))
     const { error } = await supabase.from('projeto_itens').insert(registros)
+    if (error) return { erro: error.message }
+  }
+
+  // 2. MARCA COMO REMOVIDO os que existem mas foram desselecionados
+  const paraRemover = (existentes || []).filter((e: any) => !tiposSelecionados.has(e.tipo))
+  if (paraRemover.length > 0) {
+    const ids = paraRemover.map((e: any) => e.id)
+    const { error } = await supabase
+      .from('projeto_itens')
+      .update({ status: 'removido', updated_at: new Date().toISOString() })
+      .in('id', ids)
     if (error) return { erro: error.message }
   }
 
