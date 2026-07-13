@@ -87,75 +87,65 @@ export function montarListaComplementarCA(
   const potenciaCA = dados.potencia_ca_total_kw || (inversor.potencia_kw * dados.qtd_inversores)
   const ateResidencial = potenciaCA <= 30 // limite 30kWp
 
-  // ============== CABOS TERRA (2× 30m padrão residencial ≤30kWp) ==============
-  // Placas → inversor
+  // ============== CABO TERRA (1 único item — 30m totais) ==============
+  // Padrão Spin: 30m = aterramento + placas→inversor (mesmo cabo, mesma bitola)
+  // Cabo 6mm² isolado verde (NÃO cobre nu) — até 30kWp residencial
   items.push({
     categoria: 'cabo_terra',
-    subcategoria: 'cabo_terra_cc',
+    subcategoria: 'cabo_terra',
     descricao: ateResidencial
-      ? 'Cabo terra 6mm² verde (placas → inversor)'
-      : `Cabo terra ${bitolaAterramento(potenciaCA)}mm² verde (placas → inversor)`,
+      ? 'Cabo 6mm² verde (aterramento + placas→inversor)'
+      : `Cabo ${bitolaAterramento(potenciaCA)}mm² verde (aterramento + placas→inversor)`,
     qtd: 30,
     unidade: 'm',
-    observacao: 'Padrão Spin: 30m por projeto até 30kWp',
-    automatico: true,
-  })
-  // Inversor → haste
-  items.push({
-    categoria: 'cabo_terra',
-    subcategoria: 'cabo_terra_haste',
-    descricao: ateResidencial
-      ? 'Cabo terra 6mm² verde (inversor → haste)'
-      : `Cabo terra ${bitolaAterramento(potenciaCA)}mm² verde (inversor → haste)`,
-    qtd: 30,
-    unidade: 'm',
-    observacao: 'Padrão Spin: 30m por projeto até 30kWp',
+    observacao: 'Padrão Spin: 30m totais (soma do aterramento + trecho placas→inversor)',
     automatico: true,
   })
 
   // ============== ELETRODUTOS ==============
-  // 2 eletrodutos padrão pra até 30kW residencial
+  // Padrão Spin: 2 barras de 3m (6m totais), diâmetro em POLEGADAS
   const bitolaCA = calcularBitolaCa(potenciaCA, isTri)
-  const diamEletroduto = calcularDiametroEletroduto(bitolaCA, numFases + 1) // +1 pro terra
-  const compEletroduto = Math.ceil(dados.distancia_string_qgbt_m * 1.2)
+  const bitolaEletroduto = eletrodutoEmPolegadas(bitolaCA, numFases + 1) // +1 pro terra
   items.push({
     categoria: 'eletroduto',
     subcategoria: 'eletroduto_ca',
-    descricao: `Eletroduto ${diamEletroduto}mm PVC (2 unidades × ${compEletroduto}m)`,
-    qtd: 2 * compEletroduto,
-    unidade: 'm',
-    observacao: `${numFases + 1} condutores (${numFases}F+N+T) bitola ${bitolaCA}mm²`,
+    descricao: `Eletroduto ${bitolaEletroduto.polegadas} PVC (barra 3m)`,
+    qtd: 2,
+    unidade: 'barra',
+    observacao: `2 barras × 3m = 6m totais · ${numFases + 1} condutores (${numFases}F+N+T) bitola ${bitolaCA}mm²`,
     automatico: true,
   })
 
   // ============== SUPORTES / ABRAÇADEIRAS / LUVAS ==============
-  // Dimensionar pra 2 eletrodutos
-  const qtdAbracadeiras = Math.ceil(compEletroduto / 1.5) * 2 // 1 abraçadeira/1,5m × 2 eletrodutos
+  // Base: 6m totais de eletroduto (2 × 3m)
+  // Abraçadeiras: 1 a cada 1,5m → ~4 pontos por barra × 2 = 8
   items.push({
     categoria: 'fixacao',
     subcategoria: 'abracadeira',
-    descricao: `Abraçadeira tipo "D" ${diamEletroduto}mm com cunha`,
-    qtd: qtdAbracadeiras,
+    descricao: `Abraçadeira tipo "D" ${bitolaEletroduto.polegadas} com cunha`,
+    qtd: 8,
     unidade: 'un',
-    observacao: 'Fixação dos 2 eletrodutos',
+    observacao: 'Fixação dos 2 eletrodutos (4 pontos por barra de 3m)',
     automatico: true,
   })
-  const qtdLuvas = Math.ceil(compEletroduto / 3) * 2 // 1 luva/3m × 2 eletrodutos
+  // Luvas: 1 pra emenda entre barras + 1 reserva por eletroduto = 2
   items.push({
     categoria: 'fixacao',
     subcategoria: 'luva',
-    descricao: `Luva eletroduto ${diamEletroduto}mm`,
-    qtd: qtdLuvas,
+    descricao: `Luva eletroduto ${bitolaEletroduto.polegadas}`,
+    qtd: 2,
     unidade: 'un',
+    observacao: 'Emenda entre barras',
     automatico: true,
   })
+  // Curvas: 2 por trajeto × 2 eletrodutos = 4
   items.push({
     categoria: 'fixacao',
     subcategoria: 'curva',
-    descricao: `Curva eletroduto ${diamEletroduto}mm 90°`,
-    qtd: 8,
+    descricao: `Curva eletroduto ${bitolaEletroduto.polegadas} 90°`,
+    qtd: 4,
     unidade: 'un',
-    observacao: '4 curvas por eletroduto',
+    observacao: '2 curvas por eletroduto',
     automatico: true,
   })
 
@@ -222,7 +212,7 @@ export function montarListaComplementarCA(
     descricao: 'Kit parafusos + buchas S8 (fixação eletroduto/quadro)',
     qtd: 1,
     unidade: 'kit',
-    observacao: `Suficiente para ${qtdAbracadeiras} pontos + fixação do quadro`,
+    observacao: 'Suficiente para 8 pontos de abraçadeira + fixação do quadro',
     automatico: true,
   })
 
@@ -326,14 +316,19 @@ function bitolaAterramento(potenciaKw: number): number {
   return 25
 }
 
-/** Diâmetro do eletroduto pela quantidade + bitola dos condutores (NBR 5410 simplificada). */
-function calcularDiametroEletroduto(bitolaCabo: number, qtdCondutores: number): number {
-  // Diâmetros comerciais em mm
-  if (bitolaCabo <= 4 && qtdCondutores <= 4) return 20
-  if (bitolaCabo <= 6 && qtdCondutores <= 4) return 25
-  if (bitolaCabo <= 10 && qtdCondutores <= 4) return 32
-  if (bitolaCabo <= 16 && qtdCondutores <= 4) return 40
-  if (bitolaCabo <= 25) return 50
-  if (bitolaCabo <= 35) return 60
-  return 75
+/**
+ * Diâmetro do eletroduto em POLEGADAS (padrão comercial BR) pela bitola CA
+ * e quantidade de condutores (NBR 5410 simplificada).
+ * Retorna { polegadas: "1\"", equivMm: 25 } pra flexibilidade de exibição.
+ */
+function eletrodutoEmPolegadas(bitolaCabo: number, qtdCondutores: number): { polegadas: string; equivMm: number } {
+  // Cabo pequeno (baixa corrente)
+  if (bitolaCabo <= 4 && qtdCondutores <= 4) return { polegadas: '3/4"', equivMm: 20 }
+  if (bitolaCabo <= 6 && qtdCondutores <= 4) return { polegadas: '1"', equivMm: 25 }
+  if (bitolaCabo <= 10 && qtdCondutores <= 4) return { polegadas: '1.1/4"', equivMm: 32 }
+  if (bitolaCabo <= 16 && qtdCondutores <= 4) return { polegadas: '1.1/2"', equivMm: 40 }
+  if (bitolaCabo <= 25) return { polegadas: '2"', equivMm: 50 }
+  if (bitolaCabo <= 35) return { polegadas: '2.1/2"', equivMm: 60 }
+  if (bitolaCabo <= 50) return { polegadas: '3"', equivMm: 75 }
+  return { polegadas: '4"', equivMm: 100 }
 }
