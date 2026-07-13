@@ -299,23 +299,34 @@ export function montarListaComplementarCA(
 
 /**
  * Bitola CA (mm²) pra FV residencial padrão Spin.
- * Considera corrente nominal do inversor com fator de segurança 1.15.
+ * Fator de segurança 1.15 sobre corrente nominal.
  * Uso: eletroduto embutido em parede/PVC com 4 condutores.
+ *
+ * CAP RESIDENCIAL: sistemas ≤ 30kW nunca passam de 16mm² (padrão Spin).
+ * Isso reflete a realidade da Grande Florianópolis — sistemas maiores
+ * são comerciais/usina e precisam de especificação separada.
  */
 function calcularBitolaCa(potenciaKw: number, isTri: boolean): number {
+  const RESIDENCIAL_LIMITE_KW = 30
+
   const tensao = isTri ? 380 : 220
   const factor = isTri ? Math.sqrt(3) : 1
   const correnteNominal = (potenciaKw * 1000) / (tensao * factor)
   const correnteProjeto = correnteNominal * 1.15
 
-  // Bitolas comerciais BR (NBR 5410)
-  if (correnteProjeto <= 25) return 4
-  if (correnteProjeto <= 32) return 6
-  if (correnteProjeto <= 45) return 10
-  if (correnteProjeto <= 60) return 16
-  if (correnteProjeto <= 80) return 25
-  if (correnteProjeto <= 100) return 35
-  return 50
+  let bitola: number
+  if (correnteProjeto <= 25) bitola = 4
+  else if (correnteProjeto <= 32) bitola = 6
+  else if (correnteProjeto <= 45) bitola = 10
+  else if (correnteProjeto <= 60) bitola = 16
+  else if (correnteProjeto <= 80) bitola = 25
+  else if (correnteProjeto <= 100) bitola = 35
+  else bitola = 50
+
+  // Cap residencial — nunca superdimensiona
+  if (potenciaKw <= RESIDENCIAL_LIMITE_KW && bitola > 16) bitola = 16
+
+  return bitola
 }
 
 /** Aterramento: >30kWp exige bitola maior que 6mm² */
