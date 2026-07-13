@@ -297,14 +297,24 @@ export function montarListaComplementarCA(
 // HELPERS
 // ==========================================================
 
+/**
+ * Bitola CA (mm²) pra FV residencial padrão Spin.
+ * Considera corrente nominal do inversor com fator de segurança 1.15.
+ * Uso: eletroduto embutido em parede/PVC com 4 condutores.
+ */
 function calcularBitolaCa(potenciaKw: number, isTri: boolean): number {
-  const corrente = (potenciaKw * 1000) / (isTri ? 380 * Math.sqrt(3) : 220)
-  if (corrente <= 20) return 4
-  if (corrente <= 30) return 6
-  if (corrente <= 40) return 10
-  if (corrente <= 60) return 16
-  if (corrente <= 80) return 25
-  if (corrente <= 100) return 35
+  const tensao = isTri ? 380 : 220
+  const factor = isTri ? Math.sqrt(3) : 1
+  const correnteNominal = (potenciaKw * 1000) / (tensao * factor)
+  const correnteProjeto = correnteNominal * 1.15
+
+  // Bitolas comerciais BR (NBR 5410)
+  if (correnteProjeto <= 25) return 4
+  if (correnteProjeto <= 32) return 6
+  if (correnteProjeto <= 45) return 10
+  if (correnteProjeto <= 60) return 16
+  if (correnteProjeto <= 80) return 25
+  if (correnteProjeto <= 100) return 35
   return 50
 }
 
@@ -317,18 +327,20 @@ function bitolaAterramento(potenciaKw: number): number {
 }
 
 /**
- * Diâmetro do eletroduto em POLEGADAS (padrão comercial BR) pela bitola CA
- * e quantidade de condutores (NBR 5410 simplificada).
- * Retorna { polegadas: "1\"", equivMm: 25 } pra flexibilidade de exibição.
+ * Diâmetro do eletroduto em POLEGADAS pra FV residencial padrão Spin.
+ * Taxa de ocupação NBR 5410 simplificada: eletroduto embutido com 4 condutores.
+ *
+ * Padrão comercial mais comum na Grande Florianópolis (fornecedores locais):
+ *   - Até 10mm²: cabe em 1" tranquilamente
+ *   - 16mm²: 1.1/4"
+ *   - 25mm²: 1.1/2"
+ *   - 35mm² pra cima: 2"
+ *
+ * Cap de 2" — sistemas FV residenciais até 30kW não passam disso.
  */
 function eletrodutoEmPolegadas(bitolaCabo: number, qtdCondutores: number): { polegadas: string; equivMm: number } {
-  // Cabo pequeno (baixa corrente)
-  if (bitolaCabo <= 4 && qtdCondutores <= 4) return { polegadas: '3/4"', equivMm: 20 }
-  if (bitolaCabo <= 6 && qtdCondutores <= 4) return { polegadas: '1"', equivMm: 25 }
-  if (bitolaCabo <= 10 && qtdCondutores <= 4) return { polegadas: '1.1/4"', equivMm: 32 }
-  if (bitolaCabo <= 16 && qtdCondutores <= 4) return { polegadas: '1.1/2"', equivMm: 40 }
-  if (bitolaCabo <= 25) return { polegadas: '2"', equivMm: 50 }
-  if (bitolaCabo <= 35) return { polegadas: '2.1/2"', equivMm: 60 }
-  if (bitolaCabo <= 50) return { polegadas: '3"', equivMm: 75 }
-  return { polegadas: '4"', equivMm: 100 }
+  if (bitolaCabo <= 10) return { polegadas: '1"', equivMm: 25 }
+  if (bitolaCabo <= 16) return { polegadas: '1.1/4"', equivMm: 32 }
+  if (bitolaCabo <= 25) return { polegadas: '1.1/2"', equivMm: 40 }
+  return { polegadas: '2"', equivMm: 50 } // 35mm² ou mais
 }
