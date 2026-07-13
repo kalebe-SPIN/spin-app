@@ -127,8 +127,9 @@ export function sugerirKits(input: {
   padrao: PadraoCliente
   potCcAlvoKwp: number
   inversores: InversorInput[]
+  tipoTelhado?: string
 }): KitSugerido[] {
-  const { placa, padrao, potCcAlvoKwp, inversores } = input
+  const { placa, padrao, potCcAlvoKwp, inversores, tipoTelhado } = input
 
   // 1. Calcular limites de potência CA
   const potCaLimiteCelesc = calcularLimiteCelesc(padrao.tipo_ligacao)
@@ -162,6 +163,7 @@ export function sugerirKits(input: {
         potCaMax,
         categoria: 'string',
         idPrefix: `mono-${inv.codigo_weg}-x${qtd}`,
+        tipoTelhado,
       })
       if (kit) candidatos.push(kit)
     }
@@ -181,6 +183,7 @@ export function sugerirKits(input: {
           potCaMax,
           categoria: 'string',
           idPrefix: `tri-${inv.codigo_weg}-x${qtd}`,
+          tipoTelhado,
         })
         if (kit) candidatos.push(kit)
       }
@@ -204,6 +207,7 @@ export function sugerirKits(input: {
           potCaMax,
           categoria: 'string',
           idPrefix: `${qtd}mono-${inv.codigo_weg}`,
+          tipoTelhado,
           distribuirEntreFases: true,
         })
         if (kit) candidatos.push(kit)
@@ -229,6 +233,7 @@ export function sugerirKits(input: {
         potCaMax,
         categoria: 'microinversor',
         idPrefix: `micro-${inv.codigo_weg}-x${qtd}`,
+        tipoTelhado,
         distribuirEntreFases: padrao.tipo_ligacao !== 'monofasico',
       })
       if (kit) candidatos.push(kit)
@@ -272,8 +277,9 @@ function tentarComposicao(args: {
   categoria: 'string' | 'microinversor' | 'hibrido'
   idPrefix: string
   distribuirEntreFases?: boolean
+  tipoTelhado?: string
 }): KitSugerido | null {
-  const { placa, qtdPlacas, potCcRealKwp, inversorPrincipal, qtdInversorPrincipal, padrao, potCaMax, categoria, idPrefix } = args
+  const { placa, qtdPlacas, potCcRealKwp, inversorPrincipal, qtdInversorPrincipal, padrao, potCaMax, categoria, idPrefix, tipoTelhado } = args
 
   const potCaTotal = inversorPrincipal.potencia_kw * qtdInversorPrincipal
   const fci = (potCcRealKwp / potCaTotal) * 100
@@ -330,7 +336,7 @@ function tentarComposicao(args: {
 
   // Composição extra do kit (estrutura, cabos, disjuntor, DPS, quadros)
   // Baseada no que a Spin compra da WEG pra montar o kit CA
-  const composicao = gerarComposicao(placa, qtdPlacas, inversorPrincipal, qtdInversorPrincipal, padrao)
+  const composicao = gerarComposicao(placa, qtdPlacas, inversorPrincipal, qtdInversorPrincipal, padrao, tipoTelhado)
 
   return {
     id: idPrefix,
@@ -386,14 +392,16 @@ function gerarComposicao(
   qtdPlacas: number,
   inversor: InversorInput,
   qtdInversor: number,
-  padrao: PadraoCliente
+  padrao: PadraoCliente,
+  tipoTelhado?: string,
 ) {
   const isTri = /trif/i.test(inversor.tensao_desc) || LINHAS_ONGRID.tri.test(inversor.modelo)
   const isBi = /bif/i.test(inversor.tensao_desc)
   const isMicro = LINHAS_ONGRID.micro.test(inversor.modelo)
 
-  // Estrutura: 1 kit por 4 placas
+  // Estrutura: 1 kit por 4 placas, tipo mapeado pro telhado
   const qtdKitsEstrutura = Math.ceil(qtdPlacas / 4)
+  const tipoEstrutura = mapearTipoEstrutura(tipoTelhado)
 
   // Cabos CC: distância padrão 15m ida+volta com folga 15%
   const numStrings = Math.max(1, inversor.entradas_mppt || 2)
@@ -433,13 +441,27 @@ function gerarComposicao(
     inversores: isMicro
       ? `${qtdInversor}× Microinversor ${inversor.modelo}`
       : `${qtdInversor}× ${inversor.modelo} (${inversor.potencia_kw}kW)`,
-    estrutura: `${qtdKitsEstrutura} kit(s) estrutura WEG p/ 4 placas`,
+    estrutura: `${qtdKitsEstrutura} kit(s) estrutura ${tipoEstrutura} WEG p/ 4 placas (${qtdPlacas} placas total)`,
     cabo_cc: `${cabocc}m cabo solar 6mm² preto + ${cabocc}m vermelho`,
     disjuntor: disjuntorTxt,
     dps: dpsTxt,
     quadro: '1× Quadro de Proteção CA (QPCA) + acessórios',
     aterramento: 'Haste 5/8" × 2,4m + cabo cobre nu 16mm²',
   }
+}
+
+/**
+ * Mapeia tipo de cobertura do telhado pro tipo de estrutura Spin/WEG.
+ */
+function mapearTipoEstrutura(tipoTelhado?: string): string {
+  const t = (tipoTelhado || '').toLowerCase()
+  if (t.includes('ceram') || t.includes('colonial') || t.includes('portugues') || t.includes('romana')) return 'cerâmico'
+  if (t.includes('fibro') || t.includes('brasilit') || t.includes('etern')) return 'fibrocimento'
+  if (t.includes('metal') || t.includes('chapa') || t.includes('trapez') || t.includes('sanduiche')) return 'metálico (perfil trapezoidal)'
+  if (t.includes('laje') || t.includes('lage')) return 'laje (com base de concreto)'
+  if (t.includes('solo') || t.includes('terreno')) return 'solo (fixação em concreto)'
+  if (t.includes('shingle')) return 'shingle'
+  return 'universal'
 }
 
 function estimarDisjuntor(inversor: InversorInput, padrao: PadraoCliente): string {

@@ -108,6 +108,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
           potCcAlvoAuto={potCcAlvoAuto}
           consumoMedio={consumoMedio}
           kitSalvo={projeto.kit_selecionado}
+          tipoTelhado={projeto.telhado_secoes?.[0]?.tipo_cobertura}
         />
       </div>
     </main>

@@ -73,7 +73,8 @@ export function KitFluxoClient({
   potCcAlvoAuto,
   consumoMedio,
   kitSalvo,
-}: Props) {
+  tipoTelhado,
+}: Props & { tipoTelhado?: string }) {
   const [isPending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
 
@@ -104,6 +105,7 @@ export function KitFluxoClient({
         amperagem_disjuntor_geral_a: padrao.amperagem_disjuntor_geral_a,
         tensao_fornecimento: padrao.tensao_fornecimento,
       },
+      tipoTelhado,
       potCcAlvoKwp: potCcAlvo,
       inversores: inversores.map(i => ({
         id: i.id,
