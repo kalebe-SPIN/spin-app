@@ -129,9 +129,9 @@ export function montarListaComplementarCA(
       categoria: 'cabo_ca',
       subcategoria: 'cabo_hepr_fase',
       descricao: `Cabo HEPR ${bitolaCA}mm² ${cor} (fase ${label})`,
-      qtd: 6,
+      qtd: 8,
       unidade: 'm',
-      observacao: 'Padrão Spin: 6m (≈2m inversor→quadro + ≈4m quadro→rede)',
+      observacao: 'Padrão Spin: 8m (≈3m inversor→quadro + ≈5m quadro→rede)',
       automatico: true,
     })
   }
@@ -139,18 +139,18 @@ export function montarListaComplementarCA(
     categoria: 'cabo_ca',
     subcategoria: 'cabo_hepr_neutro',
     descricao: `Cabo HEPR ${bitolaCA}mm² azul (neutro)`,
-    qtd: 6,
+    qtd: 8,
     unidade: 'm',
-    observacao: 'Padrão Spin: 6m (≈2m inversor→quadro + ≈4m quadro→rede)',
+    observacao: 'Padrão Spin: 8m (≈3m inversor→quadro + ≈5m quadro→rede)',
     automatico: true,
   })
   items.push({
     categoria: 'cabo_ca',
     subcategoria: 'cabo_hepr_terra',
     descricao: `Cabo HEPR ${bitolaCA}mm² verde-amarelo (terra)`,
-    qtd: 6,
+    qtd: 8,
     unidade: 'm',
-    observacao: 'Padrão Spin: 6m (≈2m inversor→quadro + ≈4m quadro→rede)',
+    observacao: 'Padrão Spin: 8m (≈3m inversor→quadro + ≈5m quadro→rede)',
     automatico: true,
   })
 
