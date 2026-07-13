@@ -44,9 +44,39 @@ const BADGE_ORIGEM: Record<string, { emoji: string; label: string; classe: strin
 export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: Props) {
   const [itens, setItens] = useState<ItemKit[]>(itensIniciais)
   const [isPending, startTransition] = useTransition()
+  const [cotandoDavi, setCotandoDavi] = useState(false)
+  const [msgDavi, setMsgDavi] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
   const { totalGeral, semPreco } = useMemo(() => calcularSubtotais(itens), [itens])
+
+  async function pedirCotacaoDavi() {
+    if (cotandoDavi) return
+    if (semPreco === 0) {
+      setMsgDavi('Todos os itens já têm preço — nada pra cotar.')
+      return
+    }
+    if (!window.confirm(`O Davi vai cotar online ${semPreco} ${semPreco === 1 ? 'item' : 'itens'} sem preço. Pode levar 1-3 minutos. Continuar?`)) return
+    setCotandoDavi(true)
+    setMsgDavi('👔 Davi está cotando online... isso pode levar alguns minutos.')
+    setErro(null)
+    try {
+      const res = await fetch('/api/davi/cotar-lista', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itens }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erro no Davi')
+      setItens(data.itens)
+      const r = data.resumo
+      setMsgDavi(`✓ Davi cotou ${r.cotacoes_encontradas} de ${r.sem_preco_antes} em ${(r.tempo_ms / 1000).toFixed(1)}s. ${r.sem_preco_apos > 0 ? `Ainda faltam ${r.sem_preco_apos} sem preço.` : 'Todos com preço!'}`)
+    } catch (e: any) {
+      setErro(`Davi: ${e.message}`)
+    } finally {
+      setCotandoDavi(false)
+    }
+  }
 
   function alterarQtd(idx: number, novoValor: string) {
     const n = parseFloat(novoValor) || 0
@@ -117,8 +147,24 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
       )}
 
       {semPreco > 0 && (
-        <div className="bg-coral/10 border border-coral/30 rounded-lg p-3 text-xs text-coral flex items-center gap-2">
-          ⚠️ <span><strong>{semPreco} {semPreco === 1 ? 'item' : 'itens'} sem preço</strong> — preencha manualmente ou cadastre produto correspondente no catálogo pra não vazar margem.</span>
+        <div className="bg-coral/10 border border-coral/30 rounded-lg p-3 flex flex-col md:flex-row md:items-center gap-3 justify-between">
+          <div className="text-xs text-coral flex items-center gap-2">
+            ⚠️ <span><strong>{semPreco} {semPreco === 1 ? 'item' : 'itens'} sem preço</strong> — orçamento vai subestimar sem preencher.</span>
+          </div>
+          <button
+            type="button"
+            onClick={pedirCotacaoDavi}
+            disabled={cotandoDavi}
+            className="text-xs px-3 py-2 bg-weg-azul/20 border border-weg-azul/40 text-weg-azul font-bold rounded-lg hover:bg-weg-azul/30 disabled:opacity-40 whitespace-nowrap"
+          >
+            {cotandoDavi ? '👔 Cotando…' : '👔 Cotar via Davi (online)'}
+          </button>
+        </div>
+      )}
+
+      {msgDavi && (
+        <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-lg p-3 text-xs text-weg-azul">
+          {msgDavi}
         </div>
       )}
 
