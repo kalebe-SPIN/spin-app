@@ -1,37 +1,25 @@
 -- ============================================================================
 -- Migration 022: Pipeline completo (projeto → negócio → venda → execução → PV)
 -- ============================================================================
--- Amplia constraint de status com novos estágios:
--- negociando, em_fechamento, vendido, em_homologacao, em_execucao,
--- instalado, ativo_pos_venda
+-- projeto_status é um ENUM: precisa ALTER TYPE ... ADD VALUE (não CHECK)
 -- ============================================================================
 
--- Remove constraint antiga se existir e recria com estados completos
-ALTER TABLE public.projetos DROP CONSTRAINT IF EXISTS projetos_status_check;
-ALTER TABLE public.projetos
-  ADD CONSTRAINT projetos_status_check CHECK (
-    status IN (
-      -- FASE 1: PROJETO (workflow técnico)
-      'rascunho', 'fatura_analisada', 'telhado_preenchido', 'dimensionado',
-      'kit_selecionado', 'lista_ca_confirmada', 'orcamento_gerado',
-      -- FASE 2: NEGÓCIO (comercial)
-      'proposta_enviada', 'negociando', 'em_fechamento',
-      -- FASE 3: VENDA
-      'vendido', 'aceito',  -- aceito = venda concretizada (retrocompat)
-      -- FASE 4: EXECUÇÃO
-      'em_homologacao', 'em_execucao', 'instalado',
-      -- FASE 5: PÓS-VENDA
-      'ativo_pos_venda',
-      -- TERMINAIS
-      'recusado', 'cancelado', 'expirado'
-    )
-  );
+-- Cada ALTER TYPE precisa rodar em transação separada.
+-- No SQL Editor do Supabase, rode um por vez OU o SQL Editor detecta e faz certo.
 
--- Adiciona campo pra timestamp da transição atual (metricas)
+ALTER TYPE projeto_status ADD VALUE IF NOT EXISTS 'negociando';
+ALTER TYPE projeto_status ADD VALUE IF NOT EXISTS 'em_fechamento';
+ALTER TYPE projeto_status ADD VALUE IF NOT EXISTS 'vendido';
+ALTER TYPE projeto_status ADD VALUE IF NOT EXISTS 'em_homologacao';
+ALTER TYPE projeto_status ADD VALUE IF NOT EXISTS 'em_execucao';
+ALTER TYPE projeto_status ADD VALUE IF NOT EXISTS 'instalado';
+ALTER TYPE projeto_status ADD VALUE IF NOT EXISTS 'ativo_pos_venda';
+
+-- Timestamp da última mudança de etapa (usado pra métricas)
 ALTER TABLE public.projetos
   ADD COLUMN IF NOT EXISTS status_atualizado_em timestamptz DEFAULT now();
 
--- Historico de mudanças de etapa
+-- Histórico de mudanças de etapa
 CREATE TABLE IF NOT EXISTS public.projeto_status_historico (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   projeto_id uuid NOT NULL REFERENCES public.projetos(id) ON DELETE CASCADE,
