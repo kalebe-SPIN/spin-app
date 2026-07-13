@@ -291,6 +291,13 @@ function tentarComposicao(args: {
   // Limite CELESC pra rede monofásica: 8 kW CA total
   if (padrao.tipo_ligacao === 'monofasico' && potCaTotal > CELESC_LIMITE_MONO_KW) return null
 
+  // MICROINVERSOR — limite físico de placas por unidade
+  // SIW100 series suporta até 4 módulos por microinversor
+  if (categoria === 'microinversor') {
+    const MICRO_MAX_PLACAS_POR_UN = 4
+    if (qtdPlacas > qtdInversorPrincipal * MICRO_MAX_PLACAS_POR_UN) return null
+  }
+
   // Desbalanceamento (só faz sentido se >1 inversor em bi/tri usando MONO)
   // Regra CELESC: diferença entre fases não pode ultrapassar 5 kW
   // NOTA: NÃO filtra fases zeradas — se uma fase fica sem inversor, isso É desbalanceamento

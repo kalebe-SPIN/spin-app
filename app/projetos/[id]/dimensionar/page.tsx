@@ -53,9 +53,12 @@ export default async function DimensionarPage({ params }: { params: { id: string
   if (potLimitePadrao && potCcSugeridaKwp > potLimitePadrao)
     gargalos.push({ tipo: 'padrao', msg: `Padrão CELESC atual (${padrao.amperagem_disjuntor_geral_a}A) suporta ~${potLimitePadrao.toFixed(1)} kWp — considerar upgrade` })
 
+  // Modo sem fatura: dispensa Telhado e usa dados aproximados
+  const modoSemFatura = projeto.origem_dimensionamento && projeto.origem_dimensionamento !== 'fatura'
+
   const camposFaltando: string[] = []
   if (!fatura) camposFaltando.push('Passo 2: fatura')
-  if (!telhado || telhado.length === 0) camposFaltando.push('Passo 3: telhado')
+  if (!modoSemFatura && (!telhado || telhado.length === 0)) camposFaltando.push('Passo 3: telhado')
   if (!padrao) camposFaltando.push('Passo 4: padrão')
 
   return (
