@@ -6,6 +6,7 @@ import { AgendaDoProjeto } from '@/components/AgendaDoProjeto'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
 import { MudarEtapaCard } from '@/components/MudarEtapaCard'
 import { ItensPropostaCard } from '@/components/ItensPropostaCard'
+import { getPassosRelevantes, INFO_PASSO, type TipoItem } from '@/lib/tipos-projeto'
 
 // Sempre buscar dados frescos do banco (sem cache stale após edição)
 export const dynamic = 'force-dynamic'
@@ -31,6 +32,15 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
   if (error || !projeto) notFound()
 
   const proximoPasso = getProximoPasso(projeto.status)
+
+  // Passos do workflow adaptativos: união dos passos de todos os tipos escolhidos
+  const { data: itensProjeto } = await supabase
+    .from('projeto_itens')
+    .select('tipo')
+    .eq('projeto_id', projeto.id)
+    .neq('status', 'removido')
+  const tiposEscolhidos = (itensProjeto || []).map((i: any) => i.tipo as TipoItem)
+  const passosRelevantes = getPassosRelevantes(tiposEscolhidos)
 
   // Permissão pra gerador de diagramas — admin OU flag explícita
   // MAS respeita o modo de visualização: se admin está em modo consultor, esconde
@@ -124,25 +134,35 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           </div>
         )}
 
-        {/* Workflow — 8 passos navegáveis */}
+        {/* Workflow — passos adaptativos por tipo de item */}
         <section className="mb-8 p-6 bg-white/[0.03] border border-white/10 rounded-xl">
           <h2 className="text-xs font-bold uppercase tracking-wider text-sol mb-4">
             Workflow do projeto
+            {tiposEscolhidos.length > 0 && (
+              <span className="ml-2 text-[10px] text-white/40 normal-case">
+                · {passosRelevantes.length} passos conforme tipos escolhidos
+              </span>
+            )}
           </h2>
           <p className="text-xs text-white/40 mb-4">
             Clique em qualquer passo pra trabalhar nele. Pode pular passos sem perder progresso.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {PASSOS_WORKFLOW.map((p) => (
+            {passosRelevantes.map((chave, idx) => {
+              const info = INFO_PASSO[chave]
+              // Encontra correspondente no PASSOS_WORKFLOW legado (pra status)
+              const legado = PASSOS_WORKFLOW.find((p) => p.path === info.path)
+              return (
               <PassoCard
-                key={p.path}
-                numero={p.numero}
-                titulo={p.titulo}
-                href={`/projetos/${projeto.id}/${p.path}`}
+                key={chave}
+                numero={idx + 1}
+                titulo={info.titulo}
+                href={`/projetos/${projeto.id}/${info.path}`}
                 statusProjeto={projeto.status}
-                statusRequerido={p.statusAposCompleto}
+                statusRequerido={legado?.statusAposCompleto || 'rascunho'}
               />
-            ))}
+              )
+            })}
           </div>
         </section>
 

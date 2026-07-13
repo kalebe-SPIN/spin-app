@@ -145,3 +145,71 @@ export function tiposPorGrupo(): Record<Grupo, InfoTipo[]> {
   for (const t of TIPOS_ITEM) r[t.grupo].push(t)
   return r
 }
+
+// ============================================================================
+// PASSOS NECESSÁRIOS POR TIPO DE ITEM
+// ============================================================================
+// Mapa que define quais passos do workflow são relevantes pra cada tipo.
+// Se projeto tem múltiplos tipos, união dos passos de todos.
+
+export type PassoWorkflow =
+  | 'cliente' | 'fatura' | 'telhado' | 'padrao' | 'dimensionar'
+  | 'kit' | 'lista_ca' | 'bess_config' | 've_config' | 'servico_config'
+  | 'orcamento'
+
+export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
+  // ☀️ Fotovoltaico
+  fv_ongrid:     ['cliente', 'fatura', 'telhado', 'padrao', 'dimensionar', 'kit', 'lista_ca', 'orcamento'],
+  fv_hibrido:    ['cliente', 'fatura', 'telhado', 'padrao', 'dimensionar', 'kit', 'lista_ca', 'bess_config', 'orcamento'],
+  fv_zero_grid:  ['cliente', 'fatura', 'telhado', 'padrao', 'dimensionar', 'kit', 'lista_ca', 'orcamento'],
+  fv_offgrid:    ['cliente', 'telhado', 'dimensionar', 'kit', 'bess_config', 'lista_ca', 'orcamento'],
+
+  // 🔋 BESS
+  bess:          ['cliente', 'fatura', 'padrao', 'bess_config', 'orcamento'],
+
+  // 🚗 Mobilidade
+  ve_recarga:    ['cliente', 'padrao', 've_config', 'orcamento'],
+
+  // 🛠️ Serviços
+  srv_limpeza:            ['cliente', 'servico_config', 'orcamento'],
+  srv_manutencao:         ['cliente', 'servico_config', 'orcamento'],
+  srv_eletrica_predial:   ['cliente', 'servico_config', 'orcamento'],
+  srv_padrao_entrada:     ['cliente', 'fatura', 'padrao', 'orcamento'],
+  srv_laudo_tecnico:      ['cliente', 'servico_config', 'orcamento'],
+  srv_analise_rede:       ['cliente', 'servico_config', 'orcamento'],
+
+  // 📦 Outros
+  outros:        ['cliente', 'servico_config', 'orcamento'],
+}
+
+export const INFO_PASSO: Record<PassoWorkflow, { titulo: string; path: string; ordem: number }> = {
+  cliente:        { titulo: 'Cliente',        path: 'editar',       ordem: 1 },
+  fatura:         { titulo: 'Fatura',         path: 'fatura',       ordem: 2 },
+  telhado:        { titulo: 'Telhado',        path: 'telhado',      ordem: 3 },
+  padrao:         { titulo: 'Padrão',         path: 'padrao',       ordem: 4 },
+  dimensionar:    { titulo: 'Dimensionar',    path: 'dimensionar',  ordem: 5 },
+  kit:            { titulo: 'Kit',            path: 'kit',          ordem: 6 },
+  lista_ca:       { titulo: 'Lista CA',       path: 'lista-ca',     ordem: 7 },
+  bess_config:    { titulo: 'BESS',           path: 'bess',         ordem: 6.5 },
+  ve_config:      { titulo: 'Estação VE',     path: 've',           ordem: 5.5 },
+  servico_config: { titulo: 'Escopo serviço', path: 'servico',      ordem: 5.5 },
+  orcamento:      { titulo: 'Orçamento',      path: 'orcamento',    ordem: 8 },
+}
+
+/**
+ * Retorna união dos passos necessários pros tipos selecionados.
+ * Se nenhum tipo escolhido, retorna todos os 8 passos legado (on-grid puro).
+ */
+export function getPassosRelevantes(tipos: TipoItem[]): PassoWorkflow[] {
+  if (tipos.length === 0) return PASSOS_POR_TIPO.fv_ongrid
+
+  const unido = new Set<PassoWorkflow>()
+  for (const t of tipos) {
+    const passos = PASSOS_POR_TIPO[t] || []
+    for (const p of passos) unido.add(p)
+  }
+
+  // Ordena por INFO_PASSO.ordem
+  return Array.from(unido).sort((a, b) => INFO_PASSO[a].ordem - INFO_PASSO[b].ordem)
+}
+
