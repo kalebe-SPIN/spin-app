@@ -5,13 +5,21 @@ import { salvarSemFaturaAction } from '@/app/projetos/[id]/fatura/sem-fatura-act
 
 type Modo = 'qtd_placas' | 'geracao_anual' | 'geracao_media'
 
-export function SemFaturaForm({ projetoId }: { projetoId: string }) {
+export function SemFaturaForm({
+  projetoId,
+  hspInicial = 4.5,
+  hspLabel,
+}: {
+  projetoId: string
+  hspInicial?: number
+  hspLabel?: string
+}) {
   const [modo, setModo] = useState<Modo>('qtd_placas')
   const [qtdPlacas, setQtdPlacas] = useState('10')
   const [geracaoAnual, setGeracaoAnual] = useState('6000')
   const [geracaoMedia, setGeracaoMedia] = useState('500')
   const [potWpPlaca, setPotWpPlaca] = useState(605)
-  const [hsp, setHsp] = useState(4.5)
+  const [hsp, setHsp] = useState(hspInicial)
   const [observacao, setObservacao] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -67,6 +75,13 @@ export function SemFaturaForm({ projetoId }: { projetoId: string }) {
         antes de compartilhar a fatura. Os dados aqui geram uma proposta preliminar — depois pode subir a
         fatura pra recalcular.
       </div>
+
+      {hspLabel && (
+        <div className="bg-verde/5 border border-verde/20 rounded-lg p-3 text-xs text-white/70">
+          ☀️ <strong className="text-verde">HSP detectada pelo endereço:</strong> {hspLabel} · Baseado no
+          Atlas Brasileiro de Energia Solar (INPE). Você pode ajustar em "Parâmetros técnicos" se precisar.
+        </div>
+      )}
 
       {/* Escolha do modo */}
       <div>

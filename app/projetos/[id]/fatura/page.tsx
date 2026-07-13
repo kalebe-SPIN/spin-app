@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { FaturaSemFaturaTabs } from '@/components/FaturaSemFaturaTabs'
+import { getHspPorLocal } from '@/lib/kit-auto/hsp-brasil'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -18,6 +19,12 @@ export default async function FaturaPage({ params }: { params: { id: string } })
     .single()
 
   if (error || !projeto) notFound()
+
+  // HSP baseada no endereço da instalação (fallback: endereço do cliente)
+  const endInst = projeto.endereco_instalacao || projeto.cliente_endereco || {}
+  const uf = endInst.uf || 'SC'
+  const cidade = endInst.cidade
+  const { hsp, label: hspLabel } = getHspPorLocal(uf, cidade)
 
   return (
     <main className="min-h-screen p-8 md:p-12">
@@ -45,6 +52,8 @@ export default async function FaturaPage({ params }: { params: { id: string } })
           analiseSalva={projeto.analise_fatura}
           beneficiariasSalvas={projeto.beneficiarias || []}
           origemAtual={projeto.origem_dimensionamento}
+          hspInicial={hsp}
+          hspLabel={hspLabel}
         />
       </div>
     </main>

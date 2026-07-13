@@ -11,11 +11,15 @@ export function FaturaSemFaturaTabs({
   analiseSalva,
   beneficiariasSalvas,
   origemAtual,
+  hspInicial,
+  hspLabel,
 }: {
   projetoId: string
   analiseSalva: any
   beneficiariasSalvas: any[]
   origemAtual?: string | null
+  hspInicial?: number
+  hspLabel?: string
 }) {
   // Se já foi salvo sem fatura, começa nessa aba
   const inicial: Aba = origemAtual && origemAtual !== 'fatura' ? 'sem_fatura' : 'fatura'
@@ -69,7 +73,11 @@ export function FaturaSemFaturaTabs({
         </>
       ) : (
         <div className="bg-white/[0.03] border border-white/10 rounded-xl p-6 md:p-8">
-          <SemFaturaForm projetoId={projetoId} />
+          <SemFaturaForm
+            projetoId={projetoId}
+            hspInicial={hspInicial}
+            hspLabel={hspLabel}
+          />
         </div>
       )}
     </div>
