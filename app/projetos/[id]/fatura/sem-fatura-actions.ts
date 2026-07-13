@@ -61,27 +61,45 @@ export async function salvarSemFaturaAction(projetoId: string, input: Input) {
       return { erro: 'Origem inválida' }
   }
 
-  const { error } = await supabase
-    .from('projetos')
-    .update({
-      origem_dimensionamento: input.origem,
-      qtd_placas_estimada: qtdPlacas,
-      geracao_anual_alvo_kwh: Math.round(geracaoAnualKwh),
-      geracao_media_alvo_kwh: Math.round(consumoMedioKwh),
-      potencia_wp_placa_estimada: potWpPlaca,
-      hsp_estimado: hsp,
-      observacao_sem_fatura: input.observacao?.trim() || null,
-      // Grava um objeto minimal em analise_fatura pra outros passos entenderem
-      analise_fatura: {
-        consumo_medio_kwh: Math.round(consumoMedioKwh),
-        origem: input.origem,
-        estimativa: true,
-      },
-      status: 'fatura_analisada',
-      status_atualizado_em: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', projetoId)
+  const payload: Record<string, any> = {
+    origem_dimensionamento: input.origem,
+    qtd_placas_estimada: qtdPlacas,
+    geracao_anual_alvo_kwh: Math.round(geracaoAnualKwh),
+    geracao_media_alvo_kwh: Math.round(consumoMedioKwh),
+    potencia_wp_placa_estimada: potWpPlaca,
+    hsp_estimado: hsp,
+    observacao_sem_fatura: input.observacao?.trim() || null,
+    // Grava um objeto minimal em analise_fatura pra outros passos entenderem
+    analise_fatura: {
+      consumo_medio_kwh: Math.round(consumoMedioKwh),
+      origem: input.origem,
+      estimativa: true,
+    },
+    status: 'fatura_analisada',
+    updated_at: new Date().toISOString(),
+  }
+
+  let { error } = await supabase.from('projetos').update(payload).eq('id', projetoId)
+
+  // Se falhar por causa de coluna faltando (migrations antigas nao rodadas),
+  // tenta upsert com fallback removendo campos problematicos
+  if (error && error.message.includes('Could not find')) {
+    const camposOpcionais = [
+      'qtd_placas_estimada',
+      'geracao_anual_alvo_kwh',
+      'geracao_media_alvo_kwh',
+      'potencia_wp_placa_estimada',
+      'hsp_estimado',
+      'observacao_sem_fatura',
+      'origem_dimensionamento',
+    ]
+    for (const c of camposOpcionais) delete payload[c]
+    const retry = await supabase.from('projetos').update(payload).eq('id', projetoId)
+    error = retry.error
+    if (!error) {
+      return { erro: 'ATENÇÃO: dados salvos parcialmente. Migration 024 não rodou — os campos específicos do modo rápido serão perdidos. Rode o SQL no Supabase.' }
+    }
+  }
 
   if (error) return { erro: error.message }
 
