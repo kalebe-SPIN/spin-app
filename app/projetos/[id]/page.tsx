@@ -134,37 +134,29 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           </div>
         )}
 
-        {/* Workflow — passos adaptativos por tipo de item */}
-        <section className="mb-8 p-6 bg-white/[0.03] border border-white/10 rounded-xl">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-sol mb-4">
-            Workflow do projeto
-            {tiposEscolhidos.length > 0 && (
-              <span className="ml-2 text-[10px] text-white/40 normal-case">
-                · {passosRelevantes.length} passos conforme tipos escolhidos
-              </span>
-            )}
-          </h2>
-          <p className="text-xs text-white/40 mb-4">
-            Clique em qualquer passo pra trabalhar nele. Pode pular passos sem perder progresso.
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {passosRelevantes.map((chave, idx) => {
-              const info = INFO_PASSO[chave]
-              // Encontra correspondente no PASSOS_WORKFLOW legado (pra status)
-              const legado = PASSOS_WORKFLOW.find((p) => p.path === info.path)
-              return (
-              <PassoCard
-                key={chave}
-                numero={idx + 1}
-                titulo={info.titulo}
-                href={`/projetos/${projeto.id}/${info.path}`}
-                statusProjeto={projeto.status}
-                statusRequerido={legado?.statusAposCompleto || 'rascunho'}
-              />
-              )
-            })}
-          </div>
-        </section>
+        {/* Workflow legado — SÓ mostra se não tem itens selecionados (fluxo tradicional on-grid) */}
+        {tiposEscolhidos.length === 0 && (
+          <section className="mb-8 p-6 bg-white/[0.03] border border-white/10 rounded-xl">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-sol mb-4">
+              Workflow do projeto (on-grid padrão)
+            </h2>
+            <p className="text-xs text-white/40 mb-4">
+              Escolha os itens da proposta acima pra ter fluxos específicos por tipo.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {PASSOS_WORKFLOW.map((p) => (
+                <PassoCard
+                  key={p.path}
+                  numero={p.numero}
+                  titulo={p.titulo}
+                  href={`/projetos/${projeto.id}/${p.path}`}
+                  statusProjeto={projeto.status}
+                  statusRequerido={p.statusAposCompleto}
+                />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Dados do cliente */}
         <Section title="Cliente">
