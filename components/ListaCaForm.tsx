@@ -58,14 +58,17 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
     }
     if (!window.confirm(`O Davi vai cotar online ${semPreco} ${semPreco === 1 ? 'item' : 'itens'} sem preço. Pode levar 1-3 minutos. Continuar?`)) return
     setCotandoDavi(true)
-    setMsgDavi('👔 Davi está cotando online... isso pode levar alguns minutos.')
+    setMsgDavi('👔 Davi está cotando online... aguarde até 90s.')
     setErro(null)
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 90_000)
       const res = await fetch('/api/davi/cotar-lista', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itens }),
-      })
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId))
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erro no Davi')
       setItens(data.itens)
@@ -77,7 +80,11 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
       }
       setMsgDavi(msg)
     } catch (e: any) {
-      setErro(`Davi: ${e.message}`)
+      if (e.name === 'AbortError') {
+        setErro('Davi demorou mais de 90s — WebSearch pode estar indisponível. Use os preços estimados por enquanto (já preenchidos automaticamente) e ajuste manualmente conforme necessário.')
+      } else {
+        setErro(`Davi: ${e.message}`)
+      }
     } finally {
       setCotandoDavi(false)
     }
