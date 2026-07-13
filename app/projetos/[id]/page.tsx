@@ -5,6 +5,7 @@ import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { AgendaDoProjeto } from '@/components/AgendaDoProjeto'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
 import { MudarEtapaCard } from '@/components/MudarEtapaCard'
+import { ItensPropostaCard } from '@/components/ItensPropostaCard'
 
 // Sempre buscar dados frescos do banco (sem cache stale após edição)
 export const dynamic = 'force-dynamic'
@@ -75,6 +76,9 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
         <div className="mb-6">
           <MudarEtapaCard projetoId={projeto.id} statusAtual={projeto.status} />
         </div>
+
+        {/* Itens da proposta (múltiplos tipos) */}
+        <ItensPropostaCard projetoId={projeto.id} />
 
         {/* Cliente fechou → Gerador de diagramas (só admin/autorizado) */}
         {clienteFechou && podeGerarDiagramas && (
