@@ -87,18 +87,19 @@ export function montarListaComplementarCA(
   const potenciaCA = dados.potencia_ca_total_kw || (inversor.potencia_kw * dados.qtd_inversores)
   const ateResidencial = potenciaCA <= 30 // limite 30kWp
 
-  // ============== CABO TERRA (1 único item — 30m totais) ==============
-  // Padrão Spin: 30m = aterramento + placas→inversor (mesmo cabo, mesma bitola)
-  // Cabo 6mm² isolado verde (NÃO cobre nu) — até 30kWp residencial
+  // ============== CABO TERRA (1 único item — 30m totais SEMPRE) ==============
+  // Padrão Spin: sempre 30m verde, cobre TODO o percurso:
+  //   placas→inversor + inversor→quadro + quadro→rede + inversor→haste (aterramento)
+  // Bitola 6mm² até 30kWp residencial; acima disso escala.
   items.push({
     categoria: 'cabo_terra',
     subcategoria: 'cabo_terra',
     descricao: ateResidencial
-      ? 'Cabo 6mm² verde (aterramento + placas→inversor)'
-      : `Cabo ${bitolaAterramento(potenciaCA)}mm² verde (aterramento + placas→inversor)`,
+      ? 'Cabo 6mm² verde (terra — percurso completo)'
+      : `Cabo ${bitolaAterramento(potenciaCA)}mm² verde (terra — percurso completo)`,
     qtd: 30,
     unidade: 'm',
-    observacao: 'Padrão Spin: 30m totais (soma do aterramento + trecho placas→inversor)',
+    observacao: 'Padrão Spin: 30m sempre — cobre placas→inversor→quadro→rede + aterramento haste',
     automatico: true,
   })
 
@@ -144,15 +145,8 @@ export function montarListaComplementarCA(
     observacao: 'Padrão Spin: 8m (≈3m inversor→quadro + ≈5m quadro→rede)',
     automatico: true,
   })
-  items.push({
-    categoria: 'cabo_ca',
-    subcategoria: 'cabo_hepr_terra',
-    descricao: `Cabo HEPR ${bitolaCA}mm² verde (terra)`,
-    qtd: 8,
-    unidade: 'm',
-    observacao: 'Padrão Spin: 8m (≈3m inversor→quadro + ≈5m quadro→rede)',
-    automatico: true,
-  })
+  // Terra: cabo único de 30m já cobre TODO o percurso (placas→inversor→quadro→rede + aterramento haste).
+  // Ver item de aterramento no início da lista.
 
   // ============== SUPORTES / ABRAÇADEIRAS / LUVAS ==============
   // Base: 6m totais de eletroduto (2 × 3m)
