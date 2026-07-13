@@ -73,6 +73,12 @@ export default async function AdminHomePage() {
             titulo="Agenda com Bianca"
             desc="Secretária IA + agendas de todos usuários (em treinamento)."
           />
+          <AdminCard
+            href="/admin/davi"
+            icon="👔"
+            titulo="Davi de Compras"
+            desc="Agente auditor de preços — cotações, atualizações e alertas."
+          />
         </div>
       </div>
     </main>
