@@ -12,6 +12,7 @@ type ResultadoCotacaoWeb = {
   fonte: string | null
   descricao_produto: string | null
   erro?: string
+  raw?: string  // texto bruto do Claude — pra debug
 }
 
 /**
@@ -19,67 +20,83 @@ type ResultadoCotacaoWeb = {
  * Retorna preço em R$ ou null se não achou.
  */
 async function cotarItemOnline(anthropic: Anthropic, item: ItemKit): Promise<ResultadoCotacaoWeb> {
-  const prompt = `Você é o Davi, comprador da Spin Solar (Tijucas/SC).
-
-Encontre o MENOR preço à vista (não parcelado) desse item em lojas brasileiras online.
+  const prompt = `Encontre o menor preço à vista desse item de material elétrico em lojas online brasileiras.
 
 ITEM: ${item.descricao}
 CATEGORIA: ${item.categoria}
 UNIDADE: ${item.unidade}
 ${item.observacao ? `ESPECIFICAÇÃO: ${item.observacao}` : ''}
 
-Sites preferidos (com bons preços de materiais elétricos):
-- mercadolivre.com.br
-- leroymerlin.com.br
-- kaikonrad.com.br
-- cobrecom.com.br
-- kabum.com.br
-- amazon.com.br
+USE web_search pra pesquisar. Sites bons: mercadolivre.com.br, leroymerlin.com.br, kaikonrad.com.br, cobrecom.com.br, kabum.com.br.
 
 Regras:
-- Preço deve ser À VISTA (não parcelado)
-- Se produto vendido em rolo/pacote, ajustar pra unidade base (m, un, par etc)
-- Ignorar preços de leilão, usados, ou muito baixos (< 30% do mercado)
-- Considerar frete grátis ou custo justo pra Grande Florianópolis
+- Preço à vista (não parcelado)
+- Se produto vem em rolo/pacote, calcule o preço por unidade base
+- Ignore leilão, usado, ou preços absurdamente baixos
+- Prefira produtos com boa reputação
 
-Responda APENAS neste formato JSON, sem markdown:
-{"preco_unitario": 12.50, "fonte": "mercadolivre.com.br", "descricao_produto": "..."}
+Após pesquisar, responda APENAS no formato JSON (sem markdown):
+{"preco_unitario": 12.50, "fonte": "mercadolivre.com.br", "descricao_produto": "Nome do produto"}
 
-Se não achar preço confiável:
-{"preco_unitario": null, "erro": "não encontrado"}`
+Ou se não achar:
+{"preco_unitario": null, "erro": "descrição do problema"}`
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      tools: [{ type: 'web_search_20250305' as any, name: 'web_search', max_uses: 3 } as any],
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 1024,
+      tools: [
+        {
+          type: 'web_search_20250305' as any,
+          name: 'web_search',
+          max_uses: 5,
+        } as any,
+      ],
       messages: [{ role: 'user', content: prompt }],
     })
 
-    // Extrai texto final
+    // Extrai texto final (pode ter vários blocos)
     const texto = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('\n')
 
-    // Tenta parsear JSON (pode vir sujo com markdown)
-    const jsonMatch = texto.match(/\{[\s\S]*?\}/)
-    if (!jsonMatch) return { preco_unitario: null, fonte: null, descricao_produto: null, erro: 'sem JSON' }
+    console.log(`[Davi] Item "${item.descricao.slice(0, 40)}" — resposta: ${texto.slice(0, 200)}`)
 
-    const parsed = JSON.parse(jsonMatch[0])
-    return {
-      preco_unitario: typeof parsed.preco_unitario === 'number' ? parsed.preco_unitario : null,
-      fonte: parsed.fonte || null,
-      descricao_produto: parsed.descricao_produto || null,
-      erro: parsed.erro,
+    if (!texto) {
+      return { preco_unitario: null, fonte: null, descricao_produto: null, erro: 'resposta vazia do Claude', raw: '' }
+    }
+
+    // Tenta parsear JSON — várias estratégias
+    const jsonMatch = texto.match(/\{[^{}]*"preco_unitario"[^{}]*\}/s) || texto.match(/\{[\s\S]*?\}/)
+    if (!jsonMatch) {
+      return { preco_unitario: null, fonte: null, descricao_produto: null, erro: 'JSON não encontrado na resposta', raw: texto.slice(0, 300) }
+    }
+
+    try {
+      const parsed = JSON.parse(jsonMatch[0])
+      return {
+        preco_unitario: typeof parsed.preco_unitario === 'number' ? parsed.preco_unitario : null,
+        fonte: parsed.fonte || null,
+        descricao_produto: parsed.descricao_produto || null,
+        erro: parsed.erro,
+      }
+    } catch (parseErr: any) {
+      return { preco_unitario: null, fonte: null, descricao_produto: null, erro: `JSON inválido: ${parseErr.message}`, raw: jsonMatch[0].slice(0, 300) }
     }
   } catch (e: any) {
-    return { preco_unitario: null, fonte: null, descricao_produto: null, erro: e?.message }
+    console.error(`[Davi] Erro na cotação de "${item.descricao}":`, e?.message || e)
+    return {
+      preco_unitario: null,
+      fonte: null,
+      descricao_produto: null,
+      erro: e?.message || 'erro desconhecido',
+    }
   }
 }
 
 /**
- * Cota vários itens em paralelo (max 4 concorrentes pra não estourar rate limit).
+ * Cota vários itens em paralelo (max 3 concorrentes pra não estourar rate limit).
  * Persiste cada cotação em cotacoes_mercado e retorna itens enriquecidos.
  */
 export async function cotarItensOnline(
@@ -87,25 +104,30 @@ export async function cotarItensOnline(
   itens: ItemKit[],
   apiKey: string,
   userId: string,
-): Promise<ItemKit[]> {
+): Promise<{ itens: ItemKit[]; erros: { descricao: string; erro: string; raw?: string }[] }> {
   const anthropic = new Anthropic({ apiKey })
   const semPreco = itens.filter((i) => !i.preco_unitario || i.origem_preco === 'sem_preco')
-  if (semPreco.length === 0) return itens
+  if (semPreco.length === 0) return { itens, erros: [] }
 
-  // Cota em batches de 4 pra paralelizar sem estourar rate limit
-  const BATCH = 4
+  // Cota em batches de 3 pra paralelizar sem estourar rate limit
+  const BATCH = 3
   const cotados = new Map<string, ResultadoCotacaoWeb>()
+  const erros: { descricao: string; erro: string; raw?: string }[] = []
 
   for (let i = 0; i < semPreco.length; i += BATCH) {
     const batch = semPreco.slice(i, i + BATCH)
     const resultados = await Promise.all(batch.map((item) => cotarItemOnline(anthropic, item)))
     batch.forEach((item, idx) => {
       const key = `${item.categoria}::${item.subcategoria}::${item.descricao}`
-      cotados.set(key, resultados[idx])
+      const res = resultados[idx]
+      cotados.set(key, res)
+      if (!res.preco_unitario && res.erro) {
+        erros.push({ descricao: item.descricao, erro: res.erro, raw: res.raw })
+      }
     })
   }
 
-  // Persiste no banco (cada cotação) — em background, não bloqueia
+  // Persiste no banco (cada cotação bem-sucedida)
   const paraSalvar: any[] = []
   for (const [key, res] of cotados) {
     if (res.preco_unitario) {
@@ -125,19 +147,22 @@ export async function cotarItensOnline(
     }
   }
   if (paraSalvar.length > 0) {
-    await supabase.from('cotacoes_mercado').insert(paraSalvar)
+    const { error: insErr } = await supabase.from('cotacoes_mercado').insert(paraSalvar)
+    if (insErr) console.error('[Davi] Erro ao persistir cotações:', insErr.message)
   }
 
   // Retorna itens enriquecidos
-  return itens.map((item) => {
+  const itensNovos = itens.map((item) => {
     const key = `${item.categoria}::${item.subcategoria}::${item.descricao}`
     const res = cotados.get(key)
     if (!res || !res.preco_unitario) return item
     return {
       ...item,
       preco_unitario: res.preco_unitario,
-      origem_preco: 'catalogo' as const, // usa 'catalogo' pra display verde; observacao guarda origem web
-      observacao: `${item.observacao || ''} · 🌐 cotado em ${res.fonte || 'web'}`.trim(),
+      origem_preco: 'catalogo' as const,
+      observacao: `${item.observacao || ''} · 🌐 ${res.fonte || 'web'}`.trim(),
     }
   })
+
+  return { itens: itensNovos, erros }
 }

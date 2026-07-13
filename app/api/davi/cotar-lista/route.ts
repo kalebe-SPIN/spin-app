@@ -19,10 +19,9 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(itens)) return NextResponse.json({ error: 'itens obrigatório (array)' }, { status: 400 })
 
     const inicio = Date.now()
-    const cotados = await cotarItensOnline(supabase, itens, apiKey, user.id)
+    const { itens: cotados, erros } = await cotarItensOnline(supabase, itens, apiKey, user.id)
     const ms = Date.now() - inicio
 
-    const encontrados = cotados.filter((i) => i.preco_unitario && i.preco_unitario > 0).length
     const semPrecoAntes = itens.filter((i) => !i.preco_unitario || i.origem_preco === 'sem_preco').length
     const novosPrecos = cotados.filter(
       (novo) => {
@@ -41,6 +40,7 @@ export async function POST(request: NextRequest) {
         sem_preco_antes: semPrecoAntes,
         cotacoes_encontradas: novosPrecos,
         sem_preco_apos: cotados.filter((i) => !i.preco_unitario).length,
+        erros_amostra: erros.slice(0, 3), // primeiros 3 erros pra debug
       },
     })
   } catch (e: any) {

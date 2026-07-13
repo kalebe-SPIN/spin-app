@@ -70,7 +70,12 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
       if (!res.ok) throw new Error(data.error || 'Erro no Davi')
       setItens(data.itens)
       const r = data.resumo
-      setMsgDavi(`✓ Davi cotou ${r.cotacoes_encontradas} de ${r.sem_preco_antes} em ${(r.tempo_ms / 1000).toFixed(1)}s. ${r.sem_preco_apos > 0 ? `Ainda faltam ${r.sem_preco_apos} sem preço.` : 'Todos com preço!'}`)
+      let msg = `✓ Davi cotou ${r.cotacoes_encontradas} de ${r.sem_preco_antes} em ${(r.tempo_ms / 1000).toFixed(1)}s.`
+      if (r.sem_preco_apos > 0) msg += ` Ainda faltam ${r.sem_preco_apos} sem preço.`
+      if (r.erros_amostra?.length > 0) {
+        msg += ` Erros: ${r.erros_amostra.map((e: any) => `"${e.descricao.slice(0, 30)}" → ${e.erro}`).join(' · ')}`
+      }
+      setMsgDavi(msg)
     } catch (e: any) {
       setErro(`Davi: ${e.message}`)
     } finally {
