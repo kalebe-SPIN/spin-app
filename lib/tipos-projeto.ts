@@ -7,8 +7,10 @@ export type TipoItem =
   | 'fv_ongrid' | 'fv_hibrido' | 'fv_zero_grid' | 'fv_offgrid'
   | 'bess' | 've_recarga'
   | 'srv_limpeza' | 'srv_manutencao' | 'srv_eletrica_predial' | 'srv_padrao_entrada'
+  | 'srv_laudo_tecnico' | 'srv_analise_rede'
+  | 'outros'
 
-export type Grupo = 'fotovoltaico' | 'bateria' | 'mobilidade' | 'servico'
+export type Grupo = 'fotovoltaico' | 'bateria' | 'mobilidade' | 'servico' | 'outros'
 
 export type InfoTipo = {
   chave: TipoItem
@@ -99,6 +101,29 @@ export const TIPOS_ITEM: InfoTipo[] = [
     disponivel: true,
     fluxoPassos: 3,
   },
+  {
+    chave: 'srv_laudo_tecnico', emoji: '📋', label: 'Laudo técnico', grupo: 'servico',
+    descricao: 'Emissão de laudo técnico assinado por engenheiro (FV/elétrico/estrutural).',
+    exemploUso: 'Perícia sistema com problema, ART, adequação NBR',
+    disponivel: true,
+    fluxoPassos: 3,
+  },
+  {
+    chave: 'srv_analise_rede', emoji: '📊🔌', label: 'Análise de rede', grupo: 'servico',
+    descricao: 'Medição qualidade de energia (harmônicos, tensão, THD) e diagnóstico da instalação.',
+    exemploUso: 'Cliente com queima recorrente, análise antes de FV grande',
+    disponivel: true,
+    fluxoPassos: 3,
+  },
+
+  // 📦 OUTROS
+  {
+    chave: 'outros', emoji: '📦', label: 'Outros (personalizado)', grupo: 'outros',
+    descricao: 'Item personalizado — descreve livremente o que a Spin vai fornecer.',
+    exemploUso: 'Instalação de câmera, gerador diesel, aluguel de kit temporário',
+    disponivel: true,
+    fluxoPassos: 2,
+  },
 ]
 
 export const GRUPOS_INFO: Record<Grupo, { label: string; cor: string; bgClass: string }> = {
@@ -106,6 +131,7 @@ export const GRUPOS_INFO: Record<Grupo, { label: string; cor: string; bgClass: s
   bateria:      { label: '🔋 Bateria',      cor: 'verde',    bgClass: 'bg-verde/10 border-verde/30' },
   mobilidade:   { label: '🚗 Mobilidade',   cor: 'weg-azul', bgClass: 'bg-weg-azul/10 border-weg-azul/30' },
   servico:      { label: '🛠️ Serviços',    cor: 'coral',    bgClass: 'bg-coral/10 border-coral/30' },
+  outros:       { label: '📦 Outros',       cor: 'white',    bgClass: 'bg-white/5 border-white/20' },
 }
 
 export function getInfoTipo(chave: TipoItem): InfoTipo | undefined {
@@ -114,7 +140,7 @@ export function getInfoTipo(chave: TipoItem): InfoTipo | undefined {
 
 export function tiposPorGrupo(): Record<Grupo, InfoTipo[]> {
   const r: Record<Grupo, InfoTipo[]> = {
-    fotovoltaico: [], bateria: [], mobilidade: [], servico: [],
+    fotovoltaico: [], bateria: [], mobilidade: [], servico: [], outros: [],
   }
   for (const t of TIPOS_ITEM) r[t.grupo].push(t)
   return r
