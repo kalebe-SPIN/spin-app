@@ -147,7 +147,7 @@ export function montarListaComplementarCA(
   items.push({
     categoria: 'cabo_ca',
     subcategoria: 'cabo_hepr_terra',
-    descricao: `Cabo HEPR ${bitolaCA}mm² verde-amarelo (terra)`,
+    descricao: `Cabo HEPR ${bitolaCA}mm² verde (terra)`,
     qtd: 8,
     unidade: 'm',
     observacao: 'Padrão Spin: 8m (≈3m inversor→quadro + ≈5m quadro→rede)',
