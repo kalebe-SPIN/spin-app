@@ -153,18 +153,29 @@ export function montarListaComplementarCA(
   // Terra: cabo único de 30m já cobre TODO o percurso (placas→inversor→quadro→rede + aterramento haste).
   // Ver item de aterramento no início da lista.
 
-  // ============== SUPORTES / ABRAÇADEIRAS / LUVAS ==============
-  // Base: 6m totais de eletroduto (2 × 3m)
-  // Abraçadeiras: 1 a cada 1,5m → ~4 pontos por barra × 2 = 8
+  // ============== FIXACAO DOS ELETRODUTOS ==============
+  // Abraçadeira metálica D com cunha: ancoragem dos eletrodutos na parede/estrutura
+  // Padrão: 1 a cada 50cm em telhado exposto = 6 pontos por barra × 2 barras = 12
   items.push({
     categoria: 'fixacao',
-    subcategoria: 'abracadeira',
+    subcategoria: 'abracadeira_d',
     descricao: `Abraçadeira tipo "D" ${bitolaEletroduto.polegadas} com cunha`,
-    qtd: 8,
+    qtd: 12,
     unidade: 'un',
-    observacao: 'Fixação dos 2 eletrodutos (4 pontos por barra de 3m)',
+    observacao: 'Fixação dos 2 eletrodutos (6 pontos por barra de 3m — ancoragem a cada ~50cm)',
     automatico: true,
   })
+  // Abraçadeira nylon pra amarração de cabos internos e organização
+  items.push({
+    categoria: 'fixacao',
+    subcategoria: 'abracadeira_nylon',
+    descricao: 'Abraçadeira nylon 300mm × 4,8mm (preta UV)',
+    qtd: 50,
+    unidade: 'un',
+    observacao: 'Amarração de cabos, organização telhado + fixação corrugado',
+    automatico: true,
+  })
+
   // Luvas: 1 pra emenda entre barras + 1 reserva por eletroduto = 2
   items.push({
     categoria: 'fixacao',
@@ -183,6 +194,18 @@ export function montarListaComplementarCA(
     qtd: 4,
     unidade: 'un',
     observacao: '2 curvas por eletroduto',
+    automatico: true,
+  })
+
+  // ============== CAIXAS DE PASSAGEM ==============
+  // Padrão Spin: 2 caixas por projeto residencial (emenda/derivação/inspeção)
+  items.push({
+    categoria: 'fixacao',
+    subcategoria: 'caixa_passagem',
+    descricao: 'Caixa de passagem PVC 100×100mm (4"×4") com tampa',
+    qtd: 2,
+    unidade: 'un',
+    observacao: 'Emenda de eletrodutos + inspeção de trajeto',
     automatico: true,
   })
 
@@ -242,14 +265,43 @@ export function montarListaComplementarCA(
     automatico: true,
   })
 
-  // ============== PARAFUSOS E BUCHAS ==============
+  // ============== PARAFUSOS E BUCHAS (DETALHADOS) ==============
+  // Bucha S8 + parafuso 6×40: quadro (4) + caixas passagem 2×(4) + reserva = 14
   items.push({
     categoria: 'fixacao',
-    subcategoria: 'parafuso_bucha',
-    descricao: 'Kit parafusos + buchas S8 (fixação eletroduto/quadro)',
-    qtd: 1,
-    unidade: 'kit',
-    observacao: 'Suficiente para 8 pontos de abraçadeira + fixação do quadro',
+    subcategoria: 'bucha_s8',
+    descricao: 'Bucha nylon S8',
+    qtd: 14,
+    unidade: 'un',
+    observacao: 'Fixação do quadro (4) + 2 caixas de passagem (8) + reserva',
+    automatico: true,
+  })
+  items.push({
+    categoria: 'fixacao',
+    subcategoria: 'parafuso_6x40',
+    descricao: 'Parafuso cabeça chata Phillips 6×40mm',
+    qtd: 14,
+    unidade: 'un',
+    observacao: 'Pareado com bucha S8',
+    automatico: true,
+  })
+  // Bucha S6 + parafuso 4×30: 12 pontos de abraçadeira D + reserva
+  items.push({
+    categoria: 'fixacao',
+    subcategoria: 'bucha_s6',
+    descricao: 'Bucha nylon S6',
+    qtd: 16,
+    unidade: 'un',
+    observacao: 'Fixação das 12 abraçadeiras D + reserva',
+    automatico: true,
+  })
+  items.push({
+    categoria: 'fixacao',
+    subcategoria: 'parafuso_4x30',
+    descricao: 'Parafuso cabeça chata Phillips 4×30mm',
+    qtd: 16,
+    unidade: 'un',
+    observacao: 'Pareado com bucha S6',
     automatico: true,
   })
 
