@@ -62,7 +62,8 @@ export default async function ListaCaPage({ params }: { params: { id: string } }
     {
       id: kit.inversor.id,
       potencia_kw: kit.inversor.potencia_kw,
-      tensao_desc: kit.inversor.tensao_desc || 'Inversor Monofásico 220 V',
+      tensao_desc: kit.inversor.tensao_desc || '',
+      modelo: kit.inversor.modelo,
       disjuntor_equivalente: kit.inversor.disjuntor_equivalente,
       entradas_mppt: kit.inversor.entradas_mppt || 2,
     },

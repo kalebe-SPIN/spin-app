@@ -31,6 +31,7 @@ export type InversorSelecionado = {
   id: string
   potencia_kw: number
   tensao_desc: string
+  modelo?: string    // ex: SIW400H — usado pra detectar rede (SIW400/500 = tri)
   disjuntor_equivalente?: string
   entradas_mppt?: number
 }
@@ -85,19 +86,8 @@ export function montarListaComplementarCA(
 ): ItemKit[] {
   const items: ItemKit[] = []
 
-  // Prioridade de detecção do tipo de rede:
-  //   1. tipo_ligacao explícito (padrão de entrada / fatura CELESC)
-  //   2. inferência pelo modelo do inversor
-  let isTri: boolean, isBi: boolean
-  const tipoLig = (dados.tipo_ligacao || '').toLowerCase()
-  if (/trif/i.test(tipoLig)) { isTri = true; isBi = false }
-  else if (/bif/i.test(tipoLig)) { isTri = false; isBi = true }
-  else if (/mono/i.test(tipoLig)) { isTri = false; isBi = false }
-  else {
-    // Fallback: inversor
-    isTri = /trif/i.test(inversor.tensao_desc)
-    isBi = /bif/i.test(inversor.tensao_desc)
-  }
+  // Detecção robusta do tipo de rede (várias heurísticas em cascata)
+  const { isTri, isBi } = detectarRede(inversor, dados.tipo_ligacao)
   const numFases = isTri ? 3 : isBi ? 2 : 1
   const potenciaCA = dados.potencia_ca_total_kw || (inversor.potencia_kw * dados.qtd_inversores)
   const ateResidencial = potenciaCA <= 30 // limite 30kWp
@@ -343,6 +333,35 @@ export function montarListaComplementarCA(
 // ==========================================================
 // HELPERS
 // ==========================================================
+
+/**
+ * Detecta tipo de rede em cascata:
+ *  1. Modelo WEG (SIW400/500 = tri, SIW100/200/300 = mono)
+ *  2. tensao_desc do inversor (palavras "trif"/"bif"/"mono", "3F"/"2F"/"1F", 380V/220V)
+ *  3. tipo_ligacao explícito (padrão de entrada / fatura, se veio)
+ *  4. Fallback: monofásico
+ */
+function detectarRede(inversor: InversorSelecionado, tipoLigExplicito?: string): { isTri: boolean; isBi: boolean } {
+  const desc = inversor.tensao_desc || ''
+  const modelo = (inversor.modelo || '').toUpperCase()
+
+  // 1. Modelo WEG
+  if (/SIW[45]0\d/i.test(modelo)) return { isTri: true, isBi: false }
+  if (/SIW[123]0\d/i.test(modelo)) return { isTri: false, isBi: false }
+
+  // 2. Palavras + numeração no tensao_desc
+  if (/trif|3\s*f\b|3\s*fase|380\s*v/i.test(desc)) return { isTri: true, isBi: false }
+  if (/bif|2\s*f\b|2\s*fase/i.test(desc)) return { isTri: false, isBi: true }
+  if (/mono|1\s*f\b|1\s*fase|220\s*v/i.test(desc)) return { isTri: false, isBi: false }
+
+  // 3. tipo_ligacao explícito (fallback)
+  const t = (tipoLigExplicito || '').toLowerCase()
+  if (/trif/i.test(t)) return { isTri: true, isBi: false }
+  if (/bif/i.test(t)) return { isTri: false, isBi: true }
+
+  // 4. Fallback monofásico (mais seguro)
+  return { isTri: false, isBi: false }
+}
 
 /**
  * Bitola CA (mm²) pra FV residencial padrão Spin.
