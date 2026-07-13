@@ -116,6 +116,44 @@ export function montarListaComplementarCA(
     automatico: true,
   })
 
+  // ============== CABOS HEPR (por cor, 6m padrão cada) ==============
+  // Padrão Spin: 6m por cabo (≈2m inversor→quadro + ≈4m quadro→rede)
+  // Cores NBR 5410: F1=preto, F2=vermelho, F3=branco, N=azul, T=verde-amarelo
+  const coresFases: { cor: string; hex: string; label: string }[] = []
+  if (numFases >= 1) coresFases.push({ cor: 'preto', hex: '#000', label: 'F1' })
+  if (numFases >= 2) coresFases.push({ cor: 'vermelho', hex: '#c22', label: 'F2' })
+  if (numFases >= 3) coresFases.push({ cor: 'branco', hex: '#eee', label: 'F3' })
+
+  for (const { cor, label } of coresFases) {
+    items.push({
+      categoria: 'cabo_ca',
+      subcategoria: 'cabo_hepr_fase',
+      descricao: `Cabo HEPR ${bitolaCA}mm² ${cor} (fase ${label})`,
+      qtd: 6,
+      unidade: 'm',
+      observacao: 'Padrão Spin: 6m (≈2m inversor→quadro + ≈4m quadro→rede)',
+      automatico: true,
+    })
+  }
+  items.push({
+    categoria: 'cabo_ca',
+    subcategoria: 'cabo_hepr_neutro',
+    descricao: `Cabo HEPR ${bitolaCA}mm² azul (neutro)`,
+    qtd: 6,
+    unidade: 'm',
+    observacao: 'Padrão Spin: 6m (≈2m inversor→quadro + ≈4m quadro→rede)',
+    automatico: true,
+  })
+  items.push({
+    categoria: 'cabo_ca',
+    subcategoria: 'cabo_hepr_terra',
+    descricao: `Cabo HEPR ${bitolaCA}mm² verde-amarelo (terra)`,
+    qtd: 6,
+    unidade: 'm',
+    observacao: 'Padrão Spin: 6m (≈2m inversor→quadro + ≈4m quadro→rede)',
+    automatico: true,
+  })
+
   // ============== SUPORTES / ABRAÇADEIRAS / LUVAS ==============
   // Base: 6m totais de eletroduto (2 × 3m)
   // Abraçadeiras: 1 a cada 1,5m → ~4 pontos por barra × 2 = 8
