@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { montarKitCompleto } from '@/lib/kit-auto/montar-kit'
+import { montarListaComplementarCA } from '@/lib/kit-auto/montar-kit'
 import { precificarLista } from '@/lib/kit-auto/precificar-lista'
 import { ListaCaForm } from '@/components/ListaCaForm'
 
@@ -57,7 +57,7 @@ export default async function ListaCaPage({ params }: { params: { id: string } }
 
   // Se já foi confirmada antes, usa. Senão, gera automática.
   const listaSalva = projeto.lista_ca_confirmada
-  const listaAuto = montarKitCompleto(
+  const listaAuto = montarListaComplementarCA(
     { id: kit.placa.id, potencia_wp: kit.placa.potencia_wp },
     {
       id: kit.inversor.id,
@@ -73,6 +73,8 @@ export default async function ListaCaPage({ params }: { params: { id: string } }
       tipo_telhado: projeto.telhado_secoes?.[0]?.tipo_cobertura,
       isopleta_ms: isopletaMs,
       spda: projeto.padrao_entrada?.spda,
+      qtd_relogios: projeto.padrao_entrada?.qtd_relogios || 1,
+      potencia_ca_total_kw: kit.potencia_ca_kw || (kit.inversor.potencia_kw * kit.qtd_inversores),
     }
   )
 

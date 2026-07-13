@@ -389,21 +389,44 @@ function gerarComposicao(
   padrao: PadraoCliente
 ) {
   const isTri = /trif/i.test(inversor.tensao_desc) || LINHAS_ONGRID.tri.test(inversor.modelo)
+  const isBi = /bif/i.test(inversor.tensao_desc)
   const isMicro = LINHAS_ONGRID.micro.test(inversor.modelo)
 
   // Estrutura: 1 kit por 4 placas
   const qtdKitsEstrutura = Math.ceil(qtdPlacas / 4)
 
   // Cabos CC: distância padrão 15m ida+volta com folga 15%
-  const distanciaBase = Number(padrao.amperagem_disjuntor_geral_a) > 0 ? 15 : 15
   const numStrings = Math.max(1, inversor.entradas_mppt || 2)
-  const cabocc = Math.ceil(distanciaBase * 2 * numStrings * 1.15)
+  const cabocc = Math.ceil(15 * 2 * numStrings * 1.15)
 
-  // Disjuntor CA
+  // === DISJUNTORES ===
+  // Regra Spin:
+  //  - Micro: sem disjuntor por inversor (só o geral)
+  //  - String c/ 1 inversor: 1 disjuntor CA
+  //  - String c/ 2+ inversores: 1 disjuntor por inversor + 1 geral
   const disjuntorRef = inversor.disjuntor_equivalente || estimarDisjuntor(inversor, padrao)
+  const potenciaTotalKW = inversor.potencia_kw * qtdInversor
+  const disjuntorGeralAmp = arredondarDisjuntorComercial(
+    calcularCorrenteCA(potenciaTotalKW, padrao) * 1.25
+  )
+  const disjuntorGeralRef = `MDW${isTri ? 'H' : 'P'}-C${disjuntorGeralAmp}-${isTri ? '3' : '2'}`
 
-  // DPS
-  const dpsPolos = isTri ? '4P' : '2P'
+  let disjuntorTxt: string
+  if (isMicro) {
+    disjuntorTxt = `1× disjuntor CA geral — ${disjuntorGeralRef}`
+  } else if (qtdInversor === 1) {
+    disjuntorTxt = `1× disjuntor CA — ${disjuntorRef}`
+  } else {
+    disjuntorTxt = `${qtdInversor}× disjuntor por inversor (${disjuntorRef}) + 1× disjuntor geral (${disjuntorGeralRef})`
+  }
+
+  // === DPS ===
+  // Regra Spin: SEMPRE incluir o DPS do neutro (fases + neutro)
+  //  - Mono (Fase+Neutro): 2 DPS (1 fase + 1 neutro)
+  //  - Bi   (2F+N): 3 DPS (2 fases + 1 neutro)
+  //  - Tri  (3F+N): 4 DPS (3 fases + 1 neutro)
+  const qtdDps = isTri ? 4 : isBi ? 3 : 2
+  const dpsTxt = `${qtdDps}× DPS classe II 275V 20kA (${isTri ? '3F+N' : isBi ? '2F+N' : 'F+N'})`
 
   return {
     placas: `${qtdPlacas}× ${placa.potencia_wp}Wp ${placa.fabricante || 'WEG'} (${placa.modelo})`,
@@ -412,8 +435,8 @@ function gerarComposicao(
       : `${qtdInversor}× ${inversor.modelo} (${inversor.potencia_kw}kW)`,
     estrutura: `${qtdKitsEstrutura} kit(s) estrutura WEG p/ 4 placas`,
     cabo_cc: `${cabocc}m cabo solar 6mm² preto + ${cabocc}m vermelho`,
-    disjuntor: `${qtdInversor}× disjuntor CA — ${disjuntorRef}`,
-    dps: `1× DPS classe II ${dpsPolos} 275V 20kA`,
+    disjuntor: disjuntorTxt,
+    dps: dpsTxt,
     quadro: '1× Quadro de Proteção CA (QPCA) + acessórios',
     aterramento: 'Haste 5/8" × 2,4m + cabo cobre nu 16mm²',
   }

@@ -13,14 +13,23 @@ type Props = {
 }
 
 const CATEGORIAS_LABEL: Record<string, { icone: string; label: string }> = {
+  // Complementares Spin
+  cabo_terra: { icone: '🟢', label: 'Cabo terra' },
+  eletroduto: { icone: '⚡', label: 'Eletroduto' },
+  fixacao: { icone: '🔩', label: 'Fixação' },
+  protecao: { icone: '🛡️', label: 'Proteção UV' },
+  quadro: { icone: '📦', label: 'Quadro elétrico' },
+  barramento: { icone: '📊', label: 'Barramento DIN' },
+  terminal: { icone: '🔗', label: 'Terminal' },
+  aterramento: { icone: '⚓', label: 'Aterramento' },
+  sinalizacao: { icone: '🚧', label: 'Placa advertência' },
+  // Legado (kits antigos ainda salvos)
   cabo_cc: { icone: '🔴', label: 'Cabo CC solar' },
   cabo_ca: { icone: '⚡', label: 'Cabo CA' },
   conector: { icone: '🔌', label: 'Conector' },
   disjuntor: { icone: '🛡️', label: 'Disjuntor' },
   dps: { icone: '⚠️', label: 'DPS' },
   estrutura: { icone: '🏗️', label: 'Estrutura' },
-  aterramento: { icone: '⚓', label: 'Aterramento' },
-  quadro: { icone: '📦', label: 'Quadro' },
   identificacao: { icone: '🏷️', label: 'Identificação' },
   string_box: { icone: '📥', label: 'String box' },
   outro: { icone: '📋', label: 'Outro' },

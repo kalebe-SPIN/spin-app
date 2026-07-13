@@ -1,15 +1,24 @@
 /**
- * Lógica de auto-montagem do restante do kit fotovoltaico
- * A partir da escolha de placa + inversor, gera:
- *   - Cabo CC solar preto e vermelho (por comprimento)
- *   - Disjuntor CA (baseado no equivalente sugerido pelo inversor)
- *   - DPS classe II
- *   - Estrutura (por tipo de telhado + isopleta)
- *   - Conectores MC4
- *   - String box (se recomendado pelo inversor)
- *   - Cabo CA (bitola por corrente)
- *   - Aterramento (haste + cabo nu)
- *   - Sinalização/identificação NR-10
+ * Lista CA — materiais elétricos COMPLEMENTARES ao kit fotovoltaico.
+ *
+ * MUDANÇA IMPORTANTE (v2 Spin):
+ * Antes esta função gerava TUDO (cabo CC, disjuntor, DPS, estrutura). Agora
+ * esses itens fazem parte do KIT (cotados na planilha WEG). A Lista CA foca
+ * SÓ nos materiais complementares que NÃO são fornecidos pela WEG:
+ *
+ *   - Cabos terra (2× 30m 6mm² até 30kWp residencial)
+ *   - Eletrodutos (por fases + secção)
+ *   - Suportes / abraçadeiras / luvas (2 eletrodutos)
+ *   - Quadro elétrico (plástico ≤30kW / metálico >30kW)
+ *   - Barramento DIN (neutro + terra)
+ *   - Parafusos e buchas
+ *   - Terminais tubulares + olhal (por secção)
+ *   - Balde + haste + conector terra
+ *   - Placas advertência (grande sempre + pequena se >1 relógio)
+ *   - Mangueira corrugada 10m com proteção solar
+ *
+ * A lista é gerada pelo "mestre da elétrica" (essa função) e o consultor
+ * confere/ajusta antes de confirmar.
  */
 
 export type PlacaSelecionada = {
@@ -21,18 +30,20 @@ export type PlacaSelecionada = {
 export type InversorSelecionado = {
   id: string
   potencia_kw: number
-  tensao_desc: string          // ex: "Inversor Monofásico 220 V"
-  disjuntor_equivalente?: string  // ex: "MDWP-C50-2"
+  tensao_desc: string
+  disjuntor_equivalente?: string
   entradas_mppt?: number
 }
 
 export type DadosProjeto = {
   qtd_placas: number
   qtd_inversores: number
-  distancia_string_qgbt_m: number   // do Passo 4
-  tipo_telhado?: string              // "ceramico" | "fibrocimento" | "metalico" | "laje"
+  distancia_string_qgbt_m: number
+  tipo_telhado?: string
   isopleta_ms?: number
   spda?: boolean
+  qtd_relogios?: number       // do padrão de entrada — pra decidir placa pequena
+  potencia_ca_total_kw?: number
 }
 
 export type ItemKit = {
@@ -44,123 +55,212 @@ export type ItemKit = {
   unidade: string
   observacao?: string | null
   automatico: boolean
-  // Precificação (adicionado v2 — pode vir do catálogo, do admin ou vazio)
-  produto_id?: string | null      // FK opcional pra produtos do catálogo
-  preco_unitario?: number         // R$ por unidade
+  // Precificação
+  produto_id?: string | null
+  preco_unitario?: number
   origem_preco?: 'catalogo' | 'manual' | 'sem_preco' | null
 }
 
 /**
- * Gera lista automática de itens complementares ao kit
+ * @deprecated Use montarListaComplementarCA. Mantido pra compat com código legado.
  */
 export function montarKitCompleto(
   placa: PlacaSelecionada,
   inversor: InversorSelecionado,
-  dados: DadosProjeto
+  dados: DadosProjeto,
+): ItemKit[] {
+  return montarListaComplementarCA(placa, inversor, dados)
+}
+
+/**
+ * Gera Lista CA — só materiais complementares (não repete o que está no Kit).
+ */
+export function montarListaComplementarCA(
+  placa: PlacaSelecionada,
+  inversor: InversorSelecionado,
+  dados: DadosProjeto,
 ): ItemKit[] {
   const items: ItemKit[] = []
+  const isTri = /trif/i.test(inversor.tensao_desc)
+  const isBi = /bif/i.test(inversor.tensao_desc)
+  const numFases = isTri ? 3 : isBi ? 2 : 1
+  const potenciaCA = dados.potencia_ca_total_kw || (inversor.potencia_kw * dados.qtd_inversores)
+  const ateResidencial = potenciaCA <= 30 // limite 30kWp
 
-  const numStrings = Math.max(1, inversor.entradas_mppt || 2)
-  const placasPorString = Math.ceil(dados.qtd_placas / numStrings)
-
-  // ============== CABO CC ==============
-  // Cabo solar 6mm² preto (positivo) + vermelho (negativo)
-  // Comprimento estimado: distância × 2 (ida+volta) × qtd_strings + folga 15%
-  const compCcMetros = Math.ceil(dados.distancia_string_qgbt_m * 2 * numStrings * 1.15)
+  // ============== CABOS TERRA (2× 30m padrão residencial ≤30kWp) ==============
+  // Placas → inversor
   items.push({
-    categoria: 'cabo_cc',
-    subcategoria: 'cabo_solar',
-    descricao: 'Cabo solar CC 6mm² preto',
-    codigo_weg: null,
-    qtd: compCcMetros,
+    categoria: 'cabo_terra',
+    subcategoria: 'cabo_terra_cc',
+    descricao: ateResidencial
+      ? 'Cabo terra 6mm² verde (placas → inversor)'
+      : `Cabo terra ${bitolaAterramento(potenciaCA)}mm² verde (placas → inversor)`,
+    qtd: 30,
     unidade: 'm',
+    observacao: 'Padrão Spin: 30m por projeto até 30kWp',
     automatico: true,
   })
+  // Inversor → haste
   items.push({
-    categoria: 'cabo_cc',
-    subcategoria: 'cabo_solar',
-    descricao: 'Cabo solar CC 6mm² vermelho',
-    codigo_weg: null,
-    qtd: compCcMetros,
+    categoria: 'cabo_terra',
+    subcategoria: 'cabo_terra_haste',
+    descricao: ateResidencial
+      ? 'Cabo terra 6mm² verde (inversor → haste)'
+      : `Cabo terra ${bitolaAterramento(potenciaCA)}mm² verde (inversor → haste)`,
+    qtd: 30,
     unidade: 'm',
+    observacao: 'Padrão Spin: 30m por projeto até 30kWp',
     automatico: true,
   })
 
-  // ============== CONECTORES MC4 ==============
-  // 2 pares por string (entrada + saída)
-  const paresMc4 = numStrings * 2
+  // ============== ELETRODUTOS ==============
+  // 2 eletrodutos padrão pra até 30kW residencial
+  const bitolaCA = calcularBitolaCa(potenciaCA, isTri)
+  const diamEletroduto = calcularDiametroEletroduto(bitolaCA, numFases + 1) // +1 pro terra
+  const compEletroduto = Math.ceil(dados.distancia_string_qgbt_m * 1.2)
   items.push({
-    categoria: 'conector',
-    subcategoria: 'mc4',
-    descricao: 'Conector MC4 par (macho + fêmea)',
-    codigo_weg: null,
-    qtd: paresMc4,
-    unidade: 'par',
+    categoria: 'eletroduto',
+    subcategoria: 'eletroduto_ca',
+    descricao: `Eletroduto ${diamEletroduto}mm PVC (2 unidades × ${compEletroduto}m)`,
+    qtd: 2 * compEletroduto,
+    unidade: 'm',
+    observacao: `${numFases + 1} condutores (${numFases}F+N+T) bitola ${bitolaCA}mm²`,
     automatico: true,
   })
 
-  // ============== DISJUNTOR CA ==============
-  const disjuntorRef = inversor.disjuntor_equivalente || estimarDisjuntor(inversor)
+  // ============== SUPORTES / ABRAÇADEIRAS / LUVAS ==============
+  // Dimensionar pra 2 eletrodutos
+  const qtdAbracadeiras = Math.ceil(compEletroduto / 1.5) * 2 // 1 abraçadeira/1,5m × 2 eletrodutos
   items.push({
-    categoria: 'disjuntor',
-    subcategoria: 'disjuntor_ca',
-    descricao: `Disjuntor CA — ${disjuntorRef} × ${dados.qtd_inversores}`,
-    codigo_weg: null,
-    qtd: dados.qtd_inversores,
+    categoria: 'fixacao',
+    subcategoria: 'abracadeira',
+    descricao: `Abraçadeira tipo "D" ${diamEletroduto}mm com cunha`,
+    qtd: qtdAbracadeiras,
     unidade: 'un',
-    observacao: `Referência WEG: ${disjuntorRef}`,
+    observacao: 'Fixação dos 2 eletrodutos',
+    automatico: true,
+  })
+  const qtdLuvas = Math.ceil(compEletroduto / 3) * 2 // 1 luva/3m × 2 eletrodutos
+  items.push({
+    categoria: 'fixacao',
+    subcategoria: 'luva',
+    descricao: `Luva eletroduto ${diamEletroduto}mm`,
+    qtd: qtdLuvas,
+    unidade: 'un',
+    automatico: true,
+  })
+  items.push({
+    categoria: 'fixacao',
+    subcategoria: 'curva',
+    descricao: `Curva eletroduto ${diamEletroduto}mm 90°`,
+    qtd: 8,
+    unidade: 'un',
+    observacao: '4 curvas por eletroduto',
     automatico: true,
   })
 
-  // ============== DPS CLASSE II ==============
-  // 1 conjunto para tensão do inversor
-  const isTri = /tri/i.test(inversor.tensao_desc)
+  // ============== MANGUEIRA CORRUGADA (10m padrão) ==============
   items.push({
-    categoria: 'dps',
-    subcategoria: 'dps_ca',
-    descricao: `DPS classe II — ${isTri ? '4P' : '2P'} 275V 20kA`,
-    codigo_weg: null,
+    categoria: 'protecao',
+    subcategoria: 'corrugado_solar',
+    descricao: 'Mangueira corrugada 25mm com proteção UV/solar',
+    qtd: 10,
+    unidade: 'm',
+    observacao: 'Padrão Spin: 10m — proteção dos cabos no telhado',
+    automatico: true,
+  })
+
+  // ============== QUADRO ELÉTRICO ==============
+  const qtdDisjuntores = dados.qtd_inversores + 1 // 1 por inversor + geral
+  const qtdDps = numFases + 1 // fases + neutro
+  if (ateResidencial) {
+    items.push({
+      categoria: 'quadro',
+      subcategoria: 'quadro_plastico',
+      descricao: 'Quadro plástico WEG (até 6 disjuntores) — QPCA',
+      qtd: 1,
+      unidade: 'un',
+      observacao: `Vai abrigar ${qtdDisjuntores} disjuntor(es) + ${qtdDps} DPS + barramentos`,
+      automatico: true,
+    })
+  } else {
+    // >30kW → metálico maior
+    const capacidadeMinima = Math.max(12, qtdDisjuntores + qtdDps + 2)
+    items.push({
+      categoria: 'quadro',
+      subcategoria: 'quadro_metalico',
+      descricao: `Quadro metálico ${capacidadeMinima} módulos DIN IP54`,
+      qtd: 1,
+      unidade: 'un',
+      observacao: `${potenciaCA.toFixed(1)}kW > 30kW: exige quadro metálico`,
+      automatico: true,
+    })
+  }
+
+  // ============== BARRAMENTOS DIN ==============
+  items.push({
+    categoria: 'barramento',
+    subcategoria: 'barramento_neutro',
+    descricao: 'Barramento DIN neutro (azul) 10 furos',
     qtd: 1,
     unidade: 'un',
-    observacao: 'Conjunto para tensão do sistema',
+    automatico: true,
+  })
+  items.push({
+    categoria: 'barramento',
+    subcategoria: 'barramento_terra',
+    descricao: 'Barramento DIN terra (verde) 10 furos',
+    qtd: 1,
+    unidade: 'un',
     automatico: true,
   })
 
-  // ============== ESTRUTURA ==============
-  // Cálculo por qtd de módulos e tipo de telhado
-  const qtdKitsEstrutura = Math.ceil(dados.qtd_placas / 4)
-  const tipoTelhadoLabel = mapearTelhado(dados.tipo_telhado)
+  // ============== PARAFUSOS E BUCHAS ==============
   items.push({
-    categoria: 'estrutura',
-    subcategoria: 'kit_estrutura',
-    descricao: `Kit estrutura ${tipoTelhadoLabel} p/ 4 módulos (perfil HR + fixadores)`,
-    codigo_weg: null,
-    qtd: qtdKitsEstrutura,
+    categoria: 'fixacao',
+    subcategoria: 'parafuso_bucha',
+    descricao: 'Kit parafusos + buchas S8 (fixação eletroduto/quadro)',
+    qtd: 1,
     unidade: 'kit',
-    observacao: `Isopleta considerada: ${dados.isopleta_ms || 'padrão'} m/s`,
+    observacao: `Suficiente para ${qtdAbracadeiras} pontos + fixação do quadro`,
     automatico: true,
   })
 
-  // ============== CABO CA ==============
-  const bitolaCa = calcularBitolaCa(inversor.potencia_kw, isTri)
-  const compCaMetros = Math.ceil(dados.distancia_string_qgbt_m * 1.15)
+  // ============== TERMINAIS ==============
+  // Tubulares — pra fase e neutro na bitola do cabo CA
   items.push({
-    categoria: 'cabo_ca',
-    subcategoria: 'cabo_flexivel',
-    descricao: `Cabo CA flexível ${isTri ? '4x' : '3x'}${bitolaCa}mm² 0,6/1kV`,
-    codigo_weg: null,
-    qtd: compCaMetros,
-    unidade: 'm',
-    observacao: 'PT/AZ/PT/VD ou conforme padrão',
+    categoria: 'terminal',
+    subcategoria: 'terminal_tubular',
+    descricao: `Terminal tubular ${bitolaCA}mm² (fase/neutro)`,
+    qtd: (numFases + 1) * 4, // 2 pontas × entrada + saída
+    unidade: 'un',
+    observacao: `Bitola cabo CA ${bitolaCA}mm²`,
+    automatico: true,
+  })
+  // Olhal — pra terminação de aterramento
+  items.push({
+    categoria: 'terminal',
+    subcategoria: 'terminal_olhal',
+    descricao: `Terminal olhal ${ateResidencial ? '6' : bitolaAterramento(potenciaCA)}mm² (aterramento)`,
+    qtd: 6,
+    unidade: 'un',
+    observacao: 'Terminação nos barramentos + haste',
     automatico: true,
   })
 
   // ============== ATERRAMENTO ==============
   items.push({
     categoria: 'aterramento',
+    subcategoria: 'balde',
+    descricao: 'Balde de inspeção aterramento (caixa medição)',
+    qtd: 1,
+    unidade: 'un',
+    automatico: true,
+  })
+  items.push({
+    categoria: 'aterramento',
     subcategoria: 'haste',
     descricao: 'Haste de aterramento 5/8" × 2,4m cobreada',
-    codigo_weg: null,
     qtd: 1,
     unidade: 'un',
     observacao: dados.spda ? 'Interligada ao SPDA existente' : 'Sistema TT',
@@ -168,36 +268,37 @@ export function montarKitCompleto(
   })
   items.push({
     categoria: 'aterramento',
-    subcategoria: 'cabo_nu',
-    descricao: 'Cabo de cobre nu 16mm²',
-    codigo_weg: null,
-    qtd: Math.max(10, Math.ceil(dados.distancia_string_qgbt_m + 5)),
-    unidade: 'm',
-    automatico: true,
-  })
-
-  // ============== QUADRO ==============
-  items.push({
-    categoria: 'quadro',
-    subcategoria: 'qpca',
-    descricao: 'Quadro de Proteção CA (QPCA) 4 módulos + acessórios',
-    codigo_weg: null,
+    subcategoria: 'conector_terra',
+    descricao: 'Conector cabo-haste tipo GAR (grampo de aterramento)',
     qtd: 1,
     unidade: 'un',
-    observacao: 'Contém disjuntor CA do sistema FV + DPS classe II. Ligação ao QGBT',
     automatico: true,
   })
 
-  // ============== IDENTIFICAÇÃO NR-10 ==============
+  // ============== PLACAS DE ADVERTÊNCIA ==============
+  // Grande — SEMPRE
   items.push({
-    categoria: 'identificacao',
-    subcategoria: 'placas_nr10',
-    descricao: 'Kit placas de sinalização NR-10 (aviso GD + risco elétrico)',
-    codigo_weg: null,
+    categoria: 'sinalizacao',
+    subcategoria: 'placa_geracao_grande',
+    descricao: 'Placa advertência GERAÇÃO PRÓPRIA grande (20×30cm)',
     qtd: 1,
-    unidade: 'kit',
+    unidade: 'un',
+    observacao: 'Padrão CELESC — obrigatória',
     automatico: true,
   })
+  // Pequena — só se padrão tem +1 relógio
+  const qtdRelogios = dados.qtd_relogios || 1
+  if (qtdRelogios > 1) {
+    items.push({
+      categoria: 'sinalizacao',
+      subcategoria: 'placa_geracao_pequena',
+      descricao: 'Placa advertência relógio de geração (10×15cm)',
+      qtd: 1,
+      unidade: 'un',
+      observacao: `Padrão com ${qtdRelogios} relógios: identifica o da geração`,
+      automatico: true,
+    })
+  }
 
   return items
 }
@@ -205,20 +306,6 @@ export function montarKitCompleto(
 // ==========================================================
 // HELPERS
 // ==========================================================
-
-function estimarDisjuntor(inversor: InversorSelecionado): string {
-  const isTri = /tri/i.test(inversor.tensao_desc)
-  const tensao = isTri ? 380 : 220
-  const corrente = (inversor.potencia_kw * 1000) / (tensao * (isTri ? Math.sqrt(3) : 1))
-  const disjuntor = arredondarDisjuntor(corrente * 1.25)
-  return `MDW${isTri ? 'H' : 'P'}-C${disjuntor}-${isTri ? '3' : '2'}`
-}
-
-function arredondarDisjuntor(a: number): number {
-  const opcoes = [10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250]
-  for (const o of opcoes) if (a <= o) return o
-  return 300
-}
 
 function calcularBitolaCa(potenciaKw: number, isTri: boolean): number {
   const corrente = (potenciaKw * 1000) / (isTri ? 380 * Math.sqrt(3) : 220)
@@ -231,11 +318,22 @@ function calcularBitolaCa(potenciaKw: number, isTri: boolean): number {
   return 50
 }
 
-function mapearTelhado(tipo?: string): string {
-  const t = (tipo || '').toLowerCase()
-  if (t.includes('ceram')) return 'cerâmico'
-  if (t.includes('fibro')) return 'fibromadeira'
-  if (t.includes('metal') || t.includes('chapa')) return 'metálico'
-  if (t.includes('laje')) return 'laje'
-  return 'universal'
+/** Aterramento: >30kWp exige bitola maior que 6mm² */
+function bitolaAterramento(potenciaKw: number): number {
+  if (potenciaKw <= 30) return 6
+  if (potenciaKw <= 50) return 10
+  if (potenciaKw <= 100) return 16
+  return 25
+}
+
+/** Diâmetro do eletroduto pela quantidade + bitola dos condutores (NBR 5410 simplificada). */
+function calcularDiametroEletroduto(bitolaCabo: number, qtdCondutores: number): number {
+  // Diâmetros comerciais em mm
+  if (bitolaCabo <= 4 && qtdCondutores <= 4) return 20
+  if (bitolaCabo <= 6 && qtdCondutores <= 4) return 25
+  if (bitolaCabo <= 10 && qtdCondutores <= 4) return 32
+  if (bitolaCabo <= 16 && qtdCondutores <= 4) return 40
+  if (bitolaCabo <= 25) return 50
+  if (bitolaCabo <= 35) return 60
+  return 75
 }
