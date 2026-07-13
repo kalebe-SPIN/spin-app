@@ -44,6 +44,9 @@ export type DadosProjeto = {
   spda?: boolean
   qtd_relogios?: number       // do padrão de entrada — pra decidir placa pequena
   potencia_ca_total_kw?: number
+  // Tipo de ligação vem PRIORITARIAMENTE do padrão de entrada / fatura CELESC,
+  // não do modelo do inversor. Valores esperados: 'monofasico' | 'bifasico' | 'trifasico'
+  tipo_ligacao?: string
 }
 
 export type ItemKit = {
@@ -81,8 +84,20 @@ export function montarListaComplementarCA(
   dados: DadosProjeto,
 ): ItemKit[] {
   const items: ItemKit[] = []
-  const isTri = /trif/i.test(inversor.tensao_desc)
-  const isBi = /bif/i.test(inversor.tensao_desc)
+
+  // Prioridade de detecção do tipo de rede:
+  //   1. tipo_ligacao explícito (padrão de entrada / fatura CELESC)
+  //   2. inferência pelo modelo do inversor
+  let isTri: boolean, isBi: boolean
+  const tipoLig = (dados.tipo_ligacao || '').toLowerCase()
+  if (/trif/i.test(tipoLig)) { isTri = true; isBi = false }
+  else if (/bif/i.test(tipoLig)) { isTri = false; isBi = true }
+  else if (/mono/i.test(tipoLig)) { isTri = false; isBi = false }
+  else {
+    // Fallback: inversor
+    isTri = /trif/i.test(inversor.tensao_desc)
+    isBi = /bif/i.test(inversor.tensao_desc)
+  }
   const numFases = isTri ? 3 : isBi ? 2 : 1
   const potenciaCA = dados.potencia_ca_total_kw || (inversor.potencia_kw * dados.qtd_inversores)
   const ateResidencial = potenciaCA <= 30 // limite 30kWp

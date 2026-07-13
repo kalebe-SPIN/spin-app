@@ -75,6 +75,12 @@ export default async function ListaCaPage({ params }: { params: { id: string } }
       spda: projeto.padrao_entrada?.spda,
       qtd_relogios: projeto.padrao_entrada?.qtd_relogios || 1,
       potencia_ca_total_kw: kit.potencia_ca_kw || (kit.inversor.potencia_kw * kit.qtd_inversores),
+      // Tipo de rede — PRIORITARIAMENTE do padrão de entrada (validado pelo consultor),
+      // depois da fatura CELESC (extraída pelo OCR), fallback pro inversor.
+      tipo_ligacao: projeto.padrao_entrada?.tipo_ligacao
+        || projeto.fatura?.tipo_ligacao
+        || projeto.dados_fatura?.tipo_fornecimento
+        || projeto.dados_fatura?.tipo_ligacao,
     }
   )
 
