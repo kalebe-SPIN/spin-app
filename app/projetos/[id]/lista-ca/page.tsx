@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { montarKitCompleto } from '@/lib/kit-auto/montar-kit'
+import { precificarLista } from '@/lib/kit-auto/precificar-lista'
 import { ListaCaForm } from '@/components/ListaCaForm'
 
 export const dynamic = 'force-dynamic'
@@ -75,6 +76,9 @@ export default async function ListaCaPage({ params }: { params: { id: string } }
     }
   )
 
+  // Precifica: busca preços no catálogo pra cada item
+  const listaComPrecos = await precificarLista(supabase, listaSalva || listaAuto)
+
   return (
     <main className="min-h-screen p-8 md:p-12">
       <div className="max-w-5xl mx-auto">
@@ -109,7 +113,7 @@ export default async function ListaCaPage({ params }: { params: { id: string } }
         <div className="bg-white/[0.03] border border-white/10 rounded-xl p-6 md:p-8">
           <ListaCaForm
             projetoId={projeto.id}
-            itensIniciais={listaSalva || listaAuto}
+            itensIniciais={listaComPrecos}
             regeneradoAutomatico={!listaSalva}
           />
         </div>

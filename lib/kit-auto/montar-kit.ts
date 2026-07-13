@@ -44,6 +44,10 @@ export type ItemKit = {
   unidade: string
   observacao?: string | null
   automatico: boolean
+  // Precificação (adicionado v2 — pode vir do catálogo, do admin ou vazio)
+  produto_id?: string | null      // FK opcional pra produtos do catálogo
+  preco_unitario?: number         // R$ por unidade
+  origem_preco?: 'catalogo' | 'manual' | 'sem_preco' | null
 }
 
 /**

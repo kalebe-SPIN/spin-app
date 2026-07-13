@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useMemo, useTransition } from 'react'
 import { salvarListaCaAction } from '@/app/projetos/[id]/lista-ca/actions'
+import { calcularSubtotais } from '@/lib/kit-auto/precificar-lista'
+import { formatarMoedaBRL } from '@/lib/formatters'
 import type { ItemKit } from '@/lib/kit-auto/montar-kit'
 
 type Props = {
@@ -24,26 +26,45 @@ const CATEGORIAS_LABEL: Record<string, { icone: string; label: string }> = {
   outro: { icone: '📋', label: 'Outro' },
 }
 
+const BADGE_ORIGEM: Record<string, { emoji: string; label: string; classe: string }> = {
+  catalogo: { emoji: '📗', label: 'Catálogo', classe: 'bg-verde/10 text-verde border-verde/30' },
+  manual: { emoji: '✏️', label: 'Manual', classe: 'bg-sol/10 text-sol border-sol/30' },
+  sem_preco: { emoji: '⚠️', label: 'Sem preço', classe: 'bg-coral/10 text-coral border-coral/30' },
+}
+
 export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: Props) {
   const [itens, setItens] = useState<ItemKit[]>(itensIniciais)
   const [isPending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
 
+  const { totalGeral, semPreco } = useMemo(() => calcularSubtotais(itens), [itens])
+
   function alterarQtd(idx: number, novoValor: string) {
     const n = parseFloat(novoValor) || 0
-    setItens(prev => prev.map((item, i) => (i === idx ? { ...item, qtd: n } : item)))
+    setItens((prev) => prev.map((item, i) => (i === idx ? { ...item, qtd: n } : item)))
   }
 
   function alterarDescricao(idx: number, novoValor: string) {
-    setItens(prev => prev.map((item, i) => (i === idx ? { ...item, descricao: novoValor } : item)))
+    setItens((prev) => prev.map((item, i) => (i === idx ? { ...item, descricao: novoValor } : item)))
+  }
+
+  function alterarPreco(idx: number, novoValor: string) {
+    const n = parseFloat(novoValor.replace(',', '.')) || 0
+    setItens((prev) =>
+      prev.map((item, i) =>
+        i === idx
+          ? { ...item, preco_unitario: n, origem_preco: 'manual' as const }
+          : item,
+      ),
+    )
   }
 
   function removerItem(idx: number) {
-    setItens(prev => prev.filter((_, i) => i !== idx))
+    setItens((prev) => prev.filter((_, i) => i !== idx))
   }
 
   function adicionarItem() {
-    setItens(prev => [
+    setItens((prev) => [
       ...prev,
       {
         categoria: 'outro',
@@ -52,6 +73,8 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
         qtd: 1,
         unidade: 'un',
         automatico: false,
+        preco_unitario: 0,
+        origem_preco: 'manual',
       },
     ])
   }
@@ -62,6 +85,12 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
     if (itens.length === 0) {
       setErro('Lista vazia. Adicione ao menos 1 item.')
       return
+    }
+    if (semPreco > 0) {
+      const ok = window.confirm(
+        `Você tem ${semPreco} ${semPreco === 1 ? 'item' : 'itens'} sem preço. O orçamento pode ficar subestimado. Continuar mesmo assim?`,
+      )
+      if (!ok) return
     }
     startTransition(async () => {
       const result = await salvarListaCaAction(projetoId, itens)
@@ -74,7 +103,13 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
       {regeneradoAutomatico && (
         <div className="bg-verde/10 border border-verde/30 rounded-lg p-4 text-sm text-white/80">
           ✨ <strong className="text-verde">Lista gerada automaticamente</strong> com base no kit escolhido,
-          distância string-QGBT, tipo de telhado e isopleta da cidade. Revise as quantidades antes de confirmar.
+          distância string-QGBT, tipo de telhado e isopleta da cidade. Preços buscados no catálogo — revise valores e quantidades.
+        </div>
+      )}
+
+      {semPreco > 0 && (
+        <div className="bg-coral/10 border border-coral/30 rounded-lg p-3 text-xs text-coral flex items-center gap-2">
+          ⚠️ <span><strong>{semPreco} {semPreco === 1 ? 'item' : 'itens'} sem preço</strong> — preencha manualmente ou cadastre produto correspondente no catálogo pra não vazar margem.</span>
         </div>
       )}
 
@@ -85,15 +120,19 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
             <tr className="border-b border-white/10 text-xs uppercase tracking-wider text-white/50">
               <th className="text-left py-2 px-3 md:px-6">Categoria</th>
               <th className="text-left py-2 px-3">Descrição</th>
-              <th className="text-right py-2 px-3 w-24">Qtd</th>
-              <th className="text-left py-2 px-3 w-16">Un</th>
-              <th className="text-center py-2 px-3 w-16">Auto</th>
-              <th className="w-12"></th>
+              <th className="text-right py-2 px-3 w-20">Qtd</th>
+              <th className="text-left py-2 px-3 w-14">Un</th>
+              <th className="text-right py-2 px-3 w-28">Preço unit.</th>
+              <th className="text-right py-2 px-3 w-28">Subtotal</th>
+              <th className="text-center py-2 px-3 w-20">Origem</th>
+              <th className="w-8"></th>
             </tr>
           </thead>
           <tbody>
             {itens.map((item, idx) => {
               const cat = CATEGORIAS_LABEL[item.categoria] || CATEGORIAS_LABEL.outro
+              const origemInfo = BADGE_ORIGEM[item.origem_preco || 'sem_preco'] || BADGE_ORIGEM.sem_preco
+              const subtotal = (item.preco_unitario || 0) * (item.qtd || 0)
               return (
                 <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02]">
                   <td className="py-2 px-3 md:px-6">
@@ -103,7 +142,7 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
                     <input
                       type="text"
                       value={item.descricao}
-                      onChange={e => alterarDescricao(idx, e.target.value)}
+                      onChange={(e) => alterarDescricao(idx, e.target.value)}
                       className="w-full bg-transparent text-white text-sm focus:bg-white/[0.03] rounded px-2 py-1"
                     />
                     {item.observacao && (
@@ -116,17 +155,36 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
                       min="0"
                       step="0.1"
                       value={item.qtd}
-                      onChange={e => alterarQtd(idx, e.target.value)}
-                      className="w-20 bg-white/[0.03] border border-white/10 rounded px-2 py-1 text-right text-white text-sm"
+                      onChange={(e) => alterarQtd(idx, e.target.value)}
+                      className="w-16 bg-white/[0.03] border border-white/10 rounded px-2 py-1 text-right text-white text-sm"
                     />
                   </td>
                   <td className="py-2 px-3 text-white/50 text-xs">{item.unidade}</td>
+                  <td className="py-2 px-3 text-right">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.preco_unitario ?? 0}
+                      onChange={(e) => alterarPreco(idx, e.target.value)}
+                      placeholder="0,00"
+                      className={`w-24 bg-white/[0.03] border rounded px-2 py-1 text-right text-sm ${
+                        item.origem_preco === 'sem_preco' || !item.preco_unitario
+                          ? 'border-coral/40 text-coral'
+                          : 'border-white/10 text-white'
+                      }`}
+                    />
+                  </td>
+                  <td className="py-2 px-3 text-right text-sm font-bold text-white">
+                    {formatarMoedaBRL(subtotal)}
+                  </td>
                   <td className="py-2 px-3 text-center">
-                    {item.automatico ? (
-                      <span className="text-[10px] text-sol font-bold">AUTO</span>
-                    ) : (
-                      <span className="text-[10px] text-verde font-bold">MAN</span>
-                    )}
+                    <span
+                      className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border ${origemInfo.classe}`}
+                      title={item.origem_preco || 'sem_preco'}
+                    >
+                      {origemInfo.emoji} {origemInfo.label}
+                    </span>
                   </td>
                   <td className="py-2 px-3">
                     <button
@@ -142,6 +200,19 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
               )
             })}
           </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-sol/40">
+              <td colSpan={5} className="py-3 px-3 md:px-6 text-right text-xs uppercase tracking-wider font-bold text-white/70">
+                Subtotal Lista CA
+              </td>
+              <td className="py-3 px-3 text-right">
+                <span className="text-lg font-black text-sol">
+                  {formatarMoedaBRL(totalGeral)}
+                </span>
+              </td>
+              <td colSpan={2}></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
@@ -153,7 +224,9 @@ export function ListaCaForm({ projetoId, itensIniciais, regeneradoAutomatico }: 
         >
           + Adicionar item manual
         </button>
-        <span className="text-xs text-white/40">{itens.length} itens</span>
+        <span className="text-xs text-white/40">
+          {itens.length} itens · {semPreco > 0 ? <span className="text-coral">{semPreco} sem preço</span> : 'todos com preço ✓'}
+        </span>
       </div>
 
       {erro && (
