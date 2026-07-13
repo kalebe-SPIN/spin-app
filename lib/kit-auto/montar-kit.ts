@@ -209,11 +209,11 @@ export function montarListaComplementarCA(
     automatico: true,
   })
 
-  // ============== MANGUEIRA CORRUGADA (10m padrão) ==============
+  // ============== MANGUEIRA CORRUGADA (10m padrão, polegadas iguais ao eletroduto) ==============
   items.push({
     categoria: 'protecao',
     subcategoria: 'corrugado_solar',
-    descricao: 'Mangueira corrugada 25mm com proteção UV/solar',
+    descricao: `Mangueira corrugada ${bitolaEletroduto.polegadas} com proteção UV/solar`,
     qtd: 10,
     unidade: 'm',
     observacao: 'Padrão Spin: 10m — proteção dos cabos no telhado',
