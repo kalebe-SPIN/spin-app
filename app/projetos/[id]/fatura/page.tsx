@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { FaturaForm } from '@/components/FaturaForm'
+import { FaturaSemFaturaTabs } from '@/components/FaturaSemFaturaTabs'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -33,28 +33,19 @@ export default async function FaturaPage({ params }: { params: { id: string } })
             </span>
           </div>
           <h1 className="text-3xl md:text-4xl font-black text-white">
-            Análise de fatura CELESC
+            Fatura & consumo
           </h1>
           <p className="text-white/60 mt-1 text-sm">
-            {projeto.cliente_razao_social} · Upload da fatura → IA extrai consumo, demanda, grupo tarifário
+            {projeto.cliente_razao_social} · Escolha entre analisar a fatura CELESC ou entrar com dados rápidos
           </p>
         </header>
 
-        <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-xl p-4 mb-6">
-          <p className="text-sm text-white/80">
-            A análise identifica automaticamente: <strong className="text-white">consumo médio</strong>,
-            geração existente, demanda contratada, grupo tarifário (A/B), tipo de ligação (mono/tri) e observações
-            do titular. Esses dados alimentam o dimensionamento nos próximos passos.
-          </p>
-        </div>
-
-        <div className="bg-white/[0.03] border border-white/10 rounded-xl p-6 md:p-8">
-          <FaturaForm
-            projetoId={projeto.id}
-            analiseSalva={projeto.analise_fatura}
-            beneficiariasSalvas={projeto.beneficiarias || []}
-          />
-        </div>
+        <FaturaSemFaturaTabs
+          projetoId={projeto.id}
+          analiseSalva={projeto.analise_fatura}
+          beneficiariasSalvas={projeto.beneficiarias || []}
+          origemAtual={projeto.origem_dimensionamento}
+        />
       </div>
     </main>
   )
