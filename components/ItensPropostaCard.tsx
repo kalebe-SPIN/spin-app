@@ -127,18 +127,25 @@ function ItemProposta({ item, projetoId }: { item: any; projetoId: string }) {
       {/* Mini-workflow do item */}
       <div className="mt-3 pt-3 border-t border-white/10">
         <p className="text-[9px] uppercase tracking-wider font-bold text-white/40 mb-2">
-          Fluxo · {passos.length} {passos.length === 1 ? 'passo' : 'passos'}
+          Fluxo · {passos.length} {passos.length === 1 ? 'passo' : 'passos'} · <span className="text-sol">passos coloridos = específicos deste tipo</span>
         </p>
         <div className="flex flex-wrap gap-1.5">
           {passos.map((chave, idx) => {
             const p = INFO_PASSO[chave]
+            // Destaca passos específicos do tipo (bess_config, ve_config, servico_config)
+            const isEspecifico = ['bess_config', 've_config', 'servico_config'].includes(chave)
             return (
               <Link
                 key={chave}
                 href={`/projetos/${projetoId}/${p.path}?item=${item.id}`}
-                className="text-[10px] px-2 py-1 bg-white/5 border border-white/10 rounded hover:bg-white/10 hover:border-sol/30 text-white/70 hover:text-white transition"
+                className={`text-[10px] px-2 py-1 rounded transition border ${
+                  isEspecifico
+                    ? `${grupo?.bgClass || 'bg-sol/20 border-sol/50'} font-bold text-white shadow-sm ring-1 ring-sol/40`
+                    : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-sol/30 text-white/70 hover:text-white'
+                }`}
               >
-                <span className="text-white/40">{idx + 1}.</span> {p.titulo}
+                <span className={isEspecifico ? 'text-sol' : 'text-white/40'}>{idx + 1}.</span>{' '}
+                {isEspecifico && '⭐ '}{p.titulo}
               </Link>
             )
           })}
