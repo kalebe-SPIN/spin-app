@@ -243,7 +243,7 @@ export const INFO_PASSO: Record<PassoWorkflow, { titulo: string; path: string; o
   dimensionar:    { titulo: 'Dimensionar',    path: 'dimensionar',  ordem: 5 },
   kit:            { titulo: 'Kit',            path: 'kit',          ordem: 6 },
   lista_ca:       { titulo: 'Lista CA',       path: 'lista-ca',     ordem: 7 },
-  bess_config:    { titulo: 'BESS',           path: 'bess',         ordem: 6.5 },
+  bess_config:    { titulo: 'BESS híbrido',   path: 'hibrido',      ordem: 6.5 },
   ve_config:      { titulo: 'Estação VE',     path: 've',           ordem: 5.5 },
   servico_config: { titulo: 'Escopo serviço', path: 'servico',      ordem: 5.5 },
   orcamento:      { titulo: 'Orçamento',      path: 'orcamento',    ordem: 8 },
