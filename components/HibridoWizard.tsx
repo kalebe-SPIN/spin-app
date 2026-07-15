@@ -12,6 +12,8 @@ import {
   CONTROLADOR_PARALELISMO_WEG,
 } from '@/lib/hibrido/catalogo-weg'
 import { salvarDimensionamentoHibridoAction } from '@/app/projetos/[id]/hibrido/actions'
+import { GraficoImpactoHibrido } from '@/components/GraficoImpactoHibrido'
+import type { PerfilCliente } from '@/lib/hibrido/perfil-consumo'
 
 type Metodo = 'memoria_massa' | 'analise_rede_medido' | 'levantamento_listagem'
 
@@ -59,6 +61,10 @@ export function HibridoWizard({
   const [percResistiva, setPercResistiva] = useState<number>(60)
   const [percCapacitiva, setPercCapacitiva] = useState<number>(20)
   const [grupoTarifa, setGrupoTarifa] = useState<'A' | 'B'>('B')
+  // Dados p/ visualização de impacto (opcionais)
+  const [consumoMensalKwh, setConsumoMensalKwh] = useState<number>(600)
+  const [geracaoMensalKwh, setGeracaoMensalKwh] = useState<number>(500)
+  const [perfilCliente, setPerfilCliente] = useState<PerfilCliente>('residencial')
 
   // Aplica sugestão da IA
   function aplicarSugestaoIA(ia: AnaliseIA) {
@@ -377,6 +383,63 @@ export function HibridoWizard({
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {/* ══════════════ IMPACTO VISUAL ══════════════ */}
+      {dimensionamento && (
+        <section className="p-5 bg-white/[0.02] border border-white/10 rounded-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
+                📊 Impacto visual do sistema
+              </h2>
+              <p className="text-[10px] text-white/50 mt-0.5">
+                Ajuda a mostrar pro cliente o antes/depois — vai pra proposta
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <NumInput
+              label="Consumo mensal do cliente (kWh)"
+              valor={consumoMensalKwh}
+              onChange={setConsumoMensalKwh}
+              min={0}
+              step={50}
+            />
+            <NumInput
+              label="Geração solar estimada (kWh/mês)"
+              valor={geracaoMensalKwh}
+              onChange={setGeracaoMensalKwh}
+              min={0}
+              step={50}
+            />
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider font-bold text-white/50 mb-1">
+                Perfil de uso
+              </label>
+              <select
+                value={perfilCliente}
+                onChange={(e) => setPerfilCliente(e.target.value as PerfilCliente)}
+                className="w-full px-3 py-2 bg-noite border border-white/20 rounded text-white text-sm"
+              >
+                <option value="residencial">🏠 Residencial (picos manhã + noite)</option>
+                <option value="comercial">🏢 Comercial (8h-18h)</option>
+                <option value="industrial">🏭 Industrial (24h)</option>
+              </select>
+            </div>
+          </div>
+
+          <GraficoImpactoHibrido
+            perfil={perfilCliente}
+            consumoMensalKwh={consumoMensalKwh}
+            geracaoMensalEstimadaKwh={geracaoMensalKwh}
+            capacidadeBateriaKwh={dimensionamento.capacidadeBateriaTotalKwh}
+            cargaCriticaKw={cargaCriticaKw}
+            autonomiaHoras={dimensionamento.autonomiaRealHoras}
+            usarPeakShaving={usarPeakShaving}
+          />
         </section>
       )}
 
