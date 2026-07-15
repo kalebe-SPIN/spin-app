@@ -54,6 +54,11 @@ export function HibridoWizard({
   const [usarPeakShaving, setUsarPeakShaving] = useState(false)
   const [usarComplementacao, setUsarComplementacao] = useState(false)
   const [preferirBat10, setPreferirBat10] = useState(false)
+  // Composição da carga crítica (soma ~100%)
+  const [percIndutiva, setPercIndutiva] = useState<number>(20)
+  const [percResistiva, setPercResistiva] = useState<number>(60)
+  const [percCapacitiva, setPercCapacitiva] = useState<number>(20)
+  const [grupoTarifa, setGrupoTarifa] = useState<'A' | 'B'>('B')
 
   // Aplica sugestão da IA
   function aplicarSugestaoIA(ia: AnaliseIA) {
@@ -91,11 +96,17 @@ export function HibridoWizard({
       demandaCargaCriticaKw: cargaCriticaKw,
       autonomiaDesejadaHoras: autonomiaHoras,
       tipoLigacao,
+      percCargaIndutiva: percIndutiva,
+      percCargaResistiva: percResistiva,
+      percCargaCapacitiva: percCapacitiva,
       usarPeakShaving,
       usarComplementacaoDemanda: usarComplementacao,
       preferirBateria10kwh: preferirBat10,
     })
-  }, [cargaCriticaKw, autonomiaHoras, tipoLigacao, usarPeakShaving, usarComplementacao, preferirBat10])
+  }, [cargaCriticaKw, autonomiaHoras, tipoLigacao, percIndutiva, percResistiva, percCapacitiva, usarPeakShaving, usarComplementacao, preferirBat10])
+
+  const somaCarga = percIndutiva + percResistiva + percCapacitiva
+  const cargaValida = Math.abs(somaCarga - 100) <= 1
 
   function confirmar() {
     if (!dimensionamento) return
@@ -221,9 +232,6 @@ export function HibridoWizard({
         <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
           3. Ajuste demanda crítica + autonomia
         </h2>
-        <p className="text-[10px] text-white/50 mb-3">
-          Valores herdados da análise IA — ajuste conforme conversa com o cliente.
-        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <NumInput
@@ -242,12 +250,76 @@ export function HibridoWizard({
           />
         </div>
 
+        {/* Composição da carga crítica */}
+        <div className="mt-5 p-4 bg-noite/40 border border-white/10 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase font-bold text-white/70">
+              Composição da carga crítica
+            </p>
+            <span className={`text-[10px] font-bold ${cargaValida ? 'text-verde' : 'text-coral'}`}>
+              Total: {somaCarga.toFixed(0)}% {cargaValida ? '✓' : '(deve somar 100%)'}
+            </span>
+          </div>
+          <p className="text-[10px] text-white/40 mb-3">
+            Divide a carga crítica pela natureza — impacta o dimensionamento do inversor.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <SliderCarga
+              label="⚡ Indutiva"
+              desc="Motores, ar cond, geladeira (pico partida 3-5×)"
+              valor={percIndutiva}
+              onChange={setPercIndutiva}
+              cor="text-sol"
+            />
+            <SliderCarga
+              label="🔥 Resistiva"
+              desc="Chuveiro, incandescente, forno (linear)"
+              valor={percResistiva}
+              onChange={setPercResistiva}
+              cor="text-verde"
+            />
+            <SliderCarga
+              label="💻 Capacitiva"
+              desc="Eletrônicos, LED, TV (harmônicos)"
+              valor={percCapacitiva}
+              onChange={setPercCapacitiva}
+              cor="text-weg-azul"
+            />
+          </div>
+        </div>
+
+        {/* Grupo tarifário */}
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => { setGrupoTarifa('B'); setUsarPeakShaving(false) }}
+            className={`p-3 rounded border text-left ${
+              grupoTarifa === 'B' ? 'bg-sol/10 border-sol/40' : 'bg-white/[0.02] border-white/10'
+            }`}
+          >
+            <p className="text-sm font-bold text-white">Grupo B</p>
+            <p className="text-[10px] text-white/50">Residencial/comercial baixa tensão (padrão)</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setGrupoTarifa('A')}
+            className={`p-3 rounded border text-left ${
+              grupoTarifa === 'A' ? 'bg-sol/10 border-sol/40' : 'bg-white/[0.02] border-white/10'
+            }`}
+          >
+            <p className="text-sm font-bold text-white">Grupo A</p>
+            <p className="text-[10px] text-white/50">Comercial/industrial alta tensão · horário de ponta</p>
+          </button>
+        </div>
+
         <div className="mt-3 space-y-2">
-          <Toggle
-            checked={usarPeakShaving} onChange={setUsarPeakShaving}
-            label="⚡ Peak shaving"
-            desc="Sistema despacha bateria em horário de ponta pra reduzir demanda pico"
-          />
+          {grupoTarifa === 'A' && (
+            <Toggle
+              checked={usarPeakShaving} onChange={setUsarPeakShaving}
+              label="⚡ Peak shaving em horário de ponta"
+              desc="Grupo A: bateria despacha no horário caro (18h-21h) pra reduzir demanda medida"
+            />
+          )}
           <Toggle
             checked={usarComplementacao} onChange={setUsarComplementacao}
             label="🔋 Complementação de demanda"
@@ -256,7 +328,7 @@ export function HibridoWizard({
           <Toggle
             checked={preferirBat10} onChange={setPreferirBat10}
             label="🔋 Preferir baterias 10kWh (SBW CB100)"
-            desc="Menos módulos, mais capacidade. Padrão é 5kWh (mais flexível)."
+            desc="Menos módulos, mais capacidade. Regra: TODAS iguais (5kWh OU 10kWh)."
           />
         </div>
       </section>
@@ -370,6 +442,29 @@ function NumInput({ label, valor, onChange, step, min }: {
         className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white"
       />
     </label>
+  )
+}
+
+function SliderCarga({ label, desc, valor, onChange, cor }: {
+  label: string; desc: string; valor: number; onChange: (n: number) => void; cor: string
+}) {
+  return (
+    <div>
+      <div className="flex justify-between items-baseline mb-1">
+        <span className={`text-xs font-bold ${cor}`}>{label}</span>
+        <span className={`text-lg font-black ${cor}`}>{valor.toFixed(0)}%</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        value={valor}
+        onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+        className="w-full accent-sol"
+      />
+      <p className="text-[9px] text-white/40 mt-1">{desc}</p>
+    </div>
   )
 }
 
