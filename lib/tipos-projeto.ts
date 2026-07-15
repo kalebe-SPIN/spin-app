@@ -9,7 +9,7 @@ export type TipoItem =
   | 'srv_limpeza' | 'srv_manutencao' | 'srv_eletrica_predial' | 'srv_padrao_entrada'
   | 'srv_laudo_tecnico' | 'srv_analise_rede'
   | 'srv_alvenaria' | 'srv_serralheria' | 'srv_carpintaria'
-  | 'aluguel_maquinas'
+  | 'aluguel_maquinas' | 'aluguel_equipamentos'
   | 'outros'
 
 export type Grupo = 'fotovoltaico' | 'bateria' | 'mobilidade' | 'servico' | 'construcao' | 'aluguel' | 'outros'
@@ -143,9 +143,16 @@ export const TIPOS_ITEM: InfoTipo[] = [
 
   // 🚜 ALUGUEL
   {
-    chave: 'aluguel_maquinas', emoji: '🚜', label: 'Aluguel de máquinas e equipamentos', grupo: 'aluguel',
-    descricao: 'Locação de andaime, plataforma elevatória, gerador, guindaste etc.',
-    exemploUso: 'Andaime 3 dias · Plataforma 12m · Gerador standby obra',
+    chave: 'aluguel_maquinas', emoji: '🚜', label: 'Aluguel de máquinas pesadas', grupo: 'aluguel',
+    descricao: 'Locação de máquinas pesadas com operador (dia/hora).',
+    exemploUso: 'Retroescavadeira · Munck · Guindaste · Escavadeira · Rolo compactador',
+    disponivel: true,
+    fluxoPassos: 3,
+  },
+  {
+    chave: 'aluguel_equipamentos', emoji: '🛠️', label: 'Aluguel de equipamentos', grupo: 'aluguel',
+    descricao: 'Locação de equipamentos leves (dia/diária).',
+    exemploUso: 'Andaime · Plataforma elevatória · Gerador · Betoneira · Serra',
     disponivel: true,
     fluxoPassos: 3,
   },
@@ -222,6 +229,7 @@ export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
 
   // 🚜 Aluguel
   aluguel_maquinas:       ['cliente', 'servico_config', 'orcamento'],
+  aluguel_equipamentos:   ['cliente', 'servico_config', 'orcamento'],
 
   // 📦 Outros
   outros:        ['cliente', 'servico_config', 'orcamento'],
