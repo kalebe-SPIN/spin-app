@@ -8,9 +8,11 @@ export type TipoItem =
   | 'bess' | 've_recarga'
   | 'srv_limpeza' | 'srv_manutencao' | 'srv_eletrica_predial' | 'srv_padrao_entrada'
   | 'srv_laudo_tecnico' | 'srv_analise_rede'
+  | 'srv_alvenaria' | 'srv_serralheria' | 'srv_carpintaria'
+  | 'aluguel_maquinas'
   | 'outros'
 
-export type Grupo = 'fotovoltaico' | 'bateria' | 'mobilidade' | 'servico' | 'outros'
+export type Grupo = 'fotovoltaico' | 'bateria' | 'mobilidade' | 'servico' | 'construcao' | 'aluguel' | 'outros'
 
 export type InfoTipo = {
   chave: TipoItem
@@ -116,6 +118,38 @@ export const TIPOS_ITEM: InfoTipo[] = [
     fluxoPassos: 3,
   },
 
+  // 🧱 CONSTRUÇÃO
+  {
+    chave: 'srv_alvenaria', emoji: '🧱', label: 'Alvenaria', grupo: 'construcao',
+    descricao: 'Serviços de alvenaria — reforma, ampliação, reparo estrutural.',
+    exemploUso: 'Base de concreto pra inversor, quiosque, muro de proteção',
+    disponivel: true,
+    fluxoPassos: 3,
+  },
+  {
+    chave: 'srv_serralheria', emoji: '⚙️', label: 'Serralheria', grupo: 'construcao',
+    descricao: 'Portões, gradis, estruturas metálicas sob medida.',
+    exemploUso: 'Cercamento da usina, portão de acesso, base metálica',
+    disponivel: true,
+    fluxoPassos: 3,
+  },
+  {
+    chave: 'srv_carpintaria', emoji: '🪵', label: 'Carpintaria', grupo: 'construcao',
+    descricao: 'Trabalhos em madeira — deck, pergolado, móveis, estrutura.',
+    exemploUso: 'Deck sob estrutura solar, pergolado, tesoura de telhado',
+    disponivel: true,
+    fluxoPassos: 3,
+  },
+
+  // 🚜 ALUGUEL
+  {
+    chave: 'aluguel_maquinas', emoji: '🚜', label: 'Aluguel de máquinas e equipamentos', grupo: 'aluguel',
+    descricao: 'Locação de andaime, plataforma elevatória, gerador, guindaste etc.',
+    exemploUso: 'Andaime 3 dias · Plataforma 12m · Gerador standby obra',
+    disponivel: true,
+    fluxoPassos: 3,
+  },
+
   // 📦 OUTROS
   {
     chave: 'outros', emoji: '📦', label: 'Outros (personalizado)', grupo: 'outros',
@@ -127,11 +161,13 @@ export const TIPOS_ITEM: InfoTipo[] = [
 ]
 
 export const GRUPOS_INFO: Record<Grupo, { label: string; cor: string; bgClass: string }> = {
-  fotovoltaico: { label: '☀️ Fotovoltaico', cor: 'sol',      bgClass: 'bg-sol/10 border-sol/30' },
-  bateria:      { label: '🔋 Bateria',      cor: 'verde',    bgClass: 'bg-verde/10 border-verde/30' },
-  mobilidade:   { label: '🚗 Mobilidade',   cor: 'weg-azul', bgClass: 'bg-weg-azul/10 border-weg-azul/30' },
-  servico:      { label: '🛠️ Serviços',    cor: 'coral',    bgClass: 'bg-coral/10 border-coral/30' },
-  outros:       { label: '📦 Outros',       cor: 'white',    bgClass: 'bg-white/5 border-white/20' },
+  fotovoltaico: { label: '☀️ Fotovoltaico',            cor: 'sol',      bgClass: 'bg-sol/10 border-sol/30' },
+  bateria:      { label: '🔋 Bateria',                 cor: 'verde',    bgClass: 'bg-verde/10 border-verde/30' },
+  mobilidade:   { label: '🚗 Mobilidade',              cor: 'weg-azul', bgClass: 'bg-weg-azul/10 border-weg-azul/30' },
+  servico:      { label: '🛠️ Serviços técnicos',      cor: 'coral',    bgClass: 'bg-coral/10 border-coral/30' },
+  construcao:   { label: '🧱 Construção',              cor: 'sol',      bgClass: 'bg-sol/5 border-sol/20' },
+  aluguel:      { label: '🚜 Aluguel de equipamentos', cor: 'verde',    bgClass: 'bg-verde/5 border-verde/20' },
+  outros:       { label: '📦 Outros',                  cor: 'white',    bgClass: 'bg-white/5 border-white/20' },
 }
 
 export function getInfoTipo(chave: TipoItem): InfoTipo | undefined {
@@ -140,7 +176,8 @@ export function getInfoTipo(chave: TipoItem): InfoTipo | undefined {
 
 export function tiposPorGrupo(): Record<Grupo, InfoTipo[]> {
   const r: Record<Grupo, InfoTipo[]> = {
-    fotovoltaico: [], bateria: [], mobilidade: [], servico: [], outros: [],
+    fotovoltaico: [], bateria: [], mobilidade: [], servico: [],
+    construcao: [], aluguel: [], outros: [],
   }
   for (const t of TIPOS_ITEM) r[t.grupo].push(t)
   return r
@@ -177,6 +214,14 @@ export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
   srv_padrao_entrada:     ['cliente', 'fatura', 'padrao', 'orcamento'],
   srv_laudo_tecnico:      ['cliente', 'servico_config', 'orcamento'],
   srv_analise_rede:       ['cliente', 'servico_config', 'orcamento'],
+
+  // 🧱 Construção
+  srv_alvenaria:          ['cliente', 'servico_config', 'orcamento'],
+  srv_serralheria:        ['cliente', 'servico_config', 'orcamento'],
+  srv_carpintaria:        ['cliente', 'servico_config', 'orcamento'],
+
+  // 🚜 Aluguel
+  aluguel_maquinas:       ['cliente', 'servico_config', 'orcamento'],
 
   // 📦 Outros
   outros:        ['cliente', 'servico_config', 'orcamento'],
