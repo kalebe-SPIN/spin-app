@@ -14,6 +14,7 @@ import {
 import { salvarDimensionamentoHibridoAction } from '@/app/projetos/[id]/hibrido/actions'
 import { GraficoImpactoHibrido } from '@/components/GraficoImpactoHibrido'
 import type { PerfilCliente } from '@/lib/hibrido/perfil-consumo'
+import { LevantamentoListagem, type MestreConsideracoes } from '@/components/LevantamentoListagem'
 
 type Metodo = 'memoria_massa' | 'analise_rede_medido' | 'levantamento_listagem'
 
@@ -153,7 +154,34 @@ export function HibridoWizard({
         </div>
       </section>
 
-      {/* ══════════════ ETAPA 2: upload/análise ══════════════ */}
+      {/* ══════════════ ETAPA 2 (listagem): catálogo de equipamentos ══════════════ */}
+      {metodo === 'levantamento_listagem' && (
+        <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
+          <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-2">
+            2. Selecione os equipamentos do cliente
+          </h2>
+          <p className="text-[10px] text-white/50 mb-4">
+            Escolha um a um os aparelhos do site — quantidade, horas de uso e se entra no backup ⭐.
+            Ao final consulte o Mestre da Elétrica pra análise técnica.
+          </p>
+          <LevantamentoListagem
+            onCalculado={(resumo, mestre) => {
+              if (mestre) {
+                setCargaCriticaKw(mestre.cargaCriticaSugeridaKw)
+                setAutonomiaHoras(mestre.autonomiaSugeridaHoras)
+                setPercIndutiva(mestre.composicao.indutiva)
+                setPercResistiva(mestre.composicao.resistiva)
+                setPercCapacitiva(mestre.composicao.capacitiva)
+                if (resumo.consumoEstimadoMensalKwh > 0) {
+                  setConsumoMensalKwh(Math.round(resumo.consumoEstimadoMensalKwh))
+                }
+              }
+            }}
+          />
+        </section>
+      )}
+
+      {/* ══════════════ ETAPA 2 (planilha): upload/análise ══════════════ */}
       {metodo !== 'levantamento_listagem' && (
         <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
           <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
