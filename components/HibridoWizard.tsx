@@ -11,7 +11,7 @@ import {
   CAIXA_JUNCAO_WEG,
   CONTROLADOR_PARALELISMO_WEG,
 } from '@/lib/hibrido/catalogo-weg'
-import { salvarDimensionamentoHibridoAction } from '@/app/projetos/[id]/hibrido/actions'
+import { salvarDimensionamentoHibridoAction, salvarLevantamentoListagemAction } from '@/app/projetos/[id]/hibrido/actions'
 import { GraficoImpactoHibrido } from '@/components/GraficoImpactoHibrido'
 import type { PerfilCliente } from '@/lib/hibrido/perfil-consumo'
 import { LevantamentoListagem, type MestreConsideracoes } from '@/components/LevantamentoListagem'
@@ -177,6 +177,29 @@ export function HibridoWizard({
                   setConsumoMensalKwh(Math.round(resumo.consumoEstimadoMensalKwh))
                 }
               }
+            }}
+            onSalvar={async (resumo, mestre) => {
+              await salvarLevantamentoListagemAction({
+                projetoId,
+                itemId: itemId || null,
+                itens: resumo.itens.map((i) => ({
+                  nome: i.equipamento.nome,
+                  potenciaW: i.equipamento.potenciaW,
+                  tipoCarga: i.equipamento.tipoCarga,
+                  quantidade: i.quantidade,
+                  horasUsoDia: i.horasUsoDia,
+                  ehCargaCritica: i.ehCargaCritica,
+                })),
+                resumoLevantamento: {
+                  potenciaInstaladaW: resumo.potenciaInstaladaW,
+                  potenciaCargaCriticaW: resumo.potenciaCargaCriticaW,
+                  percIndutiva: resumo.percIndutiva,
+                  percResistiva: resumo.percResistiva,
+                  percCapacitiva: resumo.percCapacitiva,
+                  consumoEstimadoMensalKwh: resumo.consumoEstimadoMensalKwh,
+                },
+                respostaMestre: mestre,
+              })
             }}
           />
         </section>

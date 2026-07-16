@@ -33,8 +33,10 @@ export type MestreConsideracoes = {
 
 export function LevantamentoListagem({
   onCalculado,
+  onSalvar,
 }: {
   onCalculado?: (resumo: ResumoLevantamento, mestre?: MestreConsideracoes) => void
+  onSalvar?: (resumo: ResumoLevantamento, mestre: MestreConsideracoes) => Promise<void>
 }) {
   const [categoria, setCategoria] = useState<CategoriaEquipamento | 'todos'>('todos')
   const [busca, setBusca] = useState('')
@@ -131,6 +133,10 @@ export function LevantamentoListagem({
       setRespostaMestre(data.consideracoes)
       setConversa([{ quem: 'mestre', texto: data.consideracoes.resumoTexto }])
       onCalculado?.(resumo, data.consideracoes)
+      // Salva no Supabase (não bloqueia UI)
+      if (onSalvar) {
+        onSalvar(resumo, data.consideracoes).catch((err) => console.error('[levantamento] salvar:', err))
+      }
     } catch (e: any) {
       setErroMestre(e.message)
     } finally {
