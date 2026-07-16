@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { SaidaDimensionamentoHibrido } from '@/lib/hibrido/dimensionamento'
+import { gerarItensListaCaHibrida } from '@/lib/hibrido/lista-ca-hibrida'
 
 export async function salvarDimensionamentoHibridoAction(
   projetoId: string,
@@ -33,6 +34,19 @@ export async function salvarDimensionamentoHibridoAction(
 
   if (error) return { erro: error.message }
 
+  // Gera lista CA adicional (cabos comunicação, HEPR EPS, disjuntor extra, etc)
+  // e salva na coluna dedicada projetos.lista_ca_hibrida_confirmada
+  const itensListaCaHibrida = gerarItensListaCaHibrida(saida)
+  const { error: erroLista } = await supabase
+    .from('projetos')
+    .update({ lista_ca_hibrida_confirmada: itensListaCaHibrida })
+    .eq('id', projetoId)
+
+  if (erroLista) {
+    console.error('[salvarDimensionamentoHibrido] lista CA:', erroLista)
+    // não bloqueia — dimensionamento já foi salvo
+  }
+
   // Atualiza status do item se veio itemId
   if (itemId) {
     await supabase
@@ -42,5 +56,5 @@ export async function salvarDimensionamentoHibridoAction(
   }
 
   revalidatePath(`/projetos/${projetoId}`)
-  return { sucesso: true }
+  return { sucesso: true, qtdItensListaCa: itensListaCaHibrida.length }
 }

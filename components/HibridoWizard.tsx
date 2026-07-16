@@ -15,6 +15,7 @@ import { salvarDimensionamentoHibridoAction } from '@/app/projetos/[id]/hibrido/
 import { GraficoImpactoHibrido } from '@/components/GraficoImpactoHibrido'
 import type { PerfilCliente } from '@/lib/hibrido/perfil-consumo'
 import { LevantamentoListagem, type MestreConsideracoes } from '@/components/LevantamentoListagem'
+import { gerarItensListaCaHibrida, resumoListaCaHibrida } from '@/lib/hibrido/lista-ca-hibrida'
 
 type Metodo = 'memoria_massa' | 'analise_rede_medido' | 'levantamento_listagem'
 
@@ -413,6 +414,48 @@ export function HibridoWizard({
           )}
         </section>
       )}
+
+      {/* ══════════════ LISTA CA HÍBRIDA (materiais adicionais) ══════════════ */}
+      {dimensionamento && (() => {
+        const itensCaHibrida = gerarItensListaCaHibrida(dimensionamento)
+        return (
+          <section className="p-5 bg-weg-azul/5 border border-weg-azul/30 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-xs uppercase tracking-wider font-bold text-weg-azul">
+                  🧰 Materiais CA adicionais (BESS)
+                </h2>
+                <p className="text-[10px] text-white/50 mt-0.5">
+                  {resumoListaCaHibrida(itensCaHibrida)} · salvos automaticamente ao confirmar
+                </p>
+              </div>
+              <span className="text-2xl">📦</span>
+            </div>
+
+            <div className="space-y-1 max-h-[280px] overflow-y-auto">
+              {itensCaHibrida.map((item, i) => (
+                <div key={i} className="flex items-start gap-2 p-2 bg-noite/40 rounded text-xs">
+                  <span className="text-[10px] text-white/40 flex-shrink-0 w-6 pt-0.5">{i + 1}.</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white truncate">{item.descricao}</p>
+                    {item.observacao && (
+                      <p className="text-[10px] text-white/50 italic">💡 {item.observacao}</p>
+                    )}
+                  </div>
+                  <span className="text-sol font-bold flex-shrink-0 text-xs">
+                    {item.qtd} {item.unidade}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-3 text-[10px] text-white/40 italic">
+              Esses itens serão adicionados à lista CA do projeto (separados da lista on-grid).
+              Você pode editar/remover na página "Lista CA" antes de gerar o orçamento.
+            </p>
+          </section>
+        )
+      })()}
 
       {/* ══════════════ IMPACTO VISUAL ══════════════ */}
       {dimensionamento && (
