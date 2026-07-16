@@ -63,14 +63,15 @@ export type Bateria = {
   modelo: string
   codigo_weg: string
   capacidade_kwh: number
+  potencia_continua_kw: number  // ← NOVO: taxa C1 (descarrega em 1h)
   descricao: string
 }
 
 export const BATERIAS_WEG: Bateria[] = [
-  { modelo: 'SBW CB050 W00', codigo_weg: 'SBW-CB050-W00', capacidade_kwh: 5,
-    descricao: 'Bateria WEG 5 kWh — Lítio LiFePO4 modular' },
-  { modelo: 'SBW CB100 W00', codigo_weg: 'SBW-CB100-W00', capacidade_kwh: 10,
-    descricao: 'Bateria WEG 10 kWh — Lítio LiFePO4 modular' },
+  { modelo: 'SBW CB050 W00', codigo_weg: 'SBW-CB050-W00', capacidade_kwh: 5, potencia_continua_kw: 5,
+    descricao: 'Bateria WEG 5 kWh — Lítio LiFePO4 modular · pot. contínua 5kW (1C)' },
+  { modelo: 'SBW CB100 W00', codigo_weg: 'SBW-CB100-W00', capacidade_kwh: 10, potencia_continua_kw: 10,
+    descricao: 'Bateria WEG 10 kWh — Lítio LiFePO4 modular · pot. contínua 10kW (1C)' },
 ]
 
 // ═══════════════════ COMPONENTES OBRIGATÓRIOS/OPCIONAIS ═══════════════════

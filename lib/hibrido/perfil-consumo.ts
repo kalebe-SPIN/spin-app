@@ -83,23 +83,33 @@ export type PontoHoraSistema = {
 
 export function simularDiaHibrido(input: {
   perfil: PerfilCliente
-  consumoDiarioKwh: number       // Total consumido no dia
-  geracaoDiariaKwh: number        // Total gerado pelo solar
-  capacidadeBateriaKwh: number    // Total do banco de baterias
-  usarPeakShaving?: boolean       // Descarrega bateria em horário de ponta (18-21h)
+  consumoDiarioKwh: number         // Total consumido no dia
+  geracaoDiariaKwh: number          // Total gerado pelo solar
+  capacidadeBateriaKwh: number      // Total do banco de baterias
+  potenciaBateriaKw?: number        // Potência instantânea do banco (limita despacho)
+  potenciaInversorKw?: number       // Potência do inversor (limita tudo)
+  usarPeakShaving?: boolean         // Descarrega bateria em horário de ponta
   horaInicioPonta?: number
   horaFimPonta?: number
-  socInicialPerc?: number         // % de carga inicial (default 50)
+  percDespachoMax?: number          // % max do banco usado pra despacho (peak shaving). Default 50
+  percBackupReservado?: number      // % do banco RESERVADO só pra queda de energia. Default 20
+  socInicialPerc?: number           // % de carga inicial (default 100 pra amostrar despacho)
+  dodMaxPerc?: number               // % máx de descarga (WEG SBW = 98%)
 }): PontoHoraSistema[] {
   const {
     perfil,
     consumoDiarioKwh,
     geracaoDiariaKwh,
     capacidadeBateriaKwh,
+    potenciaBateriaKw = capacidadeBateriaKwh, // 1C default
+    potenciaInversorKw = Infinity,
     usarPeakShaving = false,
     horaInicioPonta = 18,
     horaFimPonta = 21,
-    socInicialPerc = 50,
+    percDespachoMax = 50,
+    percBackupReservado = 20,
+    socInicialPerc = 100,
+    dodMaxPerc = 98,
   } = input
 
   const curvaConsumo = curvaConsumoDiaria24h(perfil)
@@ -107,9 +117,14 @@ export function simularDiaHibrido(input: {
 
   const pontos: PontoHoraSistema[] = []
   let socKwh = (capacidadeBateriaKwh * socInicialPerc) / 100
+  // Limite de despacho: usar até percDespachoMax do banco, mas nunca abaixo da reserva de backup
+  const socMinReservaBackup = capacidadeBateriaKwh * (percBackupReservado / 100)
+  const socMinDoD = capacidadeBateriaKwh * (1 - dodMaxPerc / 100) // ex: 98% DoD → 2% mínimo
+  // Potência máxima instantânea (limitada por inversor OU banco)
+  const potenciaMaxKw = Math.min(potenciaInversorKw, potenciaBateriaKw)
 
   for (let h = 0; h < 24; h++) {
-    const consumoKw = curvaConsumo[h] * consumoDiarioKwh // kWh na hora = kW médio
+    const consumoKw = curvaConsumo[h] * consumoDiarioKwh
     const geracaoKw = curvaGeracao[h] * geracaoDiariaKwh
 
     let consumoDaRedeKw = 0
@@ -117,26 +132,25 @@ export function simularDiaHibrido(input: {
     let descargaBateriaKw = 0
     let cargaBateriaKw = 0
 
-    // 1. Solar cobre consumo direto
     const saldoSolar = geracaoKw - consumoKw
 
     if (saldoSolar > 0) {
-      // Excedente: primeiro carrega bateria (até encher), depois injeta
+      // Excedente solar: carrega bateria (limitado pela potência do banco), depois injeta
       const espacoBateria = capacidadeBateriaKwh - socKwh
-      const cargaPossivel = Math.min(saldoSolar, espacoBateria, capacidadeBateriaKwh * 0.5) // limita taxa de carga
+      const cargaPossivel = Math.min(saldoSolar, espacoBateria, potenciaMaxKw)
       cargaBateriaKw = cargaPossivel
       socKwh += cargaPossivel
       injecaoRedeKw = saldoSolar - cargaPossivel
     } else {
-      // Déficit: solar não bastou pra carga
+      // Déficit solar
       const deficit = Math.abs(saldoSolar)
-
-      // Peak shaving: se em horário de ponta, descarrega bateria antes de puxar da rede
       const emHorarioPonta = usarPeakShaving && h >= horaInicioPonta && h < horaFimPonta
+      // Reserva pra backup: só usa até (percDespachoMax) do banco em modo peak shaving
+      const socLimiteDespacho = Math.max(socMinReservaBackup, socMinDoD)
 
-      if (emHorarioPonta && socKwh > capacidadeBateriaKwh * 0.2) {
-        const disponivel = socKwh - capacidadeBateriaKwh * 0.2 // não descarrega abaixo de 20%
-        const descarga = Math.min(deficit, disponivel, capacidadeBateriaKwh * 0.5)
+      if (emHorarioPonta && socKwh > socLimiteDespacho) {
+        const disponivel = socKwh - socLimiteDespacho
+        const descarga = Math.min(deficit, disponivel, potenciaMaxKw)
         descargaBateriaKw = descarga
         socKwh -= descarga
         consumoDaRedeKw = deficit - descarga
@@ -162,6 +176,79 @@ export function simularDiaHibrido(input: {
   }
 
   return pontos
+}
+
+/**
+ * Simula queda de energia começando na `horaQueda` — quanto tempo o sistema
+ * aguenta atendendo a carga crítica com o SOC atual, respeitando limites de
+ * potência do inversor + banco.
+ */
+export function simularQuedaEnergia(input: {
+  perfil: PerfilCliente
+  consumoDiarioKwh: number
+  cargaCriticaKw: number
+  capacidadeBateriaKwh: number
+  potenciaBateriaKw: number
+  potenciaInversorKw: number
+  socInicialPerc?: number
+  dodMaxPerc?: number
+  horaQueda?: number
+  duracaoQuedaHoras?: number
+}): {
+  pontos: Array<{
+    hora: number
+    cargaKw: number
+    potenciaEntregueKw: number
+    socPerc: number
+    houveDeficit: boolean
+  }>
+  autonomiaHoras: number
+} {
+  const {
+    perfil,
+    consumoDiarioKwh,
+    cargaCriticaKw,
+    capacidadeBateriaKwh,
+    potenciaBateriaKw,
+    potenciaInversorKw,
+    socInicialPerc = 100,
+    dodMaxPerc = 98,
+    horaQueda = 18,
+    duracaoQuedaHoras = 8,
+  } = input
+
+  const curvaConsumo = curvaConsumoDiaria24h(perfil)
+  const potenciaMaxKw = Math.min(potenciaInversorKw, potenciaBateriaKw)
+  const socMinKwh = capacidadeBateriaKwh * (1 - dodMaxPerc / 100)
+
+  let socKwh = (capacidadeBateriaKwh * socInicialPerc) / 100
+  let autonomiaHoras = 0
+  const pontos: Array<any> = []
+
+  for (let hOffset = 0; hOffset < duracaoQuedaHoras; hOffset++) {
+    const h = (horaQueda + hOffset) % 24
+    // Carga na hora = fração do perfil × consumo diário, mas SEMPRE limitada pela carga crítica
+    // (backup atende só as cargas críticas selecionadas)
+    const cargaPerfilKw = curvaConsumo[h] * consumoDiarioKwh
+    const cargaKw = Math.min(cargaPerfilKw, cargaCriticaKw)
+
+    // Energia disponível respeitando DoD
+    const energiaDisponivel = Math.max(0, socKwh - socMinKwh)
+    // Potência entregue = min(carga, potência máx, energia disponível em 1h)
+    const potenciaEntregueKw = Math.min(cargaKw, potenciaMaxKw, energiaDisponivel)
+    const houveDeficit = potenciaEntregueKw < cargaKw
+
+    if (!houveDeficit) autonomiaHoras = hOffset + 1
+
+    socKwh -= potenciaEntregueKw
+    const socPerc = capacidadeBateriaKwh > 0 ? (socKwh / capacidadeBateriaKwh) * 100 : 0
+
+    pontos.push({ hora: h, cargaKw, potenciaEntregueKw, socPerc, houveDeficit })
+
+    if (socKwh <= socMinKwh) break
+  }
+
+  return { pontos, autonomiaHoras }
 }
 
 /**

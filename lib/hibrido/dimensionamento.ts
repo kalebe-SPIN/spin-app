@@ -85,8 +85,8 @@ export type SaidaDimensionamentoHibrido = {
   resumo: string
 }
 
-/** DoD (Depth of Discharge) — LiFePO4 aguenta 90% seguro */
-const DOD_LIFEPO4 = 0.90
+/** DoD (Depth of Discharge) — LiFePO4 WEG SBW descarrega até 98% seguro */
+const DOD_LIFEPO4 = 0.98
 /** Rendimento round-trip do sistema (bateria + inversor) */
 const RENDIMENTO_ROUND_TRIP = 0.92
 /** Performance Ratio típico sistemas Spin (perdas cabos + inversor + temperatura + sujeira) */

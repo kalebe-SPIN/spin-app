@@ -144,6 +144,11 @@ export function HibridoWizard({
   // Lista CA híbrida editável — null = usar padrão gerado do dimensionamento
   const [listaCaEditada, setListaCaEditada] = useState<ItemKit[] | null>(null)
 
+  // Estratégia de despacho + backup (usada pelo gráfico de energia)
+  const [percDespachoMax, setPercDespachoMax] = useState<number>(50)
+  const [percBackupReservado, setPercBackupReservado] = useState<number>(20)
+  const [horaSimularQueda, setHoraSimularQueda] = useState<number>(18)
+
   // Aplica sugestão da IA
   function aplicarSugestaoIA(ia: AnaliseIA) {
     if (ia.demanda_carga_critica_kw_sugerida) setCargaCriticaKw(ia.demanda_carga_critica_kw_sugerida)
@@ -863,14 +868,62 @@ export function HibridoWizard({
             </div>
           </div>
 
+          {/* Controles de simulação (impactam ambos gráficos) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 p-3 bg-noite/60 rounded-lg border border-white/10">
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider font-bold text-white/50 mb-1">
+                ⚡ % Despacho máx do banco
+              </label>
+              <div className="flex items-center gap-2">
+                <input type="range" min={0} max={100} step={5}
+                  value={percDespachoMax}
+                  onChange={(e) => setPercDespachoMax(parseInt(e.target.value))}
+                  className="flex-1 accent-purple-500" />
+                <span className="text-sm font-bold text-purple-400 w-10">{percDespachoMax}%</span>
+              </div>
+              <p className="text-[9px] text-white/40 mt-1">Máximo do banco usado pra peak shaving</p>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider font-bold text-white/50 mb-1">
+                🔒 % Reservado pro backup
+              </label>
+              <div className="flex items-center gap-2">
+                <input type="range" min={0} max={80} step={5}
+                  value={percBackupReservado}
+                  onChange={(e) => setPercBackupReservado(parseInt(e.target.value))}
+                  className="flex-1 accent-coral" />
+                <span className="text-sm font-bold text-coral w-10">{percBackupReservado}%</span>
+              </div>
+              <p className="text-[9px] text-white/40 mt-1">Nunca descarrega abaixo disso (garante backup)</p>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider font-bold text-white/50 mb-1">
+                ⏰ Simular queda às
+              </label>
+              <div className="flex items-center gap-2">
+                <input type="range" min={0} max={23} step={1}
+                  value={horaSimularQueda}
+                  onChange={(e) => setHoraSimularQueda(parseInt(e.target.value))}
+                  className="flex-1 accent-purple-500" />
+                <span className="text-sm font-bold text-purple-400 w-10">{horaSimularQueda}h</span>
+              </div>
+              <p className="text-[9px] text-white/40 mt-1">Hora que a rede cai no gráfico B</p>
+            </div>
+          </div>
+
           <GraficoImpactoHibrido
             perfil={perfilCliente}
             consumoMensalKwh={consumoMensalKwh}
             geracaoMensalEstimadaKwh={dimensionamento.geracaoMensalEstimadaKwh}
             capacidadeBateriaKwh={dimensionamento.capacidadeBateriaTotalKwh}
+            potenciaBateriaKw={dimensionamento.qtdBaterias * (dimensionamento.bateria.potencia_continua_kw ?? dimensionamento.bateria.capacidade_kwh)}
+            potenciaInversorKw={dimensionamento.potenciaInversorTotalKw}
             cargaCriticaKw={cargaCriticaKw}
             autonomiaHoras={dimensionamento.autonomiaRealHoras}
+            percDespachoMax={percDespachoMax}
+            percBackupReservado={percBackupReservado}
             usarPeakShaving={usarPeakShaving}
+            horaSimularQueda={horaSimularQueda}
           />
         </section>
       )}
