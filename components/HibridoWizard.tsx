@@ -17,7 +17,37 @@ import type { PerfilCliente } from '@/lib/hibrido/perfil-consumo'
 import { LevantamentoListagem, type MestreConsideracoes } from '@/components/LevantamentoListagem'
 import { gerarItensListaCaHibrida, resumoListaCaHibrida } from '@/lib/hibrido/lista-ca-hibrida'
 
-type Metodo = 'memoria_massa' | 'analise_rede_medido' | 'levantamento_listagem'
+type Metodo = 'memoria_massa' | 'analise_rede_medido' | 'analisador_segregado_cc' | 'levantamento_listagem'
+
+/**
+ * Matriz de cobertura: cada método entrega SOME das 3 grandezas
+ * (consumo mensal, demanda pico, carga crítica). O consultor precisa saber
+ * o que ficou faltando pra buscar em outra fonte (ex: fatura CELESC).
+ */
+const COBERTURA_METODO: Record<Metodo, {
+  consumo: boolean
+  pico: boolean
+  cargaCritica: boolean
+  precisao: 'alta' | 'media' | 'baixa'
+  complemento: string
+}> = {
+  memoria_massa: {
+    consumo: true, pico: true, cargaCritica: false, precisao: 'alta',
+    complemento: 'Falta CARGA CRÍTICA — usar listagem ou instalar analisador segregado',
+  },
+  analise_rede_medido: {
+    consumo: false, pico: true, cargaCritica: false, precisao: 'alta',
+    complemento: 'Analisador no ramal principal. Falta CONSUMO (fatura) + CARGA CRÍTICA (listagem/analisador CC)',
+  },
+  analisador_segregado_cc: {
+    consumo: false, pico: false, cargaCritica: true, precisao: 'alta',
+    complemento: 'Analisador SÓ na carga crítica segregada. Falta CONSUMO (fatura) + POTÊNCIA PICO (memória de massa)',
+  },
+  levantamento_listagem: {
+    consumo: false, pico: false, cargaCritica: true, precisao: 'baixa',
+    complemento: 'Estimativa somando equipamentos. Falta CONSUMO (fatura) + POTÊNCIA PICO (estimar)',
+  },
+}
 
 type AnaliseIA = {
   demanda_media_kw?: number
@@ -134,25 +164,61 @@ export function HibridoWizard({
     <div className="space-y-6">
       {/* ══════════════ ETAPA 1: método ══════════════ */}
       <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
-        <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
+        <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-2">
           1. Como você vai definir a demanda do cliente?
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <p className="text-[10px] text-white/50 mb-3">
+          Cada método entrega grandezas diferentes. Consumo pode sempre vir da fatura CELESC.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <MetodoBtn
             atual={metodo} onChange={setMetodo} valor="memoria_massa"
-            emoji="📊" label="Memória de massa"
-            desc="Planilha CELESC com curva de carga (15min ou 1h). Método mais preciso."
+            emoji="📊" label="Memória de massa (12 meses)"
+            desc="Planilha CELESC com curva de carga (15min/1h). ✓ Consumo · ✓ Pico · ✗ Carga crítica"
           />
           <MetodoBtn
             atual={metodo} onChange={setMetodo} valor="analise_rede_medido"
-            emoji="📡" label="Análise de rede medida"
-            desc="Dados de analisador de qualidade de energia instalado no local."
+            emoji="📡" label="Analisador — ramal principal"
+            desc="Equipamento de qualidade instalado no QGBT. ✓ Pico · ✗ Consumo · ✗ Carga crítica"
+          />
+          <MetodoBtn
+            atual={metodo} onChange={setMetodo} valor="analisador_segregado_cc"
+            emoji="🎯" label="Analisador — segregado na carga crítica"
+            desc="Analisador SÓ no ramal da carga crítica (segrega os disjuntores). ✓ Carga crítica medida real"
           />
           <MetodoBtn
             atual={metodo} onChange={setMetodo} valor="levantamento_listagem"
             emoji="📝" label="Levantamento por listagem"
-            desc="Somatório de cargas por equipamento. Menos preciso — use só se não tem os outros."
+            desc="Somatório de cargas por equipamento. ✓ Carga crítica estimada (menos preciso)"
           />
+        </div>
+
+        {/* Matriz de cobertura do método escolhido */}
+        <div className="mt-4 p-3 bg-noite/40 border border-white/10 rounded-lg">
+          <p className="text-[10px] uppercase font-bold text-white/60 mb-2">
+            🎯 O que o método <span className="text-sol">{metodo.replace(/_/g, ' ')}</span> te dá:
+          </p>
+          <div className="grid grid-cols-3 gap-2 mb-2">
+            <MatrizCard
+              icone="☀️" label="Consumo mensal (kWh)"
+              temMetodo={COBERTURA_METODO[metodo].consumo}
+              alternativa="Fatura CELESC"
+            />
+            <MatrizCard
+              icone="⚡" label="Pico de potência (kW)"
+              temMetodo={COBERTURA_METODO[metodo].pico}
+              alternativa="Fatura ou memória de massa"
+            />
+            <MatrizCard
+              icone="🔴" label="Carga crítica (kW)"
+              temMetodo={COBERTURA_METODO[metodo].cargaCritica}
+              alternativa="Listagem ou analisador segregado"
+            />
+          </div>
+          <p className="text-[10px] text-white/50 italic">
+            💡 {COBERTURA_METODO[metodo].complemento}
+          </p>
         </div>
       </section>
 
@@ -209,9 +275,19 @@ export function HibridoWizard({
       {/* ══════════════ ETAPA 2 (planilha): upload/análise ══════════════ */}
       {metodo !== 'levantamento_listagem' && (
         <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
-          <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
-            2. Anexe a planilha
+          <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-2">
+            2. {metodo === 'memoria_massa' && 'Anexe a memória de massa (Excel CELESC)'}
+            {metodo === 'analise_rede_medido' && 'Anexe o relatório do analisador (ramal principal)'}
+            {metodo === 'analisador_segregado_cc' && 'Anexe o relatório do analisador (carga crítica)'}
           </h2>
+
+          {metodo === 'analisador_segregado_cc' && (
+            <div className="mb-3 p-3 bg-verde/10 border border-verde/30 rounded text-[11px] text-verde/90">
+              🎯 <strong>Método mais preciso pra carga crítica:</strong> analisador instalado
+              SOMENTE no ramal da carga crítica (com os disjuntores segregados). Mede
+              exatamente o que virará backup — sem estimativas.
+            </div>
+          )}
 
           <input
             type="file"
@@ -305,7 +381,11 @@ export function HibridoWizard({
               step={50}
               min={0}
             />
-            <p className="text-[9px] text-white/40 mt-1">Da fatura CELESC · define módulos FV</p>
+            <p className="text-[9px] text-white/40 mt-1">
+              {COBERTURA_METODO[metodo].consumo
+                ? '✓ Extraído da análise'
+                : '⚠ Buscar na fatura CELESC (Passo 2 do projeto)'}
+            </p>
           </div>
           <div className="p-3 bg-weg-azul/5 border border-weg-azul/20 rounded-lg">
             <NumInput
@@ -315,7 +395,11 @@ export function HibridoWizard({
               step={0.5}
               min={0.5}
             />
-            <p className="text-[9px] text-white/40 mt-1">Backup necessário · define inversor CA</p>
+            <p className="text-[9px] text-white/40 mt-1">
+              {COBERTURA_METODO[metodo].cargaCritica
+                ? '✓ Medido/estimado no método'
+                : '⚠ Usar listagem ou instalar analisador segregado'}
+            </p>
           </div>
           <div className="p-3 bg-coral/5 border border-coral/20 rounded-lg">
             <NumInput
@@ -325,7 +409,7 @@ export function HibridoWizard({
               step={0.5}
               min={0.5}
             />
-            <p className="text-[9px] text-white/40 mt-1">Horas de queda · define baterias</p>
+            <p className="text-[9px] text-white/40 mt-1">Definida com o cliente · típico 2-6h</p>
           </div>
         </div>
 
@@ -594,6 +678,29 @@ export function HibridoWizard({
       >
         {isPending ? 'Salvando...' : 'Confirmar dimensionamento → Voltar ao projeto'}
       </button>
+    </div>
+  )
+}
+
+function MatrizCard({ icone, label, temMetodo, alternativa }: {
+  icone: string; label: string; temMetodo: boolean; alternativa: string
+}) {
+  return (
+    <div className={`p-2 rounded border text-center ${
+      temMetodo
+        ? 'bg-verde/10 border-verde/40'
+        : 'bg-white/[0.03] border-white/10'
+    }`}>
+      <p className="text-lg">{icone}</p>
+      <p className="text-[9px] uppercase font-bold text-white/70 leading-tight">{label}</p>
+      <p className={`text-[10px] font-bold mt-1 ${temMetodo ? 'text-verde' : 'text-white/40'}`}>
+        {temMetodo ? '✓ Coberto' : '✗ Complemento'}
+      </p>
+      {!temMetodo && (
+        <p className="text-[9px] text-white/40 mt-0.5 italic leading-tight">
+          via {alternativa}
+        </p>
+      )}
     </div>
   )
 }
