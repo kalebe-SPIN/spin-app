@@ -1,17 +1,23 @@
 /**
  * Algoritmo de dimensionamento de sistema híbrido com armazenamento.
  *
- * Entradas:
- *   • Demanda de carga crítica em kW (o que precisa manter no backup)
- *   • Autonomia desejada em horas (quantas horas rodar sem rede)
- *   • Tipo de ligação (mono/tri)
- *   • Se usa peak shaving / complementação de demanda
+ * 3 grandezas INDEPENDENTES do cliente definem cada peça do sistema:
  *
- * Saídas:
- *   • Inversor(es) escolhidos (potência total ≥ carga crítica)
- *   • Qtd de baterias (capacidade total ≥ carga × autonomia)
- *   • Componentes: multimedidor, caixa junção, controlador
- *   • Alertas / observações
+ *   1. CONSUMO MENSAL (kWh) → POTÊNCIA CC (módulos FV)
+ *      Pcc = Consumo / (HSP × 30 × PR)
+ *      Ex: 800 kWh/mês em Tijucas (HSP 4.5) → ~7.9 kWp de painel
+ *
+ *   2. CARGA CRÍTICA (kW) + composição → POTÊNCIA CA (inversor híbrido)
+ *      Pca ≥ CargaCrítica × margem(indutiva/capacitiva)
+ *      Se Pca > modelo maior disponível → PARALELISMO de inversores
+ *
+ *   3. AUTONOMIA DESEJADA (h) + carga crítica → CAPACIDADE DAS BATERIAS
+ *      Ebat = CargaCrítica × Horas / (DoD × η_round_trip)
+ *
+ * VALIDAÇÃO CRUZADA: Fator de Carregamento CC/CA (FCI) = Pcc/Pca × 100%
+ *   Aceitável 100-130%. Se > 130% → inversor limita geração (clipping)
+ *
+ * Saídas: módulos FV + inversor(es) + baterias + componentes + alertas.
  */
 
 import {
@@ -28,29 +34,49 @@ import {
 } from './catalogo-weg'
 
 export type EntradaDimensionamentoHibrido = {
+  // ═══ 1. CONSUMO → módulos FV ═══
+  consumoMensalKwh: number           // ← NOVO: total consumido pelo cliente/mês (da fatura)
+  hspKwhM2Dia?: number               // HSP local (default 4.5 pra SC — Tijucas)
+  moduloPotenciaWp?: number          // Modelo padrão (default 550Wp WEG)
+
+  // ═══ 2. CARGA CRÍTICA → inversor ═══
   demandaCargaCriticaKw: number     // potência da carga crítica
-  autonomiaDesejadaHoras: number    // quantas horas de backup
   tipoLigacao: 'monofasico' | 'bifasico' | 'trifasico'
   // Composição da carga crítica (soma deve dar ~100%)
   percCargaIndutiva?: number         // motores, ar cond, geladeira (0-100)
   percCargaResistiva?: number        // chuveiro, incandescente, forno (0-100)
   percCargaCapacitiva?: number       // eletrônicos, LED, TV (0-100)
+
+  // ═══ 3. AUTONOMIA → baterias ═══
+  autonomiaDesejadaHoras: number    // quantas horas de backup
+
+  // Configurações extras
   usarPeakShaving?: boolean          // Grupo A — despacho em horário de ponta
   usarComplementacaoDemanda?: boolean
   preferirBateria10kwh?: boolean     // menos módulos, mais capacidade
 }
 
 export type SaidaDimensionamentoHibrido = {
+  // ═══ MÓDULOS FV (calculados do consumo) ═══
+  moduloPotenciaWp: number
+  qtdModulos: number
+  potenciaCcKwp: number              // potência CC total dos painéis
+  geracaoMensalEstimadaKwh: number   // quanto o sistema deve gerar
+
+  // ═══ INVERSOR (calculado da carga crítica) ═══
   inversor: InversorHibrido
   qtdInversores: number
-  potenciaInversorTotalKw: number
+  potenciaInversorTotalKw: number    // potência CA total
   usaParalelismo: boolean
+  fciPercentual: number              // fator de carregamento Pcc/Pca × 100
 
+  // ═══ BATERIAS (calculadas da autonomia × carga crítica) ═══
   bateria: Bateria
   qtdBaterias: number
   capacidadeBateriaTotalKwh: number
   autonomiaRealHoras: number
 
+  // ═══ COMPONENTES OBRIGATÓRIOS ═══
   qtdMultimedidor: number
   qtdCaixasJuncao: number
   usaControladorParalelismo: boolean
@@ -63,6 +89,41 @@ export type SaidaDimensionamentoHibrido = {
 const DOD_LIFEPO4 = 0.90
 /** Rendimento round-trip do sistema (bateria + inversor) */
 const RENDIMENTO_ROUND_TRIP = 0.92
+/** Performance Ratio típico sistemas Spin (perdas cabos + inversor + temperatura + sujeira) */
+const PR_SISTEMA = 0.78
+/** HSP padrão pra Tijucas/SC (Sul do Brasil média anual) */
+const HSP_TIJUCAS_SC = 4.5
+/** Módulo padrão WEG monocristalino */
+const MODULO_PADRAO_WP = 550
+/** Faixa aceitável do FCI (fator carregamento CC/CA) */
+const FCI_MIN = 100
+const FCI_MAX = 130
+
+// ═══════════════════ HELPER: DIMENSIONAMENTO CC (MÓDULOS FV) ═══════════════════
+/**
+ * Calcula potência CC necessária pra atender o consumo mensal do cliente.
+ *   Pcc (kWp) = Consumo (kWh/mês) / (HSP × 30 × PR)
+ * Retorna também quantidade de módulos considerando modelo padrão.
+ */
+export function dimensionarModulosFV(
+  consumoMensalKwh: number,
+  hspKwhM2Dia: number = HSP_TIJUCAS_SC,
+  moduloPotenciaWp: number = MODULO_PADRAO_WP,
+): {
+  potenciaCcKwp: number
+  qtdModulos: number
+  geracaoMensalEstimadaKwh: number
+} {
+  const potenciaCcKwp = consumoMensalKwh / (hspKwhM2Dia * 30 * PR_SISTEMA)
+  const qtdModulos = Math.ceil((potenciaCcKwp * 1000) / moduloPotenciaWp)
+  const potenciaCcReal = (qtdModulos * moduloPotenciaWp) / 1000
+  const geracaoMensalEstimadaKwh = potenciaCcReal * hspKwhM2Dia * 30 * PR_SISTEMA
+  return {
+    potenciaCcKwp: potenciaCcReal,
+    qtdModulos,
+    geracaoMensalEstimadaKwh,
+  }
+}
 
 export function dimensionarSistemaHibrido(
   input: EntradaDimensionamentoHibrido,
@@ -116,6 +177,35 @@ function montarResultado(args: {
   const potenciaInversorTotalKw = inversor.potencia_kw * qtdInversores
   const usaParalelismo = qtdInversores > 1
 
+  // ═══════════════════ 0. MÓDULOS FV — DERIVAM DO CONSUMO ═══════════════════
+  const modulos = dimensionarModulosFV(
+    input.consumoMensalKwh,
+    input.hspKwhM2Dia,
+    input.moduloPotenciaWp,
+  )
+  const moduloPotenciaWp = input.moduloPotenciaWp ?? MODULO_PADRAO_WP
+
+  // Validação FCI (Fator de Carregamento CC/CA)
+  const fciPercentual = potenciaInversorTotalKw > 0
+    ? (modulos.potenciaCcKwp / potenciaInversorTotalKw) * 100
+    : 0
+  if (fciPercentual > FCI_MAX) {
+    alertas.push(
+      `⚠️ FCI ${fciPercentual.toFixed(0)}% > ${FCI_MAX}% — inversor será limitante (clipping). ` +
+      `Consumo pede ${modulos.potenciaCcKwp.toFixed(1)}kWp CC mas inversor entrega só ${potenciaInversorTotalKw}kW CA. ` +
+      `Solução: adicionar inversor em paralelo OU reduzir consumo estimado.`,
+    )
+  } else if (fciPercentual < FCI_MIN) {
+    alertas.push(
+      `⚠️ FCI ${fciPercentual.toFixed(0)}% < ${FCI_MIN}% — inversor sobredimensionado para o consumo. ` +
+      `Considere inversor menor pra reduzir custo.`,
+    )
+  } else {
+    alertas.push(
+      `✓ FCI ${fciPercentual.toFixed(0)}% dentro da faixa ideal (${FCI_MIN}-${FCI_MAX}%). Pcc=${modulos.potenciaCcKwp.toFixed(1)}kWp / Pca=${potenciaInversorTotalKw}kW`,
+    )
+  }
+
   // ═══════════════════ 2. ESCOLHA DA BATERIA + QUANTIDADE ═══════════════════
   const bateria = input.preferirBateria10kwh
     ? BATERIAS_WEG.find((b) => b.capacidade_kwh === 10)!
@@ -166,7 +256,8 @@ function montarResultado(args: {
 
   // Resumo
   const resumo = [
-    `${qtdInversores}× ${inversor.modelo} (${potenciaInversorTotalKw}kW ${inversor.fase})`,
+    `${modulos.qtdModulos}× módulos ${moduloPotenciaWp}Wp = ${modulos.potenciaCcKwp.toFixed(2)}kWp CC`,
+    `${qtdInversores}× ${inversor.modelo} (${potenciaInversorTotalKw}kW ${inversor.fase}) · FCI ${fciPercentual.toFixed(0)}%`,
     `${qtdBaterias}× ${bateria.modelo} = ${capacidadeBateriaTotalKwh}kWh`,
     `Autonomia real: ${autonomiaRealHoras.toFixed(1)}h @ ${input.demandaCargaCriticaKw}kW carga crítica`,
     `+ 1× ${MULTIMEDIDOR_WEG.modelo}`,
@@ -177,16 +268,26 @@ function montarResultado(args: {
     .join(' · ')
 
   return {
+    // Módulos FV (do consumo)
+    moduloPotenciaWp,
+    qtdModulos: modulos.qtdModulos,
+    potenciaCcKwp: modulos.potenciaCcKwp,
+    geracaoMensalEstimadaKwh: modulos.geracaoMensalEstimadaKwh,
+
+    // Inversor (da carga crítica)
     inversor,
     qtdInversores,
     potenciaInversorTotalKw,
     usaParalelismo,
+    fciPercentual,
 
+    // Baterias (da autonomia)
     bateria,
     qtdBaterias,
     capacidadeBateriaTotalKwh,
     autonomiaRealHoras,
 
+    // Componentes
     qtdMultimedidor,
     qtdCaixasJuncao,
     usaControladorParalelismo,

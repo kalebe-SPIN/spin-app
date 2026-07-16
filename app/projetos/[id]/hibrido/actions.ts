@@ -91,15 +91,24 @@ export async function salvarDimensionamentoHibridoAction(
   const { error } = await supabase.from('projeto_hibrido_dimensionamento').insert({
     projeto_id: projetoId,
     item_id: itemId,
+    // Módulos FV (do consumo)
+    modulo_potencia_wp: saida.moduloPotenciaWp,
+    qtd_modulos: saida.qtdModulos,
+    potencia_cc_kwp: saida.potenciaCcKwp,
+    geracao_mensal_estimada_kwh: saida.geracaoMensalEstimadaKwh,
+    fci_percentual: saida.fciPercentual,
+    // Inversor
     inversor_modelo: saida.inversor.modelo,
     inversor_potencia_kw: saida.inversor.potencia_kw,
     inversor_qtd: saida.qtdInversores,
     usa_paralelismo: saida.usaParalelismo,
+    // Baterias
     bateria_modelo: saida.bateria.modelo,
     bateria_capacidade_kwh: saida.bateria.capacidade_kwh,
     bateria_qtd: saida.qtdBaterias,
     capacidade_total_kwh: saida.capacidadeBateriaTotalKwh,
     autonomia_calculada_horas: saida.autonomiaRealHoras,
+    // Componentes
     qtd_multimedidor: saida.qtdMultimedidor,
     qtd_caixa_juncao_jbw: saida.qtdCaixasJuncao,
     usa_controlador_paralelismo: saida.usaControladorParalelismo,

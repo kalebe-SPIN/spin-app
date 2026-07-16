@@ -99,8 +99,9 @@ export function HibridoWizard({
 
   // Dimensionamento em tempo real (recalcula quando muda input)
   const dimensionamento: SaidaDimensionamentoHibrido | null = useMemo(() => {
-    if (cargaCriticaKw <= 0 || autonomiaHoras <= 0) return null
+    if (cargaCriticaKw <= 0 || autonomiaHoras <= 0 || consumoMensalKwh <= 0) return null
     return dimensionarSistemaHibrido({
+      consumoMensalKwh,              // ← NOVO: define potência CC dos módulos
       demandaCargaCriticaKw: cargaCriticaKw,
       autonomiaDesejadaHoras: autonomiaHoras,
       tipoLigacao,
@@ -111,7 +112,7 @@ export function HibridoWizard({
       usarComplementacaoDemanda: usarComplementacao,
       preferirBateria10kwh: preferirBat10,
     })
-  }, [cargaCriticaKw, autonomiaHoras, tipoLigacao, percIndutiva, percResistiva, percCapacitiva, usarPeakShaving, usarComplementacao, preferirBat10])
+  }, [consumoMensalKwh, cargaCriticaKw, autonomiaHoras, tipoLigacao, percIndutiva, percResistiva, percCapacitiva, usarPeakShaving, usarComplementacao, preferirBat10])
 
   const somaCarga = percIndutiva + percResistiva + percCapacitiva
   const cargaValida = Math.abs(somaCarga - 100) <= 1
@@ -288,24 +289,44 @@ export function HibridoWizard({
       {/* ══════════════ ETAPA 3: ajustes ══════════════ */}
       <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
         <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
-          3. Ajuste demanda crítica + autonomia
+          3. Grandezas do cliente — 3 dados definem tudo
         </h2>
+        <p className="text-[10px] text-white/50 mb-3">
+          ☀️ <strong>Consumo</strong> define módulos CC · ⚡ <strong>Carga crítica</strong> define inversor CA ·
+          🔋 <strong>Autonomia</strong> define baterias
+        </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <NumInput
-            label="Carga crítica de backup (kW)"
-            valor={cargaCriticaKw}
-            onChange={setCargaCriticaKw}
-            step={0.5}
-            min={0.5}
-          />
-          <NumInput
-            label="Autonomia desejada (horas)"
-            valor={autonomiaHoras}
-            onChange={setAutonomiaHoras}
-            step={0.5}
-            min={0.5}
-          />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="p-3 bg-sol/5 border border-sol/20 rounded-lg">
+            <NumInput
+              label="☀️ Consumo mensal (kWh)"
+              valor={consumoMensalKwh}
+              onChange={setConsumoMensalKwh}
+              step={50}
+              min={0}
+            />
+            <p className="text-[9px] text-white/40 mt-1">Da fatura CELESC · define módulos FV</p>
+          </div>
+          <div className="p-3 bg-weg-azul/5 border border-weg-azul/20 rounded-lg">
+            <NumInput
+              label="⚡ Carga crítica (kW)"
+              valor={cargaCriticaKw}
+              onChange={setCargaCriticaKw}
+              step={0.5}
+              min={0.5}
+            />
+            <p className="text-[9px] text-white/40 mt-1">Backup necessário · define inversor CA</p>
+          </div>
+          <div className="p-3 bg-coral/5 border border-coral/20 rounded-lg">
+            <NumInput
+              label="🔋 Autonomia desejada (h)"
+              valor={autonomiaHoras}
+              onChange={setAutonomiaHoras}
+              step={0.5}
+              min={0.5}
+            />
+            <p className="text-[9px] text-white/40 mt-1">Horas de queda · define baterias</p>
+          </div>
         </div>
 
         {/* Composição da carga crítica */}
@@ -395,23 +416,51 @@ export function HibridoWizard({
       {dimensionamento && (
         <section className="p-5 bg-verde/10 border border-verde/40 rounded-xl">
           <h2 className="text-xs uppercase tracking-wider font-bold text-verde mb-3">
-            ✓ Composição sugerida
+            ✓ Composição sugerida — 3 dimensionamentos
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-            <div className="p-3 bg-noite/40 rounded">
-              <p className="text-[10px] uppercase text-white/50 mb-1">Inversor</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            {/* MÓDULOS FV (do consumo) */}
+            <div className="p-3 bg-noite/40 rounded border border-sol/20">
+              <p className="text-[10px] uppercase text-sol mb-1">☀️ Módulos FV · CC</p>
+              <p className="text-sm font-bold text-white">{dimensionamento.qtdModulos}× {dimensionamento.moduloPotenciaWp}Wp</p>
+              <p className="text-[10px] text-white/60">{dimensionamento.potenciaCcKwp.toFixed(2)} kWp total</p>
+              <p className="text-[10px] text-white/50 mt-1 italic">
+                do consumo: {consumoMensalKwh} kWh/mês
+              </p>
+              <p className="text-[10px] text-verde mt-0.5">
+                ⚡ Gera ~{dimensionamento.geracaoMensalEstimadaKwh.toFixed(0)} kWh/mês
+              </p>
+            </div>
+
+            {/* INVERSOR (da carga crítica) */}
+            <div className="p-3 bg-noite/40 rounded border border-weg-azul/20">
+              <p className="text-[10px] uppercase text-weg-azul mb-1">⚡ Inversor · CA</p>
               <p className="text-sm font-bold text-white">{dimensionamento.qtdInversores}× {dimensionamento.inversor.modelo}</p>
               <p className="text-[10px] text-white/60">{dimensionamento.potenciaInversorTotalKw}kW total</p>
+              <p className="text-[10px] text-white/50 mt-1 italic">
+                da carga crítica: {cargaCriticaKw} kW
+              </p>
               {dimensionamento.usaParalelismo && (
-                <p className="text-[10px] text-sol mt-1">⚡ Paralelismo ativo</p>
+                <p className="text-[10px] text-sol mt-0.5">⚡ Paralelismo ativo</p>
               )}
+              <p className={`text-[10px] mt-0.5 ${
+                dimensionamento.fciPercentual > 130 ? 'text-coral' :
+                dimensionamento.fciPercentual < 100 ? 'text-sol' : 'text-verde'
+              }`}>
+                🎯 FCI: {dimensionamento.fciPercentual.toFixed(0)}% {dimensionamento.fciPercentual >= 100 && dimensionamento.fciPercentual <= 130 ? '✓' : '⚠️'}
+              </p>
             </div>
-            <div className="p-3 bg-noite/40 rounded">
-              <p className="text-[10px] uppercase text-white/50 mb-1">Baterias</p>
+
+            {/* BATERIAS (da autonomia) */}
+            <div className="p-3 bg-noite/40 rounded border border-coral/20">
+              <p className="text-[10px] uppercase text-coral mb-1">🔋 Baterias · Backup</p>
               <p className="text-sm font-bold text-white">{dimensionamento.qtdBaterias}× {dimensionamento.bateria.modelo}</p>
               <p className="text-[10px] text-white/60">{dimensionamento.capacidadeBateriaTotalKwh}kWh total</p>
-              <p className="text-[10px] text-verde mt-1">
+              <p className="text-[10px] text-white/50 mt-1 italic">
+                da autonomia: {autonomiaHoras}h × {cargaCriticaKw}kW
+              </p>
+              <p className="text-[10px] text-verde mt-0.5">
                 🕐 Autonomia real: <strong>{dimensionamento.autonomiaRealHoras.toFixed(1)}h</strong>
               </p>
             </div>
@@ -495,20 +544,15 @@ export function HibridoWizard({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-            <NumInput
-              label="Consumo mensal do cliente (kWh)"
-              valor={consumoMensalKwh}
-              onChange={setConsumoMensalKwh}
-              min={0}
-              step={50}
-            />
-            <NumInput
-              label="Geração solar estimada (kWh/mês)"
-              valor={geracaoMensalKwh}
-              onChange={setGeracaoMensalKwh}
-              min={0}
-              step={50}
-            />
+            <div className="p-2 bg-sol/5 border border-sol/20 rounded text-center">
+              <p className="text-[9px] uppercase text-white/50">Consumo (da etapa 3)</p>
+              <p className="text-lg font-bold text-sol">{consumoMensalKwh} kWh/mês</p>
+            </div>
+            <div className="p-2 bg-verde/5 border border-verde/20 rounded text-center">
+              <p className="text-[9px] uppercase text-white/50">Geração solar (calculada)</p>
+              <p className="text-lg font-bold text-verde">{dimensionamento.geracaoMensalEstimadaKwh.toFixed(0)} kWh/mês</p>
+              <p className="text-[9px] text-white/40">{dimensionamento.potenciaCcKwp.toFixed(1)}kWp × HSP × PR</p>
+            </div>
             <div>
               <label className="block text-[10px] uppercase tracking-wider font-bold text-white/50 mb-1">
                 Perfil de uso
@@ -528,7 +572,7 @@ export function HibridoWizard({
           <GraficoImpactoHibrido
             perfil={perfilCliente}
             consumoMensalKwh={consumoMensalKwh}
-            geracaoMensalEstimadaKwh={geracaoMensalKwh}
+            geracaoMensalEstimadaKwh={dimensionamento.geracaoMensalEstimadaKwh}
             capacidadeBateriaKwh={dimensionamento.capacidadeBateriaTotalKwh}
             cargaCriticaKw={cargaCriticaKw}
             autonomiaHoras={dimensionamento.autonomiaRealHoras}
