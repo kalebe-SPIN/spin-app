@@ -99,6 +99,154 @@ const MODULO_PADRAO_WP = 550
 const FCI_MIN = 100
 const FCI_MAX = 130
 
+// ═══════════════════ MODO ESPELHO CONCORRENTE (DIMENSIONAMENTO DIRETO) ═══════════════════
+/**
+ * Consultor entra com Pcc + Pca + capacidade de armazenamento
+ * (espelho de proposta de concorrente) e o sistema encontra a composição
+ * WEG que atende — inversores em paralelo se necessário, baterias homogêneas,
+ * componentes obrigatórios (MMW03, JBW, EMBOX).
+ */
+export type EntradaEspelho = {
+  potenciaCcKwpDesejada: number       // Pcc dos módulos FV
+  potenciaCaKwDesejada: number         // Pca do inversor
+  capacidadeArmazenamentoKwh: number   // banco de baterias
+  tipoLigacao: 'monofasico' | 'bifasico' | 'trifasico'
+  moduloPotenciaWp?: number            // default 550
+  preferirBateria10kwh?: boolean       // heurística: usa 10kWh se cap >= 20 (mono) ou 40 (tri)
+}
+
+export function dimensionarHibridoDireto(input: EntradaEspelho): SaidaDimensionamentoHibrido {
+  const alertas: string[] = ['🎯 Modo espelho: kit calculado a partir de Pcc/Pca/CapKwh fornecidos']
+  const moduloWp = input.moduloPotenciaWp ?? MODULO_PADRAO_WP
+
+  // 1. Módulos FV — direto do Pcc
+  const qtdModulos = Math.ceil((input.potenciaCcKwpDesejada * 1000) / moduloWp)
+  const potenciaCcReal = (qtdModulos * moduloWp) / 1000
+  const geracaoMensalEstimadaKwh = potenciaCcReal * HSP_TIJUCAS_SC * 30 * PR_SISTEMA
+
+  // 2. Inversor — encontra combinação com menor qtd que atenda Pca
+  const todosDoTipo = inversoresCompativeis(input.tipoLigacao, 0)
+    .sort((a, b) => b.potencia_kw - a.potencia_kw) // do maior pro menor
+  let inversorEscolhido: InversorHibrido | null = null
+  let qtdInversores = 1
+
+  // Primeiro tenta 1 unidade
+  const cabe1 = todosDoTipo.reverse().find((i) => i.potencia_kw >= input.potenciaCaKwDesejada)
+  if (cabe1) {
+    inversorEscolhido = cabe1
+    qtdInversores = 1
+  } else {
+    // Precisa paralelismo — usa maior modelo
+    const maior = todosDoTipo[0] // já reordenado ao contrário no find, mas peguei o maior
+    // Recalcula pra pegar o maior real
+    const inversoresOrdenados = inversoresCompativeis(input.tipoLigacao, 0)
+    const maiorDoTipo = inversoresOrdenados[inversoresOrdenados.length - 1]
+    inversorEscolhido = maiorDoTipo
+    qtdInversores = Math.ceil(input.potenciaCaKwDesejada / maiorDoTipo.potencia_kw)
+    alertas.push(
+      `⚡ Pca ${input.potenciaCaKwDesejada}kW exige paralelismo: ${qtdInversores}× ${maiorDoTipo.modelo} = ${(qtdInversores * maiorDoTipo.potencia_kw).toFixed(1)}kW`,
+    )
+  }
+
+  if (!inversorEscolhido) {
+    // fallback: pega o maior mesmo
+    const inversoresOrdenados = inversoresCompativeis(input.tipoLigacao, 0)
+    inversorEscolhido = inversoresOrdenados[inversoresOrdenados.length - 1]
+    qtdInversores = Math.max(1, Math.ceil(input.potenciaCaKwDesejada / inversorEscolhido.potencia_kw))
+  }
+
+  const inversor = inversorEscolhido
+  const potenciaInversorTotalKw = inversor.potencia_kw * qtdInversores
+  const usaParalelismo = qtdInversores > 1
+
+  // 3. Baterias — escolhe modelo pra caber nos limites físicos do inversor
+  const maxPorInv = maxBateriasPorInversor(inversor)
+  const maxBateriasTotal = maxPorInv * qtdInversores
+  // Heurística: se cap alta ou usuário preferiu 10kWh, usa CB100
+  const capThreshold = 5 * maxBateriasTotal  // acima disso não cabe com 5kWh
+  const usar10kwh = input.preferirBateria10kwh
+    ?? (input.capacidadeArmazenamentoKwh > capThreshold)
+  let bateria = usar10kwh
+    ? BATERIAS_WEG.find((b) => b.capacidade_kwh === 10)!
+    : BATERIAS_WEG.find((b) => b.capacidade_kwh === 5)!
+  let qtdBaterias = Math.ceil(input.capacidadeArmazenamentoKwh / bateria.capacidade_kwh)
+
+  // Se não cabe nem com 10kWh → força 10kWh + adiciona alerta
+  if (qtdBaterias > maxBateriasTotal && !usar10kwh) {
+    bateria = BATERIAS_WEG.find((b) => b.capacidade_kwh === 10)!
+    qtdBaterias = Math.ceil(input.capacidadeArmazenamentoKwh / bateria.capacidade_kwh)
+    alertas.push(`🔋 Migrado pra ${bateria.modelo} (10kWh) — 5kWh não caberia no limite físico`)
+  }
+  if (qtdBaterias > maxBateriasTotal) {
+    alertas.push(
+      `⚠️ Capacidade ${input.capacidadeArmazenamentoKwh}kWh exige ${qtdBaterias}× ${bateria.modelo}, ` +
+      `mas ${qtdInversores}× ${inversor.modelo} suporta no máximo ${maxBateriasTotal} baterias. ` +
+      `Considerar mais inversores em paralelo.`,
+    )
+    qtdBaterias = maxBateriasTotal
+  }
+
+  const capacidadeBateriaTotalKwh = qtdBaterias * bateria.capacidade_kwh
+  alertas.push(`✓ ${qtdBaterias}× ${bateria.modelo} = ${capacidadeBateriaTotalKwh}kWh (homogêneo)`)
+
+  // FCI (validação cruzada)
+  const fciPercentual = potenciaInversorTotalKw > 0
+    ? (potenciaCcReal / potenciaInversorTotalKw) * 100
+    : 0
+  if (fciPercentual > 130) {
+    alertas.push(`⚠️ FCI ${fciPercentual.toFixed(0)}% > 130% — inversor será limitante (clipping)`)
+  } else if (fciPercentual < 100) {
+    alertas.push(`⚠️ FCI ${fciPercentual.toFixed(0)}% < 100% — inversor sobredimensionado`)
+  } else {
+    alertas.push(`✓ FCI ${fciPercentual.toFixed(0)}% dentro da faixa ideal (100-130%)`)
+  }
+
+  // Componentes obrigatórios
+  const qtdMultimedidor = 1
+  const totalEntradas = inversor.entradas_bateria * qtdInversores
+  const qtdCaixasJuncao = calcularQtdCaixasJuncao(qtdBaterias, totalEntradas)
+  const usaControladorParalelismo = usaParalelismo
+  if (usaControladorParalelismo) {
+    alertas.push('🔧 Paralelismo: EMBOX + MMW03-M22CH obrigatórios')
+  }
+
+  // Autonomia calculada (não veio como input — deriva da capacidade / Pca)
+  // Assume que a capacidade dividida pela Pca dá a autonomia @ carga total
+  const autonomiaRealHoras = potenciaInversorTotalKw > 0
+    ? (capacidadeBateriaTotalKwh * DOD_LIFEPO4 * RENDIMENTO_ROUND_TRIP) / potenciaInversorTotalKw
+    : 0
+
+  const resumo = [
+    `${qtdModulos}× módulos ${moduloWp}Wp = ${potenciaCcReal.toFixed(2)}kWp CC`,
+    `${qtdInversores}× ${inversor.modelo} (${potenciaInversorTotalKw}kW ${inversor.fase}) · FCI ${fciPercentual.toFixed(0)}%`,
+    `${qtdBaterias}× ${bateria.modelo} = ${capacidadeBateriaTotalKwh}kWh`,
+    `+ 1× ${MULTIMEDIDOR_WEG.modelo}`,
+    qtdCaixasJuncao > 0 ? `+ ${qtdCaixasJuncao}× ${CAIXA_JUNCAO_WEG.modelo}` : null,
+    usaControladorParalelismo ? `+ 1× ${CONTROLADOR_PARALELISMO_WEG.modelo}` : null,
+  ].filter(Boolean).join(' · ')
+
+  return {
+    moduloPotenciaWp: moduloWp,
+    qtdModulos,
+    potenciaCcKwp: potenciaCcReal,
+    geracaoMensalEstimadaKwh,
+    inversor,
+    qtdInversores,
+    potenciaInversorTotalKw,
+    usaParalelismo,
+    fciPercentual,
+    bateria,
+    qtdBaterias,
+    capacidadeBateriaTotalKwh,
+    autonomiaRealHoras,
+    qtdMultimedidor,
+    qtdCaixasJuncao,
+    usaControladorParalelismo,
+    alertas,
+    resumo,
+  }
+}
+
 // ═══════════════════ HELPER: DIMENSIONAMENTO CC (MÓDULOS FV) ═══════════════════
 /**
  * Calcula potência CC necessária pra atender o consumo mensal do cliente.

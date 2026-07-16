@@ -4,6 +4,7 @@ import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   dimensionarSistemaHibrido,
+  dimensionarHibridoDireto,
   type SaidaDimensionamentoHibrido,
 } from '@/lib/hibrido/dimensionamento'
 import {
@@ -17,7 +18,7 @@ import type { PerfilCliente } from '@/lib/hibrido/perfil-consumo'
 import { LevantamentoListagem, type MestreConsideracoes } from '@/components/LevantamentoListagem'
 import { gerarItensListaCaHibrida, resumoListaCaHibrida } from '@/lib/hibrido/lista-ca-hibrida'
 
-type Metodo = 'memoria_massa' | 'analise_rede_medido' | 'analisador_segregado_cc' | 'levantamento_listagem'
+type Metodo = 'memoria_massa' | 'analise_rede_medido' | 'analisador_segregado_cc' | 'levantamento_listagem' | 'kit_direto_espelho'
 
 /**
  * Matriz de cobertura: cada método entrega SOME das 3 grandezas
@@ -46,6 +47,10 @@ const COBERTURA_METODO: Record<Metodo, {
   levantamento_listagem: {
     consumo: false, pico: false, cargaCritica: true, precisao: 'baixa',
     complemento: 'Estimativa somando equipamentos. Falta CONSUMO (fatura) + POTÊNCIA PICO (estimar)',
+  },
+  kit_direto_espelho: {
+    consumo: false, pico: false, cargaCritica: false, precisao: 'media',
+    complemento: 'Modo espelho: você informa Pcc + Pca + kWh e o sistema monta o kit direto',
   },
 }
 
@@ -130,6 +135,11 @@ export function HibridoWizard({
   const [geracaoMensalKwh, setGeracaoMensalKwh] = useState<number>(500)
   const [perfilCliente, setPerfilCliente] = useState<PerfilCliente>('residencial')
 
+  // Modo espelho concorrente (entrada direta de Pcc/Pca/CapKwh)
+  const [espPcc, setEspPcc] = useState<number>(8)          // kWp
+  const [espPca, setEspPca] = useState<number>(6)          // kW
+  const [espCapKwh, setEspCapKwh] = useState<number>(20)   // kWh
+
   // Aplica sugestão da IA
   function aplicarSugestaoIA(ia: AnaliseIA) {
     if (ia.demanda_carga_critica_kw_sugerida) setCargaCriticaKw(ia.demanda_carga_critica_kw_sugerida)
@@ -161,9 +171,21 @@ export function HibridoWizard({
 
   // Dimensionamento em tempo real (recalcula quando muda input)
   const dimensionamento: SaidaDimensionamentoHibrido | null = useMemo(() => {
+    // Modo espelho concorrente — 3 valores diretos
+    if (metodo === 'kit_direto_espelho') {
+      if (espPcc <= 0 || espPca <= 0 || espCapKwh <= 0) return null
+      return dimensionarHibridoDireto({
+        potenciaCcKwpDesejada: espPcc,
+        potenciaCaKwDesejada: espPca,
+        capacidadeArmazenamentoKwh: espCapKwh,
+        tipoLigacao,
+        preferirBateria10kwh: preferirBat10,
+      })
+    }
+    // Modo tradicional — 3 grandezas do cliente
     if (cargaCriticaKw <= 0 || autonomiaHoras <= 0 || consumoMensalKwh <= 0) return null
     return dimensionarSistemaHibrido({
-      consumoMensalKwh,              // ← NOVO: define potência CC dos módulos
+      consumoMensalKwh,
       demandaCargaCriticaKw: cargaCriticaKw,
       autonomiaDesejadaHoras: autonomiaHoras,
       tipoLigacao,
@@ -174,7 +196,7 @@ export function HibridoWizard({
       usarComplementacaoDemanda: usarComplementacao,
       preferirBateria10kwh: preferirBat10,
     })
-  }, [consumoMensalKwh, cargaCriticaKw, autonomiaHoras, tipoLigacao, percIndutiva, percResistiva, percCapacitiva, usarPeakShaving, usarComplementacao, preferirBat10])
+  }, [metodo, espPcc, espPca, espCapKwh, consumoMensalKwh, cargaCriticaKw, autonomiaHoras, tipoLigacao, percIndutiva, percResistiva, percCapacitiva, usarPeakShaving, usarComplementacao, preferirBat10])
 
   const somaCarga = percIndutiva + percResistiva + percCapacitiva
   const cargaValida = Math.abs(somaCarga - 100) <= 1
@@ -224,6 +246,13 @@ export function HibridoWizard({
             emoji="📝" label="Levantamento por listagem"
             desc="Somatório de cargas por equipamento. ✓ Carga crítica estimada (menos preciso)"
           />
+          <div className="md:col-span-2">
+            <MetodoBtn
+              atual={metodo} onChange={setMetodo} valor="kit_direto_espelho"
+              emoji="🪞" label="Kit direto — espelho de proposta concorrente"
+              desc="Você já tem Pcc (kWp) + Pca (kW) + capacidade (kWh). Sistema monta a composição WEG direta, incluindo paralelismo se necessário. Sem análise de demanda."
+            />
+          </div>
         </div>
 
         {/* Matriz de cobertura do método escolhido */}
@@ -306,7 +335,44 @@ export function HibridoWizard({
       )}
 
       {/* ══════════════ ETAPA 2 (planilha): upload/análise ══════════════ */}
-      {metodo !== 'levantamento_listagem' && (
+      {/* ══════════════ ETAPA 2 (espelho concorrente): 3 inputs diretos ══════════════ */}
+      {metodo === 'kit_direto_espelho' && (
+        <section className="p-5 bg-weg-azul/5 border border-weg-azul/30 rounded-xl">
+          <h2 className="text-xs uppercase tracking-wider font-bold text-weg-azul mb-2">
+            2. 🪞 Composição do espelho — 3 valores da proposta concorrente
+          </h2>
+          <p className="text-[10px] text-white/50 mb-3">
+            Consultor informa os 3 valores. Sistema calcula quantos módulos + qual inversor (com paralelismo se necessário) + qual bateria (5kWh ou 10kWh) + componentes obrigatórios.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="p-3 bg-noite/40 rounded-lg border border-sol/30">
+              <NumInput label="☀️ Potência CC (kWp)" valor={espPcc} onChange={setEspPcc} step={0.55} min={0.5} />
+              <p className="text-[9px] text-white/40 mt-1">Módulos FV totais</p>
+            </div>
+            <div className="p-3 bg-noite/40 rounded-lg border border-weg-azul/30">
+              <NumInput label="⚡ Potência CA (kW)" valor={espPca} onChange={setEspPca} step={0.5} min={0.5} />
+              <p className="text-[9px] text-white/40 mt-1">Inversor (paralelismo automático)</p>
+            </div>
+            <div className="p-3 bg-noite/40 rounded-lg border border-coral/30">
+              <NumInput label="🔋 Capacidade banco (kWh)" valor={espCapKwh} onChange={setEspCapKwh} step={5} min={5} />
+              <p className="text-[9px] text-white/40 mt-1">Baterias SBW (5kWh ou 10kWh)</p>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <span className="text-[9px] uppercase text-white/50 self-center mr-1">Presets:</span>
+            <PresetEspelho label="Residencial 5+8" pcc={5} pca={5} cap={10}
+              aplicar={() => { setEspPcc(5); setEspPca(5); setEspCapKwh(10) }} />
+            <PresetEspelho label="Residencial 8+15" pcc={8} pca={5} cap={15}
+              aplicar={() => { setEspPcc(8); setEspPca(5); setEspCapKwh(15) }} />
+            <PresetEspelho label="Comercial 20+40" pcc={20} pca={15} cap={40}
+              aplicar={() => { setEspPcc(20); setEspPca(15); setEspCapKwh(40) }} />
+            <PresetEspelho label="Comercial 30+60" pcc={30} pca={30} cap={60}
+              aplicar={() => { setEspPcc(30); setEspPca(30); setEspCapKwh(60) }} />
+          </div>
+        </section>
+      )}
+
+      {metodo !== 'levantamento_listagem' && metodo !== 'kit_direto_espelho' && (
         <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
           <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-2">
             2. {metodo === 'memoria_massa' && 'Anexe a memória de massa (Excel CELESC)'}
@@ -396,6 +462,7 @@ export function HibridoWizard({
       )}
 
       {/* ══════════════ ETAPA 3: ajustes ══════════════ */}
+      {metodo !== 'kit_direto_espelho' && (
       <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
         <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
           3. Grandezas do cliente — 3 dados definem tudo
@@ -547,6 +614,18 @@ export function HibridoWizard({
           />
         </div>
       </section>
+      )}
+
+      {/* Toggle Bat 10kWh também disponível no modo espelho */}
+      {metodo === 'kit_direto_espelho' && (
+        <section className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+          <Toggle
+            checked={preferirBat10} onChange={setPreferirBat10}
+            label="🔋 Preferir baterias 10kWh (SBW CB100)"
+            desc="Menos módulos = mais capacidade por rack. Sistema também troca automaticamente se 5kWh não couber."
+          />
+        </section>
+      )}
 
       {/* ══════════════ RESULTADO ══════════════ */}
       {dimensionamento && (
@@ -731,6 +810,21 @@ export function HibridoWizard({
         {isPending ? 'Salvando...' : 'Confirmar dimensionamento → Voltar ao projeto'}
       </button>
     </div>
+  )
+}
+
+function PresetEspelho({ label, pcc, pca, cap, aplicar }: {
+  label: string; pcc: number; pca: number; cap: number; aplicar: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={aplicar}
+      className="text-[10px] px-2 py-1 bg-white/[0.03] border border-white/10 rounded hover:bg-white/10 hover:border-weg-azul/30 text-white/70 hover:text-white transition"
+      title={`Pcc ${pcc}kWp · Pca ${pca}kW · Bat ${cap}kWh`}
+    >
+      {label}
+    </button>
   )
 }
 
