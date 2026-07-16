@@ -17,7 +17,11 @@ export async function usuarioPodeGerarDiagramas() {
   return perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
 }
 
-export async function gerarDiagramaAction(projetoId: string, tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido') {
+export async function gerarDiagramaAction(
+  projetoId: string,
+  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido',
+  opcoes: { modoPrevia?: boolean } = {},
+) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { sucesso: false, erro: 'Não autenticado' }
@@ -34,9 +38,13 @@ export async function gerarDiagramaAction(projetoId: string, tipoDesenho: 'unifi
 
   if (projErr || !projeto) return { sucesso: false, erro: 'Projeto não encontrado' }
 
-  // Só gera se cliente fechou
-  if (projeto.status !== 'aceito') {
-    return { sucesso: false, erro: 'Diagrama só pode ser gerado após o cliente aceitar a proposta (status = aceito)' }
+  // Modo prévia: admin pode gerar antes do cliente aceitar (marca versão como rascunho)
+  // Modo oficial (padrão): só gera se status = aceito
+  if (!opcoes.modoPrevia && projeto.status !== 'aceito') {
+    return {
+      sucesso: false,
+      erro: 'Diagrama oficial só pode ser gerado após o cliente aceitar a proposta (status = aceito). Use "Gerar prévia" pra visualizar antes.',
+    }
   }
 
   // Carrega config empresa (snapshot pra rastreabilidade)
@@ -74,6 +82,7 @@ export async function gerarDiagramaAction(projetoId: string, tipoDesenho: 'unifi
       status: 'gerando',
       gerado_por: user.id,
       snapshot_empresa: config,
+      eh_previa: opcoes.modoPrevia || false,
     })
     .select()
     .single()

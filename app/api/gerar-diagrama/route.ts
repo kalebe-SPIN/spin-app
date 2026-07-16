@@ -68,6 +68,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ erro: msg }, { status: 400 })
     }
 
+    // 3.5. Se HÍBRIDO, busca dimensionamento + análise do wizard híbrido
+    let hibridoDimensionamento: any = null
+    let hibridoAnalise: any = null
+    if (tipo_desenho === 'unifilar_hibrido') {
+      const { data: dim } = await supabase
+        .from('projeto_hibrido_dimensionamento')
+        .select('*')
+        .eq('projeto_id', projeto_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      hibridoDimensionamento = dim
+
+      const { data: ana } = await supabase
+        .from('projeto_hibrido_analise')
+        .select('*')
+        .eq('projeto_id', projeto_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      hibridoAnalise = ana
+    }
+
     // 4. Chama Claude API
     const anthropic = new Anthropic({ apiKey: anthropicKey })
 
@@ -76,6 +99,8 @@ export async function POST(req: NextRequest) {
       projeto,
       configEmpresa,
       tipoDesenho: tipo_desenho as 'unifilar_ongrid' | 'unifilar_hibrido',
+      hibridoDimensionamento,
+      hibridoAnalise,
     })
 
     let response
