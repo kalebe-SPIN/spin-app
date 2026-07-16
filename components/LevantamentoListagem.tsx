@@ -213,34 +213,68 @@ export function LevantamentoListagem({
           {equipamentosFiltrados.map((eq) => {
             const jaSelecionado = itens.find((i) => i.equipamentoId === eq.id)
             return (
-              <button
+              <div
                 key={eq.id}
-                type="button"
-                onClick={() => adicionar(eq)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition ${
+                className={`flex items-center gap-2 px-2 py-1.5 rounded transition ${
                   jaSelecionado
-                    ? 'bg-verde/10 border border-verde/30 hover:bg-verde/20'
+                    ? 'bg-verde/10 border border-verde/30'
                     : 'bg-white/[0.02] hover:bg-white/[0.06] border border-transparent'
                 }`}
               >
-                <span className="text-lg flex-shrink-0">{eq.emoji}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-white truncate">{eq.nome}</p>
-                  <p className="text-[9px] text-white/50">
-                    {eq.potenciaW}W · <span className={
-                      eq.tipoCarga === 'indutiva' ? 'text-sol' :
-                      eq.tipoCarga === 'resistiva' ? 'text-verde' : 'text-weg-azul'
-                    }>{eq.tipoCarga}</span>
-                    {eq.prioridadeBackup === 'essencial' && ' · ⭐ essencial'}
-                  </p>
-                </div>
-                {jaSelecionado && (
-                  <span className="text-xs font-bold text-verde px-2 py-0.5 bg-verde/20 rounded">
-                    ×{jaSelecionado.quantidade}
-                  </span>
+                {/* Área clicável principal: só adiciona se ainda não tem, senão só mostra */}
+                <button
+                  type="button"
+                  onClick={() => !jaSelecionado && adicionar(eq)}
+                  className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                  title={jaSelecionado ? 'Use +/− ao lado pra ajustar quantidade' : 'Clique pra adicionar'}
+                >
+                  <span className="text-lg flex-shrink-0">{eq.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-white truncate">{eq.nome}</p>
+                    <p className="text-[9px] text-white/50">
+                      {eq.potenciaW}W · <span className={
+                        eq.tipoCarga === 'indutiva' ? 'text-sol' :
+                        eq.tipoCarga === 'resistiva' ? 'text-verde' : 'text-weg-azul'
+                      }>{eq.tipoCarga}</span>
+                      {eq.prioridadeBackup === 'essencial' && ' · ⭐ essencial'}
+                    </p>
+                  </div>
+                </button>
+
+                {/* Controles inline: se já no carrinho, mostra ± e ×; senão, botão + único */}
+                {jaSelecionado ? (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => atualizarQtd(eq.id, -1)}
+                      className="w-6 h-6 flex items-center justify-center bg-white/10 rounded text-sm hover:bg-white/20"
+                      title="Diminuir 1"
+                    >−</button>
+                    <span className="text-xs font-bold text-verde w-8 text-center bg-verde/20 py-0.5 rounded">
+                      ×{jaSelecionado.quantidade}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => adicionar(eq)}
+                      className="w-6 h-6 flex items-center justify-center bg-white/10 rounded text-sm hover:bg-white/20"
+                      title="Adicionar 1"
+                    >+</button>
+                    <button
+                      type="button"
+                      onClick={() => atualizarQtd(eq.id, -jaSelecionado.quantidade)}
+                      className="w-6 h-6 flex items-center justify-center rounded text-coral/60 hover:text-coral hover:bg-coral/10"
+                      title="Remover do carrinho"
+                    >×</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => adicionar(eq)}
+                    className="w-7 h-7 flex items-center justify-center bg-white/5 hover:bg-sol/20 hover:text-sol rounded text-white/50 text-lg flex-shrink-0"
+                    title="Adicionar ao carrinho"
+                  >+</button>
                 )}
-                <span className="text-xs text-white/40 flex-shrink-0">+</span>
-              </button>
+              </div>
             )
           })}
         </div>
