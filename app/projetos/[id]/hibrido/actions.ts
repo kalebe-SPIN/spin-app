@@ -83,6 +83,7 @@ export async function salvarDimensionamentoHibridoAction(
   projetoId: string,
   itemId: string | null,
   saida: SaidaDimensionamentoHibrido,
+  listaCaCustomizada?: any[] | null, // se null/undefined usa a gerada automaticamente
 ) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -118,8 +119,11 @@ export async function salvarDimensionamentoHibridoAction(
   if (error) return { erro: error.message }
 
   // Gera lista CA adicional (cabos comunicação, HEPR EPS, disjuntor extra, etc)
-  // e salva na coluna dedicada projetos.lista_ca_hibrida_confirmada
-  const itensListaCaHibrida = gerarItensListaCaHibrida(saida)
+  // ou usa a customizada pelo consultor (após edição no wizard).
+  // Sempre filtra itens com qtd <= 0 (item removido implicitamente).
+  const itensPadrao = gerarItensListaCaHibrida(saida)
+  const itensListaCaHibrida = (listaCaCustomizada ?? itensPadrao)
+    .filter((it: any) => it && Number(it.qtd) > 0)
   const { error: erroLista } = await supabase
     .from('projetos')
     .update({ lista_ca_hibrida_confirmada: itensListaCaHibrida })

@@ -17,6 +17,7 @@ import { GraficoImpactoHibrido } from '@/components/GraficoImpactoHibrido'
 import type { PerfilCliente } from '@/lib/hibrido/perfil-consumo'
 import { LevantamentoListagem, type MestreConsideracoes } from '@/components/LevantamentoListagem'
 import { gerarItensListaCaHibrida, resumoListaCaHibrida } from '@/lib/hibrido/lista-ca-hibrida'
+import type { ItemKit } from '@/lib/kit-auto/montar-kit'
 
 type Metodo = 'memoria_massa' | 'analise_rede_medido' | 'analisador_segregado_cc' | 'levantamento_listagem' | 'kit_direto_espelho'
 
@@ -140,6 +141,9 @@ export function HibridoWizard({
   const [espPca, setEspPca] = useState<number>(6)          // kW
   const [espCapKwh, setEspCapKwh] = useState<number>(20)   // kWh
 
+  // Lista CA híbrida editável — null = usar padrão gerado do dimensionamento
+  const [listaCaEditada, setListaCaEditada] = useState<ItemKit[] | null>(null)
+
   // Aplica sugestão da IA
   function aplicarSugestaoIA(ia: AnaliseIA) {
     if (ia.demanda_carga_critica_kw_sugerida) setCargaCriticaKw(ia.demanda_carga_critica_kw_sugerida)
@@ -205,7 +209,7 @@ export function HibridoWizard({
     if (!dimensionamento) return
     setErro(null)
     startTransition(async () => {
-      const res = await salvarDimensionamentoHibridoAction(projetoId, itemId || null, dimensionamento)
+      const res = await salvarDimensionamentoHibridoAction(projetoId, itemId || null, dimensionamento, listaCaEditada)
       if (res && 'erro' in res && res.erro) {
         setErro(res.erro)
         return
@@ -704,37 +708,112 @@ export function HibridoWizard({
 
       {/* ══════════════ LISTA CA HÍBRIDA (materiais adicionais) ══════════════ */}
       {dimensionamento && (() => {
-        const itensCaHibrida = gerarItensListaCaHibrida(dimensionamento)
+        const itensAutomaticos = gerarItensListaCaHibrida(dimensionamento)
+        const itensCaHibrida = listaCaEditada ?? itensAutomaticos
+        const foiEditada = listaCaEditada !== null
+
+        function alterarQtd(idx: number, delta: number) {
+          const atual = listaCaEditada ?? itensAutomaticos
+          const nova = atual.map((it, i) => i === idx ? { ...it, qtd: Math.max(0, it.qtd + delta) } : it)
+          setListaCaEditada(nova)
+        }
+        function alterarQtdDireta(idx: number, valor: number) {
+          const atual = listaCaEditada ?? itensAutomaticos
+          const nova = atual.map((it, i) => i === idx ? { ...it, qtd: Math.max(0, valor) } : it)
+          setListaCaEditada(nova)
+        }
+        function removerItem(idx: number) {
+          const atual = listaCaEditada ?? itensAutomaticos
+          setListaCaEditada(atual.filter((_, i) => i !== idx))
+        }
+        function restaurarPadrao() {
+          if (foiEditada && !confirm('Descartar edições e restaurar a lista automática do dimensionamento?')) return
+          setListaCaEditada(null)
+        }
+
         return (
           <section className="p-5 bg-weg-azul/5 border border-weg-azul/30 rounded-xl">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-xs uppercase tracking-wider font-bold text-weg-azul">
-                  🧰 Materiais CA adicionais (BESS)
-                </h2>
+            <div className="flex items-start justify-between mb-3 gap-3 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xs uppercase tracking-wider font-bold text-weg-azul">
+                    🧰 Materiais CA adicionais (BESS)
+                  </h2>
+                  {foiEditada && (
+                    <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border bg-sol/10 border-sol/30 text-sol">
+                      ✍️ Editada
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] text-white/50 mt-0.5">
-                  {resumoListaCaHibrida(itensCaHibrida)} · salvos automaticamente ao confirmar
+                  {resumoListaCaHibrida(itensCaHibrida)} · salvos ao confirmar
                 </p>
               </div>
-              <span className="text-2xl">📦</span>
+              <div className="flex items-center gap-2">
+                {foiEditada && (
+                  <button
+                    type="button"
+                    onClick={restaurarPadrao}
+                    className="text-[10px] px-2 py-1 bg-white/5 border border-white/10 rounded hover:bg-white/10 text-white/70 hover:text-white transition"
+                    title="Descarta edições e volta pra lista automática"
+                  >
+                    🔄 Restaurar padrão
+                  </button>
+                )}
+                <span className="text-2xl">📦</span>
+              </div>
             </div>
 
-            <div className="space-y-1 max-h-[280px] overflow-y-auto">
-              {itensCaHibrida.map((item, i) => (
-                <div key={i} className="flex items-start gap-2 p-2 bg-noite/40 rounded text-xs">
-                  <span className="text-[10px] text-white/40 flex-shrink-0 w-6 pt-0.5">{i + 1}.</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white truncate">{item.descricao}</p>
-                    {item.observacao && (
-                      <p className="text-[10px] text-white/50 italic">💡 {item.observacao}</p>
-                    )}
+            {itensCaHibrida.length === 0 ? (
+              <div className="p-4 text-center text-xs text-white/40 bg-noite/40 rounded border border-dashed border-white/10">
+                Nenhum item na lista. <button type="button" onClick={restaurarPadrao} className="text-sol underline hover:text-sol/80">Restaurar padrão</button>
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-[400px] overflow-y-auto">
+                {itensCaHibrida.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 bg-noite/40 rounded text-xs group hover:bg-noite/60">
+                    <span className="text-[10px] text-white/40 flex-shrink-0 w-6">{i + 1}.</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white truncate">{item.descricao}</p>
+                      {item.observacao && (
+                        <p className="text-[10px] text-white/50 italic truncate">💡 {item.observacao}</p>
+                      )}
+                    </div>
+                    {/* Controles +/- + input direto */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => alterarQtd(i, -1)}
+                        disabled={item.qtd <= 0}
+                        className="w-6 h-6 flex items-center justify-center bg-white/10 rounded text-sm hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Diminuir"
+                      >−</button>
+                      <input
+                        type="number"
+                        min={0}
+                        step={item.unidade === 'm' ? 1 : 1}
+                        value={item.qtd}
+                        onChange={(e) => alterarQtdDireta(i, parseFloat(e.target.value) || 0)}
+                        className="w-14 px-1 py-0.5 bg-white/5 border border-white/10 rounded text-xs text-white text-center font-bold"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => alterarQtd(i, 1)}
+                        className="w-6 h-6 flex items-center justify-center bg-white/10 rounded text-sm hover:bg-white/20"
+                        title="Aumentar"
+                      >+</button>
+                      <span className="text-[10px] text-white/40 w-6">{item.unidade}</span>
+                      <button
+                        type="button"
+                        onClick={() => removerItem(i)}
+                        className="w-6 h-6 flex items-center justify-center rounded text-coral/60 hover:text-coral hover:bg-coral/10 transition"
+                        title="Remover item"
+                      >×</button>
+                    </div>
                   </div>
-                  <span className="text-sol font-bold flex-shrink-0 text-xs">
-                    {item.qtd} {item.unidade}
-                  </span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             <p className="mt-3 text-[10px] text-white/40 italic">
               Esses itens serão adicionados à lista CA do projeto (separados da lista on-grid).
