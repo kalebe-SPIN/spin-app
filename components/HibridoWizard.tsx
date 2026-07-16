@@ -88,11 +88,43 @@ export function HibridoWizard({
   const [usarPeakShaving, setUsarPeakShaving] = useState(false)
   const [usarComplementacao, setUsarComplementacao] = useState(false)
   const [preferirBat10, setPreferirBat10] = useState(false)
-  // Composição da carga crítica (soma ~100%)
+  // Composição da carga crítica (soma sempre = 100% via ajusteProporcional)
   const [percIndutiva, setPercIndutiva] = useState<number>(20)
   const [percResistiva, setPercResistiva] = useState<number>(60)
   const [percCapacitiva, setPercCapacitiva] = useState<number>(20)
+  // Origem dos valores da composição (importante pra rastreabilidade)
+  const [origemComposicao, setOrigemComposicao] = useState<'manual' | 'listagem' | 'analisador' | 'mestre_ia'>('manual')
   const [grupoTarifa, setGrupoTarifa] = useState<'A' | 'B'>('B')
+
+  /**
+   * Ajusta um dos 3 percentuais mantendo soma = 100.
+   * Os outros 2 se compensam proporcionalmente ao valor atual deles.
+   * Se ambos = 0, distribui o resto 50/50.
+   */
+  function ajustarComposicao(qual: 'ind' | 'res' | 'cap', novoValor: number) {
+    setOrigemComposicao('manual') // ao mexer manualmente, sai do modo auto
+    const v = Math.max(0, Math.min(100, novoValor))
+    const atual = { ind: percIndutiva, res: percResistiva, cap: percCapacitiva }
+    atual[qual] = v
+    const resto = 100 - v
+    // Descobre os outros 2
+    const outros = qual === 'ind' ? ['res', 'cap'] : qual === 'res' ? ['ind', 'cap'] : ['ind', 'res']
+    const k1 = outros[0] as 'ind' | 'res' | 'cap'
+    const k2 = outros[1] as 'ind' | 'res' | 'cap'
+    const soma = atual[k1] + atual[k2]
+    if (soma === 0) {
+      // Distribui 50/50
+      atual[k1] = resto / 2
+      atual[k2] = resto / 2
+    } else {
+      // Proporcional
+      atual[k1] = (atual[k1] / soma) * resto
+      atual[k2] = (atual[k2] / soma) * resto
+    }
+    setPercIndutiva(Math.round(atual.ind))
+    setPercResistiva(Math.round(atual.res))
+    setPercCapacitiva(Math.round(atual.cap))
+  }
   // Dados p/ visualização de impacto (opcionais)
   const [consumoMensalKwh, setConsumoMensalKwh] = useState<number>(600)
   const [geracaoMensalKwh, setGeracaoMensalKwh] = useState<number>(500)
@@ -237,9 +269,10 @@ export function HibridoWizard({
               if (mestre) {
                 setCargaCriticaKw(mestre.cargaCriticaSugeridaKw)
                 setAutonomiaHoras(mestre.autonomiaSugeridaHoras)
-                setPercIndutiva(mestre.composicao.indutiva)
-                setPercResistiva(mestre.composicao.resistiva)
-                setPercCapacitiva(mestre.composicao.capacitiva)
+                setPercIndutiva(Math.round(mestre.composicao.indutiva))
+                setPercResistiva(Math.round(mestre.composicao.resistiva))
+                setPercCapacitiva(Math.round(mestre.composicao.capacitiva))
+                setOrigemComposicao('listagem') // veio da lista processada pelo Mestre
                 if (resumo.consumoEstimadoMensalKwh > 0) {
                   setConsumoMensalKwh(Math.round(resumo.consumoEstimadoMensalKwh))
                 }
@@ -415,37 +448,56 @@ export function HibridoWizard({
 
         {/* Composição da carga crítica */}
         <div className="mt-5 p-4 bg-noite/40 border border-white/10 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs uppercase font-bold text-white/70">
-              Composição da carga crítica
-            </p>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-xs uppercase font-bold text-white/70">
+                Composição da carga crítica
+              </p>
+              <BadgeOrigem origem={origemComposicao} metodo={metodo} />
+            </div>
             <span className={`text-[10px] font-bold ${cargaValida ? 'text-verde' : 'text-coral'}`}>
               Total: {somaCarga.toFixed(0)}% {cargaValida ? '✓' : '(deve somar 100%)'}
             </span>
           </div>
           <p className="text-[10px] text-white/40 mb-3">
             Divide a carga crítica pela natureza — impacta o dimensionamento do inversor.
+            Ao mexer num, os outros se ajustam pra manter 100%.
           </p>
+
+          {/* Presets rápidos por perfil (quando não veio de método automático) */}
+          {origemComposicao === 'manual' && (
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              <span className="text-[9px] uppercase text-white/50 self-center mr-1">Presets:</span>
+              <PresetComposicao label="🏠 Residencial padrão" ind={30} res={50} cap={20}
+                aplicar={() => { setPercIndutiva(30); setPercResistiva(50); setPercCapacitiva(20) }} />
+              <PresetComposicao label="🏢 Comercial" ind={40} res={30} cap={30}
+                aplicar={() => { setPercIndutiva(40); setPercResistiva(30); setPercCapacitiva(30) }} />
+              <PresetComposicao label="🏭 Industrial" ind={70} res={20} cap={10}
+                aplicar={() => { setPercIndutiva(70); setPercResistiva(20); setPercCapacitiva(10) }} />
+              <PresetComposicao label="🖥️ Data center" ind={10} res={10} cap={80}
+                aplicar={() => { setPercIndutiva(10); setPercResistiva(10); setPercCapacitiva(80) }} />
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <SliderCarga
               label="⚡ Indutiva"
               desc="Motores, ar cond, geladeira (pico partida 3-5×)"
               valor={percIndutiva}
-              onChange={setPercIndutiva}
+              onChange={(v) => ajustarComposicao('ind', v)}
               cor="text-sol"
             />
             <SliderCarga
               label="🔥 Resistiva"
               desc="Chuveiro, incandescente, forno (linear)"
               valor={percResistiva}
-              onChange={setPercResistiva}
+              onChange={(v) => ajustarComposicao('res', v)}
               cor="text-verde"
             />
             <SliderCarga
               label="💻 Capacitiva"
               desc="Eletrônicos, LED, TV (harmônicos)"
               valor={percCapacitiva}
-              onChange={setPercCapacitiva}
+              onChange={(v) => ajustarComposicao('cap', v)}
               cor="text-weg-azul"
             />
           </div>
@@ -679,6 +731,55 @@ export function HibridoWizard({
         {isPending ? 'Salvando...' : 'Confirmar dimensionamento → Voltar ao projeto'}
       </button>
     </div>
+  )
+}
+
+function PresetComposicao({ label, ind, res, cap, aplicar }: {
+  label: string; ind: number; res: number; cap: number; aplicar: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={aplicar}
+      className="text-[10px] px-2 py-1 bg-white/[0.03] border border-white/10 rounded hover:bg-white/10 hover:border-sol/30 text-white/70 hover:text-white transition"
+      title={`I:${ind}% R:${res}% C:${cap}%`}
+    >
+      {label}
+    </button>
+  )
+}
+
+function BadgeOrigem({ origem, metodo }: {
+  origem: 'manual' | 'listagem' | 'analisador' | 'mestre_ia'
+  metodo: Metodo
+}) {
+  const info: Record<typeof origem, { emoji: string; label: string; classe: string }> = {
+    manual: {
+      emoji: '✍️',
+      label: 'Ajuste manual',
+      classe: 'bg-white/5 border-white/20 text-white/60',
+    },
+    listagem: {
+      emoji: '🧮',
+      label: 'Calculado da lista',
+      classe: 'bg-verde/10 border-verde/30 text-verde',
+    },
+    analisador: {
+      emoji: '📡',
+      label: metodo === 'analisador_segregado_cc' ? 'Medido no analisador segregado' : 'Medido pelo analisador',
+      classe: 'bg-weg-azul/10 border-weg-azul/30 text-weg-azul',
+    },
+    mestre_ia: {
+      emoji: '🧙‍♂️',
+      label: 'Sugestão do Mestre',
+      classe: 'bg-sol/10 border-sol/30 text-sol',
+    },
+  }
+  const cur = info[origem]
+  return (
+    <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${cur.classe}`}>
+      {cur.emoji} {cur.label}
+    </span>
   )
 }
 
