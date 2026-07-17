@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { BiancaChat } from '@/components/BiancaChat'
 import { BomDiaBotao } from '@/components/BomDiaBotao'
+import { StatusTarefaBtn, StatusEventoBtn, LinkDetalhes } from '@/components/AgendaControles'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -44,7 +45,7 @@ export default async function AgendaPage() {
 
   const { data: eventosHoje } = await supabase
     .from('agenda_eventos')
-    .select('id, titulo, data_hora_inicio, local, tipo, criado_por_bianca')
+    .select('id, titulo, data_hora_inicio, local, tipo, status, criado_por_bianca')
     .eq('usuario_id', user.id)
     .gte('data_hora_inicio', inicioHoje.toISOString())
     .lt('data_hora_inicio', fimHoje.toISOString())
@@ -52,9 +53,9 @@ export default async function AgendaPage() {
 
   const { data: tarefasPendentes } = await supabase
     .from('agenda_tarefas')
-    .select('id, titulo, data_prazo, prioridade, criada_por_bianca')
+    .select('id, titulo, data_prazo, prioridade, status, criada_por_bianca')
     .eq('usuario_id', user.id)
-    .eq('status', 'pendente')
+    .in('status', ['pendente', 'em_andamento'])
     .order('data_prazo', { ascending: true, nullsFirst: false })
     .limit(10)
 
@@ -101,11 +102,11 @@ export default async function AgendaPage() {
               ) : (
                 <div className="space-y-2">
                   {eventosHoje.map((e: any) => (
-                    <div key={e.id} className="bg-noite/40 border border-white/5 rounded p-2">
+                    <div key={e.id} className="bg-noite/40 border border-white/5 rounded p-2 space-y-1">
                       <p className="text-sm font-bold text-white flex items-center gap-1">
                         {e.titulo}
                         {e.criado_por_bianca && (
-                          <span className="text-[9px] text-sol">🤖</span>
+                          <span className="text-[9px] text-sol" title="Criado pela Bianca">🤖</span>
                         )}
                       </p>
                       <p className="text-[10px] text-white/50">
@@ -116,6 +117,10 @@ export default async function AgendaPage() {
                         })}
                         {e.local && ` · ${e.local}`}
                       </p>
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <StatusEventoBtn eventoId={e.id} statusAtual={e.status || 'agendado'} />
+                        <LinkDetalhes tipo="evento" id={e.id} />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -131,11 +136,11 @@ export default async function AgendaPage() {
               ) : (
                 <div className="space-y-2">
                   {tarefasPendentes.map((t: any) => (
-                    <div key={t.id} className="bg-noite/40 border border-white/5 rounded p-2">
+                    <div key={t.id} className="bg-noite/40 border border-white/5 rounded p-2 space-y-1">
                       <p className="text-sm text-white flex items-center gap-1">
                         {t.titulo}
                         {t.criada_por_bianca && (
-                          <span className="text-[9px] text-verde">🤖</span>
+                          <span className="text-[9px] text-verde" title="Criada pela Bianca">🤖</span>
                         )}
                       </p>
                       <p className="text-[10px] text-white/50 flex gap-2">
@@ -151,6 +156,10 @@ export default async function AgendaPage() {
                           <span>até {new Date(t.data_prazo + 'T12:00:00-03:00').toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span>
                         )}
                       </p>
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <StatusTarefaBtn tarefaId={t.id} statusAtual={t.status || 'pendente'} />
+                        <LinkDetalhes tipo="tarefa" id={t.id} />
+                      </div>
                     </div>
                   ))}
                 </div>

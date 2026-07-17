@@ -122,4 +122,63 @@ export const BIANCA_TOOLS: Anthropic.Tool[] = [
       required: ['id'],
     },
   },
+  {
+    name: 'mudar_status_tarefa',
+    description: 'Muda o status de uma tarefa (obtenha ID via listar_tarefas). Use quando o usuário disser "coloca em andamento", "adia", "cancela essa tarefa".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        status: { type: 'string', enum: ['pendente', 'em_andamento', 'concluida', 'cancelada'] },
+        observacao: { type: 'string', description: 'Motivo/comentário opcional (registrado no histórico)' },
+      },
+      required: ['id', 'status'],
+    },
+  },
+  {
+    name: 'mudar_status_evento',
+    description: 'Muda o status de um evento (obtenha ID via listar_eventos). Use quando o usuário disser "cliente confirmou", "reunião foi realizada", "cancela", "reagenda".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        status: { type: 'string', enum: ['agendado', 'confirmado', 'em_andamento', 'realizado', 'cancelado', 'adiado'] },
+        observacao: { type: 'string', description: 'Motivo/comentário opcional (registrado no histórico)' },
+      },
+      required: ['id', 'status'],
+    },
+  },
+  {
+    name: 'enviar_whatsapp',
+    description: 'Gera uma mensagem de WhatsApp pra alguém e registra a comunicação. Retorna um link wa.me pronto pro consultor clicar e enviar (você NÃO envia direto — o consultor confirma antes de mandar). Use pra: confirmar reunião com cliente, lembrar de compromisso, enviar mensagem de cortesia, follow-up de proposta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        destinatario_nome: { type: 'string', description: 'Nome de quem vai receber (ex: "Vanildo")' },
+        destinatario_telefone: { type: 'string', description: 'Telefone com DDD, aceita formato (48) 99999-9999 ou 5548999998888' },
+        mensagem: { type: 'string', description: 'Texto da mensagem em português brasileiro, natural e cordial. Não use "prezado" — use o primeiro nome. Não coloque assinatura, o consultor coloca.' },
+        tarefa_id: { type: 'string', description: 'ID da tarefa relacionada (opcional, obtido via listar_tarefas)' },
+        evento_id: { type: 'string', description: 'ID do evento relacionado (opcional, obtido via listar_eventos)' },
+        projeto_id: { type: 'string', description: 'ID do projeto relacionado (opcional, obtido via listar_projetos_ativos)' },
+      },
+      required: ['destinatario_nome', 'destinatario_telefone', 'mensagem'],
+    },
+  },
+  {
+    name: 'enviar_email',
+    description: 'Registra um email a ser enviado (você NÃO envia direto — só registra a intenção, o consultor decide manualmente por enquanto). Útil pra: enviar proposta, follow-up formal, documentos.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        destinatario_nome: { type: 'string' },
+        destinatario_email: { type: 'string' },
+        assunto: { type: 'string' },
+        mensagem: { type: 'string', description: 'Corpo do email em português brasileiro. Pode usar quebras de linha.' },
+        tarefa_id: { type: 'string' },
+        evento_id: { type: 'string' },
+        projeto_id: { type: 'string' },
+      },
+      required: ['destinatario_nome', 'destinatario_email', 'assunto', 'mensagem'],
+    },
+  },
 ]

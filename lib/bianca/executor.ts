@@ -301,6 +301,109 @@ export async function executarTool(
         return { sucesso: true, dados: { deletado: true } }
       }
 
+      case 'mudar_status_tarefa': {
+        const { data: atual } = await supabase
+          .from('agenda_tarefas')
+          .select('id, status')
+          .eq('id', input.id)
+          .eq('usuario_id', userId)
+          .single()
+        if (!atual) return { sucesso: false, erro: 'Tarefa não encontrada' }
+
+        const patch: any = { status: input.status }
+        if (input.status === 'concluida') patch.concluida_em = new Date().toISOString()
+        else patch.concluida_em = null
+
+        const { error } = await supabase
+          .from('agenda_tarefas')
+          .update(patch)
+          .eq('id', input.id)
+          .eq('usuario_id', userId)
+        if (error) return { sucesso: false, erro: error.message }
+
+        await supabase.from('agenda_historico').insert({
+          usuario_id: userId,
+          tarefa_id: input.id,
+          acao: input.status === 'concluida' ? 'concluida' : 'status_alterado',
+          status_anterior: atual.status,
+          status_novo: input.status,
+          observacao: input.observacao,
+          origem: 'bianca',
+        })
+        return { sucesso: true, dados: { id: input.id, status_novo: input.status } }
+      }
+
+      case 'mudar_status_evento': {
+        const { data: atual } = await supabase
+          .from('agenda_eventos')
+          .select('id, status')
+          .eq('id', input.id)
+          .eq('usuario_id', userId)
+          .single()
+        if (!atual) return { sucesso: false, erro: 'Evento não encontrado' }
+
+        const { error } = await supabase
+          .from('agenda_eventos')
+          .update({ status: input.status })
+          .eq('id', input.id)
+          .eq('usuario_id', userId)
+        if (error) return { sucesso: false, erro: error.message }
+
+        await supabase.from('agenda_historico').insert({
+          usuario_id: userId,
+          evento_id: input.id,
+          acao: 'status_alterado',
+          status_anterior: atual.status,
+          status_novo: input.status,
+          observacao: input.observacao,
+          origem: 'bianca',
+        })
+        return { sucesso: true, dados: { id: input.id, status_novo: input.status } }
+      }
+
+      case 'enviar_whatsapp': {
+        let tel = String(input.destinatario_telefone || '').replace(/\D/g, '')
+        if (tel && !tel.startsWith('55') && tel.length === 11) tel = '55' + tel
+        if (!tel) return { sucesso: false, erro: 'Telefone inválido' }
+
+        const link_wa = `https://wa.me/${tel}?text=${encodeURIComponent(input.mensagem)}`
+        const { data, error } = await supabase.from('bianca_comunicacoes').insert({
+          usuario_id: userId,
+          tarefa_id: input.tarefa_id || null,
+          evento_id: input.evento_id || null,
+          projeto_id: input.projeto_id || null,
+          destinatario_nome: input.destinatario_nome,
+          destinatario_telefone: tel,
+          canal: 'whatsapp',
+          mensagem: input.mensagem,
+          link_wa,
+          status: 'sugerida',
+        }).select('id').single()
+        if (error) return { sucesso: false, erro: error.message }
+        return {
+          sucesso: true,
+          dados: { id: data.id, link_wa, telefone: tel },
+          _hint: `Comunicação registrada. Kalebe pode abrir em: ${link_wa}`,
+        }
+      }
+
+      case 'enviar_email': {
+        const { data, error } = await supabase.from('bianca_comunicacoes').insert({
+          usuario_id: userId,
+          tarefa_id: input.tarefa_id || null,
+          evento_id: input.evento_id || null,
+          projeto_id: input.projeto_id || null,
+          destinatario_nome: input.destinatario_nome,
+          destinatario_email: input.destinatario_email,
+          canal: 'email',
+          assunto: input.assunto,
+          mensagem: input.mensagem,
+          status: 'sugerida',
+        }).select('id').single()
+        if (error) return { sucesso: false, erro: error.message }
+        return { sucesso: true, dados: { id: data.id } }
+      }
+
       default:
         return { sucesso: false, erro: `Tool desconhecida: ${toolName}` }
     }
