@@ -106,14 +106,15 @@ export function ehPJ(cpfCnpj: string | null | undefined): boolean {
  */
 export function todosDocumentosCompletos(hom: any): boolean {
   const cpfCnpj = hom.projeto?.cliente_cpf_cnpj || hom.cliente_cpf_cnpj
+  // Fatura vem do Passo 2 do projeto (analise_fatura preenchido)
+  const faturaOk = !!(hom.projeto?.analise_fatura || hom.pdf_fatura_instalacao_url)
   const infraOk = !!(
     hom.foto_disjuntor_url &&
     hom.foto_padrao_entrada_url &&
-    hom.foto_fachada_url &&
-    hom.pdf_fatura_instalacao_url
+    hom.foto_fachada_url
   )
   const clienteOk = !!(hom.cnh_cliente_url && hom.procuracao_cliente_url)
-  if (!infraOk || !clienteOk) return false
+  if (!faturaOk || !infraOk || !clienteOk) return false
 
   if (ehPJ(cpfCnpj)) {
     const pjOk = !!(hom.cartao_cnpj_url && hom.contrato_social_url)
@@ -161,7 +162,7 @@ export async function uploadDocumentoHomologacaoAction(input: {
       cnh_cliente_url, procuracao_cliente_url,
       cartao_cnpj_url, contrato_social_url,
       docs_socios,
-      projeto:projetos(cliente_cpf_cnpj)
+      projeto:projetos(cliente_cpf_cnpj, analise_fatura)
     `)
     .eq('id', input.homologacaoId)
     .single()
@@ -462,7 +463,7 @@ export async function reprocessarArquivosHomologacaoAction(homologacaoId: string
       cnh_cliente_url, procuracao_cliente_url,
       cartao_cnpj_url, contrato_social_url,
       docs_socios,
-      projeto:projetos(cliente_cpf_cnpj)
+      projeto:projetos(cliente_cpf_cnpj, analise_fatura)
     `)
     .eq('id', homologacaoId)
     .single()

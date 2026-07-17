@@ -23,11 +23,11 @@ import {
 
 // ═══════════════════ DEFINIÇÕES DE SLOTS ═══════════════════
 
+// Fatura NÃO está aqui — vem do Passo 2 do projeto (analise_fatura)
 const SLOTS_INFRA: Array<SlotDef> = [
-  { chave: 'foto_disjuntor',      emoji: '⚡', label: 'Foto do disjuntor geral',       desc: 'Padrão de entrada, amperagem visível', accept: 'image/*' },
-  { chave: 'foto_padrao_entrada', emoji: '🔌', label: 'Foto do padrão de entrada',     desc: 'Completo, caixa + entrada da rede',    accept: 'image/*' },
-  { chave: 'foto_fachada',        emoji: '🏠', label: 'Foto da fachada do imóvel',    desc: 'Vista frontal — pra homologação',      accept: 'image/*' },
-  { chave: 'pdf_fatura_instalacao', emoji: '📄', label: 'PDF da fatura CELESC atual', desc: 'Da UC mais recente',                   accept: 'application/pdf' },
+  { chave: 'foto_disjuntor',      emoji: '⚡', label: 'Foto do disjuntor geral',    desc: 'Padrão de entrada, amperagem visível', accept: 'image/*' },
+  { chave: 'foto_padrao_entrada', emoji: '🔌', label: 'Foto do padrão de entrada',  desc: 'Completo, caixa + entrada da rede',    accept: 'image/*' },
+  { chave: 'foto_fachada',        emoji: '🏠', label: 'Foto da fachada do imóvel', desc: 'Vista frontal — pra homologação',      accept: 'image/*' },
 ]
 
 const SLOTS_CLIENTE: Array<SlotDef> = [
@@ -54,20 +54,23 @@ type Props = {
   urls: Record<TipoDoc, string | null | undefined>
   socios: Socio[]
   documentosCompletosEm?: string | null
+  faturaOk: boolean         // NOVO: vem do projeto.analise_fatura (Passo 2)
+  projetoId?: string        // NOVO: pra montar link "Ver fatura"
 }
 
 export function DocumentosObrigatoriosCard({
-  homologacaoId, ehPJ, urls, socios, documentosCompletosEm,
+  homologacaoId, ehPJ, urls, socios, documentosCompletosEm, faturaOk, projetoId,
 }: Props) {
-  // Contagem total de uploads
+  // Contagem total (inclui fatura como slot informativo, contada se ok)
   const totalEnviados =
     SLOTS_INFRA.filter((s) => urls[s.chave]).length +
+    (faturaOk ? 1 : 0) +
     SLOTS_CLIENTE.filter((s) => urls[s.chave]).length +
     (ehPJ ? SLOTS_PJ.filter((s) => urls[s.chave]).length : 0) +
     (ehPJ ? socios.reduce((n, s) => n + (s.cnh_url ? 1 : 0) + (s.procuracao_url ? 1 : 0), 0) : 0)
 
   const totalRequeridos =
-    SLOTS_INFRA.length +
+    SLOTS_INFRA.length + 1 + // +1 = fatura (obrigatória, vem do Passo 2)
     SLOTS_CLIENTE.length +
     (ehPJ ? SLOTS_PJ.length + socios.length * 2 : 0)
 
@@ -101,12 +104,35 @@ export function DocumentosObrigatoriosCard({
       {/* Seção 1: Infraestrutura */}
       <SecaoDocs
         titulo="🏗️ Infraestrutura do imóvel"
-        subtitulo="Fotos + fatura CELESC"
+        subtitulo="Fotos do local"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {SLOTS_INFRA.map((slot) => (
             <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urls[slot.chave] || null} />
           ))}
+          {/* Fatura CELESC — informativo (vem do Passo 2 do projeto) */}
+          <div className={`p-3 rounded-lg border ${faturaOk ? 'bg-verde/5 border-verde/30' : 'bg-coral/5 border-coral/30 border-dashed'}`}>
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">📄</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white">PDF da fatura CELESC</p>
+                <p className="text-[10px] text-white/50">
+                  {faturaOk
+                    ? '✓ Já anexada no Passo 2 do projeto'
+                    : '⚠ Falta anexar — volte ao Passo 2'}
+                </p>
+              </div>
+              {faturaOk && <span className="text-verde font-bold text-xs">✓</span>}
+            </div>
+            {projetoId && (
+              <a
+                href={`/projetos/${projetoId}/fatura`}
+                className="mt-3 block text-center px-3 py-2 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10"
+              >
+                {faturaOk ? '👁️ Ver fatura no projeto' : '→ Anexar fatura no Passo 2'}
+              </a>
+            )}
+          </div>
         </div>
       </SecaoDocs>
 

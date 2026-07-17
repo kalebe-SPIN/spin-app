@@ -34,8 +34,7 @@ export default async function HomologacaoDetalhePage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Query defensiva: tenta join completo; se coluna cliente_cpf_cnpj não existe,
-  // faz sem ela e busca separado
+  // Query defensiva: tenta join completo com analise_fatura + cliente_cpf_cnpj
   let homRaw: any = null
   let err: any = null
   try {
@@ -44,7 +43,8 @@ export default async function HomologacaoDetalhePage({
       .select(`
         *,
         projeto:projetos(
-          id, codigo, cliente_razao_social, cliente_cpf_cnpj, status, tipo_projeto, uc_geradora
+          id, codigo, cliente_razao_social, cliente_cpf_cnpj, analise_fatura,
+          status, tipo_projeto, uc_geradora
         ),
         eletrotecnico:profiles!homologacoes_eletrotecnico_id_fkey(nome_completo)
       `)
@@ -56,7 +56,7 @@ export default async function HomologacaoDetalhePage({
     err = e
   }
 
-  // Fallback: se select com cliente_cpf_cnpj deu erro, tenta sem
+  // Fallback: se select com campos novos deu erro, tenta sem
   if (!homRaw || err) {
     const res2 = await supabase
       .from('homologacoes')
@@ -136,6 +136,8 @@ export default async function HomologacaoDetalhePage({
         <DocumentosObrigatoriosCard
           homologacaoId={params.id}
           ehPJ={detectarPJ(homSafe.projeto?.cliente_cpf_cnpj)}
+          faturaOk={!!homSafe.projeto?.analise_fatura}
+          projetoId={homSafe.projeto?.id}
           urls={{
             foto_disjuntor: homSafe.foto_disjuntor_url,
             foto_padrao_entrada: homSafe.foto_padrao_entrada_url,
