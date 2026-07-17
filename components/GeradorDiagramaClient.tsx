@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { gerarDiagramaAction } from '@/app/projetos/[id]/diagrama/actions'
+import { baixarComoPdf, baixarComoDxf } from '@/lib/diagrama/converter-svg'
 
 type Diagrama = {
   id: string
@@ -167,6 +168,67 @@ export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk }
   )
 }
 
+function BotoesDownload({ urlSvg, nomeBase }: { urlSvg: string; nomeBase: string }) {
+  const [baixando, setBaixando] = useState<'pdf' | 'dxf' | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+
+  async function baixar(tipo: 'pdf' | 'dxf') {
+    setErro(null)
+    setBaixando(tipo)
+    try {
+      if (tipo === 'pdf') await baixarComoPdf(urlSvg, `${nomeBase}.pdf`)
+      else await baixarComoDxf(urlSvg, `${nomeBase}.dxf`)
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao converter')
+    } finally {
+      setBaixando(null)
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => baixar('pdf')}
+          disabled={baixando !== null}
+          className="text-xs px-3 py-1.5 bg-sol text-noite font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {baixando === 'pdf' ? '⏳ Gerando PDF...' : '📄 Baixar PDF'}
+        </button>
+        <button
+          type="button"
+          onClick={() => baixar('dxf')}
+          disabled={baixando !== null}
+          className="text-xs px-3 py-1.5 bg-weg-azul text-white font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {baixando === 'dxf' ? '⏳ Convertendo...' : '✏️ Baixar DXF (AutoCAD)'}
+        </button>
+        <a
+          href={urlSvg}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10"
+        >
+          🖼️ Abrir SVG
+        </a>
+      </div>
+      {erro && (
+        <p className="text-[10px] text-coral">⚠️ {erro}</p>
+      )}
+      <details className="text-[10px] text-white/40 mt-1">
+        <summary className="cursor-pointer hover:text-white/60">💡 Preciso do DWG? (Autodesk)</summary>
+        <p className="mt-1 text-white/50 leading-relaxed">
+          O DWG é formato proprietário Autodesk. Baixa o DXF acima e converta grátis com o
+          <a href="https://www.opendesign.com/guestfiles/oda_file_converter" target="_blank" rel="noreferrer"
+             className="text-sol hover:underline"> ODA File Converter</a>
+          — abre no AutoCAD 100% compatível.
+        </p>
+      </details>
+    </div>
+  )
+}
+
 function DiagramaCard({ d }: { d: Diagrama }) {
   const dataFmt = new Date(d.created_at).toLocaleString('pt-BR', {
     day: '2-digit',
@@ -222,28 +284,9 @@ function DiagramaCard({ d }: { d: Diagrama }) {
               />
             </div>
           )}
-          <div className="flex flex-wrap gap-2 mt-3">
-            {d.url_pdf && (
-              <a href={d.url_pdf} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
-                📄 PDF
-              </a>
-            )}
-            {d.url_dxf && (
-              <a href={d.url_dxf} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
-                ✏️ DXF (AutoCAD)
-              </a>
-            )}
-            {d.url_dwg && (
-              <a href={d.url_dwg} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
-                ✏️ DWG
-              </a>
-            )}
-            {d.url_svg && (
-              <a href={d.url_svg} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
-                🖼️ SVG (abrir)
-              </a>
-            )}
-          </div>
+          {d.url_svg && (
+            <BotoesDownload urlSvg={d.url_svg} nomeBase={`unifilar-${d.tipo_desenho}-v${d.versao}`} />
+          )}
         </>
       )}
     </div>
