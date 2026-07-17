@@ -1,10 +1,16 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { atualizarEtapaHomologacaoAction, ehPJ as detectarPJ } from '@/app/homologacoes/[id]/actions'
 import { EtapaHomologacaoClient } from '@/components/EtapaHomologacaoClient'
 import { ReprocessarArquivosBtn } from '@/components/ReprocessarArquivosBtn'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
+import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
+
+/** Detecta PJ pelo CNPJ (14 dígitos). Local pra não depender do import da action. */
+function detectarPJ(cpfCnpj: string | null | undefined): boolean {
+  if (!cpfCnpj) return false
+  return cpfCnpj.replace(/\D/g, '').length === 14
+}
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -74,7 +80,13 @@ export default async function HomologacaoDetalhePage({
   }
 
   if (err || !homRaw) notFound()
-  const hom = homRaw
+
+  // Normaliza: Supabase às vezes retorna relação como array mesmo em 1-to-1
+  const hom = {
+    ...homRaw,
+    projeto: Array.isArray(homRaw.projeto) ? homRaw.projeto[0] : homRaw.projeto,
+    eletrotecnico: Array.isArray(homRaw.eletrotecnico) ? homRaw.eletrotecnico[0] : homRaw.eletrotecnico,
+  }
 
   // Fallbacks defensivos — colunas podem não existir se migrations 039/040 não rodaram
   const homSafe: any = {
@@ -133,24 +145,26 @@ export default async function HomologacaoDetalhePage({
         </header>
 
         {/* Documentos obrigatórios do consultor — checkpoint pra liberar geração */}
-        <DocumentosObrigatoriosCard
-          homologacaoId={params.id}
-          ehPJ={detectarPJ(homSafe.projeto?.cliente_cpf_cnpj)}
-          faturaOk={!!homSafe.projeto?.analise_fatura}
-          projetoId={homSafe.projeto?.id}
-          urls={{
-            foto_disjuntor: homSafe.foto_disjuntor_url,
-            foto_padrao_entrada: homSafe.foto_padrao_entrada_url,
-            foto_fachada: homSafe.foto_fachada_url,
-            pdf_fatura_instalacao: homSafe.pdf_fatura_instalacao_url,
-            cnh_cliente: homSafe.cnh_cliente_url,
-            procuracao_cliente: homSafe.procuracao_cliente_url,
-            cartao_cnpj: homSafe.cartao_cnpj_url,
-            contrato_social: homSafe.contrato_social_url,
-          }}
-          socios={homSafe.docs_socios}
-          documentosCompletosEm={homSafe.documentos_completos_em}
-        />
+        <ErrorBoundaryClient nome="Documentos obrigatórios">
+          <DocumentosObrigatoriosCard
+            homologacaoId={params.id}
+            ehPJ={detectarPJ(homSafe.projeto?.cliente_cpf_cnpj)}
+            faturaOk={!!homSafe.projeto?.analise_fatura}
+            projetoId={homSafe.projeto?.id}
+            urls={{
+              foto_disjuntor: homSafe.foto_disjuntor_url,
+              foto_padrao_entrada: homSafe.foto_padrao_entrada_url,
+              foto_fachada: homSafe.foto_fachada_url,
+              pdf_fatura_instalacao: homSafe.pdf_fatura_instalacao_url,
+              cnh_cliente: homSafe.cnh_cliente_url,
+              procuracao_cliente: homSafe.procuracao_cliente_url,
+              cartao_cnpj: homSafe.cartao_cnpj_url,
+              contrato_social: homSafe.contrato_social_url,
+            }}
+            socios={homSafe.docs_socios}
+            documentosCompletosEm={homSafe.documentos_completos_em}
+          />
+        </ErrorBoundaryClient>
 
         {/* Metadados */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white/[0.03] border border-white/10 rounded-xl">
