@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { atualizarEtapaHomologacaoAction } from '@/app/homologacoes/[id]/actions'
 import { EtapaHomologacaoClient } from '@/components/EtapaHomologacaoClient'
 import { ReprocessarArquivosBtn } from '@/components/ReprocessarArquivosBtn'
+import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -87,6 +88,18 @@ export default async function HomologacaoDetalhePage({
             </div>
           </div>
         </header>
+
+        {/* Documentos obrigatórios do consultor — checkpoint pra liberar geração */}
+        <DocumentosObrigatoriosCard
+          homologacaoId={params.id}
+          urls={{
+            foto_disjuntor: hom.foto_disjuntor_url,
+            foto_padrao_entrada: hom.foto_padrao_entrada_url,
+            foto_fachada: hom.foto_fachada_url,
+            pdf_fatura_instalacao: hom.pdf_fatura_instalacao_url,
+          }}
+          documentosCompletosEm={hom.documentos_completos_em}
+        />
 
         {/* Metadados */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white/[0.03] border border-white/10 rounded-xl">

@@ -144,34 +144,45 @@ async function disparoAutomacoes(
           })),
         )
 
-        // Dispara geração automática de arquivos em background (fire-and-forget)
-        // Memorial + Lista Kit + Lista CA + Layout = sem IA
-        // Diagrama Unifilar = com Claude (se chave Anthropic ok)
-        try {
-          const { createAdminClient } = await import('@/lib/supabase/admin')
-          const { gerarArquivosAutomaticos } = await import('@/lib/homologacao/gerar-arquivos')
-          const supabaseAdmin = createAdminClient()
-          // Não aguarda — segue no background
-          gerarArquivosAutomaticos(supabaseAdmin, projeto.id, novaHom.id)
-            .catch((err) => console.error('[gerarArquivos]', err))
-        } catch (err) {
-          console.error('[gerarArquivos setup]', err)
-        }
+        // IMPORTANTE: geração dos arquivos NÃO acontece aqui.
+        // O consultor precisa enviar 4 documentos obrigatórios primeiro
+        // (foto disjuntor, foto padrão, foto fachada, PDF fatura).
+        // Após o 4º upload, uploadDocumentoHomologacaoAction dispara
+        // gerarArquivosAutomaticos automaticamente.
+        // Isso garante que os arquivos gerados usem dados reais do site.
 
         // 3. Notifica o admin/técnico com tarefa de alta prioridade
         if (adminOuTecnico?.id) {
           await supabase.from('agenda_tarefas').insert({
             usuario_id: adminOuTecnico.id,
-            titulo: `🏗️ Homologação ${cliente} — revisar diagrama + layout`,
+            titulo: `🏗️ Homologação ${cliente} — aguardando documentos do consultor`,
             descricao:
-              `Venda fechada. Revise diagrama unifilar + layout + memorial, ` +
-              `depois envie pra CELESC. Projeto: ${projeto.id}`,
+              `Venda fechada. Consultor precisa enviar 4 documentos (foto disjuntor, ` +
+              `padrão de entrada, fachada, PDF fatura). Após uploads, arquivos são gerados ` +
+              `automaticamente. Projeto: ${projeto.id}`,
             data_prazo: amanha.toISOString().slice(0, 10),
-            prioridade: 'urgente',
+            prioridade: 'alta',
             projeto_id: projeto.id,
             criada_por_bianca: true,
           })
         }
+
+        // 4. Tarefa pro consultor: enviar os 4 documentos obrigatórios
+        await supabase.from('agenda_tarefas').insert({
+          usuario_id: projeto.consultor_id || userId,
+          titulo: `📸 ${cliente} — enviar 4 documentos da homologação`,
+          descricao:
+            `Pra sistema gerar diagrama + memorial + listas, faça upload de:\n` +
+            `1. Foto do disjuntor geral do padrão de entrada\n` +
+            `2. Foto do padrão de entrada (completo)\n` +
+            `3. Foto da fachada do imóvel\n` +
+            `4. PDF da fatura da instalação (CELESC atual)\n\n` +
+            `Sobe tudo em /homologacoes → aparece na seção Documentos obrigatórios.`,
+          data_prazo: amanha.toISOString().slice(0, 10),
+          prioridade: 'urgente',
+          projeto_id: projeto.id,
+          criada_por_bianca: true,
+        })
       }
     }
   }
