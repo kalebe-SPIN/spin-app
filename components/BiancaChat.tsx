@@ -222,7 +222,7 @@ function Bolha({
   return (
     <div className={`flex ${isUsuario ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] px-3 py-2 rounded-lg text-sm ${
+        className={`max-w-[85%] min-w-0 px-3 py-2 rounded-lg text-sm ${
           isUsuario
             ? 'bg-sol/20 text-white border border-sol/30'
             : 'bg-white/5 text-white/90 border border-white/10'
@@ -231,8 +231,56 @@ function Bolha({
         {!isUsuario && !pulsante && (
           <div className="text-[9px] uppercase text-sol font-bold mb-1">Bianca</div>
         )}
-        <div className="whitespace-pre-wrap leading-relaxed">{conteudo}</div>
+        <div className="whitespace-pre-wrap break-words leading-relaxed overflow-hidden">
+          {renderComLinks(conteudo)}
+        </div>
       </div>
     </div>
   )
+}
+
+/**
+ * Detecta URLs no texto e transforma em <a> clicável.
+ * URLs de wa.me ganham botão verde destacado (chamada visual clara pra Kalebe).
+ */
+function renderComLinks(texto: string): React.ReactNode[] {
+  const regex = /(https?:\/\/[^\s<>]+)/g
+  const partes: React.ReactNode[] = []
+  let ultimo = 0
+  let match: RegExpExecArray | null
+  let idx = 0
+
+  while ((match = regex.exec(texto)) !== null) {
+    if (match.index > ultimo) {
+      partes.push(texto.substring(ultimo, match.index))
+    }
+    const url = match[0]
+    const ehWhatsApp = url.includes('wa.me/') || url.includes('api.whatsapp.com')
+    partes.push(
+      ehWhatsApp ? (
+        <a
+          key={`link-${idx++}`}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 mt-1 px-3 py-1.5 bg-verde text-noite text-xs font-bold rounded hover:bg-verde/90 max-w-full break-all"
+        >
+          📱 Abrir WhatsApp
+        </a>
+      ) : (
+        <a
+          key={`link-${idx++}`}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sol underline hover:text-sol/80 break-all"
+        >
+          {url}
+        </a>
+      )
+    )
+    ultimo = regex.lastIndex
+  }
+  if (ultimo < texto.length) partes.push(texto.substring(ultimo))
+  return partes
 }
