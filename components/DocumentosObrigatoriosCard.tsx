@@ -18,8 +18,8 @@ import {
   removerSocioAction,
   uploadDocumentoSocioAction,
   type TipoDoc,
-  type Socio,
 } from '@/app/homologacoes/[id]/actions'
+import type { Socio } from '@/lib/homologacao/utils'
 
 // ═══════════════════ DEFINIÇÕES DE SLOTS ═══════════════════
 
