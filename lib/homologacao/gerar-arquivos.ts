@@ -12,6 +12,7 @@ import {
   gerarListaKitCsv,
   gerarListaCaCsv,
   gerarLayoutSvg,
+  gerarPadraoEntradaSvg,
 } from './geradores'
 
 const BUCKET = 'homologacao-arquivos'
@@ -84,6 +85,25 @@ export async function gerarArquivosAutomaticos(
     nomeArquivo: `${codigo}-layout.svg`,
     gerador: () => gerarLayoutSvg(projeto),
   }))
+
+  // ═══ Padrão de entrada novo (só se marcado) ═══
+  if (etapaPorChave['padrao_entrada_novo']) {
+    // Busca a homologação de novo pra pegar dados atualizados de padrão
+    const { data: hom } = await supabaseAdmin
+      .from('homologacoes')
+      .select('precisa_padrao_novo, padrao_novo_amperagem, padrao_novo_observacao')
+      .eq('id', homologacaoId)
+      .single()
+    if (hom?.precisa_padrao_novo) {
+      resultados.push(await gerar(supabaseAdmin, {
+        chave: 'padrao_entrada_novo',
+        projetoId, homologacaoId,
+        etapaId: etapaPorChave['padrao_entrada_novo'],
+        nomeArquivo: `${codigo}-padrao-entrada.svg`,
+        gerador: () => gerarPadraoEntradaSvg(projeto, hom),
+      }))
+    }
+  }
 
   // ═══ Diagrama unifilar — depende de IA (Claude) ═══
   // Se ANTHROPIC_API_KEY tá presente, tenta chamar a rota interna.

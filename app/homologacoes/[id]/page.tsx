@@ -5,6 +5,7 @@ import { EtapaHomologacaoClient } from '@/components/EtapaHomologacaoClient'
 import { ReprocessarArquivosBtn } from '@/components/ReprocessarArquivosBtn'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
+import { PadraoNovoToggle } from '@/components/PadraoNovoToggle'
 
 /** Detecta PJ pelo CNPJ (14 dígitos). Local pra não depender do import da action. */
 function detectarPJ(cpfCnpj: string | null | undefined): boolean {
@@ -176,7 +177,17 @@ export default async function HomologacaoDetalhePage({
           <Campo label="Etapa atual" valor={`${hom.etapa_atual}/${totalEtapas}`} />
         </section>
 
-        {/* Progresso visual das 6 etapas */}
+        {/* Toggle: precisa gerar novo padrão de entrada? */}
+        <ErrorBoundaryClient nome="Padrão de entrada novo">
+          <PadraoNovoToggle
+            homologacaoId={params.id}
+            precisaAtual={hom.precisa_padrao_novo || false}
+            amperagemAtual={hom.padrao_novo_amperagem}
+            observacaoAtual={hom.padrao_novo_observacao}
+          />
+        </ErrorBoundaryClient>
+
+        {/* Progresso visual das 6 etapas (7 se padrão novo) */}
         <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h2 className="text-xs uppercase tracking-wider font-bold text-sol">

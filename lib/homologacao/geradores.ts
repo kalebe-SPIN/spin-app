@@ -251,6 +251,149 @@ export function gerarLayoutSvg(projeto: any): { conteudo: string; mimeType: stri
   return { conteudo: partes.join('\n'), mimeType: 'image/svg+xml', extensao: 'svg' }
 }
 
+// ═══════════════════ DIAGRAMA PADRÃO DE ENTRADA (SVG) ═══════════════════
+export function gerarPadraoEntradaSvg(projeto: any, homologacao?: any): { conteudo: string; mimeType: string; extensao: string } {
+  const padrao = projeto.padrao_entrada || {}
+  const cliente = projeto.cliente_razao_social || 'Cliente'
+  const uc = projeto.uc_geradora || padrao.uc || '—'
+  const endereco = projeto.cliente_endereco?.logradouro || '—'
+  const cidade = typeof projeto.cliente_endereco === 'object'
+    ? `${projeto.cliente_endereco?.cidade || '—'}/${projeto.cliente_endereco?.uf || 'SC'}`
+    : 'Tijucas/SC'
+
+  const amperagem = homologacao?.padrao_novo_amperagem || padrao.amperagem_a || padrao.amperagem_nova || 63
+  const tipoLigacao = padrao.tipo_ligacao || 'monofasico'
+  const numFases = tipoLigacao === 'trifasico' ? 3 : tipoLigacao === 'bifasico' ? 2 : 1
+  const secaoCabo = amperagem <= 40 ? '10mm²' : amperagem <= 63 ? '16mm²' : amperagem <= 100 ? '25mm²' : '35mm²'
+  const bitolaEletroduto = amperagem <= 40 ? '32mm' : amperagem <= 63 ? '40mm' : amperagem <= 100 ? '50mm' : '75mm'
+
+  // A4 retrato
+  const W = 595, H = 842
+  const partes: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`,
+    `<rect width="${W}" height="${H}" fill="#FFFFFF"/>`,
+    // Cabeçalho
+    `<text x="${W / 2}" y="40" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold" fill="#000">PADRÃO DE ENTRADA CELESC — ${amperagem}A ${numFases}F</text>`,
+    `<text x="${W / 2}" y="60" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">${cliente} · UC ${uc}</text>`,
+    `<text x="${W / 2}" y="75" text-anchor="middle" font-family="Arial" font-size="10" fill="#555">${endereco} · ${cidade}</text>`,
+    // Norma referência
+    `<text x="${W / 2}" y="92" text-anchor="middle" font-family="Arial" font-size="9" fill="#888">Referência: N-321.0001 e E-321.0031 (CELESC) · NBR 5410</text>`,
+  ]
+
+  // Elementos do padrão — layout vertical simples
+  const centerX = W / 2
+  let y = 130
+
+  // 1. Poste da concessionária
+  partes.push(
+    `<circle cx="${centerX}" cy="${y}" r="8" fill="none" stroke="#000" stroke-width="2"/>`,
+    `<text x="${centerX}" y="${y + 4}" text-anchor="middle" font-family="Arial" font-size="10" fill="#000">P</text>`,
+    `<text x="${centerX + 20}" y="${y + 4}" font-family="Arial" font-size="10" fill="#333">Poste CELESC (rede aérea BT)</text>`,
+  )
+  y += 40
+
+  // Linha entrada aérea
+  partes.push(
+    `<line x1="${centerX}" y1="${y - 32}" x2="${centerX}" y2="${y}" stroke="#000" stroke-width="1.5"/>`,
+    `<text x="${centerX + 5}" y="${y - 15}" font-family="Arial" font-size="9" fill="#555">Ramal aéreo · ${numFases} fases + neutro</text>`,
+  )
+
+  // 2. Caixa medidor CELESC
+  const caixaW = 120, caixaH = 90
+  partes.push(
+    `<rect x="${centerX - caixaW / 2}" y="${y}" width="${caixaW}" height="${caixaH}" fill="none" stroke="#000" stroke-width="2"/>`,
+    `<text x="${centerX}" y="${y + 20}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#000">CAIXA MEDIDOR</text>`,
+    `<text x="${centerX}" y="${y + 35}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">${numFases === 3 ? 'Tipo IV' : numFases === 2 ? 'Tipo II' : 'Tipo I'}</text>`,
+    `<text x="${centerX}" y="${y + 50}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Modelo CELESC padrão</text>`,
+    `<text x="${centerX}" y="${y + 65}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">1,5m acima do solo</text>`,
+    `<text x="${centerX}" y="${y + 80}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Livre acesso ao leiturista</text>`,
+    // Símbolo do medidor
+    `<circle cx="${centerX}" cy="${y + caixaH + 15}" r="12" fill="none" stroke="#000" stroke-width="1.5"/>`,
+    `<text x="${centerX}" y="${y + caixaH + 19}" text-anchor="middle" font-family="Arial" font-size="10" fill="#000">M</text>`,
+  )
+  y += caixaH + 45
+
+  // Linha até disjuntor
+  partes.push(
+    `<line x1="${centerX}" y1="${y}" x2="${centerX}" y2="${y + 30}" stroke="#000" stroke-width="1.5"/>`,
+    `<text x="${centerX + 5}" y="${y + 20}" font-family="Arial" font-size="9" fill="#555">Cabo ${secaoCabo} PP</text>`,
+  )
+  y += 40
+
+  // 3. Disjuntor geral
+  const djW = 70, djH = 40
+  partes.push(
+    `<rect x="${centerX - djW / 2}" y="${y}" width="${djW}" height="${djH}" fill="none" stroke="#000" stroke-width="2"/>`,
+    `<text x="${centerX}" y="${y + 17}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#000">DJ ${amperagem}A</text>`,
+    `<text x="${centerX}" y="${y + 31}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">${numFases === 3 ? 'Tripolar' : numFases === 2 ? 'Bipolar' : 'Monopolar'} · Curva C</text>`,
+    `<text x="${centerX + djW / 2 + 10}" y="${y + 25}" font-family="Arial" font-size="9" fill="#555">Disjuntor geral</text>`,
+  )
+  y += djH + 20
+
+  // 4. Aterramento — desce à direita do disjuntor
+  const aterX = centerX + 100
+  partes.push(
+    // Cabo terra
+    `<line x1="${centerX}" y1="${y - 10}" x2="${aterX}" y2="${y - 10}" stroke="#0a0" stroke-width="1.5" stroke-dasharray="4 2"/>`,
+    `<line x1="${aterX}" y1="${y - 10}" x2="${aterX}" y2="${y + 40}" stroke="#0a0" stroke-width="1.5"/>`,
+    `<text x="${aterX + 5}" y="${y + 5}" font-family="Arial" font-size="9" fill="#0a0">Cabo terra 16mm²</text>`,
+    // Símbolo aterramento
+    `<line x1="${aterX - 15}" y1="${y + 40}" x2="${aterX + 15}" y2="${y + 40}" stroke="#0a0" stroke-width="2"/>`,
+    `<line x1="${aterX - 10}" y1="${y + 45}" x2="${aterX + 10}" y2="${y + 45}" stroke="#0a0" stroke-width="2"/>`,
+    `<line x1="${aterX - 5}" y1="${y + 50}" x2="${aterX + 5}" y2="${y + 50}" stroke="#0a0" stroke-width="2"/>`,
+    `<text x="${aterX}" y="${y + 68}" text-anchor="middle" font-family="Arial" font-size="9" fill="#0a0">Haste 5/8" x 2,4m</text>`,
+    `<text x="${aterX}" y="${y + 80}" text-anchor="middle" font-family="Arial" font-size="8" fill="#0a0">(mín 1 haste)</text>`,
+  )
+
+  // Linha até QGBT
+  partes.push(
+    `<line x1="${centerX}" y1="${y}" x2="${centerX}" y2="${y + 40}" stroke="#000" stroke-width="1.5"/>`,
+  )
+  y += 50
+
+  // 5. QGBT
+  const qgbtW = 150, qgbtH = 70
+  partes.push(
+    `<rect x="${centerX - qgbtW / 2}" y="${y}" width="${qgbtW}" height="${qgbtH}" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="6 3"/>`,
+    `<text x="${centerX}" y="${y + 22}" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#000">QGBT DO CLIENTE</text>`,
+    `<text x="${centerX}" y="${y + 40}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Quadro Geral de Baixa Tensão</text>`,
+    `<text x="${centerX}" y="${y + 55}" text-anchor="middle" font-family="Arial" font-size="9" fill="#555">(instalação interna)</text>`,
+  )
+  y += qgbtH + 30
+
+  // ─── LEGENDA / MEMORIAL DE DIMENSIONAMENTO ───
+  const memY = y + 20
+  partes.push(
+    `<text x="30" y="${memY}" font-family="Arial" font-size="10" font-weight="bold" fill="#000">MEMORIAL DE DIMENSIONAMENTO</text>`,
+    `<text x="30" y="${memY + 18}" font-family="Arial" font-size="9" fill="#333">• Corrente nominal: ${amperagem} A</text>`,
+    `<text x="30" y="${memY + 32}" font-family="Arial" font-size="9" fill="#333">• Tipo de ligação: ${tipoLigacao} (${numFases} fase${numFases > 1 ? 's' : ''} + neutro)</text>`,
+    `<text x="30" y="${memY + 46}" font-family="Arial" font-size="9" fill="#333">• Secção mínima ramal: ${secaoCabo} (cobre isolação PP 750V)</text>`,
+    `<text x="30" y="${memY + 60}" font-family="Arial" font-size="9" fill="#333">• Eletroduto: PVC rígido ${bitolaEletroduto} (interno) / aço galv. ${bitolaEletroduto} (externo)</text>`,
+    `<text x="30" y="${memY + 74}" font-family="Arial" font-size="9" fill="#333">• Disjuntor geral: ${amperagem}A curva C, ${numFases === 3 ? 'tripolar' : numFases === 2 ? 'bipolar' : 'monopolar'}</text>`,
+    `<text x="30" y="${memY + 88}" font-family="Arial" font-size="9" fill="#333">• Aterramento: mín 1 haste cobreada 5/8" x 2,4m + cabo cobre nu 16mm²</text>`,
+    `<text x="30" y="${memY + 102}" font-family="Arial" font-size="9" fill="#333">• Caixa medidor: modelo homologado CELESC, altura 1,5m do solo</text>`,
+  )
+
+  if (homologacao?.padrao_novo_observacao) {
+    partes.push(
+      `<text x="30" y="${memY + 130}" font-family="Arial" font-size="9" font-style="italic" fill="#555">Observação: ${homologacao.padrao_novo_observacao.substring(0, 80)}</text>`,
+    )
+  }
+
+  // Selo canto inferior
+  partes.push(
+    `<rect x="${W - 200}" y="${H - 90}" width="180" height="70" fill="none" stroke="#000" stroke-width="1"/>`,
+    `<text x="${W - 195}" y="${H - 72}" font-family="Arial" font-size="8" font-weight="bold" fill="#000">SPIN SOLAR</text>`,
+    `<text x="${W - 195}" y="${H - 58}" font-family="Arial" font-size="7" fill="#333">Padrão de Entrada CELESC</text>`,
+    `<text x="${W - 195}" y="${H - 46}" font-family="Arial" font-size="7" fill="#333">Cliente: ${cliente.substring(0, 25)}</text>`,
+    `<text x="${W - 195}" y="${H - 34}" font-family="Arial" font-size="7" fill="#333">UC: ${uc}</text>`,
+    `<text x="${W - 195}" y="${H - 22}" font-family="Arial" font-size="7" fill="#555">Gerado ${new Date().toLocaleDateString('pt-BR')}</text>`,
+  )
+
+  partes.push('</svg>')
+  return { conteudo: partes.join('\n'), mimeType: 'image/svg+xml', extensao: 'svg' }
+}
+
 // ═══════════════════ HELPERS ═══════════════════
 function csvEsc(s: string): string {
   if (!s) return ''

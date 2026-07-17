@@ -223,6 +223,68 @@ export async function uploadDocumentoHomologacaoAction(input: {
   return { sucesso: true, url, completos, geracaoDisparada }
 }
 
+// ═══════════════════ TOGGLE PADRÃO DE ENTRADA NOVO ═══════════════════
+
+/**
+ * Marca/desmarca que o projeto precisa de novo padrão de entrada CELESC.
+ * Quando true: adiciona etapa 'padrao_entrada_novo' (ordem 7) e permite
+ * gerar o SVG do diagrama do padrão.
+ * Quando false: remove a etapa se ainda estiver pendente.
+ */
+export async function togglePadraoNovoAction(input: {
+  homologacaoId: string
+  precisa: boolean
+  amperagem?: number
+  observacao?: string
+}) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabaseAdmin = createAdminClient()
+
+  await supabaseAdmin
+    .from('homologacoes')
+    .update({
+      precisa_padrao_novo: input.precisa,
+      padrao_novo_amperagem: input.amperagem ?? null,
+      padrao_novo_observacao: input.observacao ?? null,
+    })
+    .eq('id', input.homologacaoId)
+
+  if (input.precisa) {
+    // Adiciona etapa 7 se não existir
+    const { data: existente } = await supabaseAdmin
+      .from('homologacao_etapas')
+      .select('id')
+      .eq('homologacao_id', input.homologacaoId)
+      .eq('chave', 'padrao_entrada_novo')
+      .maybeSingle()
+
+    if (!existente) {
+      await supabaseAdmin.from('homologacao_etapas').insert({
+        homologacao_id: input.homologacaoId,
+        ordem: 7,
+        chave: 'padrao_entrada_novo',
+        nome_exibicao: 'Diagrama Padrão de Entrada Novo',
+        status: 'pendente',
+      })
+    }
+  } else {
+    // Remove etapa se ainda estiver pendente (não remove se já concluiu ou tem arquivo)
+    await supabaseAdmin
+      .from('homologacao_etapas')
+      .delete()
+      .eq('homologacao_id', input.homologacaoId)
+      .eq('chave', 'padrao_entrada_novo')
+      .eq('status', 'pendente')
+  }
+
+  revalidatePath(`/homologacoes/${input.homologacaoId}`)
+  return { sucesso: true }
+}
+
 // ═══════════════════ SÓCIOS (PJ) ═══════════════════
 
 export async function adicionarSocioAction(input: {
