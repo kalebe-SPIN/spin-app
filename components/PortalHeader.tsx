@@ -32,11 +32,13 @@ export async function PortalHeader() {
 
           {/* Nav links — dependem do modo */}
           <nav className="hidden md:flex items-center gap-1 ml-6">
+            <NavLink href="/dashboard" label="📊 Dashboard" />
             <NavLink href="/projetos" label="Projetos" />
             <NavLink href="/crm/pipeline" label="🎯 CRM" />
             <NavLink href="/agenda" label="📅 Agenda" />
             {modoAtivo === 'admin' && ehAdminReal && (
               <>
+                <NavLink href="/erp" label="🏢 ERP" />
                 <NavLink href="/admin" label="Admin" />
               </>
             )}
