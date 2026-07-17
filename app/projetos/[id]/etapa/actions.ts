@@ -81,27 +81,84 @@ async function disparoAutomacoes(
     })
   }
 
-  // Vendido → cria tarefas de contrato + boas-vindas
+  // Vendido → cria contrato + HOMOLOGAÇÃO REAL (não só tarefa)
   if (novoStatus === 'vendido' || novoStatus === 'aceito') {
     const amanha = new Date()
     amanha.setDate(amanha.getDate() + 1)
-    await supabase.from('agenda_tarefas').insert([
-      {
-        usuario_id: projeto.consultor_id || userId,
-        titulo: `Contrato ${cliente}`,
-        descricao: 'Emitir contrato de compra e venda + procuração. Coletar assinaturas.',
-        data_prazo: amanha.toISOString().slice(0, 10),
-        prioridade: 'urgente',
-        projeto_id: projeto.id,
-      },
-      {
-        usuario_id: projeto.consultor_id || userId,
-        titulo: `Iniciar homologação ${cliente}`,
-        descricao: 'Diagrama unifilar + layout + memorial descritivo. Enviar pra CELESC.',
-        data_prazo: amanha.toISOString().slice(0, 10),
-        prioridade: 'alta',
-        projeto_id: projeto.id,
-      },
-    ])
+
+    // 1. Tarefa de contrato (pro consultor)
+    await supabase.from('agenda_tarefas').insert({
+      usuario_id: projeto.consultor_id || userId,
+      titulo: `Contrato ${cliente}`,
+      descricao: 'Emitir contrato de compra e venda + procuração. Coletar assinaturas.',
+      data_prazo: amanha.toISOString().slice(0, 10),
+      prioridade: 'urgente',
+      projeto_id: projeto.id,
+    })
+
+    // 2. Cria a homologação REAL se ainda não existir
+    const { data: existente } = await supabase
+      .from('homologacoes')
+      .select('id')
+      .eq('projeto_id', projeto.id)
+      .maybeSingle()
+
+    if (!existente) {
+      // Busca admins pra atribuir (o primeiro admin ou eletrotecnico)
+      const { data: adminOuTecnico } = await supabase
+        .from('profiles')
+        .select('id')
+        .in('role', ['admin', 'eletrotecnico'])
+        .limit(1)
+        .maybeSingle()
+
+      const { data: novaHom } = await supabase
+        .from('homologacoes')
+        .insert({
+          projeto_id: projeto.id,
+          etapa_atual: 1,
+          status_geral: 'iniciado',
+          eletrotecnico_id: adminOuTecnico?.id || null,
+          observacoes: `Criada automaticamente ao fechar venda com ${cliente}`,
+        })
+        .select('id')
+        .single()
+
+      if (novaHom) {
+        // Cria as 6 etapas fixas
+        const etapas = [
+          { ordem: 1, chave: 'diagrama_unifilar',    nome: 'Diagrama Unifilar' },
+          { ordem: 2, chave: 'layout_instalacao',    nome: 'Layout de Instalação' },
+          { ordem: 3, chave: 'memorial_descritivo',  nome: 'Memorial Descritivo' },
+          { ordem: 4, chave: 'lista_kit',            nome: 'Lista do Kit FV' },
+          { ordem: 5, chave: 'lista_ca',             nome: 'Lista CA' },
+          { ordem: 6, chave: 'aprovacao_celesc',     nome: 'Aprovação CELESC' },
+        ]
+        await supabase.from('homologacao_etapas').insert(
+          etapas.map((e) => ({
+            homologacao_id: novaHom.id,
+            ordem: e.ordem,
+            chave: e.chave,
+            nome_exibicao: e.nome,
+            status: 'pendente',
+          })),
+        )
+
+        // 3. Notifica o admin/técnico com tarefa de alta prioridade
+        if (adminOuTecnico?.id) {
+          await supabase.from('agenda_tarefas').insert({
+            usuario_id: adminOuTecnico.id,
+            titulo: `🏗️ Homologação ${cliente} — revisar diagrama + layout`,
+            descricao:
+              `Venda fechada. Revise diagrama unifilar + layout + memorial, ` +
+              `depois envie pra CELESC. Projeto: ${projeto.id}`,
+            data_prazo: amanha.toISOString().slice(0, 10),
+            prioridade: 'urgente',
+            projeto_id: projeto.id,
+            criada_por_bianca: true,
+          })
+        }
+      }
+    }
   }
 }

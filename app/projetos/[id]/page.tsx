@@ -6,6 +6,7 @@ import { AgendaDoProjeto } from '@/components/AgendaDoProjeto'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
 import { MudarEtapaCard } from '@/components/MudarEtapaCard'
 import { ItensPropostaCard } from '@/components/ItensPropostaCard'
+import { AcoesRapidasCard } from '@/components/AcoesRapidasCard'
 import { getPassosRelevantes, INFO_PASSO, type TipoItem } from '@/lib/tipos-projeto'
 
 // Sempre buscar dados frescos do banco (sem cache stale após edição)
@@ -54,7 +55,14 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
 
   const temPermissaoReal = perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
   const podeGerarDiagramas = temPermissaoReal && modoAtivo === 'admin'
-  const clienteFechou = projeto.status === 'aceito'
+  const clienteFechou = projeto.status === 'aceito' || projeto.status === 'vendido'
+
+  // Homologação (se já criada — automação dispara ao fechar venda)
+  const { data: homologacao } = await supabase
+    .from('homologacoes')
+    .select('id, status_geral, etapa_atual')
+    .eq('projeto_id', projeto.id)
+    .maybeSingle()
 
   return (
     <main className="min-h-screen p-8 md:p-12">
@@ -81,6 +89,14 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             <TimelineProjeto status={projeto.status} />
           </div>
         </header>
+
+        {/* Ações rápidas contextuais ao status atual */}
+        <AcoesRapidasCard
+          projetoId={projeto.id}
+          status={projeto.status}
+          homologacaoId={homologacao?.id ?? null}
+          clienteNome={projeto.cliente_razao_social}
+        />
 
         {/* Card CRM — mudar etapa */}
         <div className="mb-6">
