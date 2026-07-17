@@ -280,9 +280,21 @@ INTERAÇÕES CASUAIS:
     })
   } catch (e: any) {
     console.error('[Bianca] Erro:', e)
+    const { traduzirErroAnthropic } = await import('@/lib/bianca/erros')
+    const traduzido = traduzirErroAnthropic(e)
+    // Status apropriado: 402 pra sem crédito, 429 rate limit, 401 chave, 503 servidor, 500 restante
+    const httpStatus =
+      traduzido.codigo === 'sem_creditos' ? 402 :
+      traduzido.codigo === 'rate_limit' ? 429 :
+      traduzido.codigo === 'chave_invalida' ? 401 :
+      traduzido.codigo === 'servidor' ? 503 : 500
     return NextResponse.json(
-      { error: e?.message || 'Erro na Bianca' },
-      { status: 500 },
+      {
+        error: traduzido.mensagem,
+        error_code: traduzido.codigo,
+        error_acao: traduzido.acao,
+      },
+      { status: httpStatus },
     )
   }
 }

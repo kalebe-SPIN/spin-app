@@ -103,7 +103,10 @@ export function BomDiaBotao() {
     try {
       const res = await fetch('/api/bianca/resumo-diario', { method: 'POST' })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Erro')
+      if (!res.ok) {
+        const acao = data.error_acao ? ` — ${data.error_acao}` : ''
+        throw new Error((data.error || 'Erro na Bianca') + acao)
+      }
 
       const texto = data.resumo as string
       setTextoAtual(texto)
@@ -206,7 +209,9 @@ export function BomDiaBotao() {
       )}
 
       {erro && (
-        <p className="text-[10px] text-coral">{erro}</p>
+        <div className="max-w-md text-[11px] text-coral bg-coral/10 border border-coral/30 rounded p-2 leading-relaxed">
+          ⚠️ {erro}
+        </div>
       )}
     </div>
   )

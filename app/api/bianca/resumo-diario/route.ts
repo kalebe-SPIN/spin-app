@@ -156,6 +156,16 @@ DADOS:`
     })
   } catch (e: any) {
     console.error('[Bianca resumo] Erro:', e)
-    return NextResponse.json({ error: e?.message || 'Erro no resumo' }, { status: 500 })
+    const { traduzirErroAnthropic } = await import('@/lib/bianca/erros')
+    const t = traduzirErroAnthropic(e)
+    const httpStatus =
+      t.codigo === 'sem_creditos' ? 402 :
+      t.codigo === 'rate_limit' ? 429 :
+      t.codigo === 'chave_invalida' ? 401 :
+      t.codigo === 'servidor' ? 503 : 500
+    return NextResponse.json(
+      { error: t.mensagem, error_code: t.codigo, error_acao: t.acao },
+      { status: httpStatus },
+    )
   }
 }

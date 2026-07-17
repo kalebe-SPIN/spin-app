@@ -104,7 +104,10 @@ export function BiancaChat({ historicoInicial }: { historicoInicial: Mensagem[] 
         body: JSON.stringify({ mensagem: texto, historico: historicoRecente }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Erro no servidor')
+      if (!res.ok) {
+        const acao = data.error_acao ? `\n\n👉 ${data.error_acao}` : ''
+        throw new Error((data.error || 'Erro no servidor') + acao)
+      }
       if (data.chatArquivado) {
         // Bianca criou item — limpa chat local (mensagens migraram pro evento/tarefa)
         setMensagens([{
@@ -118,7 +121,7 @@ export function BiancaChat({ historicoInicial }: { historicoInicial: Mensagem[] 
     } catch (e: any) {
       setMensagens((prev) => [
         ...prev,
-        { papel: 'bianca', conteudo: `Ops, deu erro: ${e.message}` },
+        { papel: 'bianca', conteudo: `⚠️ ${e.message}` },
       ])
     } finally {
       setEnviando(false)
