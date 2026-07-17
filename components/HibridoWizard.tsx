@@ -225,71 +225,126 @@ export function HibridoWizard({
 
   return (
     <div className="space-y-6">
-      {/* ══════════════ ETAPA 1: método ══════════════ */}
+      {/* ══════════════ ETAPA 1: método (agrupado por objetivo) ══════════════ */}
       <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
         <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-2">
-          1. Como você vai definir a demanda do cliente?
+          1. Como você vai coletar cada dado?
         </h2>
-        <p className="text-[10px] text-white/50 mb-3">
-          Cada método entrega grandezas diferentes. Consumo pode sempre vir da fatura CELESC.
+        <p className="text-[10px] text-white/50 mb-4">
+          Cada dado do cliente tem métodos próprios. Escolha o principal — vamos usá-lo
+          pro grupo correspondente e complementar o resto por fatura ou digitação.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {/* ATALHO: Kit direto no topo */}
+        <div className="mb-4">
           <MetodoBtn
-            atual={metodo} onChange={setMetodo} valor="memoria_massa"
-            emoji="📊" label="Memória de massa (12 meses)"
-            desc="Planilha CELESC com curva de carga (15min/1h). ✓ Consumo · ✓ Pico · ✗ Carga crítica"
+            atual={metodo} onChange={setMetodo} valor="kit_direto_espelho"
+            emoji="🪞" label="Já tenho tudo? Kit direto (espelho de proposta concorrente)"
+            desc="Você entra com Pcc (kWp) + Pca (kW) + Capacidade (kWh) e o sistema monta a composição WEG. Sem análise de demanda."
           />
-          <MetodoBtn
-            atual={metodo} onChange={setMetodo} valor="analise_rede_medido"
-            emoji="📡" label="Analisador — ramal principal"
-            desc="Equipamento de qualidade instalado no QGBT. ✓ Pico · ✗ Consumo · ✗ Carga crítica"
-          />
-          <MetodoBtn
-            atual={metodo} onChange={setMetodo} valor="analisador_segregado_cc"
-            emoji="🎯" label="Analisador — segregado na carga crítica"
-            desc="Analisador SÓ no ramal da carga crítica (segrega os disjuntores). ✓ Carga crítica medida real"
-          />
-          <MetodoBtn
-            atual={metodo} onChange={setMetodo} valor="levantamento_listagem"
-            emoji="📝" label="Levantamento por listagem"
-            desc="Somatório de cargas por equipamento. ✓ Carga crítica estimada (menos preciso)"
-          />
-          <div className="md:col-span-2">
-            <MetodoBtn
-              atual={metodo} onChange={setMetodo} valor="kit_direto_espelho"
-              emoji="🪞" label="Kit direto — espelho de proposta concorrente"
-              desc="Você já tem Pcc (kWp) + Pca (kW) + capacidade (kWh). Sistema monta a composição WEG direta, incluindo paralelismo se necessário. Sem análise de demanda."
-            />
-          </div>
         </div>
 
-        {/* Matriz de cobertura do método escolhido */}
-        <div className="mt-4 p-3 bg-noite/40 border border-white/10 rounded-lg">
-          <p className="text-[10px] uppercase font-bold text-white/60 mb-2">
-            🎯 O que o método <span className="text-sol">{metodo.replace(/_/g, ' ')}</span> te dá:
-          </p>
-          <div className="grid grid-cols-3 gap-2 mb-2">
-            <MatrizCard
-              icone="☀️" label="Consumo mensal (kWh)"
-              temMetodo={COBERTURA_METODO[metodo].consumo}
-              alternativa="Fatura CELESC"
-            />
-            <MatrizCard
-              icone="⚡" label="Pico de potência (kW)"
-              temMetodo={COBERTURA_METODO[metodo].pico}
-              alternativa="Fatura ou memória de massa"
-            />
-            <MatrizCard
-              icone="🔴" label="Carga crítica (kW)"
-              temMetodo={COBERTURA_METODO[metodo].cargaCritica}
-              alternativa="Listagem ou analisador segregado"
-            />
-          </div>
-          <p className="text-[10px] text-white/50 italic">
-            💡 {COBERTURA_METODO[metodo].complemento}
-          </p>
-        </div>
+        {metodo !== 'kit_direto_espelho' && (
+          <>
+            {/* ─── GRUPO A: CONSUMO (kWh) → módulos FV ─── */}
+            <div className="mb-4 p-3 bg-sol/5 border border-sol/20 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">☀️</span>
+                <div>
+                  <p className="text-xs uppercase font-bold text-sol">Grupo A · Consumo mensal (kWh)</p>
+                  <p className="text-[10px] text-white/50">→ Define quantidade de módulos FV (potência CC)</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <MetodoBtn
+                  atual={metodo} onChange={setMetodo} valor="memoria_massa"
+                  emoji="📊" label="Memória de massa (CELESC 12 meses)"
+                  desc="Planilha oficial CELESC com curva de carga (15min/1h). Também fornece pico de potência."
+                />
+                <div className="p-3 rounded-lg border bg-white/[0.02] border-white/10 flex flex-col justify-center opacity-80">
+                  <p className="text-lg">🧾</p>
+                  <p className="text-sm font-bold text-white/70">Fatura CELESC (sempre disponível)</p>
+                  <p className="text-[10px] text-white/40 mt-1">
+                    Consumo médio dos últimos 12 meses. Vem do Passo 2 do projeto (fatura já processada pela IA).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* ─── GRUPO B: POTÊNCIA (kW) → inversor ─── */}
+            <div className="mb-4 p-3 bg-weg-azul/5 border border-weg-azul/20 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">⚡</span>
+                <div>
+                  <p className="text-xs uppercase font-bold text-weg-azul">Grupo B · Pico de potência (kW)</p>
+                  <p className="text-[10px] text-white/50">→ Define capacidade do inversor CA</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <MetodoBtn
+                  atual={metodo} onChange={setMetodo} valor="memoria_massa"
+                  emoji="📊" label="Memória de massa (também dá pico)"
+                  desc="Se já escolheu no Grupo A, também extrai o pico horário/máximo."
+                />
+                <MetodoBtn
+                  atual={metodo} onChange={setMetodo} valor="analise_rede_medido"
+                  emoji="📡" label="Analisador — ramal principal (QGBT)"
+                  desc="Equipamento de qualidade instalado por 1-2 semanas. Mede pico real + reativo + harmônicos."
+                />
+              </div>
+            </div>
+
+            {/* ─── GRUPO C: CARGA CRÍTICA (kW) → baterias + backup ─── */}
+            <div className="mb-4 p-3 bg-coral/5 border border-coral/20 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">🔴</span>
+                <div>
+                  <p className="text-xs uppercase font-bold text-coral">Grupo C · Carga crítica (kW)</p>
+                  <p className="text-[10px] text-white/50">→ Define baterias + inversor híbrido pro backup</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <MetodoBtn
+                  atual={metodo} onChange={setMetodo} valor="analisador_segregado_cc"
+                  emoji="🎯" label="Analisador segregado (MAIS PRECISO)"
+                  desc="Analisador SÓ no ramal da carga crítica (disjuntores segregados). Mede EXATAMENTE o que vai pro backup."
+                />
+                <MetodoBtn
+                  atual={metodo} onChange={setMetodo} valor="levantamento_listagem"
+                  emoji="📝" label="Levantamento por listagem"
+                  desc="Somatório de equipamentos (catálogo com 80 itens). Estimativa — menos preciso que o analisador."
+                />
+              </div>
+            </div>
+
+            {/* Matriz de cobertura do método escolhido */}
+            <div className="mt-4 p-3 bg-noite/40 border border-white/10 rounded-lg">
+              <p className="text-[10px] uppercase font-bold text-white/60 mb-2">
+                🎯 O que o método <span className="text-sol">{metodo.replace(/_/g, ' ')}</span> te dá:
+              </p>
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                <MatrizCard
+                  icone="☀️" label="Consumo mensal (kWh)"
+                  temMetodo={COBERTURA_METODO[metodo].consumo}
+                  alternativa="Fatura CELESC"
+                />
+                <MatrizCard
+                  icone="⚡" label="Pico de potência (kW)"
+                  temMetodo={COBERTURA_METODO[metodo].pico}
+                  alternativa="Fatura ou memória de massa"
+                />
+                <MatrizCard
+                  icone="🔴" label="Carga crítica (kW)"
+                  temMetodo={COBERTURA_METODO[metodo].cargaCritica}
+                  alternativa="Listagem ou analisador segregado"
+                />
+              </div>
+              <p className="text-[10px] text-white/50 italic">
+                💡 {COBERTURA_METODO[metodo].complemento}
+              </p>
+            </div>
+          </>
+        )}
       </section>
 
       {/* ══════════════ ETAPA 2 (listagem): catálogo de equipamentos ══════════════ */}
