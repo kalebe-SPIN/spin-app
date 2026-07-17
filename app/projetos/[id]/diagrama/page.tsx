@@ -20,9 +20,9 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
 
   const temPermissaoReal = perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
   const { modo: modoAtivo } = await getModoVisualizacao()
-  const podeGerar = temPermissaoReal && modoAtivo === 'admin'
 
-  if (!podeGerar) {
+  // Bloqueio SÓ se realmente não tem permissão no banco
+  if (!temPermissaoReal) {
     return (
       <main className="min-h-screen p-8 md:p-12">
         <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
@@ -30,6 +30,9 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
           <p className="text-white/70 text-sm">
             O gerador de diagramas técnicos é restrito ao administrador ou usuários autorizados.
             Solicite acesso ao Kalebe.
+          </p>
+          <p className="text-[10px] text-white/40 mt-2 font-mono">
+            role: {perfil?.role || 'null'} · pode_gerar: {perfil?.pode_gerar_diagramas ? 'true' : 'false'}
           </p>
           <Link
             href={`/projetos/${params.id}`}
@@ -42,6 +45,9 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
     )
   }
 
+  // Admin em modo consultor — mostra aviso mas deixa passar (é ele mesmo)
+  const emModoConsultor = modoAtivo === 'consultor'
+
   const { data: projeto, error } = await supabase
     .from('projetos')
     .select('*')
@@ -50,8 +56,12 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
 
   if (error || !projeto) notFound()
 
-  // Gate: só clientes que fecharam negócio
-  if (projeto.status !== 'aceito') {
+  // Gate: só clientes que fecharam negócio (aceito, vendido, em_homologacao, em_execucao, instalado)
+  const statusPosVenda = ['aceito', 'vendido', 'em_homologacao', 'em_execucao', 'instalado', 'ativo_pos_venda']
+  const clienteFechou = statusPosVenda.includes(projeto.status)
+
+  // Admin pode gerar prévia mesmo antes de fechar (via modoPrevia no GeradorDiagramaClient)
+  if (!clienteFechou && !temPermissaoReal) {
     return (
       <main className="min-h-screen p-8 md:p-12">
         <div className="max-w-3xl mx-auto">
@@ -65,7 +75,7 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
               aceitar a proposta</strong>. Status atual: <span className="text-white font-mono">{projeto.status}</span>
             </p>
             <p className="text-white/50 text-xs">
-              Isso evita gerar documentação técnica para negócios que podem cair.
+              Admin pode gerar prévias antes disso — ative o modo Admin no header.
             </p>
           </div>
         </div>
