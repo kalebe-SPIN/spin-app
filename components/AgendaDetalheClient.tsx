@@ -3,6 +3,59 @@
 import { useState, useTransition } from 'react'
 import { registrarComunicacaoAction, adicionarComentarioAction } from '@/app/agenda/actions'
 
+/**
+ * Envia via Meta Cloud API. Retorna sucesso ou erro amigável.
+ * Bianca envia sozinha, sem clique manual.
+ */
+export function EnviarViaBiancaBtn({ comunicacaoId }: { comunicacaoId: string }) {
+  const [isPending, startTransition] = useTransition()
+  const [msg, setMsg] = useState<string | null>(null)
+
+  function enviar() {
+    if (!window.confirm('Enviar via WhatsApp automaticamente pela Bianca? (Meta Cloud API)')) return
+    setMsg(null)
+    startTransition(async () => {
+      try {
+        const res = await fetch('/api/whatsapp/enviar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ comunicacao_id: comunicacaoId }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          if (data.error_code === 'integration_missing') {
+            setMsg('⚠️ Meta Cloud API não configurada. Peça pro Kalebe configurar as env vars.')
+          } else if (data.error_code === 'fora_janela_24h') {
+            setMsg('⏱️ Cliente não respondeu em 24h — precisa mensagem template pré-aprovada.')
+          } else {
+            setMsg('❌ ' + (data.error || 'Falhou'))
+          }
+        } else {
+          setMsg('✓ Enviada! Aguardando delivery via webhook.')
+          setTimeout(() => window.location.reload(), 1500)
+        }
+      } catch (e: any) {
+        setMsg('❌ ' + e.message)
+      }
+    })
+  }
+
+  return (
+    <div className="inline-flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={enviar}
+        disabled={isPending}
+        className="inline-flex items-center gap-1 px-3 py-1 bg-verde text-noite text-xs font-bold rounded hover:bg-verde/90 disabled:opacity-40"
+      >
+        {isPending ? '⏳ Enviando...' : '🚀 Enviar via Bianca'}
+      </button>
+      {msg && <p className="text-[10px] text-white/60">{msg}</p>}
+    </div>
+  )
+}
+
+
 export function NovaComunicacaoForm({
   tarefaId, eventoId, projetoId, destinatarioSugerido,
 }: {

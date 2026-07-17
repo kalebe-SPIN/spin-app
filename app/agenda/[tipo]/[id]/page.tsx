@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { StatusTarefaBtn, StatusEventoBtn } from '@/components/AgendaControles'
-import { NovaComunicacaoForm, ComentarioForm } from '@/components/AgendaDetalheClient'
+import { NovaComunicacaoForm, ComentarioForm, EnviarViaBiancaBtn } from '@/components/AgendaDetalheClient'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -200,15 +200,33 @@ function ComunicacaoCard({ c }: { c: any }) {
         <p className="text-xs font-bold text-white/80 mb-1">{c.assunto}</p>
       )}
       <p className="text-xs text-white/70 whitespace-pre-wrap">{c.mensagem}</p>
-      {c.link_wa && c.status === 'sugerida' && (
-        <a
-          href={c.link_wa}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 mt-2 px-3 py-1 bg-verde text-noite text-xs font-bold rounded hover:bg-verde/90"
-        >
-          📱 Abrir no WhatsApp
-        </a>
+      {c.status === 'sugerida' && c.canal === 'whatsapp' && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {c.link_wa && (
+            <a
+              href={c.link_wa}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-3 py-1 bg-verde/20 border border-verde/40 text-verde text-xs font-bold rounded hover:bg-verde/30"
+            >
+              📱 Abrir manual
+            </a>
+          )}
+          <EnviarViaBiancaBtn comunicacaoId={c.id} />
+        </div>
+      )}
+      {c.meta_message_id && (
+        <p className="text-[9px] text-white/40 mt-2 font-mono">
+          Meta ID: {c.meta_message_id.slice(0, 30)}
+          {c.entregue_em && ` · entregue ${new Date(c.entregue_em).toLocaleString('pt-BR')}`}
+          {c.lida_em && ` · lida ${new Date(c.lida_em).toLocaleString('pt-BR')}`}
+        </p>
+      )}
+      {c.respondida_em && c.resposta_texto && (
+        <div className="mt-2 p-2 bg-verde/5 border border-verde/20 rounded">
+          <p className="text-[9px] uppercase text-verde/70">Resposta cliente · {new Date(c.respondida_em).toLocaleString('pt-BR')}</p>
+          <p className="text-xs text-white mt-1">{c.resposta_texto}</p>
+        </div>
       )}
     </div>
   )
