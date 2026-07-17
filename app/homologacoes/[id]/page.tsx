@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { atualizarEtapaHomologacaoAction } from '@/app/homologacoes/[id]/actions'
 import { EtapaHomologacaoClient } from '@/components/EtapaHomologacaoClient'
+import { ReprocessarArquivosBtn } from '@/components/ReprocessarArquivosBtn'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -99,9 +100,12 @@ export default async function HomologacaoDetalhePage({
 
         {/* Progresso visual das 6 etapas */}
         <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
-          <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-4">
-            📋 Etapas da homologação
-          </h2>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
+              📋 Etapas da homologação
+            </h2>
+            <ReprocessarArquivosBtn homologacaoId={params.id} />
+          </div>
 
           <div className="space-y-2">
             {(etapas || []).map((etapa: any) => (

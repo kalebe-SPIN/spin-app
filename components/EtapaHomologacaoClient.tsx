@@ -72,6 +72,43 @@ export function EtapaHomologacaoClient({
         </p>
       )}
 
+      {/* Arquivos gerados: PDF/MD/CSV/SVG */}
+      {(etapa.url_arquivo_pdf || etapa.url_arquivo_svg || etapa.url_arquivo_dwg) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {etapa.url_arquivo_pdf && (
+            <a
+              href={etapa.url_arquivo_pdf}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 bg-verde/20 border border-verde/40 rounded text-[10px] text-verde font-bold hover:bg-verde/30"
+              title="Baixar arquivo gerado"
+            >
+              📥 Baixar arquivo
+            </a>
+          )}
+          {etapa.url_arquivo_svg && !etapa.url_arquivo_pdf && (
+            <a
+              href={etapa.url_arquivo_svg}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 bg-weg-azul/20 border border-weg-azul/40 rounded text-[10px] text-weg-azul font-bold hover:bg-weg-azul/30"
+            >
+              🖼️ Baixar SVG
+            </a>
+          )}
+          {etapa.url_arquivo_dwg && (
+            <a
+              href={etapa.url_arquivo_dwg}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 border border-white/20 rounded text-[10px] text-white/80 font-bold hover:bg-white/20"
+            >
+              ✏️ Baixar DWG
+            </a>
+          )}
+        </div>
+      )}
+
       {etapa.observacoes && !obsAberto && (
         <p className="text-[11px] text-white/70 italic mt-2">💬 {etapa.observacoes}</p>
       )}

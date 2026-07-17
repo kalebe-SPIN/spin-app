@@ -144,6 +144,20 @@ async function disparoAutomacoes(
           })),
         )
 
+        // Dispara geração automática de arquivos em background (fire-and-forget)
+        // Memorial + Lista Kit + Lista CA + Layout = sem IA
+        // Diagrama Unifilar = com Claude (se chave Anthropic ok)
+        try {
+          const { createAdminClient } = await import('@/lib/supabase/admin')
+          const { gerarArquivosAutomaticos } = await import('@/lib/homologacao/gerar-arquivos')
+          const supabaseAdmin = createAdminClient()
+          // Não aguarda — segue no background
+          gerarArquivosAutomaticos(supabaseAdmin, projeto.id, novaHom.id)
+            .catch((err) => console.error('[gerarArquivos]', err))
+        } catch (err) {
+          console.error('[gerarArquivos setup]', err)
+        }
+
         // 3. Notifica o admin/técnico com tarefa de alta prioridade
         if (adminOuTecnico?.id) {
           await supabase.from('agenda_tarefas').insert({

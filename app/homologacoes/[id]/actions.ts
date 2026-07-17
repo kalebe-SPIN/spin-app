@@ -59,3 +59,35 @@ export async function atualizarEtapaHomologacaoAction(input: {
   if (etapa) revalidatePath(`/homologacoes/${etapa.homologacao_id}`)
   return { sucesso: true }
 }
+
+/**
+ * Reprocessa TODOS os arquivos automáticos da homologação. Útil quando:
+ *   - Um arquivo foi deletado por engano
+ *   - Dados do projeto mudaram (ex: alterou kit) e quer regerar tudo
+ *   - Chave Anthropic voltou a ter crédito e quer gerar o diagrama que faltou
+ */
+export async function reprocessarArquivosHomologacaoAction(homologacaoId: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  // Busca projeto vinculado
+  const { data: hom } = await supabase
+    .from('homologacoes')
+    .select('projeto_id')
+    .eq('id', homologacaoId)
+    .single()
+
+  if (!hom) return { erro: 'Homologação não encontrada' }
+
+  try {
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const { gerarArquivosAutomaticos } = await import('@/lib/homologacao/gerar-arquivos')
+    const supabaseAdmin = createAdminClient()
+    const resultados = await gerarArquivosAutomaticos(supabaseAdmin, hom.projeto_id, homologacaoId)
+    revalidatePath(`/homologacoes/${homologacaoId}`)
+    return { sucesso: true, resultados }
+  } catch (e: any) {
+    return { erro: e?.message || 'Erro ao reprocessar' }
+  }
+}
