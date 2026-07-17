@@ -34,19 +34,62 @@ export default async function HomologacaoDetalhePage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: hom, error } = await supabase
-    .from('homologacoes')
-    .select(`
-      *,
-      projeto:projetos(
-        id, codigo, cliente_razao_social, status, tipo_projeto, uc_geradora
-      ),
-      eletrotecnico:profiles!homologacoes_eletrotecnico_id_fkey(nome_completo)
-    `)
-    .eq('id', params.id)
-    .single()
+  // Query defensiva: tenta join completo; se coluna cliente_cpf_cnpj não existe,
+  // faz sem ela e busca separado
+  let homRaw: any = null
+  let err: any = null
+  try {
+    const res = await supabase
+      .from('homologacoes')
+      .select(`
+        *,
+        projeto:projetos(
+          id, codigo, cliente_razao_social, cliente_cpf_cnpj, status, tipo_projeto, uc_geradora
+        ),
+        eletrotecnico:profiles!homologacoes_eletrotecnico_id_fkey(nome_completo)
+      `)
+      .eq('id', params.id)
+      .maybeSingle()
+    homRaw = res.data
+    err = res.error
+  } catch (e: any) {
+    err = e
+  }
 
-  if (error || !hom) notFound()
+  // Fallback: se select com cliente_cpf_cnpj deu erro, tenta sem
+  if (!homRaw || err) {
+    const res2 = await supabase
+      .from('homologacoes')
+      .select(`
+        *,
+        projeto:projetos(
+          id, codigo, cliente_razao_social, status, tipo_projeto, uc_geradora
+        ),
+        eletrotecnico:profiles!homologacoes_eletrotecnico_id_fkey(nome_completo)
+      `)
+      .eq('id', params.id)
+      .maybeSingle()
+    homRaw = res2.data
+    err = res2.error
+  }
+
+  if (err || !homRaw) notFound()
+  const hom = homRaw
+
+  // Fallbacks defensivos — colunas podem não existir se migrations 039/040 não rodaram
+  const homSafe: any = {
+    ...hom,
+    foto_disjuntor_url: hom.foto_disjuntor_url ?? null,
+    foto_padrao_entrada_url: hom.foto_padrao_entrada_url ?? null,
+    foto_fachada_url: hom.foto_fachada_url ?? null,
+    pdf_fatura_instalacao_url: hom.pdf_fatura_instalacao_url ?? null,
+    cnh_cliente_url: hom.cnh_cliente_url ?? null,
+    procuracao_cliente_url: hom.procuracao_cliente_url ?? null,
+    cartao_cnpj_url: hom.cartao_cnpj_url ?? null,
+    contrato_social_url: hom.contrato_social_url ?? null,
+    docs_socios: Array.isArray(hom.docs_socios) ? hom.docs_socios : [],
+    documentos_completos_em: hom.documentos_completos_em ?? null,
+  }
 
   const { data: etapas } = await supabase
     .from('homologacao_etapas')
@@ -92,19 +135,19 @@ export default async function HomologacaoDetalhePage({
         {/* Documentos obrigatórios do consultor — checkpoint pra liberar geração */}
         <DocumentosObrigatoriosCard
           homologacaoId={params.id}
-          ehPJ={detectarPJ(hom.projeto?.cliente_cpf_cnpj)}
+          ehPJ={detectarPJ(homSafe.projeto?.cliente_cpf_cnpj)}
           urls={{
-            foto_disjuntor: hom.foto_disjuntor_url,
-            foto_padrao_entrada: hom.foto_padrao_entrada_url,
-            foto_fachada: hom.foto_fachada_url,
-            pdf_fatura_instalacao: hom.pdf_fatura_instalacao_url,
-            cnh_cliente: hom.cnh_cliente_url,
-            procuracao_cliente: hom.procuracao_cliente_url,
-            cartao_cnpj: hom.cartao_cnpj_url,
-            contrato_social: hom.contrato_social_url,
+            foto_disjuntor: homSafe.foto_disjuntor_url,
+            foto_padrao_entrada: homSafe.foto_padrao_entrada_url,
+            foto_fachada: homSafe.foto_fachada_url,
+            pdf_fatura_instalacao: homSafe.pdf_fatura_instalacao_url,
+            cnh_cliente: homSafe.cnh_cliente_url,
+            procuracao_cliente: homSafe.procuracao_cliente_url,
+            cartao_cnpj: homSafe.cartao_cnpj_url,
+            contrato_social: homSafe.contrato_social_url,
           }}
-          socios={hom.docs_socios || []}
-          documentosCompletosEm={hom.documentos_completos_em}
+          socios={homSafe.docs_socios}
+          documentosCompletosEm={homSafe.documentos_completos_em}
         />
 
         {/* Metadados */}
