@@ -26,17 +26,21 @@ export default async function CrmHubPage() {
     )
   }
 
-  const [
-    { count: clientes },
-    { count: leads },
-    { count: interacoes },
-    { count: comissoesPendentes },
-  ] = await Promise.all([
-    supabase.from('clientes').select('id', { count: 'exact', head: true }).eq('ativo', true),
-    supabase.from('leads').select('id', { count: 'exact', head: true }).not('status', 'in', '(ganho,perdido)'),
-    supabase.from('interacoes_cliente').select('id', { count: 'exact', head: true })
-      .gte('data_hora', new Date(Date.now() - 30 * 86400000).toISOString()),
-    supabase.from('comissoes').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
+  // Queries defensivas — algumas tabelas podem não existir ainda
+  async function safeCount(fn: () => any): Promise<number> {
+    try {
+      const r = await fn()
+      return r?.count || 0
+    } catch {
+      return 0
+    }
+  }
+  const [clientes, leads, interacoes, comissoesPendentes] = await Promise.all([
+    safeCount(() => supabase.from('clientes').select('id', { count: 'exact', head: true }).eq('ativo', true)),
+    safeCount(() => supabase.from('leads').select('id', { count: 'exact', head: true }).not('status', 'in', '(ganho,perdido)')),
+    safeCount(() => supabase.from('interacoes_cliente').select('id', { count: 'exact', head: true })
+      .gte('data_hora', new Date(Date.now() - 30 * 86400000).toISOString())),
+    safeCount(() => supabase.from('comissoes').select('id', { count: 'exact', head: true }).eq('status', 'pendente')),
   ])
 
   return (
