@@ -5,12 +5,14 @@ import { revalidatePath } from 'next/cache'
 
 // ═══════════════════ TIPOS DE DOCUMENTO OBRIGATÓRIO ═══════════════════
 export const TIPOS_DOC = {
+  // ─── INFRAESTRUTURA (sempre) ───
   foto_disjuntor: {
     coluna: 'foto_disjuntor_url',
     coluna_at: 'foto_disjuntor_enviado_em',
     label: 'Foto do disjuntor geral (padrão de entrada)',
     accept: 'image/*',
     emoji: '⚡',
+    grupo: 'infra' as const,
   },
   foto_padrao_entrada: {
     coluna: 'foto_padrao_entrada_url',
@@ -18,6 +20,7 @@ export const TIPOS_DOC = {
     label: 'Foto do padrão de entrada (completo)',
     accept: 'image/*',
     emoji: '🔌',
+    grupo: 'infra' as const,
   },
   foto_fachada: {
     coluna: 'foto_fachada_url',
@@ -25,6 +28,7 @@ export const TIPOS_DOC = {
     label: 'Foto da fachada do imóvel',
     accept: 'image/*',
     emoji: '🏠',
+    grupo: 'infra' as const,
   },
   pdf_fatura_instalacao: {
     coluna: 'pdf_fatura_instalacao_url',
@@ -32,10 +36,95 @@ export const TIPOS_DOC = {
     label: 'PDF da fatura da instalação (CELESC atual)',
     accept: 'application/pdf',
     emoji: '📄',
+    grupo: 'infra' as const,
+  },
+  // ─── CLIENTE (sempre PF ou PJ) ───
+  cnh_cliente: {
+    coluna: 'cnh_cliente_url',
+    coluna_at: 'cnh_cliente_enviado_em',
+    label: 'CNH ou RG do cliente/representante',
+    accept: 'application/pdf,image/*',
+    emoji: '🪪',
+    grupo: 'cliente' as const,
+  },
+  procuracao_cliente: {
+    coluna: 'procuracao_cliente_url',
+    coluna_at: 'procuracao_cliente_enviado_em',
+    label: 'Procuração assinada digitalmente pelo cliente',
+    accept: 'application/pdf',
+    emoji: '✍️',
+    grupo: 'cliente' as const,
+  },
+  // ─── PJ apenas ───
+  cartao_cnpj: {
+    coluna: 'cartao_cnpj_url',
+    coluna_at: 'cartao_cnpj_enviado_em',
+    label: 'Cartão CNPJ',
+    accept: 'application/pdf',
+    emoji: '🏢',
+    grupo: 'pj' as const,
+  },
+  contrato_social: {
+    coluna: 'contrato_social_url',
+    coluna_at: 'contrato_social_enviado_em',
+    label: 'Contrato Social (última alteração)',
+    accept: 'application/pdf',
+    emoji: '📜',
+    grupo: 'pj' as const,
   },
 } as const
 
 export type TipoDoc = keyof typeof TIPOS_DOC
+
+// ═══════════════════ SÓCIOS PJ ═══════════════════
+export type Socio = {
+  id: string
+  nome: string
+  cpf?: string
+  cnh_url?: string | null
+  procuracao_url?: string | null
+  cnh_enviado_em?: string | null
+  procuracao_enviado_em?: string | null
+  criado_em?: string
+}
+
+/**
+ * Detecta se cliente é PJ pelo tamanho do CNPJ (14 dígitos).
+ * PF = 11 dígitos (CPF).
+ */
+export function ehPJ(cpfCnpj: string | null | undefined): boolean {
+  if (!cpfCnpj) return false
+  return cpfCnpj.replace(/\D/g, '').length === 14
+}
+
+/**
+ * Verifica se todos documentos obrigatórios estão presentes.
+ * Considera:
+ *   - 4 uploads técnicos (sempre)
+ *   - CNH + procuração cliente (sempre)
+ *   - Se PJ: cartão CNPJ + contrato social + cada sócio com CNH + procuração
+ */
+export function todosDocumentosCompletos(hom: any): boolean {
+  const cpfCnpj = hom.projeto?.cliente_cpf_cnpj || hom.cliente_cpf_cnpj
+  const infraOk = !!(
+    hom.foto_disjuntor_url &&
+    hom.foto_padrao_entrada_url &&
+    hom.foto_fachada_url &&
+    hom.pdf_fatura_instalacao_url
+  )
+  const clienteOk = !!(hom.cnh_cliente_url && hom.procuracao_cliente_url)
+  if (!infraOk || !clienteOk) return false
+
+  if (ehPJ(cpfCnpj)) {
+    const pjOk = !!(hom.cartao_cnpj_url && hom.contrato_social_url)
+    if (!pjOk) return false
+    const socios: Socio[] = hom.docs_socios || []
+    // PJ precisa ter pelo menos 1 sócio, e todos com docs completos
+    if (socios.length === 0) return false
+    return socios.every((s) => s.cnh_url && s.procuracao_url)
+  }
+  return true
+}
 
 /**
  * Upload de um dos 4 documentos obrigatórios do consultor.
@@ -63,10 +152,17 @@ export async function uploadDocumentoHomologacaoAction(input: {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabaseAdmin = createAdminClient()
 
-  // Busca projeto vinculado pra montar caminho
+  // Busca projeto vinculado + todos os docs pra checar se completou
   const { data: hom } = await supabaseAdmin
     .from('homologacoes')
-    .select('projeto_id, foto_disjuntor_url, foto_padrao_entrada_url, foto_fachada_url, pdf_fatura_instalacao_url')
+    .select(`
+      projeto_id,
+      foto_disjuntor_url, foto_padrao_entrada_url, foto_fachada_url, pdf_fatura_instalacao_url,
+      cnh_cliente_url, procuracao_cliente_url,
+      cartao_cnpj_url, contrato_social_url,
+      docs_socios,
+      projeto:projetos(cliente_cpf_cnpj)
+    `)
     .eq('id', input.homologacaoId)
     .single()
 
@@ -100,14 +196,9 @@ export async function uploadDocumentoHomologacaoAction(input: {
 
   await supabaseAdmin.from('homologacoes').update(patch).eq('id', input.homologacaoId)
 
-  // Verifica se completou os 4 → dispara geração dos arquivos
+  // Verifica se completou TODOS os documentos → dispara geração
   const homAtualizada = { ...hom, [info.coluna]: url }
-  const completos = !!(
-    homAtualizada.foto_disjuntor_url &&
-    homAtualizada.foto_padrao_entrada_url &&
-    homAtualizada.foto_fachada_url &&
-    homAtualizada.pdf_fatura_instalacao_url
-  )
+  const completos = todosDocumentosCompletos(homAtualizada)
 
   let geracaoDisparada = false
   if (completos) {
@@ -130,6 +221,144 @@ export async function uploadDocumentoHomologacaoAction(input: {
   revalidatePath(`/homologacoes/${input.homologacaoId}`)
   return { sucesso: true, url, completos, geracaoDisparada }
 }
+
+// ═══════════════════ SÓCIOS (PJ) ═══════════════════
+
+export async function adicionarSocioAction(input: {
+  homologacaoId: string
+  nome: string
+  cpf?: string
+}) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  if (!input.nome.trim()) return { erro: 'Nome do sócio obrigatório' }
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabaseAdmin = createAdminClient()
+
+  const { data: hom } = await supabaseAdmin
+    .from('homologacoes')
+    .select('docs_socios')
+    .eq('id', input.homologacaoId)
+    .single()
+
+  if (!hom) return { erro: 'Homologação não encontrada' }
+
+  const socios: Socio[] = hom.docs_socios || []
+  const novoSocio: Socio = {
+    id: crypto.randomUUID(),
+    nome: input.nome.trim(),
+    cpf: input.cpf?.trim(),
+    cnh_url: null,
+    procuracao_url: null,
+    criado_em: new Date().toISOString(),
+  }
+
+  await supabaseAdmin
+    .from('homologacoes')
+    .update({
+      docs_socios: [...socios, novoSocio],
+      documentos_completos_em: null,  // bloqueia geração até novo sócio ter docs
+    })
+    .eq('id', input.homologacaoId)
+
+  revalidatePath(`/homologacoes/${input.homologacaoId}`)
+  return { sucesso: true, socio: novoSocio }
+}
+
+export async function removerSocioAction(input: {
+  homologacaoId: string
+  socioId: string
+}) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabaseAdmin = createAdminClient()
+
+  const { data: hom } = await supabaseAdmin
+    .from('homologacoes')
+    .select('docs_socios')
+    .eq('id', input.homologacaoId)
+    .single()
+
+  if (!hom) return { erro: 'Homologação não encontrada' }
+
+  const socios: Socio[] = hom.docs_socios || []
+  const novosSocios = socios.filter((s) => s.id !== input.socioId)
+
+  await supabaseAdmin
+    .from('homologacoes')
+    .update({ docs_socios: novosSocios })
+    .eq('id', input.homologacaoId)
+
+  revalidatePath(`/homologacoes/${input.homologacaoId}`)
+  return { sucesso: true }
+}
+
+export async function uploadDocumentoSocioAction(input: {
+  homologacaoId: string
+  socioId: string
+  campo: 'cnh_url' | 'procuracao_url'
+  arquivoBase64: string
+}) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const match = input.arquivoBase64.match(/^data:([^;]+);base64,(.+)$/)
+  if (!match) return { erro: 'Arquivo inválido' }
+  const mimeType = match[1]
+  const buffer = Buffer.from(match[2], 'base64')
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabaseAdmin = createAdminClient()
+
+  const { data: hom } = await supabaseAdmin
+    .from('homologacoes')
+    .select('projeto_id, docs_socios')
+    .eq('id', input.homologacaoId)
+    .single()
+
+  if (!hom) return { erro: 'Homologação não encontrada' }
+
+  const ext = mimeType === 'application/pdf' ? 'pdf'
+    : mimeType.startsWith('image/') ? mimeType.split('/')[1] : 'bin'
+  const nomeArquivo = input.campo === 'cnh_url' ? 'cnh' : 'procuracao'
+  const caminho = `${hom.projeto_id}/${input.homologacaoId}/socios/${input.socioId}-${nomeArquivo}.${ext}`
+
+  const { error: upErr } = await supabaseAdmin.storage
+    .from('homologacao-consultor')
+    .upload(caminho, buffer, { contentType: mimeType, upsert: true })
+
+  if (upErr) return { erro: upErr.message }
+
+  const { data: signed } = await supabaseAdmin.storage
+    .from('homologacao-consultor')
+    .createSignedUrl(caminho, 60 * 60 * 24 * 365)
+
+  const url = signed?.signedUrl || ''
+  const timestampCampo = input.campo === 'cnh_url' ? 'cnh_enviado_em' : 'procuracao_enviado_em'
+
+  const socios: Socio[] = hom.docs_socios || []
+  const novosSocios = socios.map((s) =>
+    s.id === input.socioId
+      ? { ...s, [input.campo]: url, [timestampCampo]: new Date().toISOString() }
+      : s
+  )
+
+  await supabaseAdmin
+    .from('homologacoes')
+    .update({ docs_socios: novosSocios })
+    .eq('id', input.homologacaoId)
+
+  revalidatePath(`/homologacoes/${input.homologacaoId}`)
+  return { sucesso: true, url }
+}
+
+// ═══════════════════ REMOVER DOCUMENTO ═══════════════════
 
 export async function removerDocumentoHomologacaoAction(input: {
   homologacaoId: string
@@ -227,22 +456,23 @@ export async function reprocessarArquivosHomologacaoAction(homologacaoId: string
   // Busca projeto vinculado + status dos uploads
   const { data: hom } = await supabase
     .from('homologacoes')
-    .select('projeto_id, foto_disjuntor_url, foto_padrao_entrada_url, foto_fachada_url, pdf_fatura_instalacao_url')
+    .select(`
+      projeto_id,
+      foto_disjuntor_url, foto_padrao_entrada_url, foto_fachada_url, pdf_fatura_instalacao_url,
+      cnh_cliente_url, procuracao_cliente_url,
+      cartao_cnpj_url, contrato_social_url,
+      docs_socios,
+      projeto:projetos(cliente_cpf_cnpj)
+    `)
     .eq('id', homologacaoId)
     .single()
 
   if (!hom) return { erro: 'Homologação não encontrada' }
 
-  // Verifica se os 4 uploads obrigatórios foram feitos
-  const faltando: string[] = []
-  if (!hom.foto_disjuntor_url) faltando.push('foto do disjuntor')
-  if (!hom.foto_padrao_entrada_url) faltando.push('foto do padrão de entrada')
-  if (!hom.foto_fachada_url) faltando.push('foto da fachada')
-  if (!hom.pdf_fatura_instalacao_url) faltando.push('PDF da fatura')
-
-  if (faltando.length > 0) {
+  if (!todosDocumentosCompletos(hom)) {
     return {
-      erro: `Envie primeiro os documentos obrigatórios do consultor: ${faltando.join(', ')}.`,
+      erro: 'Envie todos os documentos obrigatórios antes de gerar os arquivos (infraestrutura + CNH/procuração do cliente' +
+        (ehPJ((hom as any).projeto?.cliente_cpf_cnpj) ? ' + CNPJ + contrato + sócios' : '') + ').',
     }
   }
 

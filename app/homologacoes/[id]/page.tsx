@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { atualizarEtapaHomologacaoAction } from '@/app/homologacoes/[id]/actions'
+import { atualizarEtapaHomologacaoAction, ehPJ as detectarPJ } from '@/app/homologacoes/[id]/actions'
 import { EtapaHomologacaoClient } from '@/components/EtapaHomologacaoClient'
 import { ReprocessarArquivosBtn } from '@/components/ReprocessarArquivosBtn'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
@@ -92,12 +92,18 @@ export default async function HomologacaoDetalhePage({
         {/* Documentos obrigatórios do consultor — checkpoint pra liberar geração */}
         <DocumentosObrigatoriosCard
           homologacaoId={params.id}
+          ehPJ={detectarPJ(hom.projeto?.cliente_cpf_cnpj)}
           urls={{
             foto_disjuntor: hom.foto_disjuntor_url,
             foto_padrao_entrada: hom.foto_padrao_entrada_url,
             foto_fachada: hom.foto_fachada_url,
             pdf_fatura_instalacao: hom.pdf_fatura_instalacao_url,
+            cnh_cliente: hom.cnh_cliente_url,
+            procuracao_cliente: hom.procuracao_cliente_url,
+            cartao_cnpj: hom.cartao_cnpj_url,
+            contrato_social: hom.contrato_social_url,
           }}
+          socios={hom.docs_socios || []}
           documentosCompletosEm={hom.documentos_completos_em}
         />
 
