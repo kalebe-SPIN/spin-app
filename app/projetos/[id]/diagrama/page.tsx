@@ -12,14 +12,24 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: perfil } = await supabase
-    .from('profiles')
-    .select('role, pode_gerar_diagramas, nome')
-    .eq('id', user.id)
-    .single()
+  // Usa MESMA fonte que o header (getModoVisualizacao já lê profiles + pode_gerar)
+  const { modo: modoAtivo, ehAdminReal, perfil } = await getModoVisualizacao()
 
-  const temPermissaoReal = perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
-  const { modo: modoAtivo } = await getModoVisualizacao()
+  // Fallback: se getModoVisualizacao não achou, tenta ler direto de profiles
+  let perfilDireto: any = perfil
+  if (!perfilDireto) {
+    const res = await supabase
+      .from('profiles')
+      .select('role, pode_gerar_diagramas, nome_completo')
+      .eq('id', user.id)
+      .maybeSingle()
+    perfilDireto = res.data
+  }
+
+  const temPermissaoReal =
+    ehAdminReal ||
+    perfilDireto?.role === 'admin' ||
+    perfilDireto?.pode_gerar_diagramas === true
 
   // Bloqueio SÓ se realmente não tem permissão no banco
   if (!temPermissaoReal) {
@@ -32,7 +42,7 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
             Solicite acesso ao Kalebe.
           </p>
           <p className="text-[10px] text-white/40 mt-2 font-mono">
-            role: {perfil?.role || 'null'} · pode_gerar: {perfil?.pode_gerar_diagramas ? 'true' : 'false'}
+            role: {perfilDireto?.role || 'null'} · pode_gerar: {perfilDireto?.pode_gerar_diagramas ? 'true' : 'false'} · ehAdminReal: {String(ehAdminReal)} · user_id: {user.id.slice(0, 8)}...
           </p>
           <Link
             href={`/projetos/${params.id}`}
