@@ -178,73 +178,142 @@ export function gerarListaCaCsv(projeto: any): { conteudo: string; mimeType: str
   return { conteudo: linhas.join('\n'), mimeType: 'text/csv', extensao: 'csv' }
 }
 
-// ═══════════════════ LAYOUT INSTALAÇÃO (SVG simples) ═══════════════════
+// ═══════════════════ LAYOUT INSTALAÇÃO (SVG A4 — planta + elevação) ═══════════════════
 export function gerarLayoutSvg(projeto: any): { conteudo: string; mimeType: string; extensao: string } {
   const secoes = projeto.telhado_secoes || []
   const qtdPlacas = projeto.kit_selecionado?.qtd_placas || 0
+  const moduloModelo = projeto.kit_selecionado?.placa_modelo || 'WEG 550Wp Monocristalino'
+  const potCC = projeto.kit_selecionado?.potencia_cc_kwp || (qtdPlacas * 0.55).toFixed(2)
+  const inversorModelo = projeto.kit_selecionado?.inversor_modelo || '—'
+  const inversorQtd = projeto.kit_selecionado?.qtd_inversores || 1
 
-  // SVG A4 paisagem
-  const W = 1190, H = 842
+  const W = 1190, H = 842  // A4 paisagem
   const partes: string[] = [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`,
     `<rect x="0" y="0" width="${W}" height="${H}" fill="#FFFFFF"/>`,
-    `<text x="${W / 2}" y="50" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold" fill="#000">`,
-    `LAYOUT DE INSTALAÇÃO — ${(projeto.cliente_razao_social || 'Cliente').substring(0, 50)}</text>`,
-    `<text x="${W / 2}" y="75" text-anchor="middle" font-family="Arial" font-size="14" fill="#555">${projeto.codigo || ''} · ${qtdPlacas} módulos ${projeto.kit_selecionado?.placa_modelo || 'FV 550Wp'}</text>`,
+    // Cabeçalho
+    `<text x="${W / 2}" y="35" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold" fill="#000">LAYOUT DE INSTALAÇÃO FOTOVOLTAICA</text>`,
+    `<text x="${W / 2}" y="55" text-anchor="middle" font-family="Arial" font-size="13" fill="#333">${(projeto.cliente_razao_social || 'Cliente').substring(0, 60)} · ${projeto.codigo || ''}</text>`,
+    `<text x="${W / 2}" y="72" text-anchor="middle" font-family="Arial" font-size="11" fill="#555">${qtdPlacas} módulos ${moduloModelo} · ${potCC} kWp CC · ${inversorQtd}× ${inversorModelo}</text>`,
+    // Linhas divisórias
+    `<line x1="30" y1="90" x2="${W - 30}" y2="90" stroke="#000" stroke-width="1"/>`,
+    `<text x="45" y="105" font-family="Arial" font-size="11" font-weight="bold" fill="#000">A) VISTA EM PLANTA (topo)</text>`,
   ]
 
-  // Desenha cada seção do telhado
-  const marginX = 100, marginY = 130
+  // ─── VISTA EM PLANTA (metade superior) ───
+  const plantaY = 115
+  const plantaH = 400
+  const marginX = 60
   const areaW = W - marginX * 2
-  const areaH = H - marginY - 150
 
   if (secoes.length === 0) {
     partes.push(
-      `<rect x="${marginX}" y="${marginY}" width="${areaW}" height="${areaH}" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="10 5"/>`,
-      `<text x="${W / 2}" y="${marginY + areaH / 2}" text-anchor="middle" font-family="Arial" font-size="18" fill="#888">Sem informação de telhado</text>`,
+      `<rect x="${marginX}" y="${plantaY}" width="${areaW}" height="${plantaH}" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="10 5"/>`,
+      `<text x="${W / 2}" y="${plantaY + plantaH / 2}" text-anchor="middle" font-family="Arial" font-size="14" fill="#888">Sem seções de telhado cadastradas</text>`,
     )
   } else {
-    // Divide horizontal por seção
     const larguraSecao = areaW / secoes.length
     secoes.forEach((s: any, i: number) => {
-      const x = marginX + i * larguraSecao + 10
-      const w = larguraSecao - 20
+      const x = marginX + i * larguraSecao + 8
+      const w = larguraSecao - 16
       const numPlacas = s.qtd_placas || Math.floor(qtdPlacas / secoes.length)
       partes.push(
-        `<rect x="${x}" y="${marginY}" width="${w}" height="${areaH}" fill="#E8F4FD" stroke="#000" stroke-width="2"/>`,
-        `<text x="${x + w / 2}" y="${marginY + 25}" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="#000">Seção ${i + 1}</text>`,
-        `<text x="${x + w / 2}" y="${marginY + 45}" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">${s.tipo_cobertura || 'cobertura'} · ${s.area_m2 || '—'}m²</text>`,
-        `<text x="${x + w / 2}" y="${marginY + 62}" text-anchor="middle" font-family="Arial" font-size="11" fill="#333">Orient. ${s.orientacao || '—'} · Incl. ${s.inclinacao_graus || '—'}°</text>`,
+        // Contorno da seção
+        `<rect x="${x}" y="${plantaY}" width="${w}" height="${plantaH}" fill="#F0F7FC" stroke="#000" stroke-width="1.5"/>`,
+        // Cabeçalho da seção
+        `<text x="${x + w / 2}" y="${plantaY + 22}" text-anchor="middle" font-family="Arial" font-size="13" font-weight="bold" fill="#000">Seção ${i + 1} — ${s.tipo_cobertura || 'cobertura'}</text>`,
+        `<text x="${x + w / 2}" y="${plantaY + 40}" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">Área: ${s.area_m2 || '—'}m² · Orient. ${s.orientacao || '—'} · Incl. ${s.inclinacao_graus || '—'}°</text>`,
       )
-      // Desenha placas como grid dentro da seção
-      const cols = Math.min(8, Math.ceil(Math.sqrt(numPlacas)))
+      // Grid de placas
+      const cols = Math.min(10, Math.ceil(Math.sqrt(numPlacas * 1.6)))
       const rows = Math.ceil(numPlacas / cols)
-      const gridStartY = marginY + 90
-      const gridH = areaH - 120
+      const gridStartY = plantaY + 60
+      const gridH = plantaH - 100
       const placaW = (w - 20) / cols
-      const placaH = Math.min(30, (gridH - 20) / rows)
+      const placaH = Math.min(28, (gridH - 20) / rows)
+      const gridStartX = x + 10 + ((w - 20 - cols * placaW) / 2)
       for (let p = 0; p < numPlacas; p++) {
         const col = p % cols
         const row = Math.floor(p / cols)
-        const px = x + 10 + col * placaW
+        const px = gridStartX + col * placaW
         const py = gridStartY + row * (placaH + 2)
         partes.push(
-          `<rect x="${px}" y="${py}" width="${placaW - 4}" height="${placaH}" fill="#1e40af" stroke="#000" stroke-width="0.5"/>`,
+          `<rect x="${px}" y="${py}" width="${placaW - 2}" height="${placaH}" fill="#1e40af" stroke="#0a1a5c" stroke-width="0.5"/>`,
+          // Linha central do módulo (símbolo)
+          `<line x1="${px + placaW / 2 - 1}" y1="${py + 3}" x2="${px + placaW / 2 - 1}" y2="${py + placaH - 3}" stroke="#fff" stroke-width="0.5"/>`,
         )
       }
       partes.push(
-        `<text x="${x + w / 2}" y="${marginY + areaH - 15}" text-anchor="middle" font-family="Arial" font-size="12" fill="#000">${numPlacas} placas</text>`,
+        `<text x="${x + w / 2}" y="${plantaY + plantaH - 12}" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#000">${numPlacas} módulos</text>`,
       )
     })
   }
 
-  // Legenda
+  // ─── VISTA EM ELEVAÇÃO (metade inferior) ───
   partes.push(
-    `<g transform="translate(${marginX}, ${H - 100})">`,
-    `<rect x="0" y="0" width="20" height="15" fill="#1e40af" stroke="#000"/>`,
-    `<text x="30" y="12" font-family="Arial" font-size="12" fill="#000">Módulo FV ${projeto.kit_selecionado?.placa_modelo || 'WEG 550Wp'}</text>`,
-    `<text x="0" y="35" font-family="Arial" font-size="10" fill="#555">Gerado automaticamente em ${new Date().toLocaleDateString('pt-BR')} — Spin Solar</text>`,
+    `<line x1="30" y1="${plantaY + plantaH + 20}" x2="${W - 30}" y2="${plantaY + plantaH + 20}" stroke="#000" stroke-width="1"/>`,
+    `<text x="45" y="${plantaY + plantaH + 40}" font-family="Arial" font-size="11" font-weight="bold" fill="#000">B) VISTA EM ELEVAÇÃO (lateral)</text>`,
+  )
+
+  const elevY = plantaY + plantaH + 60
+  const elevH = 150
+  // Fundação
+  partes.push(
+    `<rect x="${marginX}" y="${elevY + elevH - 8}" width="${areaW}" height="8" fill="#666"/>`,
+    `<text x="${marginX + areaW / 2}" y="${elevY + elevH + 20}" text-anchor="middle" font-family="Arial" font-size="9" fill="#555">Nível do solo / laje</text>`,
+  )
+
+  // Casa com telhado + módulos em elevação
+  const casaX = marginX + 100
+  const casaW = 400
+  const casaH = 100
+  const telhadoAng = 20
+  const telhadoTop = elevY + elevH - 8 - casaH
+  const cumeeiraY = telhadoTop - 60
+
+  partes.push(
+    // Casa (paredes)
+    `<rect x="${casaX}" y="${telhadoTop}" width="${casaW}" height="${casaH}" fill="#F5EDD5" stroke="#000" stroke-width="1.5"/>`,
+    // Telhado (2 águas)
+    `<polygon points="${casaX - 20},${telhadoTop} ${casaX + casaW / 2},${cumeeiraY} ${casaX + casaW + 20},${telhadoTop}" fill="#A0522D" stroke="#000" stroke-width="1.5"/>`,
+    // Módulos FV sobre telhado (lado esquerdo)
+    `<polygon points="${casaX - 10},${telhadoTop - 4} ${casaX + casaW / 2 - 20},${cumeeiraY + 8} ${casaX + casaW / 2 - 15},${cumeeiraY + 15} ${casaX - 5},${telhadoTop + 3}" fill="#1e40af" stroke="#0a1a5c" stroke-width="1"/>`,
+    // Anotação
+    `<text x="${casaX - 30}" y="${telhadoTop - 20}" font-family="Arial" font-size="10" fill="#000">Módulos FV</text>`,
+    `<line x1="${casaX + 40}" y1="${telhadoTop - 15}" x2="${casaX + 60}" y2="${telhadoTop + 5}" stroke="#000" stroke-width="0.5"/>`,
+    // Cotas
+    `<text x="${casaX + casaW / 2}" y="${cumeeiraY - 8}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">${secoes[0]?.inclinacao_graus || '20'}°</text>`,
+    // Inversor lateral
+    `<rect x="${casaX + casaW + 40}" y="${elevY + elevH - 55}" width="30" height="40" fill="#22c55e" stroke="#000" stroke-width="1"/>`,
+    `<text x="${casaX + casaW + 55}" y="${elevY + elevH - 32}" text-anchor="middle" font-family="Arial" font-size="8" fill="#fff" font-weight="bold">INV</text>`,
+    `<text x="${casaX + casaW + 55}" y="${elevY + elevH + 5}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Inversor</text>`,
+    // Cabos até QGBT
+    `<line x1="${casaX + casaW + 40}" y1="${elevY + elevH - 20}" x2="${casaX + casaW + 100}" y2="${elevY + elevH - 20}" stroke="#000" stroke-width="1" stroke-dasharray="3 2"/>`,
+    // QGBT
+    `<rect x="${casaX + casaW + 100}" y="${elevY + elevH - 45}" width="35" height="30" fill="#eee" stroke="#000" stroke-width="1"/>`,
+    `<text x="${casaX + casaW + 117}" y="${elevY + elevH - 28}" text-anchor="middle" font-family="Arial" font-size="8" fill="#000" font-weight="bold">QGBT</text>`,
+  )
+
+  // Legenda + selo
+  const legendY = H - 90
+  partes.push(
+    `<line x1="30" y1="${legendY - 10}" x2="${W - 30}" y2="${legendY - 10}" stroke="#000" stroke-width="1"/>`,
+    // Legenda
+    `<g transform="translate(45, ${legendY})">`,
+    `<rect x="0" y="0" width="18" height="12" fill="#1e40af" stroke="#000" stroke-width="0.5"/>`,
+    `<text x="24" y="10" font-family="Arial" font-size="10" fill="#000">Módulo FV ${moduloModelo}</text>`,
+    `<rect x="180" y="0" width="18" height="12" fill="#22c55e" stroke="#000" stroke-width="0.5"/>`,
+    `<text x="204" y="10" font-family="Arial" font-size="10" fill="#000">Inversor ${inversorModelo}</text>`,
+    `<rect x="380" y="0" width="18" height="12" fill="#eee" stroke="#000" stroke-width="0.5"/>`,
+    `<text x="404" y="10" font-family="Arial" font-size="10" fill="#000">Quadro Elétrico (QGBT)</text>`,
     `</g>`,
+    // Selo
+    `<rect x="${W - 260}" y="${legendY - 15}" width="220" height="70" fill="none" stroke="#000" stroke-width="1"/>`,
+    `<text x="${W - 250}" y="${legendY + 2}" font-family="Arial" font-size="9" font-weight="bold" fill="#000">SPIN SOLAR — Layout de Instalação</text>`,
+    `<text x="${W - 250}" y="${legendY + 16}" font-family="Arial" font-size="8" fill="#333">Cliente: ${(projeto.cliente_razao_social || '').substring(0, 30)}</text>`,
+    `<text x="${W - 250}" y="${legendY + 28}" font-family="Arial" font-size="8" fill="#333">Projeto: ${projeto.codigo || ''}</text>`,
+    `<text x="${W - 250}" y="${legendY + 40}" font-family="Arial" font-size="8" fill="#333">UC: ${projeto.uc_geradora || '—'}</text>`,
+    `<text x="${W - 250}" y="${legendY + 52}" font-family="Arial" font-size="8" fill="#555">Gerado ${new Date().toLocaleDateString('pt-BR')}</text>`,
   )
 
   partes.push('</svg>')

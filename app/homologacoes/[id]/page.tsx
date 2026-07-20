@@ -6,6 +6,8 @@ import { ReprocessarArquivosBtn } from '@/components/ReprocessarArquivosBtn'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
 import { PadraoNovoToggle } from '@/components/PadraoNovoToggle'
+import { GerarTodosDiagramasBtn } from '@/components/GerarTodosDiagramasBtn'
+import { todosDocumentosCompletos } from '@/lib/homologacao/utils'
 
 /** Detecta PJ pelo CNPJ (14 dígitos). Local pra não depender do import da action. */
 function detectarPJ(cpfCnpj: string | null | undefined): boolean {
@@ -176,6 +178,27 @@ export default async function HomologacaoDetalhePage({
           <Campo label="Responsável técnico" valor={hom.eletrotecnico?.nome_completo || '—'} />
           <Campo label="Etapa atual" valor={`${hom.etapa_atual}/${totalEtapas}`} />
         </section>
+
+        {/* Botão destacado: gerar todos os arquivos */}
+        <ErrorBoundaryClient nome="Botão gerar tudo">
+          <section className="p-4 bg-gradient-to-r from-sol/10 to-verde/10 border border-sol/30 rounded-xl">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
+                  🚀 Ação principal
+                </h2>
+                <p className="text-[10px] text-white/60 mt-0.5">
+                  Após enviar todos os documentos, clique aqui pra sistema gerar automaticamente.
+                </p>
+              </div>
+            </div>
+            <GerarTodosDiagramasBtn
+              homologacaoId={params.id}
+              projetoId={homSafe.projeto?.id}
+              documentosOk={todosDocumentosCompletos(homSafe)}
+            />
+          </section>
+        </ErrorBoundaryClient>
 
         {/* Toggle: precisa gerar novo padrão de entrada? */}
         <ErrorBoundaryClient nome="Padrão de entrada novo">

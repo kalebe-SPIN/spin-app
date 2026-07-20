@@ -176,6 +176,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ erro: updErr.message }, { status: 500 })
     }
 
+    // 8. Bidirecional: se este projeto tem homologação, atualiza a etapa
+    // 'diagrama_unifilar' com a URL do SVG gerado
+    try {
+      const { data: hom } = await supabaseAdmin
+        .from('homologacoes')
+        .select('id')
+        .eq('projeto_id', projeto_id)
+        .maybeSingle()
+
+      if (hom) {
+        await supabaseAdmin
+          .from('homologacao_etapas')
+          .update({
+            status: 'em_andamento',
+            iniciado_em: new Date().toISOString(),
+            url_arquivo_svg: publicUrl,
+            observacoes: '✓ Unifilar gerado via IA (Claude). Revise antes de marcar concluído.',
+          })
+          .eq('homologacao_id', hom.id)
+          .eq('chave', 'diagrama_unifilar')
+      }
+    } catch (linkErr) {
+      console.error('[gerar-diagrama] falha ao vincular à homologação:', linkErr)
+      // Não bloqueia — o diagrama já foi gerado
+    }
+
     return NextResponse.json({
       sucesso: true,
       url_svg: publicUrl,
