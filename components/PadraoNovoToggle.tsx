@@ -20,10 +20,18 @@ export function PadraoNovoToggle({
   homologacaoId, precisaAtual, amperagemAtual, observacaoAtual,
   grupoTarifaAtual, tensaoAtual,
 }: Props) {
-  const [precisa, setPrecisa] = useState(precisaAtual)
-  const [grupo, setGrupo] = useState<'A' | 'B'>(grupoTarifaAtual || 'B')
-  const [amperagem, setAmperagem] = useState<number>(amperagemAtual || 63)
-  const [tensao, setTensao] = useState<number>(tensaoAtual || 13800)
+  // Sanitiza props com defaults robustos (blindagem extra)
+  const grupoInicial: 'A' | 'B' =
+    grupoTarifaAtual === 'A' || grupoTarifaAtual === 'B' ? grupoTarifaAtual : 'B'
+  const amperagemInicial = typeof amperagemAtual === 'number' && amperagemAtual > 0
+    ? amperagemAtual : 63
+  const tensaoInicial = typeof tensaoAtual === 'number' && tensaoAtual > 0
+    ? tensaoAtual : 13800
+
+  const [precisa, setPrecisa] = useState(!!precisaAtual)
+  const [grupo, setGrupo] = useState<'A' | 'B'>(grupoInicial)
+  const [amperagem, setAmperagem] = useState<number>(amperagemInicial)
+  const [tensao, setTensao] = useState<number>(tensaoInicial)
   const [obs, setObs] = useState(observacaoAtual || '')
   const [isPending, startTransition] = useTransition()
   const [msg, setMsg] = useState<string | null>(null)
