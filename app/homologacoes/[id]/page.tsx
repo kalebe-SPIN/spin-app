@@ -91,19 +91,36 @@ export default async function HomologacaoDetalhePage({
     eletrotecnico: Array.isArray(homRaw.eletrotecnico) ? homRaw.eletrotecnico[0] : homRaw.eletrotecnico,
   }
 
-  // Fallbacks defensivos — colunas podem não existir se migrations 039/040 não rodaram
+  // Fallbacks defensivos — TODAS as colunas das migrations 039-043
   const homSafe: any = {
     ...hom,
+    // 039: uploads infraestrutura
     foto_disjuntor_url: hom.foto_disjuntor_url ?? null,
     foto_padrao_entrada_url: hom.foto_padrao_entrada_url ?? null,
     foto_fachada_url: hom.foto_fachada_url ?? null,
     pdf_fatura_instalacao_url: hom.pdf_fatura_instalacao_url ?? null,
+    documentos_completos_em: hom.documentos_completos_em ?? null,
+    // 040: docs PF/PJ + sócios
     cnh_cliente_url: hom.cnh_cliente_url ?? null,
     procuracao_cliente_url: hom.procuracao_cliente_url ?? null,
     cartao_cnpj_url: hom.cartao_cnpj_url ?? null,
     contrato_social_url: hom.contrato_social_url ?? null,
     docs_socios: Array.isArray(hom.docs_socios) ? hom.docs_socios : [],
-    documentos_completos_em: hom.documentos_completos_em ?? null,
+    // 041: padrão novo (base)
+    precisa_padrao_novo: hom.precisa_padrao_novo ?? false,
+    padrao_novo_amperagem: hom.padrao_novo_amperagem ?? null,
+    padrao_novo_observacao: hom.padrao_novo_observacao ?? null,
+    // 043: grupo tarifário do padrão
+    padrao_novo_grupo_tarifa: hom.padrao_novo_grupo_tarifa ?? null,
+    padrao_novo_tensao_v: hom.padrao_novo_tensao_v ?? null,
+  }
+
+  // Documentos completos — try/catch pra não travar a página se algo estourar
+  let docsOk = false
+  try {
+    docsOk = todosDocumentosCompletos(homSafe)
+  } catch (e: any) {
+    console.error('[homologacao/page] todosDocumentosCompletos:', e?.message)
   }
 
   const { data: etapas } = await supabase
@@ -195,7 +212,7 @@ export default async function HomologacaoDetalhePage({
             <GerarTodosDiagramasBtn
               homologacaoId={params.id}
               projetoId={homSafe.projeto?.id}
-              documentosOk={todosDocumentosCompletos(homSafe)}
+              documentosOk={docsOk}
             />
           </section>
         </ErrorBoundaryClient>
@@ -204,11 +221,11 @@ export default async function HomologacaoDetalhePage({
         <ErrorBoundaryClient nome="Padrão de entrada novo">
           <PadraoNovoToggle
             homologacaoId={params.id}
-            precisaAtual={hom.precisa_padrao_novo || false}
-            amperagemAtual={hom.padrao_novo_amperagem}
-            observacaoAtual={hom.padrao_novo_observacao}
-            grupoTarifaAtual={hom.padrao_novo_grupo_tarifa}
-            tensaoAtual={hom.padrao_novo_tensao_v}
+            precisaAtual={homSafe.precisa_padrao_novo}
+            amperagemAtual={homSafe.padrao_novo_amperagem}
+            observacaoAtual={homSafe.padrao_novo_observacao}
+            grupoTarifaAtual={homSafe.padrao_novo_grupo_tarifa}
+            tensaoAtual={homSafe.padrao_novo_tensao_v}
           />
         </ErrorBoundaryClient>
 
