@@ -4,6 +4,57 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { ehPJ, todosDocumentosCompletos, type Socio } from '@/lib/homologacao/utils'
 
+/**
+ * Busca defensiva: tenta trazer projeto.analise_fatura + cliente_cpf_cnpj;
+ * se coluna não existe, cai pro select mínimo (só campos essenciais).
+ * Retorna hom com projeto normalizado (Supabase às vezes vira array).
+ */
+async function buscarHomologacaoParaChecagem(supabaseAdmin: any, homId: string): Promise<any | null> {
+  let hom: any = null
+  try {
+    const { data } = await supabaseAdmin
+      .from('homologacoes')
+      .select(`
+        projeto_id,
+        foto_disjuntor_url, foto_padrao_entrada_url, foto_fachada_url, pdf_fatura_instalacao_url,
+        cnh_cliente_url, procuracao_cliente_url,
+        cartao_cnpj_url, contrato_social_url,
+        docs_socios,
+        projeto:projetos(cliente_cpf_cnpj, analise_fatura)
+      `)
+      .eq('id', homId)
+      .maybeSingle()
+    hom = data
+  } catch (e) {
+    console.error('[buscarHomologacaoParaChecagem] full falhou, tentando fallback:', e)
+  }
+
+  if (!hom) {
+    // Fallback: sem join do projeto
+    const { data } = await supabaseAdmin
+      .from('homologacoes')
+      .select('*')
+      .eq('id', homId)
+      .maybeSingle()
+    hom = data
+    if (hom && hom.projeto_id) {
+      // Busca projeto separado sem colunas problemáticas
+      const { data: proj } = await supabaseAdmin
+        .from('projetos')
+        .select('id, cliente_razao_social, status')
+        .eq('id', hom.projeto_id)
+        .maybeSingle()
+      hom.projeto = proj || null
+    }
+  }
+
+  if (!hom) return null
+
+  // Normaliza projeto (Supabase às vezes retorna array em 1-to-1)
+  if (Array.isArray(hom.projeto)) hom.projeto = hom.projeto[0]
+  return hom
+}
+
 // ═══════════════════ TIPOS DE DOCUMENTO OBRIGATÓRIO ═══════════════════
 export const TIPOS_DOC = {
   // ─── INFRAESTRUTURA (sempre) ───
@@ -104,20 +155,8 @@ export async function uploadDocumentoHomologacaoAction(input: {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabaseAdmin = createAdminClient()
 
-  // Busca projeto vinculado + todos os docs pra checar se completou
-  const { data: hom } = await supabaseAdmin
-    .from('homologacoes')
-    .select(`
-      projeto_id,
-      foto_disjuntor_url, foto_padrao_entrada_url, foto_fachada_url, pdf_fatura_instalacao_url,
-      cnh_cliente_url, procuracao_cliente_url,
-      cartao_cnpj_url, contrato_social_url,
-      docs_socios,
-      projeto:projetos(cliente_cpf_cnpj, analise_fatura)
-    `)
-    .eq('id', input.homologacaoId)
-    .single()
-
+  // Busca projeto vinculado + docs — query defensiva com fallback
+  const hom = await buscarHomologacaoParaChecagem(supabaseAdmin, input.homologacaoId)
   if (!hom) return { erro: 'Homologação não encontrada' }
 
   // Extensão a partir do MIME
@@ -471,20 +510,9 @@ export async function reprocessarArquivosHomologacaoAction(homologacaoId: string
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { erro: 'Não autenticado' }
 
-  // Busca projeto vinculado + status dos uploads
-  const { data: hom } = await supabase
-    .from('homologacoes')
-    .select(`
-      projeto_id,
-      foto_disjuntor_url, foto_padrao_entrada_url, foto_fachada_url, pdf_fatura_instalacao_url,
-      cnh_cliente_url, procuracao_cliente_url,
-      cartao_cnpj_url, contrato_social_url,
-      docs_socios,
-      projeto:projetos(cliente_cpf_cnpj, analise_fatura)
-    `)
-    .eq('id', homologacaoId)
-    .single()
-
+  // Busca projeto vinculado + status dos uploads — query defensiva
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const hom = await buscarHomologacaoParaChecagem(createAdminClient(), homologacaoId)
   if (!hom) return { erro: 'Homologação não encontrada' }
 
   if (!todosDocumentosCompletos(hom)) {
