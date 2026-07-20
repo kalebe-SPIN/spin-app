@@ -320,8 +320,15 @@ export function gerarLayoutSvg(projeto: any): { conteudo: string; mimeType: stri
   return { conteudo: partes.join('\n'), mimeType: 'image/svg+xml', extensao: 'svg' }
 }
 
-// ═══════════════════ DIAGRAMA PADRÃO DE ENTRADA (SVG) ═══════════════════
+// ═══════════════════ DIAGRAMA PADRÃO DE ENTRADA (roteador por grupo) ═══════════════════
 export function gerarPadraoEntradaSvg(projeto: any, homologacao?: any): { conteudo: string; mimeType: string; extensao: string } {
+  const grupo = homologacao?.padrao_novo_grupo_tarifa || projeto?.analise_fatura?.subgrupo?.[0] || 'B'
+  if (grupo === 'A') return gerarPadraoEntradaGrupoA(projeto, homologacao)
+  return gerarPadraoEntradaGrupoB(projeto, homologacao)
+}
+
+// ═══════════════════ GRUPO B — BAIXA TENSÃO ═══════════════════
+function gerarPadraoEntradaGrupoB(projeto: any, homologacao?: any): { conteudo: string; mimeType: string; extensao: string } {
   const padrao = projeto.padrao_entrada || {}
   const cliente = projeto.cliente_razao_social || 'Cliente'
   const uc = projeto.uc_geradora || padrao.uc || '—'
@@ -342,11 +349,12 @@ export function gerarPadraoEntradaSvg(projeto: any, homologacao?: any): { conteu
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`,
     `<rect width="${W}" height="${H}" fill="#FFFFFF"/>`,
     // Cabeçalho
-    `<text x="${W / 2}" y="40" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold" fill="#000">PADRÃO DE ENTRADA CELESC — ${amperagem}A ${numFases}F</text>`,
-    `<text x="${W / 2}" y="60" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">${cliente} · UC ${uc}</text>`,
-    `<text x="${W / 2}" y="75" text-anchor="middle" font-family="Arial" font-size="10" fill="#555">${endereco} · ${cidade}</text>`,
+    `<text x="${W / 2}" y="40" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold" fill="#000">PADRÃO DE ENTRADA CELESC — GRUPO B</text>`,
+    `<text x="${W / 2}" y="58" text-anchor="middle" font-family="Arial" font-size="13" fill="#333">${amperagem}A ${numFases}F · Baixa Tensão</text>`,
+    `<text x="${W / 2}" y="74" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">${cliente} · UC ${uc}</text>`,
+    `<text x="${W / 2}" y="88" text-anchor="middle" font-family="Arial" font-size="10" fill="#555">${endereco} · ${cidade}</text>`,
     // Norma referência
-    `<text x="${W / 2}" y="92" text-anchor="middle" font-family="Arial" font-size="9" fill="#888">Referência: N-321.0001 e E-321.0031 (CELESC) · NBR 5410</text>`,
+    `<text x="${W / 2}" y="103" text-anchor="middle" font-family="Arial" font-size="9" fill="#888">Referência: N-321.0001 e E-321.0031 (CELESC) · NBR 5410</text>`,
   ]
 
   // Elementos do padrão — layout vertical simples
@@ -457,6 +465,165 @@ export function gerarPadraoEntradaSvg(projeto: any, homologacao?: any): { conteu
     `<text x="${W - 195}" y="${H - 46}" font-family="Arial" font-size="7" fill="#333">Cliente: ${cliente.substring(0, 25)}</text>`,
     `<text x="${W - 195}" y="${H - 34}" font-family="Arial" font-size="7" fill="#333">UC: ${uc}</text>`,
     `<text x="${W - 195}" y="${H - 22}" font-family="Arial" font-size="7" fill="#555">Gerado ${new Date().toLocaleDateString('pt-BR')}</text>`,
+  )
+
+  partes.push('</svg>')
+  return { conteudo: partes.join('\n'), mimeType: 'image/svg+xml', extensao: 'svg' }
+}
+
+// ═══════════════════ GRUPO A — MÉDIA TENSÃO (subestação com TC/TP) ═══════════════════
+function gerarPadraoEntradaGrupoA(projeto: any, homologacao?: any): { conteudo: string; mimeType: string; extensao: string } {
+  const padrao = projeto.padrao_entrada || {}
+  const cliente = projeto.cliente_razao_social || 'Cliente'
+  const uc = projeto.uc_geradora || padrao.uc || '—'
+  const endereco = projeto.cliente_endereco?.logradouro || '—'
+  const cidade = typeof projeto.cliente_endereco === 'object'
+    ? `${projeto.cliente_endereco?.cidade || '—'}/${projeto.cliente_endereco?.uf || 'SC'}`
+    : 'Tijucas/SC'
+
+  const tensaoMT = homologacao?.padrao_novo_tensao_v || 13800
+  const amperagemBT = homologacao?.padrao_novo_amperagem || padrao.amperagem_a || 200
+  const potenciaTrafoKVA =
+    amperagemBT <= 100 ? 45 :
+    amperagemBT <= 150 ? 75 :
+    amperagemBT <= 250 ? 112.5 :
+    amperagemBT <= 400 ? 225 : 300
+  const bitolaMT = potenciaTrafoKVA <= 75 ? '10mm²' : potenciaTrafoKVA <= 150 ? '16mm²' : '25mm²'
+
+  // A4 retrato
+  const W = 595, H = 842
+  const partes: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`,
+    `<rect width="${W}" height="${H}" fill="#FFFFFF"/>`,
+    // Cabeçalho — grupo A destacado
+    `<text x="${W / 2}" y="38" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold" fill="#000">PADRÃO DE ENTRADA CELESC — GRUPO A</text>`,
+    `<text x="${W / 2}" y="56" text-anchor="middle" font-family="Arial" font-size="13" fill="#333">${tensaoMT}V (Média Tensão) · Trafo ${potenciaTrafoKVA} kVA · BT ${amperagemBT}A</text>`,
+    `<text x="${W / 2}" y="72" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">${cliente} · UC ${uc}</text>`,
+    `<text x="${W / 2}" y="86" text-anchor="middle" font-family="Arial" font-size="10" fill="#555">${endereco} · ${cidade}</text>`,
+    `<text x="${W / 2}" y="101" text-anchor="middle" font-family="Arial" font-size="9" fill="#888">Ref: N-321.0002 (Fornecimento MT) · I-432.0004 (GD) · NBR 14039</text>`,
+  ]
+
+  const centerX = W / 2
+  let y = 135
+
+  // 1. Poste concessionária MT
+  partes.push(
+    `<circle cx="${centerX}" cy="${y}" r="10" fill="none" stroke="#000" stroke-width="2"/>`,
+    `<text x="${centerX}" y="${y + 4}" text-anchor="middle" font-family="Arial" font-size="9" fill="#000">P</text>`,
+    `<text x="${centerX + 20}" y="${y - 4}" font-family="Arial" font-size="10" fill="#333">Poste CELESC — Ramal aéreo MT</text>`,
+    `<text x="${centerX + 20}" y="${y + 8}" font-family="Arial" font-size="9" fill="#555">${tensaoMT}V · 3 fases (sem neutro)</text>`,
+  )
+  y += 35
+
+  // Linha vertical MT
+  partes.push(
+    `<line x1="${centerX}" y1="${y - 25}" x2="${centerX}" y2="${y + 25}" stroke="#000" stroke-width="2"/>`,
+    `<text x="${centerX + 8}" y="${y - 5}" font-family="Arial" font-size="9" fill="#555">Cabo MT ${bitolaMT}</text>`,
+  )
+  y += 35
+
+  // 2. Chave seccionadora tripolar 15kV + para-raios
+  const chaveW = 100
+  partes.push(
+    `<rect x="${centerX - chaveW / 2}" y="${y}" width="${chaveW}" height="55" fill="none" stroke="#000" stroke-width="2"/>`,
+    `<text x="${centerX}" y="${y + 18}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#000">CHAVE SECC. 15kV</text>`,
+    `<text x="${centerX}" y="${y + 32}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Tripolar + Para-raios</text>`,
+    `<text x="${centerX}" y="${y + 46}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Muflas terminais</text>`,
+    // Símbolos chave e para-raios ao lado
+    `<line x1="${centerX + chaveW / 2 + 8}" y1="${y + 15}" x2="${centerX + chaveW / 2 + 22}" y2="${y + 5}" stroke="#000" stroke-width="1.5"/>`,
+    `<polygon points="${centerX + chaveW / 2 + 28},${y + 25} ${centerX + chaveW / 2 + 22},${y + 40} ${centerX + chaveW / 2 + 34},${y + 40}" fill="#000"/>`,
+    `<line x1="${centerX + chaveW / 2 + 28}" y1="${y + 40}" x2="${centerX + chaveW / 2 + 28}" y2="${y + 50}" stroke="#000" stroke-width="1"/>`,
+  )
+  y += 75
+
+  // Linha MT → cubículo
+  partes.push(
+    `<line x1="${centerX}" y1="${y - 20}" x2="${centerX}" y2="${y + 20}" stroke="#000" stroke-width="2"/>`,
+  )
+  y += 30
+
+  // 3. Cubículo de medição (TC/TP + medidor 4 quadrantes)
+  const cubW = 190, cubH = 130
+  partes.push(
+    `<rect x="${centerX - cubW / 2}" y="${y}" width="${cubW}" height="${cubH}" fill="none" stroke="#000" stroke-width="2"/>`,
+    `<text x="${centerX}" y="${y + 20}" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#000">CUBÍCULO DE MEDIÇÃO MT</text>`,
+    // TC
+    `<rect x="${centerX - 70}" y="${y + 35}" width="45" height="30}" fill="#F5F5F5" stroke="#000" stroke-width="1"/>`,
+    `<text x="${centerX - 47}" y="${y + 54}" text-anchor="middle" font-family="Arial" font-size="9" font-weight="bold" fill="#000">TC</text>`,
+    // TP
+    `<rect x="${centerX + 25}" y="${y + 35}" width="45" height="30}" fill="#F5F5F5" stroke="#000" stroke-width="1"/>`,
+    `<text x="${centerX + 48}" y="${y + 54}" text-anchor="middle" font-family="Arial" font-size="9" font-weight="bold" fill="#000">TP</text>`,
+    // Medidor 4Q
+    `<rect x="${centerX - 40}" y="${y + 80}" width="80" height="30" fill="#F5F5F5" stroke="#000" stroke-width="1"/>`,
+    `<text x="${centerX}" y="${y + 92}" text-anchor="middle" font-family="Arial" font-size="9" font-weight="bold" fill="#000">MEDIDOR 4Q</text>`,
+    `<text x="${centerX}" y="${y + 104}" text-anchor="middle" font-family="Arial" font-size="8" fill="#333">Bidirecional</text>`,
+    // Ligações TC/TP → medidor (fios pontilhados)
+    `<line x1="${centerX - 47}" y1="${y + 65}" x2="${centerX - 30}" y2="${y + 80}" stroke="#000" stroke-width="0.5" stroke-dasharray="2 2"/>`,
+    `<line x1="${centerX + 48}" y1="${y + 65}" x2="${centerX + 30}" y2="${y + 80}" stroke="#000" stroke-width="0.5" stroke-dasharray="2 2"/>`,
+  )
+  y += cubH + 20
+
+  // 4. Transformador de força (MT → BT)
+  const trafoW = 130, trafoH = 90
+  partes.push(
+    `<rect x="${centerX - trafoW / 2}" y="${y}" width="${trafoW}" height="${trafoH}" fill="none" stroke="#000" stroke-width="2"/>`,
+    // Símbolo trafo (dois círculos)
+    `<circle cx="${centerX - 20}" cy="${y + 45}" r="18" fill="none" stroke="#000" stroke-width="1.5"/>`,
+    `<circle cx="${centerX + 20}" cy="${y + 45}" r="18" fill="none" stroke="#000" stroke-width="1.5"/>`,
+    // Rótulos
+    `<text x="${centerX}" y="${y + 15}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#000">TRAFO ${potenciaTrafoKVA} kVA</text>`,
+    `<text x="${centerX}" y="${y + 82}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">${tensaoMT}V / 220-380V</text>`,
+  )
+
+  // Aterramento lateral (malha)
+  const aterX = centerX + 120
+  partes.push(
+    `<line x1="${centerX + trafoW / 2}" y1="${y + 45}" x2="${aterX}" y2="${y + 45}" stroke="#0a0" stroke-width="1.5" stroke-dasharray="4 2"/>`,
+    `<line x1="${aterX}" y1="${y + 45}" x2="${aterX}" y2="${y + 90}" stroke="#0a0" stroke-width="1.5"/>`,
+    `<line x1="${aterX - 20}" y1="${y + 90}" x2="${aterX + 20}" y2="${y + 90}" stroke="#0a0" stroke-width="2"/>`,
+    `<line x1="${aterX - 14}" y1="${y + 95}" x2="${aterX + 14}" y2="${y + 95}" stroke="#0a0" stroke-width="2"/>`,
+    `<line x1="${aterX - 8}" y1="${y + 100}" x2="${aterX + 8}" y2="${y + 100}" stroke="#0a0" stroke-width="2"/>`,
+    `<text x="${aterX}" y="${y + 115}" text-anchor="middle" font-family="Arial" font-size="8" fill="#0a0">Malha 3×3m</text>`,
+    `<text x="${aterX}" y="${y + 125}" text-anchor="middle" font-family="Arial" font-size="8" fill="#0a0">R ≤ 10Ω</text>`,
+  )
+  y += trafoH + 15
+
+  // Linha BT → disjuntor
+  partes.push(
+    `<line x1="${centerX}" y1="${y}" x2="${centerX}" y2="${y + 25}" stroke="#000" stroke-width="2"/>`,
+  )
+  y += 30
+
+  // 5. Disjuntor geral BT
+  const djW = 100, djH = 45
+  partes.push(
+    `<rect x="${centerX - djW / 2}" y="${y}" width="${djW}" height="${djH}" fill="none" stroke="#000" stroke-width="2"/>`,
+    `<text x="${centerX}" y="${y + 20}" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#000">DJ GERAL ${amperagemBT}A</text>`,
+    `<text x="${centerX}" y="${y + 35}" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Tripolar · Curva C</text>`,
+  )
+  y += djH + 15
+
+  // Linha → QGBT
+  partes.push(
+    `<line x1="${centerX}" y1="${y}" x2="${centerX}" y2="${y + 20}" stroke="#000" stroke-width="1.5"/>`,
+  )
+  y += 25
+
+  // 6. QGBT
+  const qgbtW = 150, qgbtH = 45
+  partes.push(
+    `<rect x="${centerX - qgbtW / 2}" y="${y}" width="${qgbtW}" height="${qgbtH}" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="6 3"/>`,
+    `<text x="${centerX}" y="${y + 20}" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#000">QGBT DO CLIENTE</text>`,
+    `<text x="${centerX}" y="${y + 35}" text-anchor="middle" font-family="Arial" font-size="9" fill="#555">Distribuição interna</text>`,
+  )
+
+  // Selo canto inferior
+  partes.push(
+    `<rect x="${W - 250}" y="${H - 80}" width="230" height="60" fill="none" stroke="#000" stroke-width="1"/>`,
+    `<text x="${W - 245}" y="${H - 63}" font-family="Arial" font-size="8" font-weight="bold" fill="#000">SPIN SOLAR — Padrão Grupo A</text>`,
+    `<text x="${W - 245}" y="${H - 50}" font-family="Arial" font-size="7" fill="#333">Cliente: ${cliente.substring(0, 30)}</text>`,
+    `<text x="${W - 245}" y="${H - 40}" font-family="Arial" font-size="7" fill="#333">UC: ${uc} · ${potenciaTrafoKVA}kVA · BT ${amperagemBT}A</text>`,
+    `<text x="${W - 245}" y="${H - 28}" font-family="Arial" font-size="7" fill="#555">Gerado ${new Date().toLocaleDateString('pt-BR')}</text>`,
   )
 
   partes.push('</svg>')

@@ -207,6 +207,8 @@ export default async function HomologacaoDetalhePage({
             precisaAtual={hom.precisa_padrao_novo || false}
             amperagemAtual={hom.padrao_novo_amperagem}
             observacaoAtual={hom.padrao_novo_observacao}
+            grupoTarifaAtual={hom.padrao_novo_grupo_tarifa}
+            tensaoAtual={hom.padrao_novo_tensao_v}
           />
         </ErrorBoundaryClient>
 

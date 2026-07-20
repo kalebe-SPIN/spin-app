@@ -187,6 +187,8 @@ export async function togglePadraoNovoAction(input: {
   precisa: boolean
   amperagem?: number
   observacao?: string
+  grupoTarifa?: 'A' | 'B'
+  tensaoV?: number
 }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -201,6 +203,8 @@ export async function togglePadraoNovoAction(input: {
       precisa_padrao_novo: input.precisa,
       padrao_novo_amperagem: input.amperagem ?? null,
       padrao_novo_observacao: input.observacao ?? null,
+      padrao_novo_grupo_tarifa: input.grupoTarifa ?? null,
+      padrao_novo_tensao_v: input.tensaoV ?? null,
     })
     .eq('id', input.homologacaoId)
 
