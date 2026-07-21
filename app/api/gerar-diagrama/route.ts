@@ -57,10 +57,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ erro: 'Config empresa incompleta' }, { status: 400 })
     }
 
+    // 3.0 Busca seções do telhado (tabela separada) e injeta no projeto
+    // pra que o prompt Claude tenha acesso via projeto.telhado_secoes
+    const { data: telhadoSecoes } = await supabaseAdmin
+      .from('projetos_telhado_secoes')
+      .select('*')
+      .eq('projeto_id', projeto_id)
+      .order('ordem', { ascending: true })
+
+    ;(projeto as any).telhado_secoes = telhadoSecoes || []
+
     // 3. Validação mínima
     const faltando: string[] = []
     if (!projeto.analise_fatura) faltando.push('análise da fatura (Passo 2)')
-    if (!projeto.telhado_secoes || projeto.telhado_secoes.length === 0) faltando.push('telhado (Passo 3)')
+    if (!telhadoSecoes || telhadoSecoes.length === 0) faltando.push('telhado (Passo 3)')
     if (!projeto.padrao_entrada) faltando.push('padrão de entrada (Passo 4)')
     // kit_selecionado é ideal mas não bloqueia — Claude pode sugerir a partir do dimensionado
 
