@@ -123,6 +123,51 @@ export default async function HomologacaoDetalhePage({
     console.error('[homologacao/page] todosDocumentosCompletos:', e?.message)
   }
 
+  // Serialização estrita: força que TUDO que vai pra Client Components seja
+  // JSON-safe (remove Date objects, undefined, functions, refs circulares etc)
+  // Se algo aqui estourar, capturamos e passamos objeto vazio pros clients
+  let propsSeguras: any = {
+    ehPJ: false,
+    faturaOk: false,
+    projetoId: undefined as string | undefined,
+    urls: {
+      foto_disjuntor: null, foto_padrao_entrada: null, foto_fachada: null,
+      pdf_fatura_instalacao: null, cnh_cliente: null, procuracao_cliente: null,
+      cartao_cnpj: null, contrato_social: null,
+    },
+    socios: [] as any[],
+    documentosCompletosEm: null as string | null,
+    precisaAtual: false, amperagemAtual: null as number | null,
+    observacaoAtual: null as string | null,
+    grupoTarifaAtual: null as 'A' | 'B' | null, tensaoAtual: null as number | null,
+  }
+  try {
+    propsSeguras = JSON.parse(JSON.stringify({
+      ehPJ: detectarPJ(homSafe.projeto?.cliente_cpf_cnpj),
+      faturaOk: !!homSafe.projeto?.analise_fatura,
+      projetoId: homSafe.projeto?.id || undefined,
+      urls: {
+        foto_disjuntor: homSafe.foto_disjuntor_url,
+        foto_padrao_entrada: homSafe.foto_padrao_entrada_url,
+        foto_fachada: homSafe.foto_fachada_url,
+        pdf_fatura_instalacao: homSafe.pdf_fatura_instalacao_url,
+        cnh_cliente: homSafe.cnh_cliente_url,
+        procuracao_cliente: homSafe.procuracao_cliente_url,
+        cartao_cnpj: homSafe.cartao_cnpj_url,
+        contrato_social: homSafe.contrato_social_url,
+      },
+      socios: homSafe.docs_socios,
+      documentosCompletosEm: homSafe.documentos_completos_em,
+      precisaAtual: homSafe.precisa_padrao_novo,
+      amperagemAtual: homSafe.padrao_novo_amperagem,
+      observacaoAtual: homSafe.padrao_novo_observacao,
+      grupoTarifaAtual: homSafe.padrao_novo_grupo_tarifa,
+      tensaoAtual: homSafe.padrao_novo_tensao_v,
+    }))
+  } catch (e: any) {
+    console.error('[homologacao/page] serialização de props falhou:', e?.message)
+  }
+
   const { data: etapas } = await supabase
     .from('homologacao_etapas')
     .select('*')
@@ -168,21 +213,12 @@ export default async function HomologacaoDetalhePage({
         <ErrorBoundaryClient nome="Documentos obrigatórios">
           <DocumentosObrigatoriosCard
             homologacaoId={params.id}
-            ehPJ={detectarPJ(homSafe.projeto?.cliente_cpf_cnpj)}
-            faturaOk={!!homSafe.projeto?.analise_fatura}
-            projetoId={homSafe.projeto?.id}
-            urls={{
-              foto_disjuntor: homSafe.foto_disjuntor_url,
-              foto_padrao_entrada: homSafe.foto_padrao_entrada_url,
-              foto_fachada: homSafe.foto_fachada_url,
-              pdf_fatura_instalacao: homSafe.pdf_fatura_instalacao_url,
-              cnh_cliente: homSafe.cnh_cliente_url,
-              procuracao_cliente: homSafe.procuracao_cliente_url,
-              cartao_cnpj: homSafe.cartao_cnpj_url,
-              contrato_social: homSafe.contrato_social_url,
-            }}
-            socios={homSafe.docs_socios}
-            documentosCompletosEm={homSafe.documentos_completos_em}
+            ehPJ={propsSeguras.ehPJ}
+            faturaOk={propsSeguras.faturaOk}
+            projetoId={propsSeguras.projetoId}
+            urls={propsSeguras.urls}
+            socios={propsSeguras.socios}
+            documentosCompletosEm={propsSeguras.documentosCompletosEm}
           />
         </ErrorBoundaryClient>
 
@@ -221,11 +257,11 @@ export default async function HomologacaoDetalhePage({
         <ErrorBoundaryClient nome="Padrão de entrada novo">
           <PadraoNovoToggle
             homologacaoId={params.id}
-            precisaAtual={homSafe.precisa_padrao_novo}
-            amperagemAtual={homSafe.padrao_novo_amperagem}
-            observacaoAtual={homSafe.padrao_novo_observacao}
-            grupoTarifaAtual={homSafe.padrao_novo_grupo_tarifa}
-            tensaoAtual={homSafe.padrao_novo_tensao_v}
+            precisaAtual={propsSeguras.precisaAtual}
+            amperagemAtual={propsSeguras.amperagemAtual}
+            observacaoAtual={propsSeguras.observacaoAtual}
+            grupoTarifaAtual={propsSeguras.grupoTarifaAtual}
+            tensaoAtual={propsSeguras.tensaoAtual}
           />
         </ErrorBoundaryClient>
 
