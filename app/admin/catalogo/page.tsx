@@ -57,13 +57,13 @@ export default async function CatalogoAdminPage() {
       .order('created_at', { ascending: false })
       .limit(10))
 
+  // Traz todos produtos (ativos + inativos) — cliente decide filtro
   const produtosSemDatasheet = await safeData(() =>
     supabase.from('produtos')
-      .select('id, codigo_weg, modelo, categoria, subcategoria, url_datasheet')
-      .eq('ativo', true)
+      .select('id, codigo_weg, modelo, categoria, subcategoria, url_datasheet, url_imagem, ativo, specs')
       .order('categoria')
       .order('modelo')
-      .limit(100))
+      .limit(200))
 
   const migrationPendente = totalProdutos > 0 && produtosSemDatasheet.length === 0
 
