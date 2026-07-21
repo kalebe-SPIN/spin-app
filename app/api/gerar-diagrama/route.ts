@@ -153,11 +153,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ erro: 'SVG inválido' }, { status: 500 })
     }
 
+    // 5.5 Pos-processa o SVG:
+    // - Se usa xlink:href mas nao declarou xmlns:xlink no root, adiciona.
+    //   Sem isso, o SVG quebra ao abrir direto no browser (parser estrito).
+    // - Se nao tem xmlns padrao, adiciona tambem (defesa em profundidade).
+    const svgLimpo = corrigirNamespacesSvg(parsed.svg)
+
     // 6. Upload do SVG
     const path = `${projeto_id}/${diagrama_id}/unifilar.svg`
     const { error: upErr } = await supabaseAdmin.storage
       .from(BUCKET_DIAGRAMAS)
-      .upload(path, parsed.svg, {
+      .upload(path, svgLimpo, {
         contentType: 'image/svg+xml',
         upsert: true,
       })
@@ -237,4 +243,27 @@ async function marcarErro(supabaseAdmin: any, diagramaId: string, mensagem: stri
     .from('projetos_diagramas')
     .update({ status: 'erro', erro_mensagem: mensagem })
     .eq('id', diagramaId)
+}
+
+/**
+ * Garante que o <svg root> tem xmlns padrao E xmlns:xlink quando usa xlink:href.
+ * Sem xmlns:xlink declarado, o browser recusa o arquivo com:
+ *   "Namespace prefix xlink for href on image is not defined"
+ * (bug real reportado pelo Kalebe em 21/07/2026)
+ */
+function corrigirNamespacesSvg(svg: string): string {
+  const usaXlink = /xlink:href/.test(svg)
+  const jaTemXmlnsXlink = /xmlns:xlink\s*=/.test(svg)
+  const jaTemXmlns = /xmlns\s*=/.test(svg)
+
+  return svg.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
+    let novosAttrs = attrs
+    if (!jaTemXmlns) {
+      novosAttrs = ' xmlns="http://www.w3.org/2000/svg"' + novosAttrs
+    }
+    if (usaXlink && !jaTemXmlnsXlink) {
+      novosAttrs = ' xmlns:xlink="http://www.w3.org/1999/xlink"' + novosAttrs
+    }
+    return `<svg${novosAttrs}>`
+  })
 }

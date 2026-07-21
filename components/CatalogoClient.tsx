@@ -269,9 +269,37 @@ export function CatalogoClient({ historico, produtos }: Props) {
             className="px-3 py-2 bg-white/[0.03] border border-white/10 rounded text-sm text-white"
           >
             <option value="todos">Todas categorias</option>
-            <option value="placa">Placas</option>
-            <option value="inversor">Inversores</option>
-            <option value="monitoramento">Monitoramento</option>
+            <optgroup label="Geracao">
+              <option value="placa">📱 Placas fotovoltaicas</option>
+              <option value="inversor">⚡ Inversores</option>
+              <option value="bateria">🔋 Baterias (BESS)</option>
+            </optgroup>
+            <optgroup label="Hibrido / BESS">
+              <option value="controlador">🎛️ Controlador (EMBOX)</option>
+              <option value="multimedidor">📡 Multimedidor (MMW03)</option>
+              <option value="caixa_juncao">📦 Caixa de juncao (JBW)</option>
+            </optgroup>
+            <optgroup label="Estrutura & CA">
+              <option value="estrutura">🏗️ Estrutura</option>
+              <option value="cabo_cc">🧵 Cabos CC</option>
+              <option value="cabo_ca">🧵 Cabos CA</option>
+              <option value="conector">🔌 Conectores</option>
+              <option value="string_box">🗄️ String box</option>
+              <option value="disjuntor">🔒 Disjuntores</option>
+              <option value="dps">⚡ DPS</option>
+              <option value="eletroduto">🚰 Eletrodutos</option>
+              <option value="aterramento">⏚ Aterramento</option>
+              <option value="quadro">🗄️ Quadros</option>
+              <option value="smart_meter">📊 Smart meter</option>
+              <option value="monitoramento">📈 Monitoramento</option>
+            </optgroup>
+            <optgroup label="Servicos">
+              <option value="mao_de_obra">👷 Mao de obra</option>
+              <option value="projeto_engenharia">📐 Projeto / ART</option>
+              <option value="frete">🚚 Frete</option>
+              <option value="identificacao">🏷️ Identificacao</option>
+              <option value="outro">📎 Outro</option>
+            </optgroup>
           </select>
 
           <select
@@ -661,12 +689,53 @@ function extrairPontosCriticos(
     add('Classe', specs.classe, true)
     add('Corrente máx.', fmt(specs.corrente_max_a, ' kA'), true)
     add('Tensão', fmt(specs.tensao_v, ' V'))
-  } else if (categoria === 'cabo') {
+  } else if (categoria === 'cabo' || categoria === 'cabo_cc' || categoria === 'cabo_ca') {
     add('Bitola', fmt(specs.bitola_mm2, ' mm²'), true)
     add('Isolação', specs.isolacao, true)
     add('Tensão máx.', fmt(specs.tensao_max_v, ' V'))
     add('Cor', specs.cor)
     add('Embalagem', fmt(specs.embalagem_m, ' m'))
+  } else if (categoria === 'controlador') {
+    // EMBOX / controlador de paralelismo
+    add('Modelo', specs.modelo)
+    add('Qtd inversores suportados', specs.qtd_inversores_max, true)
+    add('Potência gerenciada', fmt(specs.potencia_max_kw, ' kW'), true)
+    add('Comunicação', Array.isArray(specs.comunicacao) ? specs.comunicacao.join(', ') : specs.comunicacao)
+    add('Tensão alimentação', fmt(specs.tensao_v, ' V'))
+    add('Grau proteção', specs.ip_protecao)
+    add('Zero export', specs.zero_export ? 'SIM' : '—')
+    add('Peak shaving', specs.peak_shaving ? 'SIM' : '—')
+    add('Anti-ilhamento', specs.anti_ilhamento ? 'SIM' : '—')
+  } else if (categoria === 'multimedidor') {
+    // MMW03-M22CH — medidor de qualidade + detector de queda
+    add('Modelo', specs.modelo)
+    add('Tensão nominal', fmt(specs.tensao_nominal_v, ' V'), true)
+    add('Corrente máx.', fmt(specs.corrente_max_a, ' A'), true)
+    add('Fases', specs.fases, true)
+    add('Classe precisão', specs.classe_precisao)
+    add('Grandezas medidas', Array.isArray(specs.grandezas) ? specs.grandezas.join(', ') : specs.grandezas)
+    add('Comunicação', Array.isArray(specs.comunicacao) ? specs.comunicacao.join(', ') : specs.comunicacao)
+    add('Detecta queda', specs.detecta_queda ? 'SIM (dispara EPS)' : '—', true)
+    add('Grau proteção', specs.ip_protecao)
+    add('Precisa TC/TP?', specs.precisa_tc_tp ? 'SIM (Grupo A)' : 'NÃO (Grupo B)')
+  } else if (categoria === 'caixa_juncao') {
+    // JBW 41DC 50A W0 — junta strings/baterias
+    add('Modelo', specs.modelo)
+    add('Corrente máx.', fmt(specs.corrente_max_a, ' A'), true)
+    add('Tensão máx.', fmt(specs.tensao_max_v, ' V'), true)
+    add('Entradas', specs.qtd_entradas, true)
+    add('Saídas', specs.qtd_saidas)
+    add('Tipo (CC/CA)', specs.tipo)
+    add('Tem fusível?', specs.tem_fusivel ? 'SIM' : 'NÃO')
+    add('Tem disjuntor?', specs.tem_disjuntor ? 'SIM' : 'NÃO')
+    add('Tem DPS?', specs.tem_dps ? 'SIM' : 'NÃO')
+    add('Grau proteção', specs.ip_protecao)
+  } else if (categoria === 'estrutura') {
+    add('Material', specs.material, true)
+    add('Formato', specs.formato)
+    add('Comprimento', fmt(specs.comprimento_mm, ' mm'))
+    add('Capacidade carga', fmt(specs.capacidade_kg, ' kg'), true)
+    add('Telhado compatível', Array.isArray(specs.telhado_compativel) ? specs.telhado_compativel.join(', ') : specs.telhado_compativel)
   } else {
     // Generico — despeja tudo que tiver
     for (const [k, v] of Object.entries(specs)) {
