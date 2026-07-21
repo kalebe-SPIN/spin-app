@@ -2,10 +2,12 @@
  * Conversores client-side de SVG (diagramas gerados pelo Claude)
  * para PDF (via html2canvas + jsPDF) e DXF (formato AutoCAD).
  *
- * PDF: rasteriza o SVG e embute em A4 paisagem. Alta fidelidade visual.
+ * PDF: rasteriza o SVG e embute em A3 paisagem (padrao CAD).
  * DXF: parse XML do SVG e escreve DXF R12 (formato texto simples).
  *      Suporta line/rect/path (segmentos retos)/circle/text.
- *      Círculos e curvas Bézier aproximados por polilinhas.
+ *      Circulos e curvas Bezier aproximados por polilinhas.
+ *
+ * Adapta automaticamente pelo viewBox do SVG (funciona pra A4 antigo E A3 novo).
  *
  * Uso:
  *   import { baixarComoPdf, baixarComoDxf } from '@/lib/diagrama/converter-svg'
@@ -13,17 +15,38 @@
  *   await baixarComoDxf(urlSvg, 'unifilar-v1.dxf')
  */
 
+// Detecta formato pelo viewBox — retorna dimensoes de renderizacao e jsPDF config
+function detectarFormato(svgTexto: string) {
+  const match = svgTexto.match(/viewBox\s*=\s*["']([^"']+)["']/)
+  const vb = match ? match[1].split(/\s+/).map(Number) : [0, 0, 1580, 1120]
+  const w = vb[2] || 1580
+  const h = vb[3] || 1120
+  const aspect = w / h
+
+  // A3 paisagem: 420x297mm (aspect 1.414)
+  // A4 paisagem: 297x210mm (aspect 1.414)
+  // Ambos tem MESMO aspect ratio — usar A3 se >1300px (mais espaco pra tudo)
+  const usaA3 = w > 1300
+  return {
+    wrapperPx: { w, h },
+    pdfFormat: usaA3 ? 'a3' : 'a4',
+    pdfMm: usaA3 ? { w: 420, h: 297 } : { w: 297, h: 210 },
+    aspect,
+  }
+}
+
 // ═══════════════════ PDF ═══════════════════
 export async function baixarComoPdf(urlSvg: string, nomeArquivo: string): Promise<void> {
   const svgTexto = await fetch(urlSvg).then((r) => r.text())
+  const fmt = detectarFormato(svgTexto)
 
-  // Cria elemento temporário pra html2canvas rasterizar
+  // Cria elemento temporario pra html2canvas rasterizar
   const wrapper = document.createElement('div')
   wrapper.style.position = 'fixed'
   wrapper.style.left = '-99999px'
   wrapper.style.top = '0'
-  wrapper.style.width = '1190px'    // A4 paisagem em pixels @ ~144dpi
-  wrapper.style.height = '842px'
+  wrapper.style.width = `${fmt.wrapperPx.w}px`
+  wrapper.style.height = `${fmt.wrapperPx.h}px`
   wrapper.style.background = '#FFFFFF'
   wrapper.innerHTML = svgTexto
   document.body.appendChild(wrapper)
@@ -34,15 +57,18 @@ export async function baixarComoPdf(urlSvg: string, nomeArquivo: string): Promis
 
     const canvas = await html2canvas(wrapper, {
       backgroundColor: '#FFFFFF',
-      scale: 2,      // 2× resolução pra ficar nítido em zoom
+      scale: 2,      // 2x resolucao pra ficar nitido em zoom
       logging: false,
       useCORS: true,
     })
 
     const dataUrl = canvas.toDataURL('image/png', 1.0)
-    // A4 paisagem: 297mm × 210mm
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-    pdf.addImage(dataUrl, 'PNG', 0, 0, 297, 210, undefined, 'FAST')
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: fmt.pdfFormat as any,
+    })
+    pdf.addImage(dataUrl, 'PNG', 0, 0, fmt.pdfMm.w, fmt.pdfMm.h, undefined, 'FAST')
     pdf.save(nomeArquivo)
   } finally {
     document.body.removeChild(wrapper)
