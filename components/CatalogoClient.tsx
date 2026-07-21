@@ -266,46 +266,46 @@ export function CatalogoClient({ historico, produtos }: Props) {
           <select
             value={filtroCategoria}
             onChange={e => setFiltroCategoria(e.target.value)}
-            className="px-3 py-2 bg-white/[0.03] border border-white/10 rounded text-sm text-white"
+            className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white [&>option]:bg-noite [&>option]:text-white [&>optgroup]:bg-noite [&>optgroup]:text-sol [&>optgroup]:font-bold"
           >
             <option value="todos">Todas categorias</option>
             <optgroup label="Geracao">
-              <option value="placa">📱 Placas fotovoltaicas</option>
-              <option value="inversor">⚡ Inversores</option>
-              <option value="bateria">🔋 Baterias (BESS)</option>
+              <option value="placa">Placas fotovoltaicas</option>
+              <option value="inversor">Inversores</option>
+              <option value="bateria">Baterias (BESS)</option>
             </optgroup>
             <optgroup label="Hibrido / BESS">
-              <option value="controlador">🎛️ Controlador (EMBOX)</option>
-              <option value="multimedidor">📡 Multimedidor (MMW03)</option>
-              <option value="caixa_juncao">📦 Caixa de juncao (JBW)</option>
+              <option value="controlador">Controlador (EMBOX)</option>
+              <option value="multimedidor">Multimedidor (MMW03)</option>
+              <option value="caixa_juncao">Caixa de juncao (JBW)</option>
             </optgroup>
             <optgroup label="Estrutura & CA">
-              <option value="estrutura">🏗️ Estrutura</option>
-              <option value="cabo_cc">🧵 Cabos CC</option>
-              <option value="cabo_ca">🧵 Cabos CA</option>
-              <option value="conector">🔌 Conectores</option>
-              <option value="string_box">🗄️ String box</option>
-              <option value="disjuntor">🔒 Disjuntores</option>
-              <option value="dps">⚡ DPS</option>
-              <option value="eletroduto">🚰 Eletrodutos</option>
-              <option value="aterramento">⏚ Aterramento</option>
-              <option value="quadro">🗄️ Quadros</option>
-              <option value="smart_meter">📊 Smart meter</option>
-              <option value="monitoramento">📈 Monitoramento</option>
+              <option value="estrutura">Estrutura</option>
+              <option value="cabo_cc">Cabos CC</option>
+              <option value="cabo_ca">Cabos CA</option>
+              <option value="conector">Conectores</option>
+              <option value="string_box">String box</option>
+              <option value="disjuntor">Disjuntores</option>
+              <option value="dps">DPS</option>
+              <option value="eletroduto">Eletrodutos</option>
+              <option value="aterramento">Aterramento</option>
+              <option value="quadro">Quadros</option>
+              <option value="smart_meter">Smart meter</option>
+              <option value="monitoramento">Monitoramento</option>
             </optgroup>
             <optgroup label="Servicos">
-              <option value="mao_de_obra">👷 Mao de obra</option>
-              <option value="projeto_engenharia">📐 Projeto / ART</option>
-              <option value="frete">🚚 Frete</option>
-              <option value="identificacao">🏷️ Identificacao</option>
-              <option value="outro">📎 Outro</option>
+              <option value="mao_de_obra">Mao de obra</option>
+              <option value="projeto_engenharia">Projeto / ART</option>
+              <option value="frete">Frete</option>
+              <option value="identificacao">Identificacao</option>
+              <option value="outro">Outro</option>
             </optgroup>
           </select>
 
           <select
             value={filtroDatasheet}
             onChange={e => setFiltroDatasheet(e.target.value as any)}
-            className="px-3 py-2 bg-white/[0.03] border border-white/10 rounded text-sm text-white"
+            className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white [&>option]:bg-noite [&>option]:text-white"
           >
             <option value="todos">Datasheet: Todos</option>
             <option value="sem">Sem datasheet</option>
@@ -315,7 +315,7 @@ export function CatalogoClient({ historico, produtos }: Props) {
           <select
             value={filtroAtivo}
             onChange={e => setFiltroAtivo(e.target.value as any)}
-            className="px-3 py-2 bg-white/[0.03] border border-white/10 rounded text-sm text-white"
+            className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white [&>option]:bg-noite [&>option]:text-white"
           >
             <option value="ativos">🟢 Só ativos</option>
             <option value="inativos">⚫ Só inativos</option>
