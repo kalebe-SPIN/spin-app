@@ -118,7 +118,7 @@ export default async function HomologacoesPage() {
                 return (
                   <Link
                     key={h.id}
-                    href={`/admin/homologacoes/${h.id}`}
+                    href={`/homologacoes/${h.id}`}
                     className="block bg-white/[0.03] border border-white/10 hover:border-white/20 rounded-lg p-4 transition"
                   >
                     <div className="flex items-center justify-between gap-4">
