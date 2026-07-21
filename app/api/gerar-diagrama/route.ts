@@ -31,24 +31,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ erro: 'ANTHROPIC_API_KEY faltando' }, { status: 500 })
     }
 
-    // 1. Carrega projeto
-    const { data: projeto, error: pErr } = await supabase
+    // 1. Carrega projeto — usa ADMIN client (bypass RLS)
+    // Rota interna acionada por action autorizada, seguro usar admin aqui
+    const { data: projeto, error: pErr } = await supabaseAdmin
       .from('projetos')
       .select('*')
       .eq('id', projeto_id)
-      .single()
+      .maybeSingle()
 
     if (pErr || !projeto) {
-      await marcarErro(supabaseAdmin, diagrama_id, `Projeto não encontrado: ${pErr?.message}`)
-      return NextResponse.json({ erro: 'Projeto não encontrado' }, { status: 404 })
+      const msg = pErr?.message || `Projeto ${projeto_id} não existe no banco`
+      await marcarErro(supabaseAdmin, diagrama_id, `Projeto não encontrado: ${msg}`)
+      return NextResponse.json({ erro: 'Projeto não encontrado', detalhes: msg }, { status: 404 })
     }
 
     // 2. Carrega config empresa
-    const { data: configEmpresa } = await supabase
+    const { data: configEmpresa } = await supabaseAdmin
       .from('configuracoes_empresa')
       .select('*')
       .eq('singleton', true)
-      .single()
+      .maybeSingle()
 
     if (!configEmpresa || !configEmpresa.rt_nome) {
       await marcarErro(supabaseAdmin, diagrama_id, 'Configuração da empresa incompleta')
@@ -72,7 +74,7 @@ export async function POST(req: NextRequest) {
     let hibridoDimensionamento: any = null
     let hibridoAnalise: any = null
     if (tipo_desenho === 'unifilar_hibrido') {
-      const { data: dim } = await supabase
+      const { data: dim } = await supabaseAdmin
         .from('projeto_hibrido_dimensionamento')
         .select('*')
         .eq('projeto_id', projeto_id)
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle()
       hibridoDimensionamento = dim
 
-      const { data: ana } = await supabase
+      const { data: ana } = await supabaseAdmin
         .from('projeto_hibrido_analise')
         .select('*')
         .eq('projeto_id', projeto_id)
