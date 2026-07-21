@@ -34,6 +34,11 @@ type Props = {
   produtos: Produto[]
 }
 
+// Estilo inline pras <option> — Chrome/Windows ignora className em <option>,
+// mas honra style inline. Sem isso, dropdown aberto renderiza branco no branco.
+const OPT_STYLE: React.CSSProperties = { backgroundColor: '#050B16', color: '#ffffff' }
+const OPTGROUP_STYLE: React.CSSProperties = { backgroundColor: '#050B16', color: '#FFC300', fontWeight: 'bold' }
+
 export function CatalogoClient({ historico, produtos }: Props) {
   const router = useRouter()
   const [enviandoPlanilha, setEnviandoPlanilha] = useState(false)
@@ -266,60 +271,60 @@ export function CatalogoClient({ historico, produtos }: Props) {
           <select
             value={filtroCategoria}
             onChange={e => setFiltroCategoria(e.target.value)}
-            className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white [&>option]:bg-noite [&>option]:text-white [&>optgroup]:bg-noite [&>optgroup]:text-sol [&>optgroup]:font-bold"
+            className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white"
           >
-            <option value="todos">Todas categorias</option>
-            <optgroup label="Geracao">
-              <option value="placa">Placas fotovoltaicas</option>
-              <option value="inversor">Inversores</option>
-              <option value="bateria">Baterias (BESS)</option>
+            <option style={OPT_STYLE} value="todos">Todas categorias</option>
+            <optgroup style={OPTGROUP_STYLE} label="Geracao">
+              <option style={OPT_STYLE} value="placa">Placas fotovoltaicas</option>
+              <option style={OPT_STYLE} value="inversor">Inversores</option>
+              <option style={OPT_STYLE} value="bateria">Baterias (BESS)</option>
             </optgroup>
-            <optgroup label="Hibrido / BESS">
-              <option value="controlador">Controlador (EMBOX)</option>
-              <option value="multimedidor">Multimedidor (MMW03)</option>
-              <option value="caixa_juncao">Caixa de juncao (JBW)</option>
+            <optgroup style={OPTGROUP_STYLE} label="Hibrido / BESS">
+              <option style={OPT_STYLE} value="controlador">Controlador (EMBOX)</option>
+              <option style={OPT_STYLE} value="multimedidor">Multimedidor (MMW03)</option>
+              <option style={OPT_STYLE} value="caixa_juncao">Caixa de juncao (JBW)</option>
             </optgroup>
-            <optgroup label="Estrutura & CA">
-              <option value="estrutura">Estrutura</option>
-              <option value="cabo_cc">Cabos CC</option>
-              <option value="cabo_ca">Cabos CA</option>
-              <option value="conector">Conectores</option>
-              <option value="string_box">String box</option>
-              <option value="disjuntor">Disjuntores</option>
-              <option value="dps">DPS</option>
-              <option value="eletroduto">Eletrodutos</option>
-              <option value="aterramento">Aterramento</option>
-              <option value="quadro">Quadros</option>
-              <option value="smart_meter">Smart meter</option>
-              <option value="monitoramento">Monitoramento</option>
+            <optgroup style={OPTGROUP_STYLE} label="Estrutura & CA">
+              <option style={OPT_STYLE} value="estrutura">Estrutura</option>
+              <option style={OPT_STYLE} value="cabo_cc">Cabos CC</option>
+              <option style={OPT_STYLE} value="cabo_ca">Cabos CA</option>
+              <option style={OPT_STYLE} value="conector">Conectores</option>
+              <option style={OPT_STYLE} value="string_box">String box</option>
+              <option style={OPT_STYLE} value="disjuntor">Disjuntores</option>
+              <option style={OPT_STYLE} value="dps">DPS</option>
+              <option style={OPT_STYLE} value="eletroduto">Eletrodutos</option>
+              <option style={OPT_STYLE} value="aterramento">Aterramento</option>
+              <option style={OPT_STYLE} value="quadro">Quadros</option>
+              <option style={OPT_STYLE} value="smart_meter">Smart meter</option>
+              <option style={OPT_STYLE} value="monitoramento">Monitoramento</option>
             </optgroup>
-            <optgroup label="Servicos">
-              <option value="mao_de_obra">Mao de obra</option>
-              <option value="projeto_engenharia">Projeto / ART</option>
-              <option value="frete">Frete</option>
-              <option value="identificacao">Identificacao</option>
-              <option value="outro">Outro</option>
+            <optgroup style={OPTGROUP_STYLE} label="Servicos">
+              <option style={OPT_STYLE} value="mao_de_obra">Mao de obra</option>
+              <option style={OPT_STYLE} value="projeto_engenharia">Projeto / ART</option>
+              <option style={OPT_STYLE} value="frete">Frete</option>
+              <option style={OPT_STYLE} value="identificacao">Identificacao</option>
+              <option style={OPT_STYLE} value="outro">Outro</option>
             </optgroup>
           </select>
 
           <select
             value={filtroDatasheet}
             onChange={e => setFiltroDatasheet(e.target.value as any)}
-            className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white [&>option]:bg-noite [&>option]:text-white"
+            className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white"
           >
-            <option value="todos">Datasheet: Todos</option>
-            <option value="sem">Sem datasheet</option>
-            <option value="com">Com datasheet</option>
+            <option style={OPT_STYLE} value="todos">Datasheet: Todos</option>
+            <option style={OPT_STYLE} value="sem">Sem datasheet</option>
+            <option style={OPT_STYLE} value="com">Com datasheet</option>
           </select>
 
           <select
             value={filtroAtivo}
             onChange={e => setFiltroAtivo(e.target.value as any)}
-            className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white [&>option]:bg-noite [&>option]:text-white"
+            className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white"
           >
-            <option value="ativos">🟢 Só ativos</option>
-            <option value="inativos">⚫ Só inativos</option>
-            <option value="todos">Todos</option>
+            <option style={OPT_STYLE} value="ativos">Só ativos</option>
+            <option style={OPT_STYLE} value="inativos">Só inativos</option>
+            <option style={OPT_STYLE} value="todos">Todos</option>
           </select>
 
           <input
