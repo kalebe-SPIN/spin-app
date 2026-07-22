@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useTransition } from 'react'
+import { useState, useMemo, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   calcularInstalacaoPlacas,
@@ -190,36 +190,12 @@ export function ServicoInstalacaoForm({
               </div>
             )}
 
-            {/* Modo outro fornecedor */}
+            {/* Modo outro fornecedor — upload + IA + campos editaveis */}
             {e.modo_material_placa === 'outro' && (
-              <div className="p-3 bg-weg-azul/5 border border-weg-azul/20 rounded-lg grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="md:col-span-2">
-                  <label className="text-[10px] uppercase text-white/50 block mb-1">
-                    Marca / fornecedor (opcional — pra rastreamento)
-                  </label>
-                  <input
-                    type="text"
-                    value={e.outro_marca_placa || ''}
-                    onChange={ev => set('outro_marca_placa', ev.target.value)}
-                    placeholder="Ex: Canadian Solar, Trina, LONGi..."
-                    className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm placeholder:text-white/30"
-                  />
-                </div>
-                <Num
-                  label="Preço da placa (R$/un)"
-                  v={e.outro_preco_placa_unitario || 0}
-                  onChange={v => set('outro_preco_placa_unitario', v)}
-                  step={10}
-                  hint={`${e.qtd_modulos} × R$ ${(e.outro_preco_placa_unitario || 0).toFixed(2)} = R$ ${(e.qtd_modulos * (e.outro_preco_placa_unitario || 0)).toFixed(2)}`}
-                />
-                <Num
-                  label="Estrutura (R$/módulo)"
-                  v={e.outro_preco_estrutura_por_modulo || 0}
-                  onChange={v => set('outro_preco_estrutura_por_modulo', v)}
-                  step={5}
-                  hint="Custo médio por módulo instalado"
-                />
-              </div>
+              <UploadOrcamentoConcorrente
+                entradas={e}
+                setEntradas={setE}
+              />
             )}
           </div>
         </Bloco>
@@ -370,6 +346,193 @@ export function ServicoInstalacaoForm({
             {resultado.memoria_calculo.map((linha, i) => <p key={i}>{linha}</p>)}
           </div>
         </details>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Upload de PDF/imagem de orcamento de fornecedor concorrente + analise IA.
+ * Consultor sobe o arquivo, Claude Sonnet Vision extrai:
+ *   marca, modelo, qtd, preco/placa, preco/estrutura, total, confianca
+ * Preenche os campos correspondentes em entradas + permite edit manual.
+ */
+function UploadOrcamentoConcorrente({
+  entradas,
+  setEntradas,
+}: {
+  entradas: EntradasInstalacaoPlacas
+  setEntradas: (e: EntradasInstalacaoPlacas) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [analisando, setAnalisando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const [nomeArquivo, setNomeArquivo] = useState<string | null>(null)
+  const [dadosIa, setDadosIa] = useState<any>(null)
+
+  async function analisar(file: File) {
+    setAnalisando(true)
+    setErro(null)
+    setNomeArquivo(file.name)
+    setDadosIa(null)
+    try {
+      const fd = new FormData()
+      fd.append('arquivo', file)
+      const res = await fetch('/api/analisar-orcamento-fornecedor', {
+        method: 'POST',
+        body: fd,
+      })
+      const json = await res.json()
+      if (!res.ok || !json.sucesso) {
+        throw new Error(json.erro || 'Erro na análise')
+      }
+      const d = json.dados
+      setDadosIa(d)
+      // Preenche automaticamente os campos do form
+      setEntradas({
+        ...entradas,
+        outro_marca_placa: [d.marca_fornecedor, d.modelo_placa].filter(Boolean).join(' · '),
+        outro_preco_placa_unitario: d.preco_placa_unitario || 0,
+        outro_preco_estrutura_por_modulo: d.preco_estrutura_por_modulo || 0,
+        // Se qtd_placas do orcamento bate com qtd_modulos do projeto, sugere sobrescrever
+        // (mas nao forca — deixa consultor decidir)
+      })
+    } catch (e: any) {
+      setErro(e?.message || 'Falha na análise')
+    } finally {
+      setAnalisando(false)
+    }
+  }
+
+  const totalPlacas = entradas.qtd_modulos * (entradas.outro_preco_placa_unitario || 0)
+  const totalEstrutura = entradas.qtd_modulos * (entradas.outro_preco_estrutura_por_modulo || 0)
+
+  return (
+    <div className="p-3 bg-weg-azul/5 border border-weg-azul/20 rounded-lg space-y-3">
+      {/* Upload */}
+      <div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf,image/png,image/jpeg,image/webp"
+          className="hidden"
+          onChange={ev => {
+            const f = ev.target.files?.[0]
+            if (f) analisar(f)
+            if (inputRef.current) inputRef.current.value = ''
+          }}
+        />
+
+        {!nomeArquivo && !analisando && (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="w-full p-4 border-2 border-dashed border-weg-azul/40 rounded-lg text-center hover:border-weg-azul hover:bg-weg-azul/5 transition"
+          >
+            <p className="text-sm font-bold text-white">📄 Anexar orçamento do fornecedor</p>
+            <p className="text-[10px] text-white/50 mt-1">
+              PDF ou imagem (PNG/JPG). Bianca lê e preenche os campos automaticamente.
+            </p>
+          </button>
+        )}
+
+        {analisando && (
+          <div className="p-4 bg-sol/10 border border-sol/30 rounded-lg text-center">
+            <p className="text-sm text-sol animate-pulse">
+              ⏳ Analisando <strong>{nomeArquivo}</strong>... (~10-30s)
+            </p>
+          </div>
+        )}
+
+        {!analisando && nomeArquivo && (
+          <div className="flex items-center justify-between gap-2 p-2 bg-noite/40 border border-white/10 rounded">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-verde">✓</span>
+              <span className="text-xs text-white truncate">{nomeArquivo}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="text-[10px] text-white/50 hover:text-white shrink-0"
+            >
+              trocar
+            </button>
+          </div>
+        )}
+
+        {erro && (
+          <div className="mt-2 p-2 bg-coral/10 border border-coral/30 rounded text-xs text-coral">
+            ⚠️ {erro} — preencha os campos manualmente abaixo.
+          </div>
+        )}
+      </div>
+
+      {/* Resultado da IA + confiança */}
+      {dadosIa && (
+        <div className={`p-2 rounded border text-xs ${
+          dadosIa.confianca === 'alta' ? 'bg-verde/10 border-verde/30 text-verde/90' :
+          dadosIa.confianca === 'media' ? 'bg-sol/10 border-sol/30 text-sol/90' :
+          'bg-coral/10 border-coral/30 text-coral/90'
+        }`}>
+          🤖 Confiança da análise: <strong>{dadosIa.confianca}</strong>
+          {dadosIa.observacoes && <p className="mt-1 text-[10px] text-white/60">{dadosIa.observacoes}</p>}
+          {dadosIa.valor_total_orcamento > 0 && (
+            <p className="mt-1 text-[10px]">
+              Valor total do orçamento original: <strong>R$ {dadosIa.valor_total_orcamento.toFixed(2)}</strong>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Campos preenchidos (editaveis) */}
+      <div className="pt-2 border-t border-white/10">
+        <p className="text-[10px] uppercase font-bold text-white/50 mb-2">
+          {dadosIa ? '✏️ Revise e ajuste se necessário' : 'Ou preencha manualmente'}
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="md:col-span-2">
+            <label className="text-[10px] uppercase text-white/50 block mb-1">
+              Marca / modelo
+            </label>
+            <input
+              type="text"
+              value={entradas.outro_marca_placa || ''}
+              onChange={ev => setEntradas({ ...entradas, outro_marca_placa: ev.target.value })}
+              placeholder="Ex: Canadian Solar CS7L-580MS"
+              className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm placeholder:text-white/30"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase text-white/50 block mb-1">
+              Preço da placa (R$/un)
+            </label>
+            <input
+              type="number"
+              step={10}
+              value={entradas.outro_preco_placa_unitario || 0}
+              onChange={ev => setEntradas({ ...entradas, outro_preco_placa_unitario: parseFloat(ev.target.value) || 0 })}
+              className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm"
+            />
+            <p className="text-[9px] text-white/40 mt-1">
+              {entradas.qtd_modulos} × R$ {(entradas.outro_preco_placa_unitario || 0).toFixed(2)} = <strong className="text-verde">R$ {totalPlacas.toFixed(2)}</strong>
+            </p>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase text-white/50 block mb-1">
+              Estrutura (R$/módulo)
+            </label>
+            <input
+              type="number"
+              step={5}
+              value={entradas.outro_preco_estrutura_por_modulo || 0}
+              onChange={ev => setEntradas({ ...entradas, outro_preco_estrutura_por_modulo: parseFloat(ev.target.value) || 0 })}
+              className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm"
+            />
+            <p className="text-[9px] text-white/40 mt-1">
+              Custo médio por módulo · Total: <strong className="text-verde">R$ {totalEstrutura.toFixed(2)}</strong>
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )
