@@ -12,6 +12,15 @@ export const metadata: Metadata = {
   description: 'Sistema interno Spin Solar: representantes, instaladores e admin.',
   // noindex/nofollow já configurado em next.config.js
   robots: 'noindex, nofollow',
+  icons: {
+    icon: [
+      { url: '/icon.png?v=2', type: 'image/png', sizes: '196x196' },
+    ],
+    apple: [
+      { url: '/apple-icon.png?v=2', type: 'image/png', sizes: '196x196' },
+    ],
+    shortcut: '/icon.png?v=2',
+  },
 }
 
 export default function RootLayout({
@@ -22,6 +31,11 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <head>
+        {/* Favicon explicito — reforca alem do metadata.icons pra bypass cache */}
+        <link rel="icon" type="image/png" href="/icon.png?v=2" />
+        <link rel="apple-touch-icon" href="/apple-icon.png?v=2" />
+        <link rel="shortcut icon" href="/icon.png?v=2" />
+
         {/* Fonte Inter — mesma do menu-spin pra consistência visual */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
