@@ -8,6 +8,7 @@ export type TipoItem =
   | 'bess' | 've_recarga'
   | 'srv_limpeza' | 'srv_manutencao' | 'srv_eletrica_predial' | 'srv_padrao_entrada'
   | 'srv_laudo_tecnico' | 'srv_analise_rede'
+  | 'srv_retirada_recolocacao' | 'srv_instalacao_placas'
   | 'srv_alvenaria' | 'srv_serralheria' | 'srv_carpintaria'
   | 'aluguel_maquinas' | 'aluguel_equipamentos'
   | 'outros'
@@ -117,6 +118,20 @@ export const TIPOS_ITEM: InfoTipo[] = [
     disponivel: true,
     fluxoPassos: 3,
   },
+  {
+    chave: 'srv_retirada_recolocacao', emoji: '🔄☀️', label: 'Retirada e recolocação de placas', grupo: 'servico',
+    descricao: 'Desmontagem temporária das placas + estrutura pra obra no telhado, e remontagem depois.',
+    exemploUso: 'Reforma/troca do telhado, mudança de imóvel, ampliação da laje',
+    disponivel: true,
+    fluxoPassos: 3,
+  },
+  {
+    chave: 'srv_instalacao_placas', emoji: '🔧☀️', label: 'Instalação de placas em projeto', grupo: 'servico',
+    descricao: 'Só mão de obra: cliente já tem placas + inversor comprados (ou de terceiros). Spin instala.',
+    exemploUso: 'Cliente comprou kit em outra loja e contratou Spin só pra montar',
+    disponivel: true,
+    fluxoPassos: 4,
+  },
 
   // 🧱 CONSTRUÇÃO
   {
@@ -221,6 +236,8 @@ export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
   srv_padrao_entrada:     ['cliente', 'fatura', 'padrao', 'orcamento'],
   srv_laudo_tecnico:      ['cliente', 'servico_config', 'orcamento'],
   srv_analise_rede:       ['cliente', 'servico_config', 'orcamento'],
+  srv_retirada_recolocacao: ['cliente', 'telhado', 'servico_config', 'orcamento'],
+  srv_instalacao_placas:    ['cliente', 'telhado', 'padrao', 'servico_config', 'orcamento'],
 
   // 🧱 Construção
   srv_alvenaria:          ['cliente', 'servico_config', 'orcamento'],
