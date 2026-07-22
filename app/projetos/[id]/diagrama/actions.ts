@@ -19,7 +19,7 @@ export async function usuarioPodeGerarDiagramas() {
 
 export async function gerarDiagramaAction(
   projetoId: string,
-  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido',
+  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada',
   opcoes: { modoPrevia?: boolean } = {},
 ) {
   const supabase = createClient()
