@@ -56,10 +56,10 @@ export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk }
     return () => clearInterval(interval)
   }, [diagramasExistentes, router])
 
-  function handleGerar(modoPrevia: boolean = false) {
+  function handleGerar() {
     setErro(null)
     startTransition(async () => {
-      const result = await gerarDiagramaAction(projeto.id, tipoSelecionado, { modoPrevia })
+      const result = await gerarDiagramaAction(projeto.id, tipoSelecionado, { modoPrevia: false })
       if (!result.sucesso) {
         setErro(result.erro || 'Erro ao gerar diagrama')
       } else {
@@ -67,8 +67,6 @@ export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk }
       }
     })
   }
-
-  const clienteAceitou = projeto.status === 'aceito'
 
   return (
     <div className="space-y-8">
@@ -110,34 +108,16 @@ export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk }
             </p>
           </div>
           <div className="flex gap-2 flex-shrink-0">
-            {!clienteAceitou && (
-              <button
-                onClick={() => handleGerar(true)}
-                disabled={isPending || !configOk}
-                className="px-4 py-3 bg-white/10 border border-white/20 text-white font-bold text-sm rounded-lg disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                title="Gera rascunho pra visualizar antes do cliente aceitar"
-              >
-                {isPending ? '⏳' : '👁️ Gerar prévia'}
-              </button>
-            )}
             <button
-              onClick={() => handleGerar(false)}
-              disabled={isPending || !configOk || !clienteAceitou}
+              onClick={handleGerar}
+              disabled={isPending || !configOk}
               className="px-6 py-3 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-              title={!clienteAceitou ? 'Cliente ainda não aceitou a proposta' : 'Gera diagrama oficial'}
+              title="Gera nova versão do diagrama com os dados atuais do projeto"
             >
-              {isPending ? '⏳ Gerando...' : '🖨️ Gerar oficial'}
+              {isPending ? '⏳ Gerando...' : '🖨️ Gerar diagrama'}
             </button>
           </div>
         </div>
-
-        {!clienteAceitou && (
-          <div className="mt-4 p-3 bg-sol/10 border border-sol/30 rounded-lg text-xs text-sol/90">
-            💡 <strong>Status atual:</strong> {projeto.status} — Cliente ainda não aceitou a proposta.
-            Você pode gerar uma <strong>prévia</strong> pra revisar o unifilar antes.
-            Só o diagrama <strong>oficial</strong> (pós-aceite) serve pra ART.
-          </div>
-        )}
 
         {erro && (
           <div className="mt-4 bg-coral/10 border border-coral/30 rounded-lg p-3 text-sm text-coral">
@@ -254,11 +234,6 @@ function DiagramaCard({ d }: { d: Diagrama }) {
           <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${statusCor}`}>
             {d.status}
           </span>
-          {d.eh_previa && (
-            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-sol/40 bg-sol/10 text-sol">
-              👁️ PRÉVIA
-            </span>
-          )}
         </div>
         <span className="text-xs text-white/40">{dataFmt}</span>
       </div>
