@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
   getInfoTipo,
   getPassosRelevantes,
+  getPathPasso,
   INFO_PASSO,
   GRUPOS_INFO,
   type TipoItem,
@@ -134,10 +135,12 @@ function ItemProposta({ item, projetoId }: { item: any; projetoId: string }) {
             const p = INFO_PASSO[chave]
             // Destaca passos específicos do tipo (bess_config, ve_config, servico_config)
             const isEspecifico = ['bess_config', 've_config', 'servico_config'].includes(chave)
+            // Path pode ser override por tipo (ex: srv_retirada_recolocacao -> servico-retirada)
+            const pathReal = getPathPasso(chave, item.tipo as any)
             return (
               <Link
                 key={chave}
-                href={`/projetos/${projetoId}/${p.path}?item=${item.id}`}
+                href={`/projetos/${projetoId}/${pathReal}?item=${item.id}`}
                 className={`text-[10px] px-2 py-1 rounded transition border ${
                   isEspecifico
                     ? `${grupo?.bgClass || 'bg-sol/20 border-sol/50'} font-bold text-white shadow-sm ring-1 ring-sol/40`

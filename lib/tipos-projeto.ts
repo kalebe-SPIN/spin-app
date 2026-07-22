@@ -267,6 +267,27 @@ export const INFO_PASSO: Record<PassoWorkflow, { titulo: string; path: string; o
 }
 
 /**
+ * Overrides do path do 'servico_config' por tipo especifico.
+ * Cada tipo de servico pode ter rota propria com form dedicado
+ * (calcula preco automatico com parametros da tabela admin).
+ * Se o tipo nao tiver override aqui, cai no path generico 'servico'.
+ */
+export const PATH_SERVICO_ESPECIFICO: Partial<Record<TipoItem, string>> = {
+  srv_retirada_recolocacao: 'servico-retirada',
+  // Futuro:
+  // srv_instalacao_placas: 'servico-instalacao',
+  // srv_readequacao_planta: 'servico-readequacao',
+}
+
+/** Retorna o path correto do 'servico_config' considerando overrides por tipo. */
+export function getPathPasso(chave: PassoWorkflow, tipoItem?: TipoItem): string {
+  if (chave === 'servico_config' && tipoItem && PATH_SERVICO_ESPECIFICO[tipoItem]) {
+    return PATH_SERVICO_ESPECIFICO[tipoItem]!
+  }
+  return INFO_PASSO[chave].path
+}
+
+/**
  * Retorna união dos passos necessários pros tipos selecionados.
  * Se nenhum tipo escolhido, retorna todos os 8 passos legado (on-grid puro).
  */
