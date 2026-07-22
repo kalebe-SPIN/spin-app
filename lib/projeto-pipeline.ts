@@ -97,3 +97,36 @@ export const PROXIMAS_ETAPAS: Partial<Record<StatusProjeto, StatusProjeto[]>> = 
   cancelado:           ['rascunho'],
   expirado:            ['proposta_enviada', 'cancelado'],
 }
+
+/**
+ * Pipeline simplificado pra projetos que SÓ tem serviço (nao FV).
+ * Pula passos tecnicos irrelevantes: fatura, telhado, padrao, dimensionar, kit, lista_ca.
+ * Sequencia: rascunho -> orcamento_gerado -> proposta_enviada -> [negociando] -> vendido -> em_execucao -> instalado.
+ */
+export const PROXIMAS_ETAPAS_SERVICO: Partial<Record<StatusProjeto, StatusProjeto[]>> = {
+  rascunho:            ['orcamento_gerado', 'cancelado'],
+  fatura_analisada:    ['orcamento_gerado'],
+  telhado_preenchido:  ['orcamento_gerado'],
+  dimensionado:        ['orcamento_gerado'],
+  kit_selecionado:     ['orcamento_gerado'],
+  lista_ca_confirmada: ['orcamento_gerado'],
+  orcamento_gerado:    ['proposta_enviada'],
+  proposta_enviada:    ['negociando', 'vendido', 'recusado'],
+  negociando:          ['vendido', 'recusado', 'proposta_enviada'],
+  em_fechamento:       ['vendido', 'negociando', 'recusado'],
+  vendido:             ['em_execucao'],    // servico nao passa por homologacao CELESC
+  aceito:              ['em_execucao'],
+  em_homologacao:      ['em_execucao'],
+  em_execucao:         ['instalado'],
+  instalado:           ['ativo_pos_venda'],
+  ativo_pos_venda:     [],
+  recusado:            ['proposta_enviada', 'cancelado'],
+  cancelado:           ['rascunho'],
+  expirado:            ['proposta_enviada', 'cancelado'],
+}
+
+/** Retorna as proximas etapas conforme se o projeto tem so servicos ou nao. */
+export function getProximasEtapas(status: StatusProjeto, soServicos: boolean): StatusProjeto[] {
+  const mapa = soServicos ? PROXIMAS_ETAPAS_SERVICO : PROXIMAS_ETAPAS
+  return mapa[status] || []
+}

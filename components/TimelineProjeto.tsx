@@ -1,4 +1,4 @@
-const ETAPAS = [
+const ETAPAS_FV = [
   { chave: 'cliente',     label: 'Cliente',    statusApos: 'rascunho',            ordem: 0 },
   { chave: 'fatura',      label: 'Fatura',     statusApos: 'fatura_analisada',    ordem: 1 },
   { chave: 'telhado',     label: 'Telhado',    statusApos: 'telhado_preenchido',  ordem: 2 },
@@ -8,6 +8,14 @@ const ETAPAS = [
   { chave: 'orcamento',   label: 'Orçamento',  statusApos: 'orcamento_gerado',    ordem: 6 },
   { chave: 'proposta',    label: 'Proposta',   statusApos: 'proposta_enviada',    ordem: 7 },
   { chave: 'fechado',     label: 'Fechado',    statusApos: 'aceito',              ordem: 8 },
+] as const
+
+// Timeline simplificada pra projetos SÓ serviço (sem fatura/telhado/padrao/kit)
+const ETAPAS_SERVICO = [
+  { chave: 'cliente',    label: 'Cliente',   statusApos: 'rascunho',         ordem: 0 },
+  { chave: 'escopo',     label: 'Escopo',    statusApos: 'orcamento_gerado', ordem: 1 },
+  { chave: 'proposta',   label: 'Proposta',  statusApos: 'proposta_enviada', ordem: 2 },
+  { chave: 'fechado',    label: 'Fechado',   statusApos: 'aceito',           ordem: 3 },
 ] as const
 
 const STATUS_ORDEM: Record<string, number> = {
@@ -20,6 +28,23 @@ const STATUS_ORDEM: Record<string, number> = {
   orcamento_gerado: 6,
   proposta_enviada: 7,
   aceito: 8,
+  recusado: -1,
+  cancelado: -1,
+  expirado: -1,
+}
+
+// Mapeamento de status para ORDEM na timeline reduzida de serviço
+const STATUS_ORDEM_SERVICO: Record<string, number> = {
+  rascunho: 0,
+  // Todos esses status intermediarios FV nao existem em servico — mapeia direto pra orcamento
+  fatura_analisada: 1,
+  telhado_preenchido: 1,
+  dimensionado: 1,
+  kit_selecionado: 1,
+  lista_ca_confirmada: 1,
+  orcamento_gerado: 1,
+  proposta_enviada: 2,
+  aceito: 3,
   recusado: -1,
   cancelado: -1,
   expirado: -1,
@@ -43,11 +68,15 @@ const STATUS_INFO_LOCAL: Record<string, { label: string; cor: string; bg: string
 export function TimelineProjeto({
   status,
   compacto = false,
+  soServicos = false,
 }: {
   status: string
   compacto?: boolean
+  soServicos?: boolean
 }) {
-  const ordemAtual = STATUS_ORDEM[status] ?? 0
+  const ETAPAS = soServicos ? ETAPAS_SERVICO : ETAPAS_FV
+  const mapaOrdem = soServicos ? STATUS_ORDEM_SERVICO : STATUS_ORDEM
+  const ordemAtual = mapaOrdem[status] ?? 0
   const encerrado = ['aceito', 'recusado', 'cancelado', 'expirado'].includes(status)
 
   const infoStatus = STATUS_INFO_LOCAL[status] || STATUS_INFO_LOCAL.rascunho
@@ -78,7 +107,7 @@ export function TimelineProjeto({
       {/* Barra de progresso */}
       {!compacto && (
         <div className="flex items-center gap-1 mt-1">
-          {ETAPAS.slice(0, 8).map((etapa) => {
+          {ETAPAS.slice(0, soServicos ? 4 : 8).map((etapa) => {
             const concluida = etapa.ordem <= ordemAtual && ordemAtual >= 0
             const atual = etapa.ordem === ordemAtual + 1 && !encerrado
             const proxima = etapa.ordem > ordemAtual + 1

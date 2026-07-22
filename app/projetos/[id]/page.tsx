@@ -97,7 +97,7 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             </div>
           </div>
           <div className="p-4 bg-white/[0.02] border border-white/10 rounded-xl">
-            <TimelineProjeto status={projeto.status} />
+            <TimelineProjeto status={projeto.status} soServicos={soServicos} />
           </div>
         </header>
 
@@ -109,9 +109,9 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           clienteNome={projeto.cliente_razao_social}
         />
 
-        {/* Card CRM — mudar etapa */}
+        {/* Card CRM — mudar etapa (adaptativo: se só serviço, pula passos FV) */}
         <div className="mb-6">
-          <MudarEtapaCard projetoId={projeto.id} statusAtual={projeto.status} />
+          <MudarEtapaCard projetoId={projeto.id} statusAtual={projeto.status} soServicos={soServicos} />
         </div>
 
         {/* Itens da proposta (múltiplos tipos) */}

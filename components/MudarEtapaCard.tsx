@@ -3,14 +3,16 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { mudarEtapaProjetoAction } from '@/app/projetos/[id]/etapa/actions'
-import { INFO_STATUS, PROXIMAS_ETAPAS, INFO_FASE, FASE_DE_STATUS, type StatusProjeto } from '@/lib/projeto-pipeline'
+import { INFO_STATUS, getProximasEtapas, INFO_FASE, FASE_DE_STATUS, type StatusProjeto } from '@/lib/projeto-pipeline'
 
 export function MudarEtapaCard({
   projetoId,
   statusAtual,
+  soServicos = false,
 }: {
   projetoId: string
   statusAtual: string
+  soServicos?: boolean
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -20,7 +22,7 @@ export function MudarEtapaCard({
 
   const info = INFO_STATUS[statusAtual as StatusProjeto] || INFO_STATUS.rascunho
   const fase = INFO_FASE[FASE_DE_STATUS[statusAtual as StatusProjeto] || 'projeto']
-  const proximas = PROXIMAS_ETAPAS[statusAtual as StatusProjeto] || []
+  const proximas = getProximasEtapas(statusAtual as StatusProjeto, soServicos)
 
   function mudar(novo: StatusProjeto) {
     setErro(null)
