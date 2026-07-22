@@ -242,31 +242,46 @@ function Bolha({
 /**
  * Detecta URLs no texto e transforma em <a> clicável.
  * URLs de wa.me ganham botão verde destacado (chamada visual clara pra Kalebe).
+ * Se detectar marker [[COM:{id}]], extrai o ID e adiciona botão "Enviar direto"
+ * que chama POST /api/whatsapp/enviar (Meta Cloud API).
  */
 function renderComLinks(texto: string): React.ReactNode[] {
+  // 1. Extrai IDs de comunicacao (marker [[COM:xxx]]) e remove do texto visivel
+  const comIds: string[] = []
+  const textoLimpo = texto.replace(/\[\[COM:([a-f0-9-]{36})\]\]/gi, (_, id) => {
+    comIds.push(id)
+    return ''
+  }).replace(/\s{2,}/g, ' ').trim()
+
   const regex = /(https?:\/\/[^\s<>]+)/g
   const partes: React.ReactNode[] = []
   let ultimo = 0
   let match: RegExpExecArray | null
   let idx = 0
 
-  while ((match = regex.exec(texto)) !== null) {
+  while ((match = regex.exec(textoLimpo)) !== null) {
     if (match.index > ultimo) {
-      partes.push(texto.substring(ultimo, match.index))
+      partes.push(textoLimpo.substring(ultimo, match.index))
     }
     const url = match[0]
     const ehWhatsApp = url.includes('wa.me/') || url.includes('api.whatsapp.com')
     partes.push(
       ehWhatsApp ? (
-        <a
-          key={`link-${idx++}`}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 mt-1 px-3 py-1.5 bg-verde text-noite text-xs font-bold rounded hover:bg-verde/90 max-w-full break-all"
-        >
-          📱 Abrir WhatsApp
-        </a>
+        <div key={`wa-${idx++}`} className="mt-2 flex flex-wrap gap-2 max-w-full">
+          {/* Botao 1: enviar direto via Meta API (se houver ID de comunicacao) */}
+          {comIds.length > 0 && (
+            <EnviarDiretoWhatsApp comunicacaoId={comIds[0]} />
+          )}
+          {/* Botao 2: abrir WhatsApp Web (fallback / envio manual) */}
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-3 py-1.5 bg-white/10 border border-white/20 text-white text-xs font-bold rounded hover:bg-white/15 break-all"
+          >
+            📱 Abrir WhatsApp Web
+          </a>
+        </div>
       ) : (
         <a
           key={`link-${idx++}`}
@@ -281,6 +296,67 @@ function renderComLinks(texto: string): React.ReactNode[] {
     )
     ultimo = regex.lastIndex
   }
-  if (ultimo < texto.length) partes.push(texto.substring(ultimo))
+  if (ultimo < textoLimpo.length) partes.push(textoLimpo.substring(ultimo))
   return partes
+}
+
+/**
+ * Botao "Enviar direto" — chama POST /api/whatsapp/enviar (Meta Cloud API).
+ * Se WHATSAPP_ACCESS_TOKEN nao configurado, backend retorna error_code
+ * 'integration_missing' e a UI mostra dica pra configurar env vars.
+ */
+function EnviarDiretoWhatsApp({ comunicacaoId }: { comunicacaoId: string }) {
+  const [status, setStatus] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
+  const [erro, setErro] = useState<string | null>(null)
+
+  async function enviar() {
+    setStatus('enviando')
+    setErro(null)
+    try {
+      const res = await fetch('/api/whatsapp/enviar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comunicacao_id: comunicacaoId }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        if (json.error_code === 'integration_missing') {
+          setErro('Meta API não configurada. Use "Abrir WhatsApp Web" ou configure env vars no Vercel.')
+        } else if (json.error_code === 'fora_janela_24h') {
+          setErro('Cliente não interagiu nas últimas 24h. Precisa mensagem template pré-aprovada pela Meta.')
+        } else {
+          setErro(json.error || 'Erro ao enviar')
+        }
+        setStatus('erro')
+        return
+      }
+      setStatus('enviado')
+    } catch (e: any) {
+      setErro(e?.message || 'Erro de rede')
+      setStatus('erro')
+    }
+  }
+
+  if (status === 'enviado') {
+    return (
+      <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-verde/20 border border-verde/40 text-verde text-xs font-bold rounded">
+        ✓ Enviado via Bianca
+      </span>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        onClick={enviar}
+        disabled={status === 'enviando'}
+        className="inline-flex items-center gap-1 px-3 py-1.5 bg-verde text-noite text-xs font-bold rounded hover:bg-verde/90 disabled:opacity-40"
+      >
+        {status === 'enviando' ? '⏳ Enviando...' : '🚀 Enviar direto'}
+      </button>
+      {erro && (
+        <p className="text-[10px] text-coral max-w-xs leading-tight">⚠️ {erro}</p>
+      )}
+    </div>
+  )
 }

@@ -383,7 +383,10 @@ export async function executarTool(
         return {
           sucesso: true,
           dados: { id: data.id, link_wa, telefone: tel },
-          _hint: `Comunicação registrada. Kalebe pode abrir em: ${link_wa}`,
+          // Marker [[COM:id]] eh detectado pelo BiancaChat pra mostrar botao "Enviar direto"
+          // (chama POST /api/whatsapp/enviar via Meta Cloud API). Se Meta nao configurada,
+          // usuario ainda pode clicar no wa.me link e enviar manual.
+          _hint: `Comunicação registrada. Link: ${link_wa} [[COM:${data.id}]]`,
         }
       }
 
