@@ -109,6 +109,54 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
 
   const configOk = !!(configEmpresa?.rt_nome && configEmpresa?.rt_crea)
 
+  // Itens do projeto — define quais diagramas fazem sentido gerar
+  const { data: itens } = await supabase
+    .from('projeto_itens')
+    .select('tipo')
+    .eq('projeto_id', params.id)
+    .neq('status', 'removido')
+
+  const tiposItem = new Set((itens || []).map((i: any) => i.tipo as string))
+  // Fallback: se nao tem itens (workflow antigo), usa tipo_projeto do projeto
+  if (tiposItem.size === 0 && projeto.tipo_projeto) {
+    if (projeto.tipo_projeto === 'hibrido_bess' || projeto.tipo_projeto === 'expansao_hibrido') {
+      tiposItem.add('fv_hibrido')
+    } else {
+      tiposItem.add('fv_ongrid')
+    }
+  }
+
+  const temFvOngrid = tiposItem.has('fv_ongrid') || tiposItem.has('fv_zero_grid') || tiposItem.has('fv_offgrid')
+  const temFvHibrido = tiposItem.has('fv_hibrido') || tiposItem.has('bess')
+
+  // Monta lista de tipos disponiveis — sempre inclui padrao_entrada
+  const tiposDisponiveis: Array<{
+    id: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada'
+    label: string
+    desc: string
+  }> = []
+
+  if (temFvOngrid) {
+    tiposDisponiveis.push({
+      id: 'unifilar_ongrid',
+      label: 'Unifilar on-grid',
+      desc: 'Sistema conectado à rede sem armazenamento. Padrão CELESC para GD.',
+    })
+  }
+  if (temFvHibrido) {
+    tiposDisponiveis.push({
+      id: 'unifilar_hibrido',
+      label: 'Unifilar híbrido (BESS)',
+      desc: 'Sistema com bateria + saída EPS. Inclui MMW03, EMBOX e cadeia de backup.',
+    })
+  }
+  // Padrao de entrada — SEMPRE disponivel
+  tiposDisponiveis.push({
+    id: 'padrao_entrada',
+    label: 'Padrão de entrada CELESC',
+    desc: 'Prancha do padrão de entrada (Grupo A MT ou Grupo B BT) pra homologação.',
+  })
+
   return (
     <main className="min-h-screen p-8 md:p-12">
       <div className="max-w-4xl mx-auto">
@@ -148,6 +196,7 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
           projeto={projeto}
           diagramasExistentes={diagramas || []}
           configOk={configOk}
+          tiposDisponiveis={tiposDisponiveis}
         />
       </div>
     </main>

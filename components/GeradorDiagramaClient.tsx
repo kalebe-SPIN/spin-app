@@ -20,33 +20,25 @@ type Diagrama = {
   eh_previa?: boolean
 }
 
+type TipoDiagrama = 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada'
+type OpcaoTipo = { id: TipoDiagrama; label: string; desc: string }
+
 type Props = {
   projeto: any
   diagramasExistentes: Diagrama[]
   configOk: boolean
+  tiposDisponiveis: OpcaoTipo[]
 }
 
-const TIPOS: Array<{ id: 'unifilar_ongrid' | 'unifilar_hibrido'; label: string; desc: string }> = [
-  {
-    id: 'unifilar_ongrid',
-    label: 'Unifilar on-grid',
-    desc: 'Sistema conectado à rede sem armazenamento. Padrão CELESC para GD.',
-  },
-  {
-    id: 'unifilar_hibrido',
-    label: 'Unifilar híbrido (BESS)',
-    desc: 'Sistema conectado à rede com bateria. Inclui SPDA e proteção BESS.',
-  },
-]
-
-export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk }: Props) {
+export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk, tiposDisponiveis }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
 
-  // Sugere tipo baseado no tipo_projeto
-  const tipoSugerido = projeto.tipo_projeto === 'hibrido_bess' ? 'unifilar_hibrido' : 'unifilar_ongrid'
-  const [tipoSelecionado, setTipoSelecionado] = useState<'unifilar_ongrid' | 'unifilar_hibrido'>(tipoSugerido)
+  // Primeira opcao vira selecao inicial (sempre tem pelo menos padrao_entrada)
+  const [tipoSelecionado, setTipoSelecionado] = useState<TipoDiagrama>(
+    tiposDisponiveis[0]?.id || 'padrao_entrada',
+  )
 
   // Auto-refresh a cada 5s enquanto houver diagrama em 'gerando'
   useEffect(() => {
@@ -70,11 +62,14 @@ export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk }
 
   return (
     <div className="space-y-8">
-      {/* Escolha do tipo */}
+      {/* Escolha do tipo — só mostra opções que fazem sentido pro projeto */}
       <section className="bg-white/[0.03] border border-white/10 rounded-xl p-6">
-        <h2 className="text-lg font-bold text-white mb-4">Qual desenho gerar?</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {TIPOS.map(t => (
+        <h2 className="text-lg font-bold text-white mb-1">Qual desenho gerar?</h2>
+        <p className="text-xs text-white/50 mb-4">
+          Opções filtradas pelos itens deste projeto. Padrão de entrada sempre disponível.
+        </p>
+        <div className={`grid gap-3 grid-cols-1 ${tiposDisponiveis.length > 1 ? 'md:grid-cols-2' : ''} ${tiposDisponiveis.length > 2 ? 'md:grid-cols-3' : ''}`}>
+          {tiposDisponiveis.map(t => (
             <button
               key={t.id}
               onClick={() => setTipoSelecionado(t.id)}

@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
     const userPrompt = buildUserPrompt({
       projeto,
       configEmpresa,
-      tipoDesenho: tipo_desenho as 'unifilar_ongrid' | 'unifilar_hibrido',
+      tipoDesenho: tipo_desenho as 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada',
       hibridoDimensionamento,
       hibridoAnalise,
     })

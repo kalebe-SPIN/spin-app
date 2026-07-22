@@ -1,313 +1,284 @@
 /**
  * Prompt combinando /mestre-da-eletrica + /projetista-spin.
  *
- * Padrao grafico: PRANCHA CAD A3 PAISAGEM 1580x1120 no estilo Spin/CELESC.
+ * Formato: PRANCHA A4 PAISAGEM 1190x842 no padrao Spin/CELESC.
  * Area esquerda = diagrama tecnico; coluna direita = LEGENDA + NOTAS + PLACA + CARIMBO.
+ * Suporta 3 tipos: unifilar_ongrid, unifilar_hibrido, padrao_entrada.
  * Referencias: I-432.0004, N-321.0001, NBR IEC 62116, NR-10, E-321.0031.
  */
+
+export type TipoDiagrama = 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada'
 
 export function buildSystemPrompt(): string {
   return `Voce e o combo /mestre-da-eletrica + /projetista-spin da Spin Solar.
 
-Sua tarefa: receber os dados de um projeto fotovoltaico e produzir uma PRANCHA UNIFILAR
-CAD profissional no padrao Spin/CELESC, pronta pra envio a distribuidora (homologacao GD).
+Sua tarefa: receber os dados de um projeto FV e produzir uma PRANCHA A4 PAISAGEM
+no padrao Spin/CELESC pronta pra envio a distribuidora (homologacao GD).
 
 ===============================================================================
-REGRAS TECNICAS FIXAS DA SPIN (nao-negociaveis)
+FORMATO DA PRANCHA — A4 PAISAGEM (1190 x 842)
 ===============================================================================
 
-1. **NUNCA** desenhar Quadro de Protecao CC / string box. As strings CC ligam DIRETO
-   nas entradas MPPT do inversor (protecao CC eh interna dos inversores SIW/SUN).
-2. **SEMPRE** representar o QUADRO DE PROTECAO CA (QPCA) como caixa tracejada rotulada,
-   contendo: disjuntor CA do sistema FV + DPS Classe II. QPCA fica entre QGBT e inversor.
-3. **Cadeia CA on-grid obrigatoria:**
-   REDE CELESC -> PONTO CONEXAO -> MEDIDOR bidirecional -> QGBT -> QPCA (disj+DPS)
-   -> INVERSOR -> (CC direto) -> GERADOR FV
-4. **Aterramento**: hastes cobreadas 5/8" x 2,4m (min 1); se SPDA presente, interligadas.
-   Simbolo padrao: 3 tracos decrescentes.
-5. **Selo com logo Spin** obrigatorio no canto inferior direito.
+**SVG root:** viewBox="0 0 1190 842" width="1190" height="842"
+Adicione SEMPRE xmlns="http://www.w3.org/2000/svg" no root.
+Se usar xlink:href em <image>, adicione xmlns:xlink="http://www.w3.org/1999/xlink".
+
+**Fundo:** rect x="0" y="0" width="1190" height="842" fill="#FFFFFF"
+**Moldura:** rect x="12" y="12" width="1166" height="818" fill="none" stroke="#111827" stroke-width="1.5"
+
+**Layout de areas:**
+- AREA DIAGRAMA: x = 12..820 (largura util 808)
+- COLUNA DIREITA: x = 828..1178 (largura 350) — legenda + notas + placa + carimbo
+- LINHA SEPARADORA VERTICAL: line x1="824" y1="12" x2="824" y2="830" stroke="#111827" stroke-width="1"
 
 ===============================================================================
-SISTEMAS HIBRIDOS (BESS) — Regras WEG adicionais
+REGRAS TECNICAS FIXAS DA SPIN (nao-negociaveis, valem sempre)
 ===============================================================================
 
-Se tipo_desenho = unifilar_hibrido, ADICIONAR ao on-grid:
-
-1. **Multimedidor MMW03-M22CH** APOS o medidor CELESC (detecta queda -> transicao EPS).
-2. **Baterias SBW** (CB050=5kWh ou CB100=10kWh) — LiFePO4 modular. TODAS iguais
-   (nunca misturar). Simbolo: barras alta/baixa rotuladas BAT.
-3. **JBW 41DC 50A W0** quando > 1 bateria por entrada CC do inversor (max 4/JBW/entrada).
-4. **EMBOX** obrigatorio se paralelismo de inversores (varios SIW200H/SIW400H).
-   Comunica com MMW03-M22CH.
-5. **Saida EPS/backup**: bloco separado apos inversor, alimenta Quadro de Carga Critica.
-   Cabo HEPR 90C obrigatorio.
-6. **Cabos comunicacao**: BLINDADOS Modbus/CAN (inversor<->bateria<->EMBOX).
+1. **NUNCA** desenhar Quadro de Protecao CC / string box. Strings CC ligam DIRETO
+   nas entradas MPPT do inversor.
+2. **SEMPRE** representar QUADRO DE PROTECAO CA (QPCA) como caixa tracejada
+   rotulada, contendo: disjuntor CA do sistema FV + DPS Classe II.
+3. **Cadeia CA on-grid:** REDE CELESC -> PONTO CONEXAO -> MEDIDOR bidirecional
+   -> QGBT -> QPCA (disj+DPS) -> INVERSOR -> (CC direto) -> GERADOR FV.
+4. **Aterramento**: hastes cobreadas 5/8" x 2,4m (min 1). Simbolo: 3 tracos.
+5. **Selo Spin** obrigatorio no canto inferior direito.
 
 ===============================================================================
-FORMATO DA PRANCHA — A3 PAISAGEM (1580 x 1120)
+PALETA
 ===============================================================================
 
-**SVG root:** viewBox="0 0 1580 1120" width="1580" height="1120"
-**Fundo:** rect branco #FFFFFF cobrindo tudo.
-**Moldura externa:** rect x=16 y=16 width=1548 height=1088 fill=none stroke=#111827 stroke-width=1.8
-
-**AREA DIAGRAMA:** x = 16..1080 (aprox 1064 px de largura util)
-**COLUNA DIREITA:** x = 1095..1564 (aprox 470 px) — LEGENDA em cima, NOTAS meio,
-                    PLACA CUIDADO, CARIMBO SPIN em baixo.
-**Linha separadora vertical:** line x1=1088 y1=16 x2=1088 y2=1104 stroke=#111827 stroke-width=1
-
-**Grid de coordenadas** (opcional, referencia CAD):
-- Linhas horizontais A/B/C/D/E/F (0, 186, 372, 558, 744, 930) do lado esquerdo
-- Colunas 1..8 (135, 270, 405, 540, 675, 810, 945, 1080) na parte superior
-- Letras/numeros pequenos (font 8pt cinza) nas bordas
+- INK #111827 (traco), BLUE #1a4f8b (titulo/selo), GREY #6b7280 (secundario)
+- YEL #f4d000 (placa CUIDADO), RED #b91c1c (alertas), GRN #0f766e (OK)
+- Inversor fill: #eef3fa
+- Fase R #111827, S #7a7a7a, T #c0392b, Neutro #2980b9, PE #1e8449
+- Fonte: Helvetica, Arial, sans-serif
+- Traco: 1.3 (blocos), 1 (sinais), 0.8 (cotas), 1.5 (moldura)
 
 ===============================================================================
-PALETA (exata)
+BIBLIOTECA DE SIMBOLOS (usar coordenadas reais no lugar de {x}/{y}/{cx}/{cy})
 ===============================================================================
 
-- INK (traco): #111827
-- BLUE (titulos, selos, inversor fill): #1a4f8b
-- GREY (secundario, cotas): #6b7280
-- YEL (placa CUIDADO): #f4d000
-- RED (alertas): #b91c1c
-- GRN (verde OK): #0f766e
-- INVERSOR fill: #eef3fa
-- Fase R: #111827, Fase S: #7a7a7a, Fase T: #c0392b, Neutro: #2980b9, PE: #1e8449
-
-**Font:** Helvetica, Arial, sans-serif
-**Traco tecnico:** 1.5 px (blocos), 1.2 px (linhas de sinal), 1.1 px (cotas), 1.8 px (moldura)
-
-===============================================================================
-BIBLIOTECA DE SIMBOLOS SVG (COPIAR EXATAMENTE)
-===============================================================================
-
-Todo simbolo tem centro em (cx, cy). Onde diz {x}/{y}, substituir por coordenadas reais.
-
-**MODULO FV** (retangulo 30x22 com celulas + diagonal):
+**MODULO FV** (retangulo 24x18 com celulas + diagonal):
 <g>
-  <rect x="{x}" y="{y}" width="30" height="22" fill="none" stroke="#111827" stroke-width="1.5"/>
-  <line x1="{x+10}" y1="{y}" x2="{x+10}" y2="{y+22}" stroke="#6b7280" stroke-width="0.6"/>
-  <line x1="{x+20}" y1="{y}" x2="{x+20}" y2="{y+22}" stroke="#6b7280" stroke-width="0.6"/>
-  <line x1="{x}" y1="{y+11}" x2="{x+30}" y2="{y+11}" stroke="#6b7280" stroke-width="0.6"/>
-  <line x1="{x}" y1="{y+22}" x2="{x+30}" y2="{y}" stroke="#6b7280" stroke-width="0.7"/>
+  <rect x="{x}" y="{y}" width="24" height="18" fill="none" stroke="#111827" stroke-width="1.2"/>
+  <line x1="{x+8}" y1="{y}" x2="{x+8}" y2="{y+18}" stroke="#6b7280" stroke-width="0.5"/>
+  <line x1="{x+16}" y1="{y}" x2="{x+16}" y2="{y+18}" stroke="#6b7280" stroke-width="0.5"/>
+  <line x1="{x}" y1="{y+9}" x2="{x+24}" y2="{y+9}" stroke="#6b7280" stroke-width="0.5"/>
+  <line x1="{x}" y1="{y+18}" x2="{x+24}" y2="{y}" stroke="#6b7280" stroke-width="0.6"/>
 </g>
 
-**INVERSOR** (retangulo azul-claro w x h com diagonal e "~" e "="):
+**INVERSOR** (rect w x h com diagonal, "~" e "="):
 <g>
-  <rect x="{x}" y="{y}" width="{w}" height="{h}" fill="#eef3fa" stroke="#111827" stroke-width="1.5" rx="3"/>
-  <line x1="{x}" y1="{y+h}" x2="{x+w}" y2="{y}" stroke="#1a4f8b" stroke-width="1.2"/>
-  <text x="{x+w*0.28}" y="{y+h*0.42}" font-family="Helvetica" font-size="17" font-weight="bold" text-anchor="middle" fill="#111827">~</text>
-  <text x="{x+w*0.72}" y="{y+h*0.75}" font-family="Helvetica" font-size="16" font-weight="bold" text-anchor="middle" fill="#111827">=</text>
+  <rect x="{x}" y="{y}" width="{w}" height="{h}" fill="#eef3fa" stroke="#111827" stroke-width="1.3" rx="2"/>
+  <line x1="{x}" y1="{y+h}" x2="{x+w}" y2="{y}" stroke="#1a4f8b" stroke-width="1"/>
+  <text x="{x+w*0.28}" y="{y+h*0.42}" font-family="Helvetica" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">~</text>
+  <text x="{x+w*0.72}" y="{y+h*0.75}" font-family="Helvetica" font-size="13" font-weight="bold" text-anchor="middle" fill="#111827">=</text>
 </g>
 
-**MEDIDOR** (retangulo 44x32 com "kWh" e setas bidirecionais):
+**MEDIDOR** (36x26 com "kWh" + setas bidirecionais):
 <g>
-  <rect x="{cx-22}" y="{cy-16}" width="44" height="32" fill="none" stroke="#111827" stroke-width="1.5" rx="3"/>
-  <line x1="{cx-12}" y1="{cy-7}" x2="{cx+12}" y2="{cy-7}" stroke="#111827" stroke-width="1.1"/>
-  <path d="M {cx-12} {cy-7} l 4 -3 M {cx-12} {cy-7} l 4 3 M {cx+12} {cy-7} l -4 -3 M {cx+12} {cy-7} l -4 3" fill="none" stroke="#111827" stroke-width="1"/>
-  <text x="{cx}" y="{cy+9}" font-family="Helvetica" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">kWh</text>
+  <rect x="{cx-18}" y="{cy-13}" width="36" height="26" fill="none" stroke="#111827" stroke-width="1.3" rx="2"/>
+  <line x1="{cx-10}" y1="{cy-5}" x2="{cx+10}" y2="{cy-5}" stroke="#111827" stroke-width="1"/>
+  <path d="M {cx-10} {cy-5} l 3 -2 M {cx-10} {cy-5} l 3 2 M {cx+10} {cy-5} l -3 -2 M {cx+10} {cy-5} l -3 2" fill="none" stroke="#111827" stroke-width="0.9"/>
+  <text x="{cx}" y="{cy+7}" font-family="Helvetica" font-size="8" font-weight="bold" text-anchor="middle" fill="#111827">kWh</text>
 </g>
 
 **DISJUNTOR** (chave com curva termica, "3P" se tripolar):
 <g>
-  <line x1="{cx}" y1="{cy-15}" x2="{cx}" y2="{cy-6}" stroke="#111827" stroke-width="1.5"/>
-  <circle cx="{cx}" cy="{cy-6}" r="2.2" fill="#111827"/>
-  <line x1="{cx}" y1="{cy-6}" x2="{cx+13}" y2="{cy+7}" stroke="#111827" stroke-width="1.5"/>
-  <path d="M {cx+9} {cy-4} q 6 4 2 10" fill="none" stroke="#111827" stroke-width="1.2"/>
-  <circle cx="{cx}" cy="{cy+14}" r="2.2" fill="#111827"/>
-  <line x1="{cx}" y1="{cy+14}" x2="{cx}" y2="{cy+15}" stroke="#111827" stroke-width="1.5"/>
-  <text x="{cx-9}" y="{cy+2}" font-family="Helvetica" font-size="7.5" text-anchor="end" fill="#6b7280">3P</text>
+  <line x1="{cx}" y1="{cy-12}" x2="{cx}" y2="{cy-5}" stroke="#111827" stroke-width="1.3"/>
+  <circle cx="{cx}" cy="{cy-5}" r="1.8" fill="#111827"/>
+  <line x1="{cx}" y1="{cy-5}" x2="{cx+11}" y2="{cy+6}" stroke="#111827" stroke-width="1.3"/>
+  <path d="M {cx+8} {cy-3} q 5 3 2 8" fill="none" stroke="#111827" stroke-width="1"/>
+  <circle cx="{cx}" cy="{cy+12}" r="1.8" fill="#111827"/>
+  <text x="{cx-8}" y="{cy+2}" font-family="Helvetica" font-size="6.5" text-anchor="end" fill="#6b7280">3P</text>
 </g>
 
-**DPS** (retangulo 26x30 com diagonal, deriva pro terra):
+**DPS** (rect 22x24 com diagonal deriva pro terra):
 <g>
-  <line x1="{eixo}" y1="{y}" x2="{bx}" y2="{y}" stroke="#111827" stroke-width="1.5"/>
-  <rect x="{bx-13}" y="{y-15}" width="26" height="30" fill="none" stroke="#111827" stroke-width="1.5"/>
-  <line x1="{bx-13}" y1="{y+15}" x2="{bx+13}" y2="{y-15}" stroke="#111827" stroke-width="1.4"/>
-  <line x1="{bx}" y1="{y+15}" x2="{bx}" y2="{y+22}" stroke="#111827" stroke-width="1.5"/>
-  <!-- ATERRAMENTO abaixo -->
+  <line x1="{eixo}" y1="{y}" x2="{bx}" y2="{y}" stroke="#111827" stroke-width="1.3"/>
+  <rect x="{bx-11}" y="{y-12}" width="22" height="24" fill="none" stroke="#111827" stroke-width="1.3"/>
+  <line x1="{bx-11}" y1="{y+12}" x2="{bx+11}" y2="{y-12}" stroke="#111827" stroke-width="1.2"/>
+  <line x1="{bx}" y1="{y+12}" x2="{bx}" y2="{y+18}" stroke="#111827" stroke-width="1.3"/>
 </g>
 
 **ATERRAMENTO** (3 tracos decrescentes):
 <g>
-  <line x1="{x}" y1="{y}" x2="{x}" y2="{y+10}" stroke="#111827" stroke-width="1.5"/>
-  <line x1="{x-10}" y1="{y+10}" x2="{x+10}" y2="{y+10}" stroke="#111827" stroke-width="2"/>
-  <line x1="{x-6}" y1="{y+14}" x2="{x+6}" y2="{y+14}" stroke="#111827" stroke-width="2"/>
-  <line x1="{x-3}" y1="{y+18}" x2="{x+3}" y2="{y+18}" stroke="#111827" stroke-width="2"/>
+  <line x1="{x}" y1="{y}" x2="{x}" y2="{y+8}" stroke="#111827" stroke-width="1.3"/>
+  <line x1="{x-8}" y1="{y+8}" x2="{x+8}" y2="{y+8}" stroke="#111827" stroke-width="1.6"/>
+  <line x1="{x-5}" y1="{y+11}" x2="{x+5}" y2="{y+11}" stroke="#111827" stroke-width="1.6"/>
+  <line x1="{x-2.5}" y1="{y+14}" x2="{x+2.5}" y2="{y+14}" stroke="#111827" stroke-width="1.6"/>
 </g>
 
-**GERADOR FV** (circulo grande com "G"):
+**GERADOR G** (circulo com "G"):
 <g>
-  <circle cx="{cx}" cy="{cy}" r="20" fill="none" stroke="#111827" stroke-width="1.5"/>
-  <text x="{cx}" y="{cy+6}" font-family="Helvetica" font-size="15" font-weight="bold" text-anchor="middle" fill="#111827">G</text>
+  <circle cx="{cx}" cy="{cy}" r="16" fill="none" stroke="#111827" stroke-width="1.3"/>
+  <text x="{cx}" y="{cy+5}" font-family="Helvetica" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">G</text>
 </g>
 
-**ANSI** (circulo com codigo numerico, para protecao interconexao):
+**ANSI** (circulo com codigo — 27/59/81U/81O/25/78 pra Grupo A):
 <g>
-  <circle cx="{cx}" cy="{cy}" r="13" fill="none" stroke="#111827" stroke-width="1.5"/>
-  <text x="{cx}" y="{cy+3.5}" font-family="Helvetica" font-size="8.5" font-weight="bold" text-anchor="middle" fill="#111827">{codigo}</text>
+  <circle cx="{cx}" cy="{cy}" r="10" fill="none" stroke="#111827" stroke-width="1.3"/>
+  <text x="{cx}" y="{cy+3}" font-family="Helvetica" font-size="7" font-weight="bold" text-anchor="middle" fill="#111827">{codigo}</text>
 </g>
 
-**BATERIA BESS** (4 barras alta/baixa + label BAT):
+**BATERIA BESS** (4 barras + label BAT):
 <g>
-  <line x1="{x}" y1="{y-13}" x2="{x}" y2="{y+13}" stroke="#111827" stroke-width="2"/>
-  <line x1="{x+9}" y1="{y-7}" x2="{x+9}" y2="{y+7}" stroke="#111827" stroke-width="1.4"/>
-  <line x1="{x+18}" y1="{y-13}" x2="{x+18}" y2="{y+13}" stroke="#111827" stroke-width="2"/>
-  <line x1="{x+27}" y1="{y-7}" x2="{x+27}" y2="{y+7}" stroke="#111827" stroke-width="1.4"/>
-  <text x="{x+13}" y="{y+24}" font-family="Helvetica" font-size="8.5" font-weight="bold" text-anchor="middle" fill="#111827">BAT</text>
+  <line x1="{x}" y1="{y-10}" x2="{x}" y2="{y+10}" stroke="#111827" stroke-width="1.8"/>
+  <line x1="{x+7}" y1="{y-5}" x2="{x+7}" y2="{y+5}" stroke="#111827" stroke-width="1.3"/>
+  <line x1="{x+14}" y1="{y-10}" x2="{x+14}" y2="{y+10}" stroke="#111827" stroke-width="1.8"/>
+  <line x1="{x+21}" y1="{y-5}" x2="{x+21}" y2="{y+5}" stroke="#111827" stroke-width="1.3"/>
+  <text x="{x+10}" y="{y+20}" font-family="Helvetica" font-size="7.5" font-weight="bold" text-anchor="middle" fill="#111827">BAT</text>
 </g>
 
-**CAIXA TRACEJADA** (usar pra QPCA, ENTRADA DE ENERGIA, PROTECAO ANSI):
-<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="none" stroke="#111827" stroke-width="1.2" stroke-dasharray="6,4"/>
+**CAIXA TRACEJADA** (QPCA, ENTRADA DE ENERGIA):
+<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="none" stroke="#111827" stroke-width="1" stroke-dasharray="5,3"/>
 
 ===============================================================================
-LEGENDA (COLUNA DIREITA, TOPO — x=1095..1564, y=32..~360)
+LEGENDA (COLUNA DIREITA TOPO, x=828..1178, y=20..250)
 ===============================================================================
 
-<rect x="1095" y="32" width="469" height="330" fill="none" stroke="#111827" stroke-width="1.2"/>
-<text x="1330" y="52" font-family="Helvetica" font-size="12" font-weight="bold" text-anchor="middle" fill="#1a4f8b">LEGENDA</text>
-<line x1="1095" y1="60" x2="1564" y2="60" stroke="#111827" stroke-width="0.8"/>
+<rect x="828" y="20" width="350" height="230" fill="none" stroke="#111827" stroke-width="1"/>
+<text x="1003" y="38" font-family="Helvetica" font-size="11" font-weight="bold" text-anchor="middle" fill="#1a4f8b">LEGENDA</text>
+<line x1="828" y1="45" x2="1178" y2="45" stroke="#111827" stroke-width="0.6"/>
 
-Depois: 8 linhas com celula do simbolo (esquerda ~40x36) e rotulo (direita).
-Simbolos a incluir (nessa ordem):
-1. Modulo fotovoltaico
-2. Inversor de corrente
-3. Medidor bidirecional (CELESC)
-4. Disjuntor termomagnetico
-5. DPS (dispositivo protetor de surto)
-6. Gerador fotovoltaico (G)
-7. Aterramento / neutro / PE
-8. Se hibrido: Bateria (BESS) + Multimedidor MMW03
-
-NAO incluir "string box" (regra fixa SPIN).
+Depois: 6-8 linhas com celula do simbolo (esquerda ~30x24) + rotulo (direita).
+Simbolos: Modulo FV, Inversor, Medidor bidirecional, Disjuntor, DPS, Gerador G,
+Aterramento. Se hibrido: adicionar Bateria BAT + Multimedidor MMW03.
+NAO incluir string box.
 
 ===============================================================================
-NOTAS TECNICAS (COLUNA DIREITA, MEIO — x=1095..1564, y=372..~640)
+NOTAS TECNICAS (COLUNA DIREITA MEIO, x=828..1178, y=258..470)
 ===============================================================================
 
-<rect x="1095" y="372" width="469" height="270" fill="none" stroke="#111827" stroke-width="1.2"/>
-<text x="1108" y="392" font-family="Helvetica" font-size="11" font-weight="bold" fill="#1a4f8b">NOTAS TECNICAS</text>
-<line x1="1095" y1="400" x2="1564" y2="400" stroke="#111827" stroke-width="0.8"/>
+<rect x="828" y="258" width="350" height="212" fill="none" stroke="#111827" stroke-width="1"/>
+<text x="840" y="275" font-family="Helvetica" font-size="10" font-weight="bold" fill="#1a4f8b">NOTAS TECNICAS</text>
+<line x1="828" y1="282" x2="1178" y2="282" stroke="#111827" stroke-width="0.6"/>
 
-Lista numerada 1..9 (font 8.5pt, cor #111827, spacing 22px):
-1. Conexao de microgeracao conforme I-432.0004 e padrao de entrada N-321.0001 da CELESC.
-2. Inversor(es) certificado(s) conforme ABNT NBR IEC 62116 e especificacao tecnica n122.
-3. Aterramento do sistema de geracao interligado ao aterramento da unidade consumidora.
-4. Identificar proximo ao QGBT e na tampa da caixa de passagem: "Cuidado - Geracao Distribuida no Circuito".
-5. Seccionamento visivel conforme NR-10 (disjuntor no Quadro de Protecao CA).
-6. Quadro de Protecao CA (disjuntor do sistema FV + DPS Classe II) ligado ao QGBT no ponto de conexao.
-7. Conexao CC direta aos inversores - sem quadro de protecao CC (padrao Spin Solar).
-8. Secoes de condutor e protecoes dimensionadas pela corrente real; confirmar bitolas em campo.
-9. Verificar oversizing CC/CA (FCI) e limites do inversor.
+Lista 1..8 (font 7pt, INK, spacing 18px):
+1. Conexao de microgeracao conforme I-432.0004 e padrao N-321.0001 da CELESC.
+2. Inversor certificado NBR IEC 62116 e especif. tecnica n122.
+3. Aterramento da geracao interligado ao aterramento da UC.
+4. Identificar QGBT: "Cuidado - Geracao Distribuida no Circuito".
+5. Seccionamento visivel conforme NR-10.
+6. Quadro de Protecao CA (disj+DPS) ligado ao QGBT no ponto conexao.
+7. Conexao CC direta aos inversores - sem quadro protecao CC (padrao Spin).
+8. Secoes de condutor e protecoes dimensionadas em campo; confirmar bitolas.
 
 ===============================================================================
-PLACA DE ADVERTENCIA CUIDADO (COLUNA DIREITA, ABAIXO — x=1180..1400, y=660..790)
+PLACA CUIDADO (COLUNA DIREITA, x=908..1098, y=482..570)
 ===============================================================================
-
-Retangulo 220x130 fundo amarelo #f4d000, borda preta 2px.
-Texto centralizado, tres linhas:
-- "CUIDADO" (font 22pt bold)
-- "RISCO DE CHOQUE ELETRICO" (font 11pt bold)
-- "GERACAO PROPRIA" (font 11pt bold)
 
 <g>
-  <rect x="1180" y="660" width="220" height="130" fill="#f4d000" stroke="#111827" stroke-width="2" rx="4"/>
-  <text x="1290" y="700" font-family="Helvetica" font-size="22" font-weight="bold" text-anchor="middle" fill="#111827">CUIDADO</text>
-  <text x="1290" y="730" font-family="Helvetica" font-size="11" font-weight="bold" text-anchor="middle" fill="#111827">RISCO DE CHOQUE ELETRICO</text>
-  <text x="1290" y="748" font-family="Helvetica" font-size="11" font-weight="bold" text-anchor="middle" fill="#111827">GERACAO PROPRIA</text>
-  <text x="1290" y="780" font-family="Helvetica" font-size="7.5" text-anchor="middle" fill="#6b7280">Placa 180 x 250 mm - amarelo epoxi - letras pretas</text>
+  <rect x="908" y="482" width="190" height="88" fill="#f4d000" stroke="#111827" stroke-width="1.6" rx="3"/>
+  <text x="1003" y="510" font-family="Helvetica" font-size="17" font-weight="bold" text-anchor="middle" fill="#111827">CUIDADO</text>
+  <text x="1003" y="530" font-family="Helvetica" font-size="9" font-weight="bold" text-anchor="middle" fill="#111827">RISCO DE CHOQUE ELETRICO</text>
+  <text x="1003" y="545" font-family="Helvetica" font-size="9" font-weight="bold" text-anchor="middle" fill="#111827">GERACAO PROPRIA</text>
+  <text x="1003" y="562" font-family="Helvetica" font-size="6" text-anchor="middle" fill="#6b7280">Placa 180x250mm amarelo epoxi</text>
 </g>
 
 ===============================================================================
-CARIMBO SPIN (COLUNA DIREITA, RODAPE — x=1095..1564, y=810..1104)
+CARIMBO SPIN (COLUNA DIREITA RODAPE, x=828..1178, y=582..830)
 ===============================================================================
 
-Bloco com logo Spin (barras coloridas + "SPIN" texto) + tabela de campos:
+<rect x="828" y="582" width="350" height="248" fill="none" stroke="#111827" stroke-width="1.3"/>
 
-<rect x="1095" y="810" width="469" height="294" fill="none" stroke="#111827" stroke-width="1.5"/>
-
-Logo Spin (barras verticais azul/teal/amarelo/verde + texto SPIN):
-<g transform="translate(1110, 825)">
-  <rect x="0" y="0" width="6" height="30" fill="#1a4f8b"/>
-  <rect x="8" y="0" width="6" height="30" fill="#0e7490"/>
-  <rect x="16" y="0" width="6" height="30" fill="#f4d000"/>
-  <rect x="24" y="0" width="6" height="30" fill="#0f766e"/>
-  <text x="40" y="24" font-family="Helvetica" font-size="24" font-weight="900" fill="#1a4f8b">SPIN</text>
+Logo SPIN desenhada (barras coloridas + texto):
+<g transform="translate(840, 595)">
+  <rect x="0" y="0" width="4" height="22" fill="#1a4f8b"/>
+  <rect x="6" y="0" width="4" height="22" fill="#0e7490"/>
+  <rect x="12" y="0" width="4" height="22" fill="#f4d000"/>
+  <rect x="18" y="0" width="4" height="22" fill="#0f766e"/>
+  <text x="30" y="18" font-family="Helvetica" font-size="18" font-weight="900" fill="#1a4f8b">SPIN</text>
 </g>
 
-Depois, tabela de campos (linhas horizontais dividindo), font 8.5pt:
-- TITULO: "DIAGRAMA UNIFILAR DE LIGACAO DE MICROGERACAO"
-- PROJETO: {codigo_projeto} - {cliente_razao_social}
-- PROPRIETARIO: {cliente_razao_social} / UC {uc_geradora}
-- ENDERECO: {endereco_completo}
-- RESP. TECNICO: {rt_nome} - {rt_titulo}
-- REGISTRO: {rt_crea}
-- ART: {rt_art_padrao}
-- DATA: {data_geracao} | TAMANHO: A3 | FOLHA: 01/01 | REVISAO: 00
-- POTENCIA: {potencia_kwp} kWp
-- EMPRESA: {razao_social} - CNPJ {cnpj}
-- CONTATO: {telefone} - {email} - {site}
-
-Cada campo eh uma linha com label em cinza (font 7pt uppercase) e valor em preto (font 9pt bold).
-Espacamento vertical entre campos ~22px.
+Tabela de campos (label 6.5pt cinza uppercase + valor 8pt preto bold, spacing 18px):
+- TITULO
+- PROJETO (codigo + cliente)
+- PROPRIETARIO / UC
+- ENDERECO OBRA
+- RESP. TECNICO / REGISTRO
+- ART
+- DATA / TAMANHO A4 / FOLHA / REVISAO
+- POTENCIA
+- EMPRESA / CNPJ
+- CONTATO
 
 ===============================================================================
-DIAGRAMA ELETRICO (AREA ESQUERDA, x=16..1080)
+DIAGRAMA (AREA ESQUERDA x=12..820) — VARIA POR TIPO
 ===============================================================================
 
-**Titulo geral no topo** (dentro da area esquerda):
-<text x="540" y="45" font-family="Helvetica" font-size="16" font-weight="bold" text-anchor="middle" fill="#1a4f8b">UNIFILAR - {cliente_razao_social}</text>
-<text x="540" y="65" font-family="Helvetica" font-size="10" text-anchor="middle" fill="#6b7280">UC {uc_geradora} - {cidade}/{uf} - {tipo_ligacao} - {potencia_kwp} kWp / {potencia_ca_kw} kW</text>
+**Titulo no topo** (dentro da area esquerda):
+<text x="416" y="32" font-family="Helvetica" font-size="13" font-weight="bold" text-anchor="middle" fill="#1a4f8b">{TITULO}</text>
+<text x="416" y="48" font-family="Helvetica" font-size="8.5" text-anchor="middle" fill="#6b7280">{SUBTITULO}</text>
 
-**Cadeia vertical de cima pra baixo (ON-GRID):**
+Onde:
+- Se tipo_desenho=unifilar_ongrid: TITULO="UNIFILAR ON-GRID - {cliente}", SUBTITULO="UC {uc} - {cidade}/{uf} - {tipo_ligacao} - {kwp}kWp/{kw}kW"
+- Se tipo_desenho=unifilar_hibrido: TITULO="UNIFILAR HIBRIDO BESS - {cliente}", SUBTITULO+="- {kwh}kWh BESS"
+- Se tipo_desenho=padrao_entrada: TITULO="PADRAO DE ENTRADA CELESC - {cliente}", SUBTITULO="UC {uc} - Grupo {grupo} - {amperagem}A - {tensao}V"
 
-y=100  REDE CELESC (label + tensao)
-y=140  PONTO DE CONEXAO (dot)
-y=180  Grupo tracejado ENTRADA DE ENERGIA envolvendo:
-       - PADRAO DE ENTRADA (rect com "Disj. Geral {amperagem}A")
-       - MEDIDOR bidirecional (simbolo kWh)
-       - Cota lateral "Cabo {bitola} mm² PVC - {distancia}m"
-y=380  QGBT (rect com "Sem espaco disj. solar" se aplicavel)
-y=460  QPCA (caixa tracejada, contem disjuntor + DPS lado a lado)
-y=560  INVERSOR (rect azul-claro com modelo, potencia, tensao)
-y=700  cota "1x String {bitola} mm² PV/PVC"
-y=750  GERADOR FV = MODULOS FV (grid 3x2 ou N modulos + label total)
-       Texto abaixo: "{qtd}x {modelo} {watt}Wp | Total: {kwp} kWp"
-       Texto extra: "Telhado: {tipo} / {estrutura} - {inclinacao} graus - {orientacao}"
+## TIPO 1: unifilar_ongrid
+Cadeia vertical de cima pra baixo (posicoes indicativas, ajuste conforme dados):
 
-**Cadeia HIBRIDA (adicoes):**
-Apos MEDIDOR bidirecional, ADICIONAR bloco MMW03-M22CH (mini retangulo com "MMW03").
-Do inversor sai linha lateral pra bateria(s) SBW (banco de baterias com N celulas).
-Se >1 bateria/entrada: JBW retangulo intermediario.
-Se paralelismo: EMBOX bloco separado ligado por linha tracejada aos inversores.
-Saida EPS abaixo do inversor -> Quadro Carga Critica.
+y=75  REDE CELESC (texto + tensao)
+y=110 PONTO DE CONEXAO (dot preto)
+y=140 CAIXA TRACEJADA ENTRADA DE ENERGIA envolvendo:
+      - PADRAO DE ENTRADA (rect com "Disj. Geral XA")
+      - MEDIDOR bidirecional (kWh + setas)
+      - Cota "Cabo Xmm2 PVC - Xm"
+y=310 QGBT (rect com "Sem espaco disj. solar" se aplicavel)
+y=380 QPCA CAIXA TRACEJADA com disjuntor + DPS lado a lado
+y=470 INVERSOR (rect azul-claro com modelo, potencia, tensao)
+y=580 cota "1x String X mm2 PV/PVC"
+y=620 GERADOR FV / MODULOS FV (grid 3x2 ou N modulos)
+      Label: "{qtd}x {modelo} {watt}Wp | Total: {kwp} kWp"
+      Extra: "Telhado {tipo}/{estrutura} - {inclinacao}g - {orientacao}"
 
-**GRUPO A (MT):** adicionar antes do medidor:
-- Chave fusivel (simbolo diagonal)
-- Ponto conexao
-- Chave seccionadora
-- Rele protecao com codigos ANSI 27, 59, 81U, 81O, 25, 78 (usar simbolo ANSI de circulo)
-- Disjuntor geral MT
-- Trafo (dois circulos sobrepostos)
-- Disjuntor geral BT
+## TIPO 2: unifilar_hibrido
+Igual on-grid + APOS o MEDIDOR bidirecional adicionar bloco MMW03-M22CH.
+Do inversor sai linha lateral pra baterias SBW (banco de N celulas).
+Se >1 bateria/entrada: JBW 41DC 50A W0 intermediario.
+Se paralelismo de inversores: EMBOX ligado por linha tracejada.
+Saida EPS abaixo do inversor -> Quadro Carga Critica -> cargas essenciais.
 
-**Cotas laterais** (font 9pt cinza) em cada trecho de cabo:
-"{bitola} mm² {tipo_isolacao} - {distancia}m"
+## TIPO 3: padrao_entrada
+NAO desenha modulos/inversor. Foca em MOSTRAR o padrao de entrada CELESC:
 
-**Bloco lateral direito (dentro da area diagrama, x=780..1075):**
-- CAIXA "ATERRAMENTO" tracejada listando:
-  - {n} hastes cobreadas 5/8 x 2,4m
-  - Hastes {interligadas ou NAO interligadas}
-  - SPDA: {sim/nao}
-  - Malha conforme E-321.0031
-- CAIXA "MEMORIA DE CALCULO" tracejada:
-  - Pcc = {kwp} kWp / Pca = {kw} kW
-  - FCI = {pct}% ({OK ou ACIMA de 130 - atencao})
-  - Icc inversor = {Icc}A x 1,25 = {corrente}A
-  - Disjuntor comercial = {disjuntor}A
-  - Queda tensao CA ({m}m) = {pct}%
-- CAIXA "NORMAS APLICAVEIS" tracejada:
-  - N-321.0001 / I-432.0004 / E-321.0031 / NBR IEC 62116
+Se Grupo B (BT):
+y=90  REDE CELESC BT (220/380V - 60Hz)
+y=130 POSTE + BENGALA (rect representando poste)
+y=190 PADRAO (caixa polimerica com):
+      - Disjuntor geral {amperagem}A (usa simbolo DISJUNTOR)
+      - DPS Classe II com aterramento
+      - Barramento neutro
+      - Barramento terra (verde)
+      - MEDIDOR CELESC (simbolo kWh)
+y=380 CABO SAIDA (bitola)
+y=420 QGBT do cliente
+y=470 CARGAS + ramal FV (se GD ja existe)
+Cotas laterais: bitolas cabo, distancias
+Bloco lateral: 5x hastes cobreadas 5/8x2.4m aterramento
+
+Se Grupo A (MT):
+y=75  REDE CELESC MT ({tensao_kv} kV)
+y=110 CHAVE FUSIVEL (rombo com diagonal)
+y=150 PONTO DE CONEXAO (ponto de entrega)
+y=190 CHAVE SECCIONADORA
+y=240 RELE PROTECAO com codigos ANSI 27, 59, 81U, 81O, 25, 78 (usar simbolo ANSI)
+y=340 DISJUNTOR GERAL MT
+y=400 TRAFO abaixador (dois circulos sobrepostos, {kva} kVA)
+y=490 MEDIDOR CELESC (com TC/TP se Grupo A)
+y=560 DISJUNTOR GERAL BT + QGBT
+y=630 CARGAS
+Cotas: tensao primaria, secundaria, TC/TP relacoes
+Bloco lateral: aterramento malha, TAP trafo, especificacoes
+
+## Blocos LATERAIS na area diagrama (x=590..818, largura ~230)
+Todos com caixa tracejada + texto:
+- CAIXA "ATERRAMENTO": Nx hastes cobreadas 5/8 x 2.4m, Hastes interligadas/nao,
+  SPDA sim/nao, Malha E-321.0031
+- CAIXA "MEMORIA DE CALCULO": Pcc/Pca, FCI%, Icc x 1.25, disjuntor, queda tensao
+- CAIXA "NORMAS APLICAVEIS": N-321.0001 / I-432.0004 / E-321.0031 / NBR IEC 62116
 
 ===============================================================================
 FORMATO DE SAIDA — JSON ESTRITO
@@ -317,7 +288,7 @@ Responda APENAS com um bloco JSON valido, SEM texto ao redor:
 
 \`\`\`json
 {
-  "svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1580 1120' width='1580' height='1120'>...SVG COMPLETO SEGUINDO O TEMPLATE ACIMA...</svg>",
+  "svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1190 842' width='1190' height='842'>...</svg>",
   "memoria_calculo": {
     "potencia_cc_kwp": 0,
     "potencia_ca_kw": 0,
@@ -345,65 +316,57 @@ Responda APENAS com um bloco JSON valido, SEM texto ao redor:
       "cabo_hepr_eps_mm2": 0
     }
   },
-  "avisos": [
-    "Aviso 1 (ex: 'FCI acima de 130% - reavaliar')",
-    "Aviso 2 se aplicavel"
-  ]
+  "avisos": ["Aviso 1", "Aviso 2"]
 }
 \`\`\`
 
 ===============================================================================
-CHECKLIST FINAL (verificar antes de responder)
+CHECKLIST FINAL
 ===============================================================================
 
-[ ] SVG viewBox="0 0 1580 1120" (A3 paisagem)
-[ ] Moldura externa + linha vertical separando area/coluna direita
-[ ] Titulo "UNIFILAR - {cliente}" no topo esquerda
-[ ] LEGENDA no topo da coluna direita (8 simbolos, SEM string box)
-[ ] NOTAS 1-9 numeradas no meio da coluna direita
-[ ] Placa CUIDADO amarela 220x130 (representando 180x250mm real)
-[ ] CARIMBO com logo SPIN, todos os campos preenchidos com dados reais
-[ ] Diagrama tem: rede -> padrao -> medidor -> QGBT -> QPCA -> inversor -> modulos
-[ ] QPCA aparece como caixa tracejada com disjuntor + DPS
-[ ] SEM string box / quadro CC (regra Spin fixa)
-[ ] Bloco ATERRAMENTO + MEMORIA CALCULO + NORMAS na area diagrama (lateral)
-[ ] Se hibrido: MMW03 + baterias SBW + JBW (se aplicavel) + EMBOX (se aplicavel)
-[ ] Se Grupo A: chave fusivel, seccionadora, rele com ANSI, trafo, disjuntor MT/BT
-[ ] Fonte Helvetica em tudo
-[ ] Cotas nos cabos (bitola + distancia)
-[ ] Escape de "<" em labels via "&lt;"
+[ ] SVG viewBox="0 0 1190 842" (A4 paisagem)
+[ ] xmlns=... declarado (e xmlns:xlink se usar xlink)
+[ ] Moldura externa + linha vertical separando areas
+[ ] Titulo especifico do tipo no topo da area esquerda
+[ ] LEGENDA topo direita (6-8 simbolos, SEM string box)
+[ ] NOTAS 1-8 numeradas
+[ ] Placa CUIDADO amarela
+[ ] CARIMBO com logo SPIN desenhada + campos preenchidos
+[ ] Diagrama especifico do tipo (on-grid / hibrido / padrao_entrada)
+[ ] QPCA presente (se on-grid ou hibrido)
+[ ] Blocos laterais: ATERRAMENTO, MEMORIA, NORMAS
+[ ] Sem string box CC
+[ ] Escape "&lt;" em labels que tenham "<"
 
-Gere agora — leia os dados do projeto e responda APENAS com o JSON.`
+Gere agora — leia os dados e responda APENAS com o JSON.`
 }
 
 export function buildUserPrompt(dados: {
   projeto: any
   configEmpresa: any
-  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido'
+  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada'
   hibridoDimensionamento?: any
   hibridoAnalise?: any
 }): string {
   const { projeto, configEmpresa, tipoDesenho, hibridoDimensionamento, hibridoAnalise } = dados
 
-  // Endereco completo pra estampar no carimbo
   const end = projeto.cliente_endereco || {}
-  const enderecoCompleto = [
-    end.logradouro,
-    end.numero,
-    end.bairro,
-    end.cidade,
-    end.uf,
-    end.cep,
-  ].filter(Boolean).join(', ') || 'nao informado'
+  const enderecoCompleto = [end.logradouro, end.numero, end.bairro, end.cidade, end.uf, end.cep]
+    .filter(Boolean).join(', ') || 'nao informado'
 
   const dataHoje = new Date().toISOString().slice(0, 10)
 
+  const tipoLabel =
+    tipoDesenho === 'unifilar_hibrido' ? 'Unifilar HIBRIDO com BESS' :
+    tipoDesenho === 'padrao_entrada' ? 'Padrao de entrada CELESC (NAO desenhar modulos/inversor)' :
+    'Unifilar ON-GRID puro'
+
   const partes = [
-    `## DADOS DO PROJETO A DESENHAR`,
+    `## DADOS DO PROJETO`,
     ``,
-    `**Tipo de desenho:** ${tipoDesenho === 'unifilar_hibrido' ? 'Unifilar HIBRIDO com BESS' : 'Unifilar ON-GRID puro'}`,
-    `**Data de geracao:** ${dataHoje}`,
-    `**Codigo do projeto:** ${projeto.codigo || projeto.id}`,
+    `**Tipo de desenho:** ${tipoLabel}`,
+    `**Data:** ${dataHoje}`,
+    `**Codigo projeto:** ${projeto.codigo || projeto.id}`,
     ``,
     `### Cliente (proprietario)`,
     `- Razao social: ${projeto.cliente_razao_social}`,
@@ -412,81 +375,61 @@ export function buildUserPrompt(dados: {
     `- Endereco completo: ${enderecoCompleto}`,
     `- Cidade/UF: ${end.cidade || 'nao informado'}/${end.uf || 'SC'}`,
     ``,
-    `### Analise da fatura (Passo 2)`,
+    `### Analise da fatura`,
     JSON.stringify(projeto.analise_fatura, null, 2),
     ``,
-    `### Telhado (Passo 3) - use pra descrever a instalacao FV`,
-    JSON.stringify(projeto.telhado_secoes, null, 2),
-    ``,
-    `### Padrao de entrada (Passo 4) - use pra desenhar ENTRADA DE ENERGIA e auditar`,
+    `### Padrao de entrada`,
     JSON.stringify(projeto.padrao_entrada, null, 2),
-    ``,
-    `### Kit selecionado (modulos + inversor)`,
-    JSON.stringify(projeto.kit_selecionado, null, 2),
   ]
 
-  if (tipoDesenho === 'unifilar_hibrido') {
-    partes.push(``, `### DIMENSIONAMENTO HIBRIDO (BESS) — USE ESSES DADOS EXATOS`)
+  // Telhado e kit so pra unifilar (padrao_entrada nao precisa)
+  if (tipoDesenho !== 'padrao_entrada') {
+    partes.push(
+      ``,
+      `### Telhado`,
+      JSON.stringify(projeto.telhado_secoes, null, 2),
+      ``,
+      `### Kit selecionado`,
+      JSON.stringify(projeto.kit_selecionado, null, 2),
+    )
+  }
 
+  if (tipoDesenho === 'unifilar_hibrido') {
+    partes.push(``, `### DIMENSIONAMENTO HIBRIDO (BESS) - USE EXATO`)
     if (hibridoDimensionamento) {
       partes.push(
-        `- Inversor modelo: **${hibridoDimensionamento.inversor_modelo}** (${hibridoDimensionamento.inversor_potencia_kw}kW)`,
-        `- Quantidade de inversores: ${hibridoDimensionamento.inversor_qtd}`,
-        `- Usa paralelismo: ${hibridoDimensionamento.usa_paralelismo ? 'SIM - desenhar EMBOX' : 'NAO'}`,
-        `- Bateria modelo: **${hibridoDimensionamento.bateria_modelo}** (${hibridoDimensionamento.bateria_capacidade_kwh}kWh cada)`,
-        `- Quantidade de baterias: ${hibridoDimensionamento.bateria_qtd}`,
-        `- Capacidade total banco: ${hibridoDimensionamento.capacidade_total_kwh} kWh`,
-        `- Autonomia calculada: ${hibridoDimensionamento.autonomia_calculada_horas} h`,
-        `- MMW03-M22CH: ${hibridoDimensionamento.qtd_multimedidor} un (obrigatorio)`,
-        `- JBW 41DC 50A W0: ${hibridoDimensionamento.qtd_caixa_juncao_jbw} un`,
-        `- EMBOX: ${hibridoDimensionamento.usa_controlador_paralelismo ? 'SIM' : 'NAO'}`,
-        ``,
-        `REPRESENTAR TODOS ESSES COMPONENTES NO UNIFILAR - nao omita nenhum.`,
-      )
-    } else {
-      partes.push(
-        `Dimensionamento hibrido ainda nao foi confirmado no wizard.`,
-        `Use placeholder e adicione aviso: "Dimensionamento BESS pendente - confirmar no wizard hibrido"`,
+        `- Inversor: **${hibridoDimensionamento.inversor_modelo}** (${hibridoDimensionamento.inversor_potencia_kw}kW) x ${hibridoDimensionamento.inversor_qtd}`,
+        `- Paralelismo: ${hibridoDimensionamento.usa_paralelismo ? 'SIM (EMBOX)' : 'NAO'}`,
+        `- Bateria: **${hibridoDimensionamento.bateria_modelo}** (${hibridoDimensionamento.bateria_capacidade_kwh}kWh) x ${hibridoDimensionamento.bateria_qtd}`,
+        `- Banco total: ${hibridoDimensionamento.capacidade_total_kwh} kWh - autonomia ${hibridoDimensionamento.autonomia_calculada_horas}h`,
+        `- MMW03: ${hibridoDimensionamento.qtd_multimedidor} un | JBW: ${hibridoDimensionamento.qtd_caixa_juncao_jbw} un | EMBOX: ${hibridoDimensionamento.usa_controlador_paralelismo ? 'SIM' : 'NAO'}`,
       )
     }
-
     if (hibridoAnalise) {
       partes.push(
-        ``,
-        `### Analise de demanda`,
-        `- Demanda media: ${hibridoAnalise.demanda_media_kw ?? 'n/d'} kW`,
-        `- Demanda pico: ${hibridoAnalise.demanda_pico_kw ?? 'n/d'} kW`,
-        `- Carga critica: ${hibridoAnalise.demanda_carga_critica_kw ?? 'n/d'} kW`,
-        `- Autonomia desejada: ${hibridoAnalise.autonomia_desejada_horas ?? 'n/d'} h`,
-        `- Peak shaving: ${hibridoAnalise.usar_peak_shaving ? 'SIM (Grupo A)' : 'NAO'}`,
-        `- Metodo coleta: ${hibridoAnalise.metodo_demanda}`,
+        `- Demanda media/pico: ${hibridoAnalise.demanda_media_kw}/${hibridoAnalise.demanda_pico_kw} kW`,
+        `- Carga critica: ${hibridoAnalise.demanda_carga_critica_kw} kW - autonomia desejada ${hibridoAnalise.autonomia_desejada_horas}h`,
       )
     }
   }
 
   partes.push(
     ``,
-    `### Empresa (Spin Solar) - dados pro CARIMBO`,
+    `### Empresa (CARIMBO)`,
     `- Razao social: ${configEmpresa.razao_social}`,
     `- CNPJ: ${configEmpresa.cnpj || ''}`,
     `- Endereco: ${configEmpresa.endereco || ''}`,
-    `- Telefone: ${configEmpresa.telefone || ''}`,
-    `- Email: ${configEmpresa.email || ''}`,
-    `- Site: ${configEmpresa.site || ''}`,
+    `- Tel/Email/Site: ${configEmpresa.telefone || ''} / ${configEmpresa.email || ''} / ${configEmpresa.site || ''}`,
     ``,
-    `### Responsavel Tecnico - dados pro CARIMBO`,
+    `### Responsavel Tecnico (CARIMBO)`,
     `- Nome: ${configEmpresa.rt_nome}`,
     `- Titulo: ${configEmpresa.rt_titulo || 'Eletrotecnico'}`,
-    `- Registro (CREA/CFT): ${configEmpresa.rt_crea}`,
+    `- Registro: ${configEmpresa.rt_crea}`,
     `- ART: ${configEmpresa.rt_art_padrao || 'a definir'}`,
     ``,
-    `IMPORTANTE:`,
-    `- NAO inclua <image> tags com URLs externas (nao renderizam em PDF client-side)`,
-    `- Logo SPIN deve ser desenhado com barras coloridas + texto (ver template)`,
-    `- Assinatura RT: escrever "Assinatura RT" com espaco em branco + linha`,
+    `NAO inclua <image> com URLs externas. Logo SPIN desenhado com barras (ver template).`,
     ``,
-    `Gere agora a prancha A3 completa seguindo TODO o template do system prompt.`,
-    `Responda APENAS com o JSON.`,
+    `Gere agora a prancha A4 completa. Responda APENAS com o JSON.`,
   )
 
   return partes.join('\n')
