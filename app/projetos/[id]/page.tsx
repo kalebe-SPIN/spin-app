@@ -7,7 +7,7 @@ import { TimelineProjeto } from '@/components/TimelineProjeto'
 import { MudarEtapaCard } from '@/components/MudarEtapaCard'
 import { ItensPropostaCard } from '@/components/ItensPropostaCard'
 import { AcoesRapidasCard } from '@/components/AcoesRapidasCard'
-import { getPassosRelevantes, INFO_PASSO, type TipoItem } from '@/lib/tipos-projeto'
+import { getPassosRelevantes, INFO_PASSO, apenasServicos, type TipoItem } from '@/lib/tipos-projeto'
 
 // Sempre buscar dados frescos do banco (sem cache stale após edição)
 export const dynamic = 'force-dynamic'
@@ -32,16 +32,27 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
 
   if (error || !projeto) notFound()
 
-  const proximoPasso = getProximoPasso(projeto.status)
-
   // Passos do workflow adaptativos: união dos passos de todos os tipos escolhidos
   const { data: itensProjeto } = await supabase
     .from('projeto_itens')
-    .select('tipo')
+    .select('id, tipo, titulo, valor_estimado, status')
     .eq('projeto_id', projeto.id)
     .neq('status', 'removido')
   const tiposEscolhidos = (itensProjeto || []).map((i: any) => i.tipo as TipoItem)
   const passosRelevantes = getPassosRelevantes(tiposEscolhidos)
+
+  // Se todos os itens sao servicos puros (nao FV), suprime o CTA generico
+  // "Proximo passo" que sugeriria passos FV irrelevantes.
+  const soServicos = apenasServicos(tiposEscolhidos)
+  const proximoPasso = soServicos ? null : getProximoPasso(projeto.status)
+
+  // Total consolidado de todos os itens (proposta com multiplos modulos)
+  const totalConsolidado = (itensProjeto || []).reduce(
+    (soma: number, it: any) => soma + (parseFloat(it.valor_estimado) || 0),
+    0,
+  )
+  const itensComValor = (itensProjeto || []).filter((it: any) => it.valor_estimado)
+  const itensPendentes = (itensProjeto || []).filter((it: any) => !it.valor_estimado)
 
   // Permissão pra gerador de diagramas — admin OU flag explícita
   // MAS respeita o modo de visualização: se admin está em modo consultor, esconde
@@ -220,6 +231,78 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           <Section title="Observações">
             <p className="text-sm text-white/70">{projeto.observacoes_consultor}</p>
           </Section>
+        )}
+
+        {/* Proposta consolidada — soma de todos os itens + acao pra gerar */}
+        {itensProjeto && itensProjeto.length > 0 && (
+          <section className="mb-6 p-6 bg-gradient-to-br from-verde/10 to-sol/5 border border-verde/30 rounded-xl">
+            <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-wider font-bold text-verde mb-1">
+                  📦 Proposta consolidada
+                </p>
+                <p className="text-sm text-white/70">
+                  {itensProjeto.length} {itensProjeto.length === 1 ? 'módulo' : 'módulos'} nesta proposta
+                  {itensPendentes.length > 0 && (
+                    <> · <span className="text-sol">{itensPendentes.length} pendente(s) de precificação</span></>
+                  )}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase text-white/50">Total</p>
+                <p className="text-3xl font-black text-verde">
+                  {totalConsolidado > 0
+                    ? totalConsolidado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                    : <span className="text-white/40 text-lg">a definir</span>}
+                </p>
+              </div>
+            </div>
+
+            {/* Lista dos modulos com valor */}
+            {itensComValor.length > 0 && (
+              <div className="space-y-1.5 mb-4 pb-4 border-b border-white/10">
+                {itensComValor.map((it: any) => (
+                  <div key={it.id} className="flex items-baseline justify-between text-sm">
+                    <span className="text-white/70 truncate">{it.titulo || it.tipo}</span>
+                    <span className="text-white font-mono">
+                      {parseFloat(it.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {itensPendentes.length > 0 && (
+              <div className="mb-4 p-3 bg-sol/10 border border-sol/30 rounded-lg">
+                <p className="text-xs text-sol font-bold mb-1">⚠️ Módulos pendentes de preço:</p>
+                <ul className="text-xs text-white/70 space-y-0.5">
+                  {itensPendentes.map((it: any) => (
+                    <li key={it.id}>· {it.titulo || it.tipo}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={`/projetos/${projeto.id}/orcamento`}
+                className={`inline-flex items-center gap-2 px-4 py-2 font-bold text-sm rounded-lg transition ${
+                  itensPendentes.length === 0
+                    ? 'bg-verde text-noite hover:bg-verde/90'
+                    : 'bg-white/10 text-white/60 border border-white/20 cursor-not-allowed'
+                }`}
+                aria-disabled={itensPendentes.length > 0}
+              >
+                💰 Fechar orçamento + condições de pagamento
+              </Link>
+              <Link
+                href={`/projetos/${projeto.id}/proposta`}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white hover:bg-white/10 transition"
+              >
+                📄 Ver proposta consolidada
+              </Link>
+            </div>
+          </section>
         )}
 
         {/* Agenda vinculada (Bianca) */}

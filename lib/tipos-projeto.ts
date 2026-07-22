@@ -288,6 +288,24 @@ export function getPathPasso(chave: PassoWorkflow, tipoItem?: TipoItem): string 
 }
 
 /**
+ * Retorna true se TODOS os itens escolhidos sao servicos puros (nao FV).
+ * Usado pra decidir se esconde o CTA generico "Proximo passo" da tela
+ * de projeto — que sugere passos FV (padrao CELESC, kit, fatura) que
+ * nao fazem sentido pra servicos como retirada+recolocacao ou limpeza.
+ */
+export function apenasServicos(tipos: TipoItem[]): boolean {
+  if (tipos.length === 0) return false
+  const tiposFV: TipoItem[] = ['fv_ongrid', 'fv_hibrido', 'fv_zero_grid', 'fv_offgrid', 'bess']
+  return tipos.every((t) => !tiposFV.includes(t))
+}
+
+/** True se algum item requer o fluxo FV completo (fatura + telhado + kit etc). */
+export function temItemFV(tipos: TipoItem[]): boolean {
+  const tiposFV: TipoItem[] = ['fv_ongrid', 'fv_hibrido', 'fv_zero_grid', 'fv_offgrid', 'bess', 'srv_instalacao_placas']
+  return tipos.some((t) => tiposFV.includes(t))
+}
+
+/**
  * Retorna união dos passos necessários pros tipos selecionados.
  * Se nenhum tipo escolhido, retorna todos os 8 passos legado (on-grid puro).
  */
