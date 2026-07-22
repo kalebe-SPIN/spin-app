@@ -274,8 +274,8 @@ export const INFO_PASSO: Record<PassoWorkflow, { titulo: string; path: string; o
  */
 export const PATH_SERVICO_ESPECIFICO: Partial<Record<TipoItem, string>> = {
   srv_retirada_recolocacao: 'servico-retirada',
+  srv_instalacao_placas: 'servico-instalacao',
   // Futuro:
-  // srv_instalacao_placas: 'servico-instalacao',
   // srv_readequacao_planta: 'servico-readequacao',
 }
 
