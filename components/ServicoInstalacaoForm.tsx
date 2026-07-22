@@ -29,6 +29,7 @@ type Props = {
   valorFinalInicial: number | null
   placasCatalogo: ItemCatalogo[]
   estruturasCatalogo: ItemCatalogo[]
+  cabosCatalogo: ItemCatalogo[]
 }
 
 const DEFAULT: EntradasInstalacaoPlacas = {
@@ -45,6 +46,7 @@ const DEFAULT: EntradasInstalacaoPlacas = {
   spin_assina_rt: true,
   precisa_padrao_novo: false,
   modo_material_placa: 'nenhum',
+  modo_cabo: 'padrao',
   observacoes: '',
 }
 
@@ -52,7 +54,7 @@ const OPT: React.CSSProperties = { backgroundColor: '#050B16', color: '#ffffff' 
 
 export function ServicoInstalacaoForm({
   projetoId, parametros, entradasIniciais, valorFinalInicial,
-  placasCatalogo, estruturasCatalogo,
+  placasCatalogo, estruturasCatalogo, cabosCatalogo,
 }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -69,6 +71,7 @@ export function ServicoInstalacaoForm({
       placa_id: id,
       placa_modelo: p?.modelo || null,
       placa_preco_unitario: p?.preco || 0,
+      placa_descricao: p ? `Placa ${p.modelo}${p.potencia_w ? ` · ${p.potencia_w}Wp` : ''}` : e.placa_descricao,
     })
   }
   function selecionarEstruturaWeg(id: string) {
@@ -78,6 +81,16 @@ export function ServicoInstalacaoForm({
       estrutura_id: id,
       estrutura_modelo: est?.modelo || null,
       estrutura_preco_unitario: est?.preco || 0,
+      estrutura_descricao: est ? `Estrutura ${est.modelo}` : e.estrutura_descricao,
+    })
+  }
+  function selecionarCaboWeg(id: string) {
+    const cabo = cabosCatalogo.find(x => x.id === id)
+    setE({
+      ...e,
+      cabo_id: id,
+      cabo_modelo: cabo?.modelo || null,
+      cabo_preco_por_metro: cabo?.preco || 0,
     })
   }
   const resultado = useMemo(() => calcularInstalacaoPlacas(e, parametros), [e, parametros])
@@ -172,6 +185,19 @@ export function ServicoInstalacaoForm({
 
                 <div>
                   <label className="text-[10px] uppercase text-white/50 block mb-1">
+                    Descrição da placa (aparece no PDF)
+                  </label>
+                  <input
+                    type="text"
+                    value={e.placa_descricao || ''}
+                    onChange={ev => set('placa_descricao', ev.target.value)}
+                    placeholder="Auto-preenchida ao escolher placa acima"
+                    className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm placeholder:text-white/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase text-white/50 block mb-1">
                     Estrutura WEG (opcional)
                   </label>
                   <select
@@ -186,6 +212,19 @@ export function ServicoInstalacaoForm({
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase text-white/50 block mb-1">
+                    Descrição da estrutura
+                  </label>
+                  <input
+                    type="text"
+                    value={e.estrutura_descricao || ''}
+                    onChange={ev => set('estrutura_descricao', ev.target.value)}
+                    placeholder="Ex: Perfil Pratyc alumínio p/ fibrocimento"
+                    className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm placeholder:text-white/30"
+                  />
                 </div>
               </div>
             )}
@@ -232,6 +271,95 @@ export function ServicoInstalacaoForm({
             </p>
           </div>
         </Bloco>
+
+        {/* Cabos — WEG / manual / padrão automático */}
+        {e.precisa_cabo_novo && (
+          <Bloco titulo="🧵 Cabo solar — fonte do preço">
+            <div className="col-span-2 space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <ModoBotao
+                  label="Padrão auto"
+                  hint={`R$ ${parametros.cabo_solar_6mm_metro}/m fixo`}
+                  ativo={e.modo_cabo === 'padrao'}
+                  onClick={() => set('modo_cabo', 'padrao')}
+                />
+                <ModoBotao
+                  label="🌞 WEG (catálogo)"
+                  hint={`${cabosCatalogo.length} disponíveis`}
+                  ativo={e.modo_cabo === 'weg'}
+                  onClick={() => set('modo_cabo', 'weg')}
+                  destaque="sol"
+                />
+                <ModoBotao
+                  label="Manual"
+                  hint="Descrição + preço/m"
+                  ativo={e.modo_cabo === 'outro'}
+                  onClick={() => set('modo_cabo', 'outro')}
+                  destaque="wegazul"
+                />
+              </div>
+
+              {e.modo_cabo === 'weg' && (
+                <div className="p-2 bg-sol/5 border border-sol/20 rounded space-y-2">
+                  {cabosCatalogo.length === 0 ? (
+                    <p className="text-xs text-coral">
+                      ⚠️ Nenhum cabo no catálogo. Cadastre em /admin/catalogo (categorias cabo_cc, cabo_ca).
+                    </p>
+                  ) : (
+                    <select
+                      value={e.cabo_id || ''}
+                      onChange={ev => selecionarCaboWeg(ev.target.value)}
+                      className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm"
+                    >
+                      <option style={OPT} value="">Escolha um cabo...</option>
+                      {cabosCatalogo.map(c => (
+                        <option key={c.id} value={c.id} style={OPT}>
+                          {c.modelo} · R$ {c.preco.toFixed(2)}/m
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {e.modo_cabo === 'outro' && (
+                <div className="p-2 bg-weg-azul/5 border border-weg-azul/20 rounded grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div className="md:col-span-2">
+                    <label className="text-[10px] uppercase text-white/50 block mb-1">Descrição</label>
+                    <input
+                      type="text"
+                      value={e.outro_cabo_descricao || ''}
+                      onChange={ev => set('outro_cabo_descricao', ev.target.value)}
+                      placeholder="Ex: Cabo solar Nexans 6mm² preto"
+                      className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm placeholder:text-white/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase text-white/50 block mb-1">R$/metro</label>
+                    <input
+                      type="number"
+                      step={0.5}
+                      value={e.outro_cabo_preco_por_metro || 0}
+                      onChange={ev => set('outro_cabo_preco_por_metro', parseFloat(ev.target.value) || 0)}
+                      className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm"
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <label className="text-[10px] uppercase text-white/50 block mb-1">
+                      Metros necessários (opcional — deixe em branco pra usar estimativa: {(e.qtd_modulos * parametros.metros_cabo_estimado_por_modulo).toFixed(0)}m)
+                    </label>
+                    <input
+                      type="number"
+                      value={e.outro_metros_cabo || ''}
+                      onChange={ev => set('outro_metros_cabo', parseFloat(ev.target.value) || undefined)}
+                      className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </Bloco>
+        )}
 
         <Bloco titulo="Serviços adicionais (opcionais)">
           <div className="col-span-2 space-y-2">
@@ -388,14 +516,33 @@ function UploadOrcamentoConcorrente({
       }
       const d = json.dados
       setDadosIa(d)
-      // Preenche automaticamente os campos do form
+
+      const marca = [d.marca_fornecedor, d.modelo_placa].filter(Boolean).join(' · ')
+      let precoPlaca = d.preco_placa_unitario || 0
+      let precoEstrutura = d.preco_estrutura_por_modulo || 0
+      let descricaoPlaca = marca
+      let observacaoKit = ''
+
+      // FALLBACK confianca baixa: se IA nao conseguiu discriminar,
+      // rateia o valor_total pela qtd_placas do orcamento (ou do projeto)
+      // e coloca no preco_placa. Marca observacao pra rastreabilidade.
+      if (
+        (!precoPlaca || precoPlaca === 0) &&
+        d.valor_total_orcamento > 0
+      ) {
+        const qtdRatear = d.qtd_placas || entradas.qtd_modulos || 1
+        precoPlaca = d.valor_total_orcamento / qtdRatear
+        descricaoPlaca = `Kit completo${marca ? ` (${marca})` : ''}`
+        observacaoKit = `⚠️ Preço da placa contém o KIT INTEIRO: R$ ${d.valor_total_orcamento.toFixed(2)} rateado por ${qtdRatear} placas. ${d.observacoes || ''}`
+      }
+
       setEntradas({
         ...entradas,
-        outro_marca_placa: [d.marca_fornecedor, d.modelo_placa].filter(Boolean).join(' · '),
-        outro_preco_placa_unitario: d.preco_placa_unitario || 0,
-        outro_preco_estrutura_por_modulo: d.preco_estrutura_por_modulo || 0,
-        // Se qtd_placas do orcamento bate com qtd_modulos do projeto, sugere sobrescrever
-        // (mas nao forca — deixa consultor decidir)
+        outro_marca_placa: marca,
+        outro_preco_placa_unitario: precoPlaca,
+        outro_preco_estrutura_por_modulo: precoEstrutura,
+        placa_descricao: descricaoPlaca,
+        observacoes_kit: observacaoKit || entradas.observacoes_kit,
       })
     } catch (e: any) {
       setErro(e?.message || 'Falha na análise')
@@ -492,13 +639,25 @@ function UploadOrcamentoConcorrente({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="md:col-span-2">
             <label className="text-[10px] uppercase text-white/50 block mb-1">
-              Marca / modelo
+              Marca / modelo (curto)
             </label>
             <input
               type="text"
               value={entradas.outro_marca_placa || ''}
               onChange={ev => setEntradas({ ...entradas, outro_marca_placa: ev.target.value })}
               placeholder="Ex: Canadian Solar CS7L-580MS"
+              className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm placeholder:text-white/30"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-[10px] uppercase text-white/50 block mb-1">
+              Descrição da placa (aparece no PDF)
+            </label>
+            <input
+              type="text"
+              value={entradas.placa_descricao || ''}
+              onChange={ev => setEntradas({ ...entradas, placa_descricao: ev.target.value })}
+              placeholder="Ex: Placa RONMA 610W Bifacial N-TOPCon"
               className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm placeholder:text-white/30"
             />
           </div>
@@ -532,6 +691,23 @@ function UploadOrcamentoConcorrente({
               Custo médio por módulo · Total: <strong className="text-verde">R$ {totalEstrutura.toFixed(2)}</strong>
             </p>
           </div>
+          <div className="md:col-span-2">
+            <label className="text-[10px] uppercase text-white/50 block mb-1">
+              Descrição da estrutura (aparece no PDF)
+            </label>
+            <input
+              type="text"
+              value={entradas.estrutura_descricao || ''}
+              onChange={ev => setEntradas({ ...entradas, estrutura_descricao: ev.target.value })}
+              placeholder="Ex: Estrutura Pratyc alumínio p/ fibrocimento"
+              className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm placeholder:text-white/30"
+            />
+          </div>
+          {entradas.observacoes_kit && (
+            <div className="md:col-span-2 p-2 bg-sol/10 border border-sol/30 rounded text-[10px] text-sol/90">
+              {entradas.observacoes_kit}
+            </div>
+          )}
         </div>
       </div>
     </div>

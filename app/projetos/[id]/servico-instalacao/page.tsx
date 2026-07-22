@@ -52,6 +52,15 @@ export default async function ServicoInstalacaoPage({ params }: { params: { id: 
     .is('precos_produtos.vigente_ate', null)
     .order('modelo')
 
+  const { data: cabosCat } = await supabase
+    .from('produtos')
+    .select(`id, codigo_weg, modelo, categoria, specs,
+             precos_produtos!inner(preco_venda, vigente_ate)`)
+    .in('categoria', ['cabo_cc', 'cabo_ca', 'cabo'])
+    .eq('ativo', true)
+    .is('precos_produtos.vigente_ate', null)
+    .order('modelo')
+
   const placasCatalogo = (placasCat || []).map((p: any) => ({
     id: p.id,
     codigo: p.codigo_weg,
@@ -61,6 +70,13 @@ export default async function ServicoInstalacaoPage({ params }: { params: { id: 
   }))
 
   const estruturasCatalogo = (estruturasCat || []).map((p: any) => ({
+    id: p.id,
+    codigo: p.codigo_weg,
+    modelo: p.modelo,
+    preco: p.precos_produtos?.[0]?.preco_venda || 0,
+  }))
+
+  const cabosCatalogo = (cabosCat || []).map((p: any) => ({
     id: p.id,
     codigo: p.codigo_weg,
     modelo: p.modelo,
@@ -110,6 +126,7 @@ export default async function ServicoInstalacaoPage({ params }: { params: { id: 
           valorFinalInicial={itemExistente?.valor_estimado || null}
           placasCatalogo={placasCatalogo}
           estruturasCatalogo={estruturasCatalogo}
+          cabosCatalogo={cabosCatalogo}
         />
       </div>
     </main>

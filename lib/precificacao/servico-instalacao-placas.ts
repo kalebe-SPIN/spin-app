@@ -67,6 +67,22 @@ export type EntradasInstalacaoPlacas = {
   outro_preco_estrutura_por_modulo?: number
   outro_marca_placa?: string      // texto livre pra rastrear
 
+  // NOVO: descricoes textuais (editaveis, aparecem no PDF)
+  placa_descricao?: string        // ex: "Placa CHSM66N 620Wp bifacial"
+  estrutura_descricao?: string    // ex: "Perfil Pratyc alumínio p/ fibrocimento"
+  observacoes_kit?: string        // ex: "Preço da placa inclui frete e estrutura"
+
+  // NOVO: cabos com 3 modos (padrao/weg/outro)
+  modo_cabo: 'padrao' | 'weg' | 'outro'
+  // Se modo=weg
+  cabo_id?: string | null
+  cabo_modelo?: string | null
+  cabo_preco_por_metro?: number
+  // Se modo=outro
+  outro_cabo_descricao?: string
+  outro_cabo_preco_por_metro?: number
+  outro_metros_cabo?: number       // opcional — se informado, sobrescreve estimativa
+
   observacoes?: string
 }
 
@@ -132,8 +148,19 @@ export function calcularInstalacaoPlacas(
   const materiais_suportes = round2(entradas.qtd_modulos * params.suportes_por_modulo * params.suporte_fixacao_unidade)
   const materiais_parafusos = round2(entradas.qtd_modulos * params.parafusos_por_modulo * params.parafuso_fixacao_unidade)
 
-  const metrosCabo = entradas.qtd_modulos * params.metros_cabo_estimado_por_modulo
-  const materiais_cabo = entradas.precisa_cabo_novo ? round2(metrosCabo * params.cabo_solar_6mm_metro) : 0
+  // Calculo do cabo — 3 modos
+  let metrosCabo = entradas.qtd_modulos * params.metros_cabo_estimado_por_modulo
+  let precoCaboMetro = params.cabo_solar_6mm_metro
+  let cabo_descricao_usada = 'Cabo solar 6mm² (padrão)'
+  if (entradas.modo_cabo === 'weg') {
+    precoCaboMetro = entradas.cabo_preco_por_metro || params.cabo_solar_6mm_metro
+    cabo_descricao_usada = entradas.cabo_modelo || 'Cabo WEG selecionado'
+  } else if (entradas.modo_cabo === 'outro') {
+    precoCaboMetro = entradas.outro_cabo_preco_por_metro || 0
+    metrosCabo = entradas.outro_metros_cabo || metrosCabo
+    cabo_descricao_usada = entradas.outro_cabo_descricao || 'Cabo customizado'
+  }
+  const materiais_cabo = entradas.precisa_cabo_novo ? round2(metrosCabo * precoCaboMetro) : 0
 
   const materiais_total = round2(
     materiais_mc4 + materiais_mangueira + materiais_suportes + materiais_parafusos + materiais_cabo,
@@ -146,7 +173,7 @@ export function calcularInstalacaoPlacas(
     `Parafusos = ${entradas.qtd_modulos} × ${params.parafusos_por_modulo} × R$ ${params.parafuso_fixacao_unidade} = R$ ${materiais_parafusos.toFixed(2)}`,
   )
   if (entradas.precisa_cabo_novo) {
-    memoria.push(`Cabo NOVO = ${metrosCabo} m × R$ ${params.cabo_solar_6mm_metro} = R$ ${materiais_cabo.toFixed(2)}`)
+    memoria.push(`Cabo [${cabo_descricao_usada}] = ${metrosCabo} m × R$ ${precoCaboMetro.toFixed(2)} = R$ ${materiais_cabo.toFixed(2)}`)
   } else {
     memoria.push(`Cabo: reaproveita, R$ 0`)
   }
