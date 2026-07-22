@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { calcularProposta, paramsToRecord } from '@/lib/precificacao/calcular'
 import { OrcamentoClient } from '@/components/OrcamentoClient'
+import { OrcamentoServicosClient } from '@/components/OrcamentoServicosClient'
+import { apenasServicos, type TipoItem } from '@/lib/tipos-projeto'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -20,6 +22,56 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
     .single()
 
   if (error || !projeto) notFound()
+
+  // Detecta se o projeto e SO servicos — nesse caso pula validacao FV
+  // e renderiza versao simplificada do orcamento (sem kit / lista CA).
+  const { data: itensProjeto } = await supabase
+    .from('projeto_itens')
+    .select('id, tipo, titulo, valor_estimado, dados')
+    .eq('projeto_id', projetoId)
+    .neq('status', 'removido')
+
+  const tipos = (itensProjeto || []).map((i: any) => i.tipo as TipoItem)
+  const soServicos = apenasServicos(tipos)
+
+  if (soServicos && itensProjeto && itensProjeto.length > 0) {
+    // Projeto so servico — renderiza fluxo simplificado
+    const { data: configEmpresa } = await supabase
+      .from('configuracoes_empresa')
+      .select('*')
+      .eq('singleton', true)
+      .single()
+
+    return (
+      <main className="min-h-screen p-8 md:p-12">
+        <div className="max-w-5xl mx-auto">
+          <header className="mb-8">
+            <Link href={`/projetos/${projetoId}`} className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
+              ← Voltar ao projeto
+            </Link>
+            <div className="flex items-center gap-3 mb-1">
+              <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
+              <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-verde/10 text-verde">
+                🛠️ Serviço
+              </span>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-black text-white">
+              Orçamento e proposta comercial
+            </h1>
+            <p className="text-white/60 mt-1 text-sm">
+              {projeto.cliente_razao_social} · Proposta consolidada dos módulos de serviço
+            </p>
+          </header>
+
+          <OrcamentoServicosClient
+            projeto={projeto}
+            itens={itensProjeto}
+            configEmpresa={configEmpresa}
+          />
+        </div>
+      </main>
+    )
+  }
 
   const kit = projeto.kit_selecionado
   const listaCa = projeto.lista_ca_confirmada
