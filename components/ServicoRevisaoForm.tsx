@@ -13,12 +13,14 @@ import {
   OPCOES_PROGRAMACAO,
 } from '@/lib/precificacao/servico-retirada-recolocacao'
 import { salvarServicoRevisaoAction } from '@/app/projetos/[id]/servico-revisao/actions'
+import { encontrarFaixa, labelFaixa, type Faixa } from '@/lib/precificacao/faixas'
 
 type Props = {
   projetoId: string
   parametros: ParametrosRevisao
   entradasIniciais: EntradasRevisao | null
   valorFinalInicial: number | null
+  faixas: Faixa[]
 }
 
 const DEFAULT: EntradasRevisao = {
@@ -42,18 +44,25 @@ const DEFAULT: EntradasRevisao = {
 
 const OPT: React.CSSProperties = { backgroundColor: '#050B16', color: '#ffffff' }
 
-export function ServicoRevisaoForm({ projetoId, parametros, entradasIniciais, valorFinalInicial }: Props) {
+export function ServicoRevisaoForm({ projetoId, parametros, entradasIniciais, valorFinalInicial, faixas }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [msg, setMsg] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
   const [e, setE] = useState<EntradasRevisao>(entradasIniciais || DEFAULT)
+  const [potenciaKwp, setPotenciaKwp] = useState<number>(
+    (entradasIniciais as any)?.potencia_kwp || 5.0,
+  )
   const resultado = useMemo(() => calcularRevisao(e, parametros), [e, parametros])
   const [ajuste, setAjuste] = useState<number>(
     valorFinalInicial != null ? valorFinalInicial - (entradasIniciais ? resultado.subtotal : 0) : 0,
   )
   const valorFinal = resultado.subtotal + ajuste
+
+  // Faixa por potencia kWp
+  const faixaAtual = useMemo(() => encontrarFaixa(faixas, potenciaKwp), [faixas, potenciaKwp])
+  const usarValorFaixa = faixaAtual ? () => setAjuste(faixaAtual.valor - resultado.subtotal) : null
 
   function set<K extends keyof EntradasRevisao>(k: K, v: EntradasRevisao[K]) {
     setE({ ...e, [k]: v })
@@ -78,6 +87,7 @@ export function ServicoRevisaoForm({ projetoId, parametros, entradasIniciais, va
           <Num label="Qtd módulos" v={e.qtd_modulos} onChange={v => set('qtd_modulos', v)} />
           <Num label="Qtd strings" v={e.qtd_strings} onChange={v => set('qtd_strings', v)} />
           <Num label="Qtd inversores" v={e.qtd_inversores} onChange={v => set('qtd_inversores', v)} />
+          <Num label="Potência total (kWp)" v={potenciaKwp} onChange={setPotenciaKwp} step={0.5} />
         </Bloco>
 
         <Bloco titulo="Local">
@@ -196,6 +206,33 @@ export function ServicoRevisaoForm({ projetoId, parametros, entradasIniciais, va
             <p className="text-[10px] uppercase text-noite/80 font-bold">Valor final ao cliente</p>
             <p className="text-2xl font-black text-noite">R$ {valorFinal.toFixed(2)}</p>
           </div>
+
+          {faixaAtual && (
+            <div className="mt-3 p-3 bg-weg-azul/10 border border-weg-azul/30 rounded-lg">
+              <p className="text-[10px] uppercase font-bold text-weg-azul mb-1">
+                📊 Faixa de referência
+              </p>
+              <p className="text-xs text-white/80">
+                {potenciaKwp} kWp se encaixa em <strong>{labelFaixa(faixaAtual)}</strong>
+              </p>
+              <p className="text-xs text-white/60 italic">{faixaAtual.descricao}</p>
+              <div className="flex items-baseline justify-between mt-2">
+                <span className="text-[10px] text-white/60">Valor referência</span>
+                <span className="text-lg font-black text-weg-azul">
+                  R$ {faixaAtual.valor.toFixed(2)}
+                </span>
+              </div>
+              {usarValorFaixa && Math.abs(valorFinal - faixaAtual.valor) > 1 && (
+                <button
+                  type="button"
+                  onClick={usarValorFaixa}
+                  className="w-full mt-2 px-2 py-1.5 bg-weg-azul/20 border border-weg-azul/40 text-weg-azul text-xs font-bold rounded hover:bg-weg-azul/30"
+                >
+                  📌 Usar valor da faixa (R$ {faixaAtual.valor.toFixed(2)})
+                </button>
+              )}
+            </div>
+          )}
 
           <button
             onClick={salvar}

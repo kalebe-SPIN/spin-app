@@ -33,6 +33,13 @@ export default async function ServicoLimpezaPage({ params }: { params: { id: str
     .neq('status', 'removido')
     .maybeSingle()
 
+  const { data: faixas } = await supabase
+    .from('faixas_precificacao_servicos')
+    .select('*')
+    .eq('chave_servico', 'limpeza_fotovoltaica')
+    .eq('ativo', true)
+    .order('ordem')
+
   if (!paramRow) {
     return (
       <main className="min-h-screen p-8 md:p-12">
@@ -73,6 +80,7 @@ export default async function ServicoLimpezaPage({ params }: { params: { id: str
           parametros={paramRow.parametros}
           entradasIniciais={itemExistente?.dados?.entradas || null}
           valorFinalInicial={itemExistente?.valor_estimado || null}
+          faixas={faixas || []}
         />
       </div>
     </main>

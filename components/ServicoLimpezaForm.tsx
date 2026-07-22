@@ -13,12 +13,14 @@ import {
   OPCOES_PROGRAMACAO,
 } from '@/lib/precificacao/servico-retirada-recolocacao'
 import { salvarServicoLimpezaAction } from '@/app/projetos/[id]/servico-limpeza/actions'
+import { encontrarFaixa, labelFaixa, type Faixa } from '@/lib/precificacao/faixas'
 
 type Props = {
   projetoId: string
   parametros: ParametrosLimpeza
   entradasIniciais: EntradasLimpeza | null
   valorFinalInicial: number | null
+  faixas: Faixa[]
 }
 
 const DEFAULT: EntradasLimpeza = {
@@ -37,7 +39,7 @@ const DEFAULT: EntradasLimpeza = {
 
 const OPT: React.CSSProperties = { backgroundColor: '#050B16', color: '#ffffff' }
 
-export function ServicoLimpezaForm({ projetoId, parametros, entradasIniciais, valorFinalInicial }: Props) {
+export function ServicoLimpezaForm({ projetoId, parametros, entradasIniciais, valorFinalInicial, faixas }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [msg, setMsg] = useState<string | null>(null)
@@ -49,6 +51,10 @@ export function ServicoLimpezaForm({ projetoId, parametros, entradasIniciais, va
     valorFinalInicial != null ? valorFinalInicial - (entradasIniciais ? resultado.subtotal : 0) : 0,
   )
   const valorFinal = resultado.subtotal + ajuste
+
+  // Faixa aplicavel por qtd de placas
+  const faixaAtual = useMemo(() => encontrarFaixa(faixas, e.qtd_modulos), [faixas, e.qtd_modulos])
+  const usarValorFaixa = faixaAtual ? () => setAjuste(faixaAtual.valor - resultado.subtotal) : null
 
   function set<K extends keyof EntradasLimpeza>(k: K, v: EntradasLimpeza[K]) {
     setE({ ...e, [k]: v })
@@ -179,6 +185,34 @@ export function ServicoLimpezaForm({ projetoId, parametros, entradasIniciais, va
             <p className="text-[10px] uppercase text-noite/80 font-bold">Valor final ao cliente</p>
             <p className="text-2xl font-black text-noite">R$ {valorFinal.toFixed(2)}</p>
           </div>
+
+          {/* Faixa de referencia */}
+          {faixaAtual && (
+            <div className="mt-3 p-3 bg-weg-azul/10 border border-weg-azul/30 rounded-lg">
+              <p className="text-[10px] uppercase font-bold text-weg-azul mb-1">
+                📊 Faixa de referência
+              </p>
+              <p className="text-xs text-white/80">
+                {e.qtd_modulos} placas se encaixa em <strong>{labelFaixa(faixaAtual)}</strong>
+              </p>
+              <p className="text-xs text-white/60 italic">{faixaAtual.descricao}</p>
+              <div className="flex items-baseline justify-between mt-2">
+                <span className="text-[10px] text-white/60">Valor referência</span>
+                <span className="text-lg font-black text-weg-azul">
+                  R$ {faixaAtual.valor.toFixed(2)}
+                </span>
+              </div>
+              {usarValorFaixa && Math.abs(valorFinal - faixaAtual.valor) > 1 && (
+                <button
+                  type="button"
+                  onClick={usarValorFaixa}
+                  className="w-full mt-2 px-2 py-1.5 bg-weg-azul/20 border border-weg-azul/40 text-weg-azul text-xs font-bold rounded hover:bg-weg-azul/30"
+                >
+                  📌 Usar valor da faixa (R$ {faixaAtual.valor.toFixed(2)})
+                </button>
+              )}
+            </div>
+          )}
 
           <button
             onClick={salvar}
