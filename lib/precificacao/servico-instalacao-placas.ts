@@ -52,6 +52,21 @@ export type EntradasInstalacaoPlacas = {
   precisa_cabo_novo: boolean
   spin_assina_rt: boolean
   precisa_padrao_novo: boolean
+
+  // NOVO: quem fornece as placas (WEG catalogo ou outro fornecedor)
+  modo_material_placa: 'nenhum' | 'weg' | 'outro'
+  // Se modo=weg
+  placa_id?: string | null
+  placa_modelo?: string | null
+  placa_preco_unitario?: number   // preenchido do catalogo
+  estrutura_id?: string | null
+  estrutura_modelo?: string | null
+  estrutura_preco_unitario?: number
+  // Se modo=outro (consultor digita)
+  outro_preco_placa_unitario?: number
+  outro_preco_estrutura_por_modulo?: number
+  outro_marca_placa?: string      // texto livre pra rastrear
+
   observacoes?: string
 }
 
@@ -65,6 +80,10 @@ export type ResultadoInstalacaoPlacas = {
   materiais_parafusos: number
   materiais_cabo: number
   materiais_total: number
+  // NOVO: kit de placas e estrutura
+  kit_placas: number
+  kit_estrutura: number
+  kit_total: number
   extras_art: number
   extras_padrao: number
   extras_total: number
@@ -145,8 +164,43 @@ export function calcularInstalacaoPlacas(
     memoria.push(`Extras: Padrao de entrada NOVO = R$ ${extras_padrao.toFixed(2)}`)
   }
 
-  const subtotal = round2(mao_obra + deslocamento + diarias + materiais_total + extras_total)
-  memoria.push(`\nSUBTOTAL = MO + Desloca + Diarias + Materiais + Extras = R$ ${subtotal.toFixed(2)}`)
+  // 6. Kit de placas + estrutura (novo — WEG catalogo OU outro fornecedor)
+  let kit_placas = 0
+  let kit_estrutura = 0
+  if (entradas.modo_material_placa === 'weg') {
+    kit_placas = round2(entradas.qtd_modulos * (entradas.placa_preco_unitario || 0))
+    kit_estrutura = round2(entradas.qtd_modulos * (entradas.estrutura_preco_unitario || 0))
+    if (kit_placas > 0) {
+      memoria.push(
+        `Placas WEG (${entradas.placa_modelo || '—'}) = ${entradas.qtd_modulos} × R$ ${(entradas.placa_preco_unitario || 0).toFixed(2)} = R$ ${kit_placas.toFixed(2)}`,
+      )
+    }
+    if (kit_estrutura > 0) {
+      memoria.push(
+        `Estrutura WEG (${entradas.estrutura_modelo || '—'}) = ${entradas.qtd_modulos} × R$ ${(entradas.estrutura_preco_unitario || 0).toFixed(2)} = R$ ${kit_estrutura.toFixed(2)}`,
+      )
+    }
+  } else if (entradas.modo_material_placa === 'outro') {
+    kit_placas = round2(entradas.qtd_modulos * (entradas.outro_preco_placa_unitario || 0))
+    kit_estrutura = round2(entradas.qtd_modulos * (entradas.outro_preco_estrutura_por_modulo || 0))
+    const marca = entradas.outro_marca_placa || 'outro fornecedor'
+    if (kit_placas > 0) {
+      memoria.push(
+        `Placas [${marca}] = ${entradas.qtd_modulos} × R$ ${(entradas.outro_preco_placa_unitario || 0).toFixed(2)} = R$ ${kit_placas.toFixed(2)}`,
+      )
+    }
+    if (kit_estrutura > 0) {
+      memoria.push(
+        `Estrutura [${marca}] = ${entradas.qtd_modulos} × R$ ${(entradas.outro_preco_estrutura_por_modulo || 0).toFixed(2)} = R$ ${kit_estrutura.toFixed(2)}`,
+      )
+    }
+  } else {
+    memoria.push(`Kit de placas: NENHUM (cliente traz tudo pronto)`)
+  }
+  const kit_total = round2(kit_placas + kit_estrutura)
+
+  const subtotal = round2(mao_obra + deslocamento + diarias + materiais_total + extras_total + kit_total)
+  memoria.push(`\nSUBTOTAL = MO + Desloca + Diarias + Materiais + Extras + Kit = R$ ${subtotal.toFixed(2)}`)
 
   return {
     mao_obra,
@@ -158,6 +212,9 @@ export function calcularInstalacaoPlacas(
     materiais_parafusos,
     materiais_cabo,
     materiais_total,
+    kit_placas,
+    kit_estrutura,
+    kit_total,
     extras_art,
     extras_padrao,
     extras_total,

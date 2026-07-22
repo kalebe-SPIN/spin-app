@@ -33,6 +33,40 @@ export default async function ServicoInstalacaoPage({ params }: { params: { id: 
     .neq('status', 'removido')
     .maybeSingle()
 
+  // Catálogo WEG: placas ativas + estruturas ativas com preço atual
+  const { data: placasCat } = await supabase
+    .from('produtos')
+    .select(`id, codigo_weg, modelo, categoria, specs,
+             precos_produtos!inner(preco_venda, vigente_ate)`)
+    .eq('categoria', 'placa')
+    .eq('ativo', true)
+    .is('precos_produtos.vigente_ate', null)
+    .order('modelo')
+
+  const { data: estruturasCat } = await supabase
+    .from('produtos')
+    .select(`id, codigo_weg, modelo, categoria, specs,
+             precos_produtos!inner(preco_venda, vigente_ate)`)
+    .eq('categoria', 'estrutura')
+    .eq('ativo', true)
+    .is('precos_produtos.vigente_ate', null)
+    .order('modelo')
+
+  const placasCatalogo = (placasCat || []).map((p: any) => ({
+    id: p.id,
+    codigo: p.codigo_weg,
+    modelo: p.modelo,
+    potencia_w: p.specs?.potencia_w || 0,
+    preco: p.precos_produtos?.[0]?.preco_venda || 0,
+  }))
+
+  const estruturasCatalogo = (estruturasCat || []).map((p: any) => ({
+    id: p.id,
+    codigo: p.codigo_weg,
+    modelo: p.modelo,
+    preco: p.precos_produtos?.[0]?.preco_venda || 0,
+  }))
+
   if (!paramRow) {
     return (
       <main className="min-h-screen p-8 md:p-12">
@@ -74,6 +108,8 @@ export default async function ServicoInstalacaoPage({ params }: { params: { id: 
           parametros={paramRow.parametros}
           entradasIniciais={itemExistente?.dados?.entradas || null}
           valorFinalInicial={itemExistente?.valor_estimado || null}
+          placasCatalogo={placasCatalogo}
+          estruturasCatalogo={estruturasCatalogo}
         />
       </div>
     </main>

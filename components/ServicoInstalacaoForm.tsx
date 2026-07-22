@@ -14,11 +14,21 @@ import {
 } from '@/lib/precificacao/servico-retirada-recolocacao'
 import { salvarServicoInstalacaoAction } from '@/app/projetos/[id]/servico-instalacao/actions'
 
+type ItemCatalogo = {
+  id: string
+  codigo: string
+  modelo: string
+  potencia_w?: number
+  preco: number
+}
+
 type Props = {
   projetoId: string
   parametros: ParametrosInstalacaoPlacas
   entradasIniciais: EntradasInstalacaoPlacas | null
   valorFinalInicial: number | null
+  placasCatalogo: ItemCatalogo[]
+  estruturasCatalogo: ItemCatalogo[]
 }
 
 const DEFAULT: EntradasInstalacaoPlacas = {
@@ -31,21 +41,45 @@ const DEFAULT: EntradasInstalacaoPlacas = {
   programacao: 'normal',
   qtd_instaladores: 2,
   dias_estimados: 2,
-  precisa_cabo_novo: true,   // instalacao nova, cabo geralmente vai novo
-  spin_assina_rt: true,       // padrao Spin assina pra homologacao CELESC
+  precisa_cabo_novo: true,
+  spin_assina_rt: true,
   precisa_padrao_novo: false,
+  modo_material_placa: 'nenhum',
   observacoes: '',
 }
 
 const OPT: React.CSSProperties = { backgroundColor: '#050B16', color: '#ffffff' }
 
-export function ServicoInstalacaoForm({ projetoId, parametros, entradasIniciais, valorFinalInicial }: Props) {
+export function ServicoInstalacaoForm({
+  projetoId, parametros, entradasIniciais, valorFinalInicial,
+  placasCatalogo, estruturasCatalogo,
+}: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [msg, setMsg] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
   const [e, setE] = useState<EntradasInstalacaoPlacas>(entradasIniciais || DEFAULT)
+
+  // Quando muda placa/estrutura no dropdown WEG, atualiza preco+modelo automaticamente
+  function selecionarPlacaWeg(id: string) {
+    const p = placasCatalogo.find(x => x.id === id)
+    setE({
+      ...e,
+      placa_id: id,
+      placa_modelo: p?.modelo || null,
+      placa_preco_unitario: p?.preco || 0,
+    })
+  }
+  function selecionarEstruturaWeg(id: string) {
+    const est = estruturasCatalogo.find(x => x.id === id)
+    setE({
+      ...e,
+      estrutura_id: id,
+      estrutura_modelo: est?.modelo || null,
+      estrutura_preco_unitario: est?.preco || 0,
+    })
+  }
   const resultado = useMemo(() => calcularInstalacaoPlacas(e, parametros), [e, parametros])
   const [ajuste, setAjuste] = useState<number>(
     valorFinalInicial != null ? valorFinalInicial - (entradasIniciais ? resultado.subtotal : 0) : 0,
@@ -76,6 +110,118 @@ export function ServicoInstalacaoForm({ projetoId, parametros, entradasIniciais,
           <Num label="Qtd módulos" v={e.qtd_modulos} onChange={v => set('qtd_modulos', v)} />
           <Num label="Qtd strings" v={e.qtd_strings} onChange={v => set('qtd_strings', v)}
             hint="Pra calcular MC4 (1 par por string)" />
+        </Bloco>
+
+        {/* Materiais das placas — WEG vs outro fornecedor */}
+        <Bloco titulo="🌞 Placas e estrutura — quem fornece?">
+          <div className="col-span-2 space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <ModoBotao
+                label="Nenhum"
+                hint="Cliente traz kit completo"
+                ativo={e.modo_material_placa === 'nenhum'}
+                onClick={() => set('modo_material_placa', 'nenhum')}
+              />
+              <ModoBotao
+                label="🌞 WEG (catálogo Spin)"
+                hint="Puxa preço automático"
+                ativo={e.modo_material_placa === 'weg'}
+                onClick={() => set('modo_material_placa', 'weg')}
+                destaque="sol"
+              />
+              <ModoBotao
+                label="Outro fornecedor"
+                hint="Digita preço manual"
+                ativo={e.modo_material_placa === 'outro'}
+                onClick={() => set('modo_material_placa', 'outro')}
+                destaque="wegazul"
+              />
+            </div>
+
+            {/* Modo WEG */}
+            {e.modo_material_placa === 'weg' && (
+              <div className="p-3 bg-sol/5 border border-sol/20 rounded-lg space-y-3">
+                <div>
+                  <label className="text-[10px] uppercase text-white/50 block mb-1">
+                    Placa WEG ({placasCatalogo.length} disponíveis)
+                  </label>
+                  {placasCatalogo.length === 0 ? (
+                    <p className="text-xs text-coral">
+                      ⚠️ Nenhuma placa no catálogo. Cadastre em /admin/catalogo.
+                    </p>
+                  ) : (
+                    <select
+                      value={e.placa_id || ''}
+                      onChange={ev => selecionarPlacaWeg(ev.target.value)}
+                      className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm"
+                    >
+                      <option style={OPT} value="">Escolha uma placa...</option>
+                      {placasCatalogo.map(p => (
+                        <option key={p.id} value={p.id} style={OPT}>
+                          {p.modelo} {p.potencia_w ? `· ${p.potencia_w}Wp` : ''} · R$ {p.preco.toFixed(2)}/un
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {e.placa_preco_unitario ? (
+                    <p className="text-[10px] text-sol mt-1">
+                      💡 Total placas: {e.qtd_modulos} × R$ {e.placa_preco_unitario.toFixed(2)} = R$ {(e.qtd_modulos * e.placa_preco_unitario).toFixed(2)}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase text-white/50 block mb-1">
+                    Estrutura WEG (opcional)
+                  </label>
+                  <select
+                    value={e.estrutura_id || ''}
+                    onChange={ev => selecionarEstruturaWeg(ev.target.value)}
+                    className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm"
+                  >
+                    <option style={OPT} value="">Sem estrutura do catálogo</option>
+                    {estruturasCatalogo.map(est => (
+                      <option key={est.id} value={est.id} style={OPT}>
+                        {est.modelo} · R$ {est.preco.toFixed(2)}/un
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Modo outro fornecedor */}
+            {e.modo_material_placa === 'outro' && (
+              <div className="p-3 bg-weg-azul/5 border border-weg-azul/20 rounded-lg grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                  <label className="text-[10px] uppercase text-white/50 block mb-1">
+                    Marca / fornecedor (opcional — pra rastreamento)
+                  </label>
+                  <input
+                    type="text"
+                    value={e.outro_marca_placa || ''}
+                    onChange={ev => set('outro_marca_placa', ev.target.value)}
+                    placeholder="Ex: Canadian Solar, Trina, LONGi..."
+                    className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-sm placeholder:text-white/30"
+                  />
+                </div>
+                <Num
+                  label="Preço da placa (R$/un)"
+                  v={e.outro_preco_placa_unitario || 0}
+                  onChange={v => set('outro_preco_placa_unitario', v)}
+                  step={10}
+                  hint={`${e.qtd_modulos} × R$ ${(e.outro_preco_placa_unitario || 0).toFixed(2)} = R$ ${(e.qtd_modulos * (e.outro_preco_placa_unitario || 0)).toFixed(2)}`}
+                />
+                <Num
+                  label="Estrutura (R$/módulo)"
+                  v={e.outro_preco_estrutura_por_modulo || 0}
+                  onChange={v => set('outro_preco_estrutura_por_modulo', v)}
+                  step={5}
+                  hint="Custo médio por módulo instalado"
+                />
+              </div>
+            )}
+          </div>
         </Bloco>
 
         <Bloco titulo="Local da instalação">
@@ -157,6 +303,9 @@ export function ServicoInstalacaoForm({ projetoId, parametros, entradasIniciais,
             <Linha label="Deslocamento" v={resultado.deslocamento} />
             <Linha label="Diárias" v={resultado.diarias} />
             <Linha label="Materiais" v={resultado.materiais_total} />
+            {resultado.kit_total > 0 && (
+              <Linha label="🌞 Kit placas + estrutura" v={resultado.kit_total} />
+            )}
             <Linha label="Extras (ART / padrão)" v={resultado.extras_total} />
           </div>
 
@@ -223,6 +372,35 @@ export function ServicoInstalacaoForm({ projetoId, parametros, entradasIniciais,
         </details>
       </div>
     </div>
+  )
+}
+
+function ModoBotao({
+  label, hint, ativo, onClick, destaque,
+}: {
+  label: string
+  hint: string
+  ativo: boolean
+  onClick: () => void
+  destaque?: 'sol' | 'wegazul'
+}) {
+  const bgAtivo = destaque === 'sol'
+    ? 'bg-sol/20 border-sol/50 text-white'
+    : destaque === 'wegazul'
+      ? 'bg-weg-azul/20 border-weg-azul/50 text-white'
+      : 'bg-white/10 border-white/30 text-white'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`p-2.5 rounded-lg border text-left transition ${
+        ativo ? bgAtivo : 'bg-white/[0.02] border-white/10 hover:border-white/20 text-white/70'
+      }`}
+    >
+      <p className="text-xs font-bold">{label}</p>
+      <p className="text-[9px] text-white/50 mt-0.5">{hint}</p>
+    </button>
   )
 }
 
