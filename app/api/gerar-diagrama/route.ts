@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
     try {
       response = await anthropic.messages.create({
         model: 'claude-sonnet-5',
-        max_tokens: 16000,
+        max_tokens: 32000,  // A3 SVG completo passa facil de 16k — dobrei
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       })
@@ -132,20 +132,45 @@ export async function POST(req: NextRequest) {
     // 5. Extrai JSON da resposta
     const textBlock = response.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
     const rawText = textBlock?.text || ''
+    const stopReason = response.stop_reason  // 'end_turn' | 'max_tokens' | ...
 
     // Extrai bloco JSON (dentro de ```json ... ``` ou solto)
     const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/) || rawText.match(/(\{[\s\S]*\})/)
     if (!jsonMatch) {
-      await marcarErro(supabaseAdmin, diagrama_id, 'Claude não retornou JSON válido')
-      return NextResponse.json({ erro: 'Resposta inválida do Claude', raw: rawText.slice(0, 500) }, { status: 500 })
+      // Deixa evidencia detalhada no card pra debug
+      const stopHint = stopReason === 'max_tokens'
+        ? ' [TRUNCADO — Claude atingiu max_tokens antes de fechar JSON. Simplifique o pedido ou aumente max_tokens]'
+        : ''
+      const preview = rawText.slice(-400)  // ultimos 400 chars mostram onde cortou
+      await marcarErro(
+        supabaseAdmin,
+        diagrama_id,
+        `Claude nao retornou JSON valido${stopHint} | Stop: ${stopReason} | Chars: ${rawText.length} | Final: ...${preview}`,
+      )
+      return NextResponse.json({
+        erro: 'Resposta invalida do Claude',
+        stop_reason: stopReason,
+        chars: rawText.length,
+        raw_final: preview,
+      }, { status: 500 })
     }
 
     let parsed: { svg: string; memoria_calculo: any; avisos: string[] }
     try {
       parsed = JSON.parse(jsonMatch[1])
     } catch (parseErr: any) {
-      await marcarErro(supabaseAdmin, diagrama_id, `JSON inválido: ${parseErr.message}`)
-      return NextResponse.json({ erro: 'JSON parse failed', raw: jsonMatch[1].slice(0, 500) }, { status: 500 })
+      const preview = jsonMatch[1].slice(-400)
+      const stopHint = stopReason === 'max_tokens' ? ' [TRUNCADO]' : ''
+      await marcarErro(
+        supabaseAdmin,
+        diagrama_id,
+        `JSON invalido${stopHint}: ${parseErr.message} | Final: ...${preview}`,
+      )
+      return NextResponse.json({
+        erro: 'JSON parse failed',
+        stop_reason: stopReason,
+        raw_final: preview,
+      }, { status: 500 })
     }
 
     if (!parsed.svg || !parsed.svg.includes('<svg')) {
