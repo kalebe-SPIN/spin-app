@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { dispararGatilho } from '@/lib/bianca/gatilhos'
 
 export async function mudarEtapaProjetoAction(
   projetoId: string,
@@ -86,15 +87,31 @@ async function disparoAutomacoes(
     const amanha = new Date()
     amanha.setDate(amanha.getDate() + 1)
 
-    // 1. Tarefa de contrato (pro consultor)
-    await supabase.from('agenda_tarefas').insert({
-      usuario_id: projeto.consultor_id || userId,
-      titulo: `Contrato ${cliente}`,
-      descricao: 'Emitir contrato de compra e venda + procuração. Coletar assinaturas.',
-      data_prazo: amanha.toISOString().slice(0, 10),
-      prioridade: 'urgente',
+    // 1. Tarefa de contrato (pro consultor) — via gatilho reativo Bianca
+    await dispararGatilho('proposta_aceita_tarefa_contrato', {
       projeto_id: projeto.id,
-    })
+      usuario_id: projeto.consultor_id || userId,
+      entidade_tipo: 'projeto',
+      entidade_id: projeto.id,
+      variaveis: {
+        cliente_nome: cliente,
+        codigo_projeto: projeto.codigo || projeto.id,
+      },
+    }).catch((e) => console.error('[gatilho tarefa_contrato]', e))
+
+    // 1.1 Mensagem WhatsApp pro cliente (SUGERIDA — consultor confirma antes)
+    await dispararGatilho('proposta_aceita', {
+      projeto_id: projeto.id,
+      usuario_id: projeto.consultor_id || userId,
+      entidade_tipo: 'projeto',
+      entidade_id: projeto.id,
+      variaveis: {
+        cliente_nome: cliente,
+        codigo_projeto: projeto.codigo || projeto.id,
+        cliente_telefone: projeto.cliente_telefone || '',
+        rt_nome: 'nossa equipe',
+      },
+    }).catch((e) => console.error('[gatilho proposta_aceita]', e))
 
     // 2. Cria a homologação REAL se ainda não existir
     const { data: existente } = await supabase
