@@ -126,7 +126,9 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
     }
   }
 
-  const temFvOngrid = tiposItem.has('fv_ongrid') || tiposItem.has('fv_zero_grid') || tiposItem.has('fv_offgrid')
+  // srv_instalacao_placas: cliente traz o kit, Spin só instala — mas o unifilar
+  // ainda faz sentido pra homologação CELESC, então entra como on-grid.
+  const temFvOngrid = tiposItem.has('fv_ongrid') || tiposItem.has('fv_zero_grid') || tiposItem.has('fv_offgrid') || tiposItem.has('srv_instalacao_placas')
   const temFvHibrido = tiposItem.has('fv_hibrido') || tiposItem.has('bess')
 
   // Monta lista de tipos disponiveis — sempre inclui padrao_entrada
