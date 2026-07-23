@@ -368,6 +368,14 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
             {erroPdf && (
               <p className="text-[10px] text-coral text-center">⚠️ {erroPdf}</p>
             )}
+            <a
+              href="/admin/precificacao"
+              target="_blank"
+              rel="noreferrer"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-weg-azul/10 border border-weg-azul/30 text-weg-azul text-xs rounded-lg hover:bg-weg-azul/20 transition"
+            >
+              ⚙️ Editar tabela de preços
+            </a>
             <Link
               href={`/projetos/${projeto.id}`}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg hover:bg-white/10 transition"
