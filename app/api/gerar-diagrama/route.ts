@@ -115,24 +115,39 @@ export async function POST(req: NextRequest) {
       hibridoAnalise,
     })
 
-    let response
+    // Streaming obrigatorio pra max_tokens alto (SDK bloqueia non-stream se >10min).
+    // Anthropic SDK oferece stream() que junta chunks automaticamente e retorna
+    // final message com content_block completo.
+    let rawText = ''
+    let stopReason: string | null = null
     try {
-      response = await anthropic.messages.create({
+      const stream = anthropic.messages.stream({
         model: 'claude-sonnet-5',
-        max_tokens: 32000,  // A3 SVG completo passa facil de 16k — dobrei
+        max_tokens: 32000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       })
+
+      // Coleta cada delta de texto conforme chega
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta') {
+          const delta = event.delta as any
+          if (delta.type === 'text_delta' && typeof delta.text === 'string') {
+            rawText += delta.text
+          }
+        }
+        if (event.type === 'message_delta') {
+          const delta = event.delta as any
+          if (delta.stop_reason) stopReason = delta.stop_reason
+        }
+      }
     } catch (aiErr: any) {
-      console.error('[gerar-diagrama] Anthropic error:', aiErr)
+      console.error('[gerar-diagrama] Anthropic stream error:', aiErr)
       await marcarErro(supabaseAdmin, diagrama_id, `Erro na API Claude: ${aiErr.message}`)
       return NextResponse.json({ erro: aiErr.message }, { status: 500 })
     }
 
     // 5. Extrai JSON da resposta
-    const textBlock = response.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
-    const rawText = textBlock?.text || ''
-    const stopReason = response.stop_reason  // 'end_turn' | 'max_tokens' | ...
 
     // Extrai bloco JSON (dentro de ```json ... ``` ou solto)
     const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/) || rawText.match(/(\{[\s\S]*\})/)
