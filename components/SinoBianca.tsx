@@ -60,11 +60,17 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
   async function carregarSugestoes() {
     setCarregando(true)
     try {
-      const res = await fetch('/api/bianca/sugestoes')
+      // no-store: evita cache do browser/proxy, sempre pega estado atual
+      const res = await fetch('/api/bianca/sugestoes', { cache: 'no-store' })
       const json = await res.json()
       if (res.ok) {
-        setSugestoes(json.sugestoes || [])
-        setContador(json.sugestoes?.length || 0)
+        const lista = json.sugestoes || []
+        setSugestoes(lista)
+        setContador(lista.length)
+        // Se contador do SSR estava desatualizado (ex: cache do Next), atualiza router
+        if (lista.length !== contadorInicial) {
+          router.refresh()
+        }
       }
     } catch {}
     finally { setCarregando(false) }
@@ -74,6 +80,15 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
     if (!aberto) carregarSugestoes()
     setAberto(!aberto)
   }
+
+  // Se o popover fica sem sugestoes, fecha automaticamente ao reabrir vazio
+  useEffect(() => {
+    if (aberto && !carregando && sugestoes.length === 0 && contadorInicial > 0) {
+      // Contador SSR estava mentindo — nao ha nada. Fecha o popover apos breve delay pra usuario ver
+      const t = setTimeout(() => setAberto(false), 1500)
+      return () => clearTimeout(t)
+    }
+  }, [aberto, carregando, sugestoes.length, contadorInicial])
 
   // Nao renderiza nada se nao tem sugestoes (evita sino vazio)
   if (contador === 0 && !aberto) return null
@@ -122,9 +137,13 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
             {carregando ? (
               <p className="text-xs text-white/50 text-center py-4">⏳ Carregando...</p>
             ) : sugestoes.length === 0 ? (
-              <p className="text-xs text-white/50 text-center py-6">
-                Nada pendente. Quando um evento acontecer, a mensagem aparecerá aqui.
-              </p>
+              <div className="text-center py-6">
+                <div className="text-3xl mb-2">✅</div>
+                <p className="text-xs text-white/70 font-bold mb-1">Tudo em ordem!</p>
+                <p className="text-[10px] text-white/40">
+                  Sem sugestões pendentes. Fechando...
+                </p>
+              </div>
             ) : (
               sugestoes.map((s) => (
                 <MiniCard
