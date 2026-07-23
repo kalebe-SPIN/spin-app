@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { dispararGatilho } from '@/lib/bianca/gatilhos'
 
 /**
  * Webhook do WhatsApp Meta Cloud API.
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
           // Marca comunicações recentes com esse número como respondidas
           const { data: recentes } = await supabaseAdmin
             .from('bianca_comunicacoes')
-            .select('id')
+            .select('id, projeto_id, usuario_id, destinatario_nome')
             .eq('destinatario_telefone', from)
             .in('status', ['enviada_bianca', 'enviada_manualmente', 'lida'])
             .is('respondida_em', null)
@@ -93,6 +94,25 @@ export async function POST(req: NextRequest) {
                 resposta_texto: texto.substring(0, 500),
               })
               .eq('id', c.id)
+          }
+
+          // Dispara gatilho pra Bianca sugerir resposta ao consultor
+          // (so pra 1 comunicacao — a mais recente — evita duplicar)
+          const primeira = recentes?.[0]
+          if (primeira && primeira.usuario_id) {
+            await dispararGatilho('cliente_respondeu_whatsapp', {
+              projeto_id: primeira.projeto_id,
+              usuario_id: primeira.usuario_id,
+              entidade_tipo: 'comunicacao_wa',
+              entidade_id: primeira.id,
+              variaveis: {
+                cliente_nome: primeira.destinatario_nome || 'Cliente',
+                cliente_telefone: from,
+                resposta_cliente: texto.substring(0, 300),
+                resposta_sugerida: '(Bianca vai gerar sugestão baseada no contexto)',
+              },
+              instrucao_ia_extra: `O cliente respondeu: "${texto.substring(0, 300)}". Analise essa resposta e escreva uma sugestao de resposta cordial e util pro consultor enviar. Se e duvida tecnica, seja preciso. Se e objecao de preco, defenda valor. Se e confirmacao positiva, agradeca e proponha proximo passo.`,
+            }).catch(err => console.error('[webhook gatilho cliente_respondeu]', err))
           }
         }
       }

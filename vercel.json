@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/bianca-eventos",
+      "schedule": "0 12 * * *"
+    }
+  ]
+}
