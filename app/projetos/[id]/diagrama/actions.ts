@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
 export async function usuarioPodeGerarDiagramas() {
@@ -12,10 +13,18 @@ export async function usuarioPodeGerarDiagramas() {
     .from('profiles')
     .select('role, pode_gerar_diagramas')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
 
   return perfil?.role === 'admin' || perfil?.pode_gerar_diagramas === true
 }
+
+// Status pos-venda: podem gerar diagrama (contrato fechado)
+const STATUS_PODE_GERAR = [
+  'proposta_enviada', 'negociando', 'em_fechamento',  // permite prévia técnica
+  'aceito', 'vendido',                                // vendido = pode oficial
+  'em_homologacao', 'em_execucao', 'instalado',       // pós-venda
+  'ativo_pos_venda',
+]
 
 export async function gerarDiagramaAction(
   projetoId: string,
@@ -29,30 +38,32 @@ export async function gerarDiagramaAction(
   const pode = await usuarioPodeGerarDiagramas()
   if (!pode) return { sucesso: false, erro: 'Sem permissão para gerar diagramas' }
 
-  // Carrega projeto
-  const { data: projeto, error: projErr } = await supabase
+  // Carrega projeto — usa admin pra bypass RLS caso status impeça leitura
+  const supabaseAdmin = createAdminClient()
+  const { data: projeto, error: projErr } = await supabaseAdmin
     .from('projetos')
     .select('*')
     .eq('id', projetoId)
-    .single()
+    .maybeSingle()
 
   if (projErr || !projeto) return { sucesso: false, erro: 'Projeto não encontrado' }
 
-  // Modo prévia: admin pode gerar antes do cliente aceitar (marca versão como rascunho)
-  // Modo oficial (padrão): só gera se status = aceito
-  if (!opcoes.modoPrevia && projeto.status !== 'aceito') {
+  // Status: permite qualquer status "avançado" (proposta em diante)
+  // Rascunho / fatura_analisada / telhado / dimensionado / kit não bloqueia SE for admin,
+  // mas por padrão pedimos que esteja em pipeline comercial ou depois
+  if (!STATUS_PODE_GERAR.includes(projeto.status)) {
     return {
       sucesso: false,
-      erro: 'Diagrama oficial só pode ser gerado após o cliente aceitar a proposta (status = aceito). Use "Gerar prévia" pra visualizar antes.',
+      erro: `Projeto ainda não está pronto pra gerar diagrama (status atual: ${projeto.status}). Envie a proposta ao cliente antes.`,
     }
   }
 
   // Carrega config empresa (snapshot pra rastreabilidade)
-  const { data: config } = await supabase
+  const { data: config } = await supabaseAdmin
     .from('configuracoes_empresa')
     .select('*')
     .eq('singleton', true)
-    .single()
+    .maybeSingle()
 
   if (!config || !config.rt_nome || !config.rt_crea) {
     return {
@@ -62,7 +73,7 @@ export async function gerarDiagramaAction(
   }
 
   // Calcula próxima versão
-  const { data: ultimas } = await supabase
+  const { data: ultimas } = await supabaseAdmin
     .from('projetos_diagramas')
     .select('versao')
     .eq('projeto_id', projetoId)
@@ -73,7 +84,7 @@ export async function gerarDiagramaAction(
   const proximaVersao = (ultimas?.[0]?.versao || 0) + 1
 
   // Cria registro em status 'gerando'
-  const { data: novoDiagrama, error: insErr } = await supabase
+  const { data: novoDiagrama, error: insErr } = await supabaseAdmin
     .from('projetos_diagramas')
     .insert({
       projeto_id: projetoId,
@@ -87,12 +98,20 @@ export async function gerarDiagramaAction(
     .select()
     .single()
 
-  if (insErr || !novoDiagrama) return { sucesso: false, erro: insErr?.message || 'Erro ao criar registro' }
+  if (insErr || !novoDiagrama) {
+    console.error('[gerarDiagrama] insert erro:', insErr)
+    return { sucesso: false, erro: insErr?.message || 'Erro ao criar registro do diagrama' }
+  }
 
-  // Aciona API interna que orquestra as skills
+  // Aciona API interna — detecta URL do ambiente (Vercel usa VERCEL_URL, dev usa localhost)
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    fetch(`${baseUrl}/api/gerar-diagrama`, {
+    // Fire-and-forget mas com await pra garantir que fetch inicie antes da action retornar
+    // (Vercel pode matar processos após return — melhor await pelo menos o inicio da requisicao)
+    const promessa = fetch(`${baseUrl}/api/gerar-diagrama`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -100,10 +119,17 @@ export async function gerarDiagramaAction(
         projeto_id: projetoId,
         tipo_desenho: tipoDesenho,
       }),
-    }).catch(err => console.error('[gerarDiagrama] Erro ao acionar API:', err))
-    // Fire-and-forget — a API atualiza o status quando termina
+    })
+    // Espera 100ms pra garantir que a request foi iniciada
+    await Promise.race([promessa, new Promise(r => setTimeout(r, 100))])
   } catch (e) {
-    console.error('[gerarDiagrama] erro:', e)
+    console.error('[gerarDiagrama] fetch API interna erro:', e)
+    // Marca como erro no banco
+    await supabaseAdmin
+      .from('projetos_diagramas')
+      .update({ status: 'erro', erro_mensagem: `Falha ao acionar geracao: ${(e as any)?.message || 'desconhecido'}` })
+      .eq('id', novoDiagrama.id)
+    return { sucesso: false, erro: 'Falha ao iniciar geração. Ver logs.' }
   }
 
   revalidatePath(`/projetos/${projetoId}/diagrama`)
