@@ -37,10 +37,7 @@ export async function PortalHeader() {
             <NavLink href="/crm/pipeline" label="🎯 CRM" />
             <NavLink href="/agenda" label="📅 Agenda" />
             {modoAtivo === 'admin' && ehAdminReal && (
-              <>
-                <NavLink href="/erp" label="🏢 ERP" />
-                <NavLink href="/admin" label="Admin" />
-              </>
+              <NavLink href="/admin" label="⚙️ Admin" />
             )}
           </nav>
         </div>
