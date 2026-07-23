@@ -103,17 +103,32 @@ export async function POST(req: NextRequest) {
       hibridoAnalise = ana
     }
 
+    // 3.5. Se ha instrucao de ajuste (refinamento de versao anterior), carrega
+    // Kalebe pode ter clicado em '✏️ Refinar' passando feedback pro Claude
+    const { data: diagramaRegistro } = await supabaseAdmin
+      .from('projetos_diagramas')
+      .select('instrucao_ajuste, baseado_em_id')
+      .eq('id', diagrama_id)
+      .maybeSingle()
+
+    const instrucaoAjuste = diagramaRegistro?.instrucao_ajuste || null
+
     // 4. Chama Claude API
     const anthropic = new Anthropic({ apiKey: anthropicKey })
 
     const systemPrompt = buildSystemPrompt()
-    const userPrompt = buildUserPrompt({
+    let userPrompt = buildUserPrompt({
       projeto,
       configEmpresa,
       tipoDesenho: tipo_desenho as 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada',
       hibridoDimensionamento,
       hibridoAnalise,
     })
+
+    // Se e refinamento de versao anterior, adiciona instrucao no final
+    if (instrucaoAjuste) {
+      userPrompt += `\n\n=== AJUSTE PEDIDO PELO CONSULTOR ===\n${instrucaoAjuste}\n\nMantenha tudo o resto igual, mas aplique esse ajuste especificamente.`
+    }
 
     // Streaming obrigatorio pra max_tokens alto (SDK bloqueia non-stream se >10min).
     // Anthropic SDK oferece stream() que junta chunks automaticamente e retorna

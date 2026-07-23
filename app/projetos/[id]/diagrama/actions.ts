@@ -135,3 +135,102 @@ export async function gerarDiagramaAction(
   revalidatePath(`/projetos/${projetoId}/diagrama`)
   return { sucesso: true, diagrama_id: novoDiagrama.id }
 }
+
+/**
+ * Regenera diagrama baseado em versao existente.
+ * Se instrucaoAjuste for passada, envia como feedback pro Claude refinar.
+ * Se nao, apenas tenta gerar de novo (util pra erros transientes).
+ */
+export async function regenerarDiagramaAction(
+  diagramaAnteriorId: string,
+  instrucaoAjuste?: string,
+) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { sucesso: false, erro: 'Nao autenticado' }
+
+  const pode = await usuarioPodeGerarDiagramas()
+  if (!pode) return { sucesso: false, erro: 'Sem permissao pra gerar diagramas' }
+
+  const supabaseAdmin = createAdminClient()
+
+  // Busca diagrama anterior pra pegar projeto_id + tipo_desenho
+  const { data: anterior } = await supabaseAdmin
+    .from('projetos_diagramas')
+    .select('projeto_id, tipo_desenho')
+    .eq('id', diagramaAnteriorId)
+    .maybeSingle()
+
+  if (!anterior) return { sucesso: false, erro: 'Diagrama anterior nao encontrado' }
+
+  // Reusa gerarDiagramaAction pra criar novo registro
+  const result = await gerarDiagramaAction(
+    anterior.projeto_id,
+    anterior.tipo_desenho as any,
+    { modoPrevia: false },
+  )
+
+  if (!result.sucesso) return result
+
+  // Se tem instrucao de ajuste, salva no novo registro pra API considerar
+  if (instrucaoAjuste && result.diagrama_id) {
+    await supabaseAdmin
+      .from('projetos_diagramas')
+      .update({
+        instrucao_ajuste: instrucaoAjuste,
+        baseado_em_id: diagramaAnteriorId,
+      })
+      .eq('id', result.diagrama_id)
+  }
+
+  return result
+}
+
+/**
+ * Exclui um diagrama do banco + storage.
+ * Soft delete? Nao — a tabela projetos_diagramas guarda historico, entao
+ * remover fisicamente uma versao ruim/errada eh o comportamento esperado.
+ */
+export async function excluirDiagramaAction(diagramaId: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { sucesso: false, erro: 'Nao autenticado' }
+
+  const pode = await usuarioPodeGerarDiagramas()
+  if (!pode) return { sucesso: false, erro: 'Sem permissao' }
+
+  const supabaseAdmin = createAdminClient()
+
+  // Busca dados pra saber que arquivos deletar no storage
+  const { data: diag } = await supabaseAdmin
+    .from('projetos_diagramas')
+    .select('projeto_id, url_svg, url_pdf, url_dxf')
+    .eq('id', diagramaId)
+    .maybeSingle()
+
+  if (!diag) return { sucesso: false, erro: 'Diagrama nao encontrado' }
+
+  // Tenta remover arquivos do storage (nao bloqueia se falhar)
+  const arquivos: string[] = []
+  for (const url of [diag.url_svg, diag.url_pdf, diag.url_dxf]) {
+    if (url && typeof url === 'string') {
+      // extrai path relativo depois de /projetos-diagramas/
+      const match = url.match(/projetos-diagramas\/(.+)$/)
+      if (match) arquivos.push(match[1])
+    }
+  }
+  if (arquivos.length > 0) {
+    await supabaseAdmin.storage.from('projetos-diagramas').remove(arquivos).catch(() => null)
+  }
+
+  // Remove registro do banco
+  const { error: delErr } = await supabaseAdmin
+    .from('projetos_diagramas')
+    .delete()
+    .eq('id', diagramaId)
+
+  if (delErr) return { sucesso: false, erro: delErr.message }
+
+  revalidatePath(`/projetos/${diag.projeto_id}/diagrama`)
+  return { sucesso: true }
+}
