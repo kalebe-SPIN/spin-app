@@ -5,6 +5,9 @@ import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { StatsProjetos } from '@/components/stats/StatsProjetos'
 import { StatsHomologacoes } from '@/components/stats/StatsHomologacoes'
 import { StatsAgenda } from '@/components/stats/StatsAgenda'
+import { StatsCRM } from '@/components/stats/StatsCRM'
+import { StatsOperacoes } from '@/components/stats/StatsOperacoes'
+import { StatsPosVenda } from '@/components/stats/StatsPosVenda'
 
 /**
  * Dashboard — OPERAÇÃO em tempo real.
