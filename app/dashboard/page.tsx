@@ -1,33 +1,27 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { StatsProjetos } from '@/components/stats/StatsProjetos'
-import { StatsCatalogo } from '@/components/stats/StatsCatalogo'
 import { StatsHomologacoes } from '@/components/stats/StatsHomologacoes'
 import { StatsAgenda } from '@/components/stats/StatsAgenda'
-import { StatsPrecificacao } from '@/components/stats/StatsPrecificacao'
 
 /**
- * Dashboard — /dashboard
+ * Dashboard — OPERAÇÃO em tempo real.
  *
- * Página protegida: só usuários logados acessam.
- * Server Component pra verificar auth direto no servidor (sem flash de conteúdo).
+ * Filosofia: mostra a orquestra tocando.
+ *   - Projetos ativos em cada fase
+ *   - Homologações CELESC em andamento
+ *   - Agenda do dia (Bianca)
+ *   - Módulos operacionais do ERP (CRM, financeiro, etc)
  *
- * No futuro, vai mostrar conteúdo diferente baseado no papel:
- * - admin: gestão geral, catálogo, usuários
- * - representante: meus leads, link de afiliação, comissões
- * - instalador: instalações agendadas, checklist
+ * Configuração e estrutura da empresa vive em /admin.
  */
 export default async function DashboardPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-  // Se não logado, manda pra login
-  if (!user) {
-    redirect('/login')
-  }
-
-  // Busca perfil do usuário (com role) — tabela profiles
   const { data: profile } = await supabase
     .from('profiles')
     .select('nome_completo, role, telefone')
@@ -41,13 +35,13 @@ export default async function DashboardPage() {
     <main className="min-h-screen p-8 md:p-12">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-12">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-black text-white">
               Olá, <span className="text-sol">{profile?.nome_completo?.split(' ')[0] || 'parceiro'}</span>
             </h1>
             <p className="text-white/60 mt-1">
-              Bem-vindo ao portal interno Spin Solar
+              Painel operacional — a orquestra tocando
               {profile?.role && (
                 <span className="ml-2 text-xs uppercase tracking-wider bg-sol/10 text-sol px-2 py-1 rounded-full font-bold">
                   {profile.role}
@@ -55,15 +49,22 @@ export default async function DashboardPage() {
               )}
             </p>
           </div>
-
-          {/* Avatar + menu */}
           <div className="flex items-center gap-3">
-            <a
+            {mostraAdmin && (
+              <Link
+                href="/admin"
+                className="px-4 py-2 bg-weg-azul/10 border border-weg-azul/30 text-weg-azul text-sm font-semibold rounded-lg hover:bg-weg-azul/20 transition"
+                title="Configurações estruturais da empresa"
+              >
+                ⚙️ Administração
+              </Link>
+            )}
+            <Link
               href="/conta"
-              className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold text-white hover:bg-white/10 transition-colors"
+              className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold text-white hover:bg-white/10 transition"
             >
               Minha conta
-            </a>
+            </Link>
             <form action="/api/auth/signout" method="post">
               <button
                 type="submit"
@@ -75,108 +76,97 @@ export default async function DashboardPage() {
           </div>
         </header>
 
-        {/* Cards de atalho */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <DashboardCard
-            titulo="📋 Projetos"
-            desc="Workflow completo: fatura → telhado → kit → orçamento → PDF."
-            disponivel={true}
-            href="/projetos"
-          >
-            <StatsProjetos />
-          </DashboardCard>
-          <DashboardCard
-            titulo="OCR Fatura CELESC"
-            desc="Análise standalone de fatura. Integrado ao fluxo de Projetos."
-            disponivel={false}
-            href="/cliente/ocr"
-          />
-          <DashboardCard
-            titulo="Meus Leads"
-            desc="Acompanhe leads atribuídos via link de afiliação."
-            disponivel={false}
-            href="/parceiro/leads"
-          />
-          {mostraAdmin && (
-            <>
-              <DashboardCard
-                titulo="📊 Catálogo WEG (Admin)"
-                desc="Upload de planilha, PDF de estoque e datasheets dos produtos."
-                disponivel={true}
-                adminOnly
-                href="/admin/catalogo"
-              >
-                <StatsCatalogo />
-              </DashboardCard>
-              <DashboardCard
-                titulo="💰 Precificação (Admin)"
-                desc="Parâmetros e faixas de todos os serviços — hub centralizado."
-                disponivel={true}
-                adminOnly
-                href="/admin/precificacao"
-              >
-                <StatsPrecificacao />
-              </DashboardCard>
+        {/* Sec. 1: OPERAÇÃO CORRENTE — o que está rodando agora */}
+        <section className="mb-10">
+          <div className="flex items-baseline justify-between mb-4">
+            <div>
+              <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
+                🎼 Operação corrente
+              </h2>
+              <p className="text-xs text-white/50 mt-0.5">
+                Projetos ativos, pipeline CELESC e agenda do dia
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <DashboardCard
+              titulo="📋 Projetos"
+              desc="Todos os projetos em andamento — proposta, negociação, venda, execução."
+              disponivel={true}
+              href="/projetos"
+            >
+              <StatsProjetos />
+            </DashboardCard>
+
+            {mostraAdmin && (
               <DashboardCard
                 titulo="⚡ Homologações CELESC"
-                desc="Pipeline de aprovação — 6 etapas por projeto aceito."
+                desc="Pipeline de aprovação — 6 etapas por projeto vendido, atraso vs prazo."
                 disponivel={true}
                 adminOnly
                 href="/admin/homologacoes"
               >
                 <StatsHomologacoes />
               </DashboardCard>
-            </>
-          )}
-          <DashboardCard
-            titulo="👩‍💼 Agenda (Bianca)"
-            desc="Sua secretária executiva IA — eventos, tarefas e resumo diário."
-            disponivel={true}
-            href="/agenda"
-          >
-            <StatsAgenda />
-          </DashboardCard>
-          <DashboardCard
-            titulo="Configurações"
-            desc="Sua conta, perfil profissional, foto."
-            disponivel={true}
-            href="/conta"
-          />
-        </div>
+            )}
 
-        {/* ERP Módulos — só admin */}
-        {mostraAdmin && (
-          <>
-            <div className="mt-10 mb-4">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-sol">ERP Módulos</h2>
-              <p className="text-xs text-white/50 mt-0.5">CRM, financeiro, operações, fiscal e pós-venda</p>
+            <DashboardCard
+              titulo="👩‍💼 Agenda + Bianca"
+              desc="Tarefas do dia, eventos, respostas de clientes, sugestões da IA."
+              disponivel={true}
+              href="/agenda"
+            >
+              <StatsAgenda />
+            </DashboardCard>
+          </div>
+        </section>
+
+        {/* Sec. 2: Módulos ERP — visão macro dos processos da empresa */}
+        <section className="mb-10">
+          <div className="mb-4">
+            <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
+              🏭 Módulos ERP
+            </h2>
+            <p className="text-xs text-white/50 mt-0.5">
+              Do atendimento à pós-venda — engrenagens que giram a empresa
+            </p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <ModuloAtalho href="/crm" emoji="👥" titulo="CRM" desc="Clientes + leads" />
+            {mostraAdmin && <ModuloAtalho href="/financeiro" emoji="💰" titulo="Financeiro" desc="Receber + pagar" adminOnly />}
+            {mostraAdmin && <ModuloAtalho href="/operacoes" emoji="🔧" titulo="Operações" desc="Compras + equipe" adminOnly />}
+            {mostraAdmin && <ModuloAtalho href="/fiscal" emoji="📄" titulo="Fiscal" desc="NF + contratos" adminOnly />}
+            <ModuloAtalho href="/pos-venda" emoji="🛠️" titulo="Pós-venda" desc="OS + garantias" />
+          </div>
+        </section>
+
+        {/* Sec. 3: Meus Leads (parceiro) */}
+        {profile?.role !== 'admin' && (
+          <section className="mb-10">
+            <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-4">
+              🎯 Meu trabalho
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <DashboardCard
+                titulo="Meus Leads"
+                desc="Acompanhe leads atribuídos via link de afiliação."
+                disponivel={false}
+                href="/parceiro/leads"
+              />
+              <DashboardCard
+                titulo="OCR Fatura CELESC"
+                desc="Análise standalone de fatura."
+                disponivel={false}
+                href="/cliente/ocr"
+              />
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-              <ModuloAtalho href="/crm" emoji="👥" titulo="CRM" desc="Clientes + leads" adminOnly />
-              <ModuloAtalho href="/financeiro" emoji="💰" titulo="Financeiro" desc="Receber + pagar" adminOnly />
-              <ModuloAtalho href="/operacoes" emoji="🔧" titulo="Operações" desc="Compras + equipe" adminOnly />
-              <ModuloAtalho href="/fiscal" emoji="📄" titulo="Fiscal" desc="NF + contratos" adminOnly />
-              <ModuloAtalho href="/pos-venda" emoji="🛠️" titulo="Pós-venda" desc="OS + garantias" adminOnly />
-            </div>
-          </>
+          </section>
         )}
-
-        {/* Aviso construção */}
-        <div className="mt-12 p-6 bg-sol/5 border border-sol/20 rounded-xl">
-          <p className="text-sm text-white/70">
-            🚧 <strong className="text-sol">Sistema em construção.</strong> As funcionalidades acima
-            estão sendo migradas do menu-spin público pra cá. Em breve, todas estarão ativas.
-          </p>
-        </div>
       </div>
     </main>
   )
 }
 
-/**
- * Card de atalho do dashboard.
- * Quando `disponivel=false`, fica disabled visualmente.
- */
 function ModuloAtalho({
   href, emoji, titulo, desc, adminOnly,
 }: {
@@ -200,12 +190,7 @@ function ModuloAtalho({
 }
 
 function DashboardCard({
-  titulo,
-  desc,
-  disponivel = false,
-  adminOnly = false,
-  href,
-  children,
+  titulo, desc, disponivel = false, adminOnly = false, href, children,
 }: {
   titulo: string
   desc: string
