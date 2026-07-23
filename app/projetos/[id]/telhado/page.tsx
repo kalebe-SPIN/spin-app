@@ -60,13 +60,32 @@ export default async function TelhadoPage({ params }: { params: { id: string } }
           </p>
         </header>
 
-        <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-xl p-4 mb-6">
+        <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-xl p-4 mb-4">
           <p className="text-sm text-white/80">
             <strong className="text-white">Telhado pode ter múltiplas seções</strong> com tipos
             diferentes (ex: parte fibrocimento + parte metálico). Cadastre cada seção separadamente
             com sua área, orientação e características.
           </p>
         </div>
+
+        <Link
+          href={`/projetos/${projeto.id}/telhado/mapa`}
+          className="block mb-6 p-4 bg-gradient-to-br from-sol/10 to-verde/5 border border-sol/40 hover:border-sol/70 rounded-xl transition"
+        >
+          <div className="flex items-center gap-3">
+            <div className="text-3xl">🗺️</div>
+            <div className="flex-1">
+              <p className="font-bold text-white flex items-center gap-2">
+                Desenhar telhado no mapa satélite
+                <span className="text-[10px] font-bold text-sol bg-sol/10 border border-sol/30 px-2 py-0.5 rounded uppercase">Novo</span>
+              </p>
+              <p className="text-xs text-white/60 mt-0.5">
+                Google Maps + ferramenta de polígono. Calcula área, orientação e estimativa de placas automaticamente.
+              </p>
+            </div>
+            <span className="text-sol">→</span>
+          </div>
+        </Link>
 
         <TelhadoSecoesManager
           projetoId={projeto.id}
