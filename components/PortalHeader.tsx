@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { AlternarModoButton } from '@/components/AlternarModoButton'
 import { createClient } from '@/lib/supabase/server'
+import { SinoBianca } from '@/components/SinoBianca'
 
 /**
  * Header global do portal.
@@ -60,20 +61,8 @@ export async function PortalHeader() {
 
         {/* Direita: modo + usuário */}
         <div className="flex items-center gap-3">
-          {/* Sino Bianca — sugestoes pendentes */}
-          {sugestoesPendentes > 0 && (
-            <Link
-              href="/bianca/sugestoes"
-              className="relative flex items-center gap-1.5 px-3 py-1.5 bg-sol/10 border border-sol/30 rounded-lg text-xs font-bold text-sol hover:bg-sol/20 transition"
-              title={`${sugestoesPendentes} sugestão(ões) da Bianca aguardando aprovação`}
-            >
-              <span className="text-base">🔔</span>
-              <span className="hidden sm:inline">Bianca</span>
-              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-sol text-noite text-[10px] flex items-center justify-center font-black">
-                {sugestoesPendentes}
-              </span>
-            </Link>
-          )}
+          {/* Sino Bianca — popover in-place com sugestoes */}
+          <SinoBianca contadorInicial={sugestoesPendentes} />
           {ehAdminReal && <AlternarModoButton modoAtual={modoAtivo} />}
 
           <div className="flex items-center gap-2 pl-3 border-l border-white/10">
