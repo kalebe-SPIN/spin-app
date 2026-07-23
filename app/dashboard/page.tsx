@@ -121,22 +121,20 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        {/* Sec. 2: Módulos ERP — visão macro dos processos da empresa */}
+        {/* Sec. 2: Módulos operacionais — engrenagens do atendimento */}
         <section className="mb-10">
           <div className="mb-4">
             <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
-              🏭 Módulos ERP
+              🏭 Módulos operacionais
             </h2>
             <p className="text-xs text-white/50 mt-0.5">
-              Do atendimento à pós-venda — engrenagens que giram a empresa
+              Do primeiro contato até a garantia — engrenagens do atendimento
             </p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            <ModuloAtalho href="/crm" emoji="👥" titulo="CRM" desc="Clientes + leads" />
-            {mostraAdmin && <ModuloAtalho href="/financeiro" emoji="💰" titulo="Financeiro" desc="Receber + pagar" adminOnly />}
-            {mostraAdmin && <ModuloAtalho href="/operacoes" emoji="🔧" titulo="Operações" desc="Compras + equipe" adminOnly />}
-            {mostraAdmin && <ModuloAtalho href="/fiscal" emoji="📄" titulo="Fiscal" desc="NF + contratos" adminOnly />}
-            <ModuloAtalho href="/pos-venda" emoji="🛠️" titulo="Pós-venda" desc="OS + garantias" />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <ModuloAtalho href="/crm" emoji="🎯" titulo="CRM" desc="Clientes + leads + pipeline comercial" />
+            <ModuloAtalho href="/execucoes" emoji="🔨" titulo="Operações" desc="Pipeline de obras e serviços contratados" destaque />
+            <ModuloAtalho href="/pos-venda" emoji="🛠️" titulo="Pós-venda" desc="OS + garantias + O&M" />
           </div>
         </section>
 
@@ -168,23 +166,32 @@ export default async function DashboardPage() {
 }
 
 function ModuloAtalho({
-  href, emoji, titulo, desc, adminOnly,
+  href, emoji, titulo, desc, adminOnly, destaque,
 }: {
-  href: string; emoji: string; titulo: string; desc: string; adminOnly?: boolean
+  href: string; emoji: string; titulo: string; desc: string; adminOnly?: boolean; destaque?: boolean
 }) {
   return (
     <a
       href={href}
-      className="relative p-3 rounded-lg bg-white/[0.03] border border-white/10 hover:border-sol/40 hover:bg-white/[0.06] transition-all block"
+      className={`relative p-4 rounded-lg border transition-all block ${
+        destaque
+          ? 'bg-gradient-to-br from-coral/10 to-sol/5 border-coral/40 hover:border-coral/70'
+          : 'bg-white/[0.03] border-white/10 hover:border-sol/40 hover:bg-white/[0.06]'
+      }`}
     >
       {adminOnly && (
         <span className="absolute top-1.5 right-1.5 text-[8px] font-bold uppercase text-weg-azul bg-white px-1 py-0.5 rounded">
           Admin
         </span>
       )}
-      <div className="text-2xl mb-1">{emoji}</div>
+      {destaque && (
+        <span className="absolute top-1.5 right-1.5 text-[9px] font-bold uppercase text-coral bg-coral/10 border border-coral/30 px-1.5 py-0.5 rounded">
+          Novo
+        </span>
+      )}
+      <div className="text-2xl mb-1.5">{emoji}</div>
       <p className="text-sm font-bold text-white">{titulo}</p>
-      <p className="text-[10px] text-white/50 mt-0.5">{desc}</p>
+      <p className="text-[10px] text-white/60 mt-0.5">{desc}</p>
     </a>
   )
 }

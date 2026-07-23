@@ -113,6 +113,38 @@ async function disparoAutomacoes(
       },
     }).catch((e) => console.error('[gatilho proposta_aceita]', e))
 
+    // 1.2 Cria execução pra cada item da proposta (pipeline de obra)
+    try {
+      const { data: itensProjeto } = await supabase
+        .from('projeto_itens')
+        .select('id, tipo, titulo, valor_estimado')
+        .eq('projeto_id', projeto.id)
+        .neq('status', 'removido')
+
+      for (const item of itensProjeto || []) {
+        const { data: jaTem } = await supabase
+          .from('execucoes_servicos')
+          .select('id')
+          .eq('item_id', item.id)
+          .maybeSingle()
+
+        if (!jaTem) {
+          await supabase.from('execucoes_servicos').insert({
+            projeto_id: projeto.id,
+            item_id: item.id,
+            tipo_servico: item.tipo,
+            titulo: `${item.titulo || item.tipo} — ${cliente}`,
+            valor_contratado: item.valor_estimado,
+            status: 'aguardando_pre_requisitos',
+            responsavel_tecnico: projeto.consultor_id || userId,
+            criada_por: userId,
+          })
+        }
+      }
+    } catch (execErr) {
+      console.error('[auto-criacao execucao]', execErr)
+    }
+
     // 2. Cria a homologação REAL se ainda não existir
     const { data: existente } = await supabase
       .from('homologacoes')

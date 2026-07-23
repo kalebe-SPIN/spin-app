@@ -101,6 +101,31 @@ export default async function AdminHomePage() {
           />
         </Grupo>
 
+        {/* Grupo 4: Financeiro / Fiscal / Compras — gestão administrativa */}
+        <Grupo titulo="💼 Gestão administrativa">
+          <AdminCard
+            href="/financeiro"
+            icon="💰"
+            titulo="Financeiro"
+            desc="Contas a receber, contas a pagar, fluxo de caixa, conciliação bancária."
+            emBreve
+          />
+          <AdminCard
+            href="/fiscal"
+            icon="📄"
+            titulo="Fiscal"
+            desc="Notas fiscais, contratos, ART, documentos legais da empresa."
+            emBreve
+          />
+          <AdminCard
+            href="/admin/compras"
+            icon="🛒"
+            titulo="Compras"
+            desc="Pedidos WEG e terceiros, cotações, recebimento de material, controle de estoque."
+            emBreve
+          />
+        </Grupo>
+
         {/* Rodapé com link pro dashboard */}
         <div className="mt-10 p-4 bg-weg-azul/5 border border-weg-azul/20 rounded-xl">
           <p className="text-xs text-white/70">
