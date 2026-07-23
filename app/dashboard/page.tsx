@@ -131,10 +131,32 @@ export default async function DashboardPage() {
               Do primeiro contato até a garantia — engrenagens do atendimento
             </p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <ModuloAtalho href="/crm" emoji="🎯" titulo="CRM" desc="Clientes + leads + pipeline comercial" />
-            <ModuloAtalho href="/execucoes" emoji="🔨" titulo="Operações" desc="Pipeline de obras e serviços contratados" destaque />
-            <ModuloAtalho href="/pos-venda" emoji="🛠️" titulo="Pós-venda" desc="OS + garantias + O&M" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <DashboardCard
+              titulo="🎯 CRM"
+              desc="Clientes, leads e pipeline comercial — do primeiro contato até a venda."
+              disponivel={true}
+              href="/crm/pipeline"
+            >
+              <StatsCRM />
+            </DashboardCard>
+            <DashboardCard
+              titulo="🔨 Operações"
+              desc="Pipeline de obras e serviços contratados — agendamento até entrega."
+              disponivel={true}
+              href="/execucoes"
+              destaque
+            >
+              <StatsOperacoes />
+            </DashboardCard>
+            <DashboardCard
+              titulo="🛠️ Pós-venda"
+              desc="OS, garantias, monitoramento O&M — depois da entrega."
+              disponivel={true}
+              href="/pos-venda"
+            >
+              <StatsPosVenda />
+            </DashboardCard>
           </div>
         </section>
 
@@ -197,7 +219,7 @@ function ModuloAtalho({
 }
 
 function DashboardCard({
-  titulo, desc, disponivel = false, adminOnly = false, href, children,
+  titulo, desc, disponivel = false, adminOnly = false, href, children, destaque = false,
 }: {
   titulo: string
   desc: string
@@ -205,6 +227,7 @@ function DashboardCard({
   adminOnly?: boolean
   href: string
   children?: React.ReactNode
+  destaque?: boolean
 }) {
   const Tag = disponivel ? 'a' : 'div'
   return (
@@ -213,7 +236,9 @@ function DashboardCard({
       className={`
         relative p-6 rounded-xl border transition-all flex flex-col
         ${disponivel
-          ? 'bg-white/5 border-white/10 hover:border-sol/40 hover:bg-white/[0.07] cursor-pointer'
+          ? destaque
+            ? 'bg-gradient-to-br from-coral/10 to-sol/5 border-coral/40 hover:border-coral/70 cursor-pointer'
+            : 'bg-white/5 border-white/10 hover:border-sol/40 hover:bg-white/[0.07] cursor-pointer'
           : 'bg-white/[0.02] border-white/5 opacity-60 cursor-not-allowed'
         }
       `}
@@ -221,6 +246,11 @@ function DashboardCard({
       {adminOnly && (
         <span className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-wider text-weg-azul bg-white px-2 py-0.5 rounded-full">
           Admin
+        </span>
+      )}
+      {destaque && !adminOnly && (
+        <span className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-wider text-coral bg-coral/10 border border-coral/30 px-2 py-0.5 rounded-full">
+          Novo
         </span>
       )}
       <h3 className="text-lg font-bold text-white mb-2">{titulo}</h3>
