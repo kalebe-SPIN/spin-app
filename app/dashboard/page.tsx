@@ -5,6 +5,7 @@ import { StatsProjetos } from '@/components/stats/StatsProjetos'
 import { StatsCatalogo } from '@/components/stats/StatsCatalogo'
 import { StatsHomologacoes } from '@/components/stats/StatsHomologacoes'
 import { StatsAgenda } from '@/components/stats/StatsAgenda'
+import { StatsPrecificacao } from '@/components/stats/StatsPrecificacao'
 
 /**
  * Dashboard — /dashboard
@@ -109,11 +110,13 @@ export default async function DashboardPage() {
               </DashboardCard>
               <DashboardCard
                 titulo="💰 Precificação (Admin)"
-                desc="Margens, comissões, tabelas, descontos — painel de controle."
-                disponivel={false}
+                desc="Parâmetros e faixas de todos os serviços — hub centralizado."
+                disponivel={true}
                 adminOnly
                 href="/admin/precificacao"
-              />
+              >
+                <StatsPrecificacao />
+              </DashboardCard>
               <DashboardCard
                 titulo="⚡ Homologações CELESC"
                 desc="Pipeline de aprovação — 6 etapas por projeto aceito."
