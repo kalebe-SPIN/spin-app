@@ -1,0 +1,558 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEMPLATE: unifilar-hibrido-bess
+  Uso: sistemas híbridos on-grid + BESS (baterias) — pequeno/médio/grande porte
+  Baseado em: José Henrique dos Santos / Panificação Daiana da Silva EPP - 113,4 kWp
+  Formato: A3 paisagem (1580×1120) - híbrido pede mais espaço que on-grid
+
+  Estrutura elétrica emulada:
+    REDE MT → ENTRADA (Trafo + Medidor + Disj 175A + DPS)
+    → QGBT (cargas comuns) + Contator + Disj alimentação micro-gerador
+    → MICRO-GERADOR HÍBRIDO ON-GRID (N ramos paralelos):
+       cada ramo = Disj + DPS + Inversor híbrido + Módulos FV + Baterias
+    → CARGAS CRÍTICAS (EPS) - saída EPS de cada inversor
+
+  Variáveis principais:
+    - {TITULO_HEADER}, {SUBTITULO}
+    - {CLIENTE_RAZAO_SOCIAL}, {UC_GERADORA}, {CIDADE_UF}
+    - {POTENCIA_KWP}, {POTENCIA_CA_KW}, {ARMAZENAMENTO_KWH}
+    - {TRAFO_POTENCIA_KVA}, {TRAFO_LIGACAO} — ex "45 kVA / Δ→Y"
+    - {DISJ_ENTRADA_A} — ex "175A"
+    - {DISJ_MICROGERADOR_A} — ex "125A"
+    - {DPS_CLASSE_ENTRADA}
+    - {RAMOS_HIBRIDO_JSON} — array de {disj, inversor_modelo, inversor_kw, qtd_modulos, modulo_modelo, potencia_kwp, qtd_baterias, bateria_modelo, armazenamento_kwh}
+    - {EMPRESA_*, RT_*, CODIGO_PROJETO, DATA_EMISSAO}
+
+  O agente Claude preenche os ramos dinamicamente: se 1-3 ramos, usa layout base;
+  se >3, adapta espaçamento vertical.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1580 1120" width="1580" height="1120">
+  <!-- FUNDO branco -->
+  <rect x="0" y="0" width="1580" height="1120" fill="#FFFFFF"/>
+
+  <!-- MOLDURA externa -->
+  <rect x="12" y="12" width="1556" height="1096" fill="none" stroke="#111827" stroke-width="1.5"/>
+
+  <!-- SEPARADOR VERTICAL área/coluna direita -->
+  <line x1="1090" y1="12" x2="1090" y2="1108" stroke="#111827" stroke-width="1"/>
+
+  <!-- TÍTULO E SUBTÍTULO -->
+  <text x="551" y="32" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a4f8b">{TITULO_HEADER}</text>
+  <text x="551" y="48" font-family="Helvetica, Arial, sans-serif" font-size="9" text-anchor="middle" fill="#6b7280">{SUBTITULO}</text>
+
+  <!-- ═══════════════ SEÇÃO A: REDE CELESC MT (topo esquerda) ═══════════════ -->
+  <text x="60" y="85" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#111827">PONTO DE CONEXÃO</text>
+  <text x="60" y="98" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#111827">REDE CELESC (MT)</text>
+  <circle cx="130" cy="115" r="3.5" fill="#111827"/>
+
+  <!-- Linha horizontal do ponto conexão pra entrada -->
+  <line x1="130" y1="115" x2="270" y2="115" stroke="#111827" stroke-width="1.4"/>
+  <line x1="270" y1="115" x2="270" y2="150" stroke="#111827" stroke-width="1.4"/>
+
+  <!-- ═══════════════ SEÇÃO B: ENTRADA DE ENERGIA (caixa tracejada) ═══════════════ -->
+  <rect x="150" y="145" width="440" height="290" fill="none" stroke="#111827" stroke-width="1" stroke-dasharray="6,4"/>
+  <text x="165" y="140" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#1a4f8b">ENTRADA DE ENERGIA</text>
+
+  <!-- TRANSFORMADOR MT (círculos entrelaçados) -->
+  <text x="200" y="175" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">TRANSFORMADOR</text>
+  <text x="200" y="187" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#6b7280">{TRAFO_POTENCIA_KVA} kVA</text>
+  <g transform="translate(270, 195)">
+    <circle cx="0" cy="0" r="12" fill="none" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="0" cy="16" r="12" fill="none" stroke="#111827" stroke-width="1.3"/>
+    <text x="-4" y="4" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">3Ø</text>
+    <text x="-15" y="42" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Δ Y</text>
+    <path d="M -18 42 L -22 45 M -8 42 L -4 45" fill="none" stroke="#111827" stroke-width="1"/>
+  </g>
+
+  <!-- Aterramento do trafo -->
+  <line x1="270" y1="245" x2="270" y2="258" stroke="#111827" stroke-width="1.3"/>
+  <g transform="translate(270, 258)">
+    <line x1="-8" y1="0" x2="8" y2="0" stroke="#111827" stroke-width="1.5"/>
+    <line x1="-5" y1="3" x2="5" y2="3" stroke="#111827" stroke-width="1.5"/>
+    <line x1="-2.5" y1="6" x2="2.5" y2="6" stroke="#111827" stroke-width="1.5"/>
+  </g>
+
+  <!-- Linha trafo → medidor -->
+  <line x1="270" y1="245" x2="270" y2="290" stroke="#111827" stroke-width="1.3"/>
+
+  <!-- MEDIDOR CELESC -->
+  <g transform="translate(270, 305)">
+    <rect x="-25" y="-15" width="50" height="30" fill="none" stroke="#111827" stroke-width="1.3" rx="2"/>
+    <line x1="-15" y1="-6" x2="15" y2="-6" stroke="#111827" stroke-width="1"/>
+    <path d="M -15 -6 l 3 -2 M -15 -6 l 3 2 M 15 -6 l -3 -2 M 15 -6 l -3 2" fill="none" stroke="#111827" stroke-width="0.9"/>
+    <text x="0" y="10" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#111827">kWh</text>
+  </g>
+  <text x="200" y="308" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">MEDIDOR</text>
+  <text x="200" y="320" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">CELESC</text>
+
+  <!-- Linha medidor → disjuntor -->
+  <line x1="270" y1="320" x2="270" y2="350" stroke="#111827" stroke-width="1.3"/>
+
+  <!-- DISJUNTOR entrada -->
+  <text x="200" y="360" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">DISJUNTOR</text>
+  <text x="200" y="372" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">{DISJ_ENTRADA_A}</text>
+  <g transform="translate(270, 365)">
+    <line x1="0" y1="-15" x2="0" y2="-6" stroke="#111827" stroke-width="1.4"/>
+    <circle cx="0" cy="-6" r="2" fill="#111827"/>
+    <line x1="0" y1="-6" x2="14" y2="8" stroke="#b91c1c" stroke-width="1.4"/>
+    <path d="M 10 -4 q 5 3 2 8" fill="none" stroke="#111827" stroke-width="1"/>
+    <circle cx="0" cy="15" r="2" fill="#111827"/>
+  </g>
+
+  <!-- DPS Cl II 40kA -->
+  <line x1="270" y1="380" x2="360" y2="380" stroke="#111827" stroke-width="1.3"/>
+  <g transform="translate(370, 395)">
+    <rect x="-11" y="-16" width="22" height="24" fill="none" stroke="#111827" stroke-width="1.3"/>
+    <line x1="-11" y1="8" x2="11" y2="-16" stroke="#111827" stroke-width="1.2"/>
+    <text x="18" y="-4" font-family="Helvetica, Arial, sans-serif" font-size="7" fill="#111827">DPS</text>
+    <text x="18" y="6" font-family="Helvetica, Arial, sans-serif" font-size="7" fill="#111827">{DPS_CLASSE_ENTRADA}</text>
+    <line x1="0" y1="8" x2="0" y2="18" stroke="#111827" stroke-width="1.3"/>
+    <g transform="translate(0, 20)">
+      <line x1="-6" y1="0" x2="6" y2="0" stroke="#111827" stroke-width="1.5"/>
+      <line x1="-4" y1="3" x2="4" y2="3" stroke="#111827" stroke-width="1.5"/>
+      <line x1="-2" y1="6" x2="2" y2="6" stroke="#111827" stroke-width="1.5"/>
+    </g>
+  </g>
+
+  <!-- PLACA DE ADVERTÊNCIA CUIDADO (dentro da entrada) -->
+  <g>
+    <rect x="410" y="180" width="150" height="80" fill="#f4d000" stroke="#111827" stroke-width="1.5" rx="3"/>
+    <text x="485" y="203" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">CUIDADO</text>
+    <text x="485" y="220" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" text-anchor="middle" fill="#111827">RISCO DE CHOQUE</text>
+    <text x="485" y="232" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" text-anchor="middle" fill="#111827">ELÉTRICO</text>
+    <text x="485" y="248" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" text-anchor="middle" fill="#111827">GERAÇÃO PRÓPRIA</text>
+  </g>
+  <text x="410" y="275" font-family="Helvetica, Arial, sans-serif" font-size="7" fill="#6b7280">Placa 180x250mm - amarelo epóxi</text>
+  <text x="410" y="285" font-family="Helvetica, Arial, sans-serif" font-size="7" fill="#6b7280">Letras pretas em tinta eletrostática</text>
+  <text x="410" y="295" font-family="Helvetica, Arial, sans-serif" font-size="7" fill="#6b7280">A INSTALAR NO QM</text>
+
+  <!-- Saída da entrada de energia (rumo ao QGBT) -->
+  <line x1="270" y1="415" x2="270" y2="460" stroke="#111827" stroke-width="1.3"/>
+
+  <!-- ═══════════════ SEÇÃO C: CARGAS COMUNS + QGBT ═══════════════ -->
+  <text x="20" y="490" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">CARGAS COMUNS DO QD</text>
+  <text x="20" y="502" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#6b7280">(não conectadas à bateria)</text>
+  <line x1="150" y1="495" x2="270" y2="495" stroke="#111827" stroke-width="1.3"/>
+  <path d="M 148 495 l 4 -3 l 0 6 z" fill="#111827"/>
+
+  <!-- CONTATOR -->
+  <text x="200" y="530" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">CONTATOR</text>
+  <g transform="translate(270, 525)">
+    <line x1="0" y1="-10" x2="0" y2="-3" stroke="#111827" stroke-width="1.3"/>
+    <rect x="-5" y="-3" width="10" height="10" fill="none" stroke="#111827" stroke-width="1.3"/>
+    <line x1="0" y1="7" x2="0" y2="15" stroke="#111827" stroke-width="1.3"/>
+  </g>
+
+  <line x1="270" y1="540" x2="270" y2="570" stroke="#111827" stroke-width="1.3"/>
+
+  <!-- DISJUNTOR alimentação micro-gerador -->
+  <text x="180" y="580" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">DISJUNTOR</text>
+  <text x="180" y="592" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">{DISJ_MICROGERADOR_A}</text>
+  <g transform="translate(270, 585)">
+    <line x1="0" y1="-15" x2="0" y2="-6" stroke="#111827" stroke-width="1.4"/>
+    <circle cx="0" cy="-6" r="2" fill="#111827"/>
+    <line x1="0" y1="-6" x2="14" y2="8" stroke="#b91c1c" stroke-width="1.4"/>
+    <circle cx="0" cy="15" r="2" fill="#111827"/>
+  </g>
+
+  <!-- Linha do disj até o barramento do micro-gerador -->
+  <line x1="270" y1="600" x2="270" y2="640" stroke="#111827" stroke-width="1.3"/>
+
+  <!-- ═══════════════ SEÇÃO D: MICRO-GERADOR HÍBRIDO ON-GRID (caixa tracejada grande) ═══════════════ -->
+  <rect x="150" y="640" width="920" height="440" fill="none" stroke="#111827" stroke-width="1" stroke-dasharray="6,4"/>
+  <text x="410" y="635" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#1a4f8b" text-anchor="middle">MICRO-GERADOR FOTOVOLTAICO HÍBRIDO ON-GRID</text>
+
+  <!-- Barramento horizontal principal (topo dos 3 ramos) -->
+  <line x1="270" y1="670" x2="270" y2="1050" stroke="#111827" stroke-width="1.5"/>
+
+  <!-- ▬▬▬▬▬▬▬▬▬▬ RAMO 1 (topo) ▬▬▬▬▬▬▬▬▬▬ -->
+  <line x1="270" y1="695" x2="330" y2="695" stroke="#111827" stroke-width="1.3"/>
+
+  <!-- Disjuntor ramo 1 -->
+  <text x="332" y="675" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#111827">DISJUNTOR</text>
+  <text x="332" y="686" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#111827">{RAMO1_DISJ_A}</text>
+  <g transform="translate(360, 695)">
+    <line x1="-10" y1="0" x2="-5" y2="0" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="-5" cy="0" r="1.5" fill="#111827"/>
+    <line x1="-5" y1="0" x2="7" y2="-8" stroke="#b91c1c" stroke-width="1.3"/>
+    <line x1="7" y1="0" x2="15" y2="0" stroke="#111827" stroke-width="1.3"/>
+  </g>
+
+  <!-- DPS ramo 1 -->
+  <g transform="translate(395, 705)">
+    <line x1="0" y1="-10" x2="0" y2="-5" stroke="#111827" stroke-width="1.3"/>
+    <rect x="-7" y="-5" width="14" height="16" fill="none" stroke="#111827" stroke-width="1.2"/>
+    <line x1="-7" y1="11" x2="7" y2="-5" stroke="#111827" stroke-width="1"/>
+    <text x="15" y="-2" font-family="Helvetica, Arial, sans-serif" font-size="6" fill="#111827">DPS</text>
+    <text x="15" y="7" font-family="Helvetica, Arial, sans-serif" font-size="6" fill="#111827">40kA</text>
+    <line x1="0" y1="11" x2="0" y2="20" stroke="#111827" stroke-width="1.2"/>
+    <g transform="translate(0, 22)">
+      <line x1="-5" y1="0" x2="5" y2="0" stroke="#111827" stroke-width="1.5"/>
+      <line x1="-3" y1="2.5" x2="3" y2="2.5" stroke="#111827" stroke-width="1.5"/>
+      <line x1="-1.5" y1="5" x2="1.5" y2="5" stroke="#111827" stroke-width="1.5"/>
+    </g>
+  </g>
+
+  <!-- Label REDE / CIRCUITOS EPS ramo 1 -->
+  <text x="430" y="690" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#b91c1c">REDE</text>
+  <text x="430" y="702" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#1a4f8b">CIRCUITOS EPS</text>
+
+  <!-- INVERSOR híbrido ramo 1 -->
+  <g>
+    <rect x="470" y="675" width="120" height="50" fill="#eef3fa" stroke="#111827" stroke-width="1.3" rx="2"/>
+    <line x1="470" y1="725" x2="590" y2="675" stroke="#1a4f8b" stroke-width="1"/>
+    <text x="500" y="702" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">~</text>
+    <text x="560" y="718" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">=</text>
+  </g>
+  <text x="595" y="682" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#111827">INVERSOR</text>
+  <text x="595" y="691" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">QTD: 01</text>
+  <text x="595" y="700" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MOD: {RAMO1_INVERSOR}</text>
+  <text x="595" y="709" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">POT: {RAMO1_INV_W}W</text>
+  <text x="595" y="720" font-family="Helvetica, Arial, sans-serif" font-size="6" fill="#0f766e">MPPTs + RS485 + 81O/81U/27/59</text>
+
+  <!-- Módulos FV ramo 1 -->
+  <line x1="530" y1="725" x2="530" y2="745" stroke="#111827" stroke-width="1.3"/>
+  <g transform="translate(475, 745)">
+    <!-- 4 minipainéis -->
+    <rect x="0" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="0" y1="15" x2="22" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+    <rect x="26" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="26" y1="15" x2="48" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+    <rect x="52" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="52" y1="15" x2="74" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+    <rect x="78" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="78" y1="15" x2="100" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+  </g>
+  <text x="595" y="750" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#111827">MÓDULOS</text>
+  <text x="595" y="760" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">QTD: {RAMO1_QTD_MODULOS}</text>
+  <text x="595" y="769" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MOD: {RAMO1_MODULO}</text>
+  <text x="595" y="778" font-family="Helvetica, Arial, sans-serif" font-size="6.5" font-weight="bold" fill="#0f766e">TOTAL: {RAMO1_KWP} kWp</text>
+
+  <!-- Baterias ramo 1 (após inversor, saída DC bateria) -->
+  <line x1="770" y1="700" x2="820" y2="700" stroke="#111827" stroke-width="1.3"/>
+  <text x="775" y="694" font-family="Helvetica, Arial, sans-serif" font-size="6" fill="#111827">ISOLADO</text>
+  <g transform="translate(820, 700)">
+    <line x1="0" y1="0" x2="15" y2="0" stroke="#111827" stroke-width="1.3"/>
+    <line x1="15" y1="-6" x2="15" y2="6" stroke="#111827" stroke-width="1.5"/>
+    <line x1="20" y1="-4" x2="20" y2="4" stroke="#111827" stroke-width="1.5"/>
+  </g>
+  <text x="840" y="686" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#111827">BATERIAS</text>
+  <text x="840" y="696" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">QTD: {RAMO1_QTD_BAT}</text>
+  <text x="840" y="705" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MOD: {RAMO1_BAT_MODELO}</text>
+  <text x="840" y="714" font-family="Helvetica, Arial, sans-serif" font-size="6.5" font-weight="bold" fill="#0f766e">ARMAZ: {RAMO1_KWH} kWh</text>
+
+  <!-- Multimedidor MM ramo 1 -->
+  <g transform="translate(950, 690)">
+    <rect x="-14" y="-12" width="28" height="24" fill="none" stroke="#111827" stroke-width="1.3" rx="2"/>
+    <text x="0" y="4" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">MM</text>
+  </g>
+  <text x="970" y="683" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">Multimedidor de Grandezas</text>
+  <text x="970" y="692" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MMW03-M22CH (Energy Analyzer)</text>
+  <text x="970" y="701" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#6b7280">Controle e medição import/export</text>
+
+  <!-- Linha divisória entre ramos -->
+  <line x1="270" y1="795" x2="1060" y2="795" stroke="#e5e7eb" stroke-width="0.8" stroke-dasharray="3,3"/>
+
+  <!-- ▬▬▬▬▬▬▬▬▬▬ RAMO 2 (meio) ▬▬▬▬▬▬▬▬▬▬ -->
+  <line x1="270" y1="830" x2="330" y2="830" stroke="#111827" stroke-width="1.3"/>
+  <text x="332" y="815" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#111827">DISJUNTOR {RAMO2_DISJ_A}</text>
+  <g transform="translate(360, 830)">
+    <line x1="-10" y1="0" x2="-5" y2="0" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="-5" cy="0" r="1.5" fill="#111827"/>
+    <line x1="-5" y1="0" x2="7" y2="-8" stroke="#b91c1c" stroke-width="1.3"/>
+    <line x1="7" y1="0" x2="15" y2="0" stroke="#111827" stroke-width="1.3"/>
+  </g>
+  <g transform="translate(395, 840)">
+    <line x1="0" y1="-10" x2="0" y2="-5" stroke="#111827" stroke-width="1.3"/>
+    <rect x="-7" y="-5" width="14" height="16" fill="none" stroke="#111827" stroke-width="1.2"/>
+    <line x1="-7" y1="11" x2="7" y2="-5" stroke="#111827" stroke-width="1"/>
+    <line x1="0" y1="11" x2="0" y2="20" stroke="#111827" stroke-width="1.2"/>
+    <g transform="translate(0, 22)">
+      <line x1="-5" y1="0" x2="5" y2="0" stroke="#111827" stroke-width="1.5"/>
+      <line x1="-3" y1="2.5" x2="3" y2="2.5" stroke="#111827" stroke-width="1.5"/>
+    </g>
+  </g>
+  <text x="430" y="825" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#b91c1c">REDE</text>
+  <text x="430" y="837" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#1a4f8b">CIRCUITOS EPS</text>
+
+  <!-- Inversor ramo 2 -->
+  <g>
+    <rect x="470" y="810" width="120" height="50" fill="#eef3fa" stroke="#111827" stroke-width="1.3" rx="2"/>
+    <line x1="470" y1="860" x2="590" y2="810" stroke="#1a4f8b" stroke-width="1"/>
+    <text x="500" y="838" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">~</text>
+    <text x="560" y="854" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">=</text>
+  </g>
+  <text x="595" y="817" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#111827">INVERSOR</text>
+  <text x="595" y="826" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MOD: {RAMO2_INVERSOR}</text>
+  <text x="595" y="835" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">POT: {RAMO2_INV_W}W</text>
+
+  <!-- Módulos ramo 2 -->
+  <line x1="530" y1="860" x2="530" y2="880" stroke="#111827" stroke-width="1.3"/>
+  <g transform="translate(475, 880)">
+    <rect x="0" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="0" y1="15" x2="22" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+    <rect x="26" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="26" y1="15" x2="48" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+    <rect x="52" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="52" y1="15" x2="74" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+    <rect x="78" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="78" y1="15" x2="100" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+  </g>
+  <text x="595" y="884" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#111827">MÓDULOS QTD: {RAMO2_QTD_MODULOS}</text>
+  <text x="595" y="894" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MOD: {RAMO2_MODULO}</text>
+  <text x="595" y="904" font-family="Helvetica, Arial, sans-serif" font-size="6.5" font-weight="bold" fill="#0f766e">TOTAL: {RAMO2_KWP} kWp</text>
+
+  <!-- Baterias ramo 2 -->
+  <line x1="770" y1="835" x2="820" y2="835" stroke="#111827" stroke-width="1.3"/>
+  <text x="775" y="829" font-family="Helvetica, Arial, sans-serif" font-size="6" fill="#111827">ISOLADO</text>
+  <g transform="translate(820, 835)">
+    <line x1="0" y1="0" x2="15" y2="0" stroke="#111827" stroke-width="1.3"/>
+    <line x1="15" y1="-6" x2="15" y2="6" stroke="#111827" stroke-width="1.5"/>
+    <line x1="20" y1="-4" x2="20" y2="4" stroke="#111827" stroke-width="1.5"/>
+  </g>
+  <text x="840" y="821" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#111827">BATERIAS QTD: {RAMO2_QTD_BAT}</text>
+  <text x="840" y="831" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MOD: {RAMO2_BAT_MODELO}</text>
+  <text x="840" y="841" font-family="Helvetica, Arial, sans-serif" font-size="6.5" font-weight="bold" fill="#0f766e">ARMAZ: {RAMO2_KWH} kWh</text>
+
+  <!-- Multimedidor MM ramo 2 -->
+  <g transform="translate(950, 830)">
+    <rect x="-14" y="-12" width="28" height="24" fill="none" stroke="#111827" stroke-width="1.3" rx="2"/>
+    <text x="0" y="4" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">MM</text>
+  </g>
+
+  <!-- Linha divisória -->
+  <line x1="270" y1="935" x2="1060" y2="935" stroke="#e5e7eb" stroke-width="0.8" stroke-dasharray="3,3"/>
+
+  <!-- ▬▬▬▬▬▬▬▬▬▬ RAMO 3 (base) ▬▬▬▬▬▬▬▬▬▬ -->
+  <line x1="270" y1="965" x2="330" y2="965" stroke="#111827" stroke-width="1.3"/>
+  <text x="332" y="950" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#111827">DISJUNTOR {RAMO3_DISJ_A}</text>
+  <g transform="translate(360, 965)">
+    <line x1="-10" y1="0" x2="-5" y2="0" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="-5" cy="0" r="1.5" fill="#111827"/>
+    <line x1="-5" y1="0" x2="7" y2="-8" stroke="#b91c1c" stroke-width="1.3"/>
+    <line x1="7" y1="0" x2="15" y2="0" stroke="#111827" stroke-width="1.3"/>
+  </g>
+  <g transform="translate(395, 975)">
+    <line x1="0" y1="-10" x2="0" y2="-5" stroke="#111827" stroke-width="1.3"/>
+    <rect x="-7" y="-5" width="14" height="16" fill="none" stroke="#111827" stroke-width="1.2"/>
+    <line x1="-7" y1="11" x2="7" y2="-5" stroke="#111827" stroke-width="1"/>
+    <line x1="0" y1="11" x2="0" y2="20" stroke="#111827" stroke-width="1.2"/>
+    <g transform="translate(0, 22)">
+      <line x1="-5" y1="0" x2="5" y2="0" stroke="#111827" stroke-width="1.5"/>
+      <line x1="-3" y1="2.5" x2="3" y2="2.5" stroke="#111827" stroke-width="1.5"/>
+    </g>
+  </g>
+  <text x="430" y="960" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#b91c1c">REDE</text>
+  <text x="430" y="972" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#1a4f8b">CIRCUITOS EPS</text>
+
+  <!-- Inversor ramo 3 -->
+  <g>
+    <rect x="470" y="945" width="120" height="50" fill="#eef3fa" stroke="#111827" stroke-width="1.3" rx="2"/>
+    <line x1="470" y1="995" x2="590" y2="945" stroke="#1a4f8b" stroke-width="1"/>
+    <text x="500" y="973" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">~</text>
+    <text x="560" y="989" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">=</text>
+  </g>
+  <text x="595" y="952" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#111827">INVERSOR</text>
+  <text x="595" y="961" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MOD: {RAMO3_INVERSOR}</text>
+  <text x="595" y="970" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">POT: {RAMO3_INV_W}W</text>
+
+  <!-- Módulos ramo 3 -->
+  <line x1="530" y1="995" x2="530" y2="1015" stroke="#111827" stroke-width="1.3"/>
+  <g transform="translate(475, 1015)">
+    <rect x="0" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="0" y1="15" x2="22" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+    <rect x="26" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="26" y1="15" x2="48" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+    <rect x="52" y="0" width="22" height="15" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="52" y1="15" x2="74" y2="0" stroke="#6b7280" stroke-width="0.5"/>
+  </g>
+  <text x="595" y="1019" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#111827">MÓDULOS QTD: {RAMO3_QTD_MODULOS}</text>
+  <text x="595" y="1029" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MOD: {RAMO3_MODULO}</text>
+  <text x="595" y="1039" font-family="Helvetica, Arial, sans-serif" font-size="6.5" font-weight="bold" fill="#0f766e">TOTAL: {RAMO3_KWP} kWp</text>
+
+  <!-- Baterias ramo 3 -->
+  <line x1="770" y1="970" x2="820" y2="970" stroke="#111827" stroke-width="1.3"/>
+  <text x="775" y="964" font-family="Helvetica, Arial, sans-serif" font-size="6" fill="#111827">ISOLADO</text>
+  <g transform="translate(820, 970)">
+    <line x1="0" y1="0" x2="15" y2="0" stroke="#111827" stroke-width="1.3"/>
+    <line x1="15" y1="-6" x2="15" y2="6" stroke="#111827" stroke-width="1.5"/>
+    <line x1="20" y1="-4" x2="20" y2="4" stroke="#111827" stroke-width="1.5"/>
+  </g>
+  <text x="840" y="956" font-family="Helvetica, Arial, sans-serif" font-size="7" font-weight="bold" fill="#111827">BATERIAS QTD: {RAMO3_QTD_BAT}</text>
+  <text x="840" y="966" font-family="Helvetica, Arial, sans-serif" font-size="6.5" fill="#111827">MOD: {RAMO3_BAT_MODELO}</text>
+  <text x="840" y="976" font-family="Helvetica, Arial, sans-serif" font-size="6.5" font-weight="bold" fill="#0f766e">ARMAZ: {RAMO3_KWH} kWh</text>
+
+  <!-- MM ramo 3 -->
+  <g transform="translate(950, 965)">
+    <rect x="-14" y="-12" width="28" height="24" fill="none" stroke="#111827" stroke-width="1.3" rx="2"/>
+    <text x="0" y="4" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">MM</text>
+  </g>
+
+  <!-- ═══════════════ SEÇÃO E: CARGAS CRÍTICAS EPS (lado esquerdo inferior) ═══════════════ -->
+  <text x="20" y="1055" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#1a4f8b">CARGAS CRÍTICAS (EPS)</text>
+  <text x="20" y="1067" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#6b7280">(circuitos isolados</text>
+  <text x="20" y="1078" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#6b7280">conectados à bateria)</text>
+  <line x1="150" y1="1060" x2="270" y2="1060" stroke="#1a4f8b" stroke-width="1.3"/>
+  <path d="M 148 1060 l 4 -3 l 0 6 z" fill="#1a4f8b"/>
+
+  <!-- ═══════════════ COLUNA DIREITA: LEGENDA + NOTAS + CARIMBO ═══════════════ -->
+
+  <!-- LEGENDA -->
+  <rect x="1100" y="20" width="466" height="330" fill="none" stroke="#111827" stroke-width="1"/>
+  <text x="1333" y="42" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#1a4f8b">LEGENDA</text>
+  <line x1="1100" y1="50" x2="1566" y2="50" stroke="#111827" stroke-width="0.6"/>
+
+  <!-- Módulo FV -->
+  <g transform="translate(1130, 70)">
+    <rect x="0" y="0" width="28" height="20" fill="none" stroke="#111827" stroke-width="1.2"/>
+    <line x1="0" y1="20" x2="28" y2="0" stroke="#6b7280" stroke-width="0.6"/>
+  </g>
+  <text x="1180" y="86" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Módulo fotovoltaico</text>
+
+  <!-- DPS -->
+  <g transform="translate(1140, 108)">
+    <rect x="-9" y="-10" width="18" height="20" fill="none" stroke="#111827" stroke-width="1.3"/>
+    <line x1="-9" y1="10" x2="9" y2="-10" stroke="#111827" stroke-width="1.2"/>
+  </g>
+  <text x="1180" y="112" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Dispositivo Protetor de Surto (DPS)</text>
+
+  <!-- Inversor -->
+  <g transform="translate(1130, 132)">
+    <rect x="0" y="0" width="30" height="20" fill="#eef3fa" stroke="#111827" stroke-width="1.3"/>
+    <line x1="0" y1="20" x2="30" y2="0" stroke="#1a4f8b" stroke-width="1"/>
+    <text x="8" y="14" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">~</text>
+    <text x="22" y="17" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">=</text>
+  </g>
+  <text x="1180" y="148" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Inversor de corrente (híbrido)</text>
+
+  <!-- Gerador G -->
+  <g transform="translate(1140, 176)">
+    <circle cx="0" cy="0" r="10" fill="none" stroke="#111827" stroke-width="1.3"/>
+    <text x="0" y="4" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">G</text>
+  </g>
+  <text x="1180" y="180" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Gerador fotovoltaico</text>
+
+  <!-- Neutro, Fase e Terra -->
+  <g transform="translate(1130, 204)">
+    <line x1="0" y1="0" x2="0" y2="14" stroke="#111827" stroke-width="1.2"/>
+    <line x1="8" y1="0" x2="8" y2="14" stroke="#111827" stroke-width="1.2"/>
+    <line x1="16" y1="0" x2="16" y2="14" stroke="#111827" stroke-width="1.2"/>
+  </g>
+  <text x="1180" y="214" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Neutro, Fase e Terra</text>
+
+  <!-- Disjuntor Tripolar -->
+  <g transform="translate(1140, 236)">
+    <line x1="-9" y1="-8" x2="-9" y2="-3" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="-9" cy="-3" r="1.3" fill="#111827"/>
+    <line x1="-9" y1="-3" x2="-3" y2="6" stroke="#111827" stroke-width="1.3"/>
+    <line x1="0" y1="-8" x2="0" y2="-3" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="0" cy="-3" r="1.3" fill="#111827"/>
+    <line x1="0" y1="-3" x2="6" y2="6" stroke="#111827" stroke-width="1.3"/>
+    <line x1="9" y1="-8" x2="9" y2="-3" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="9" cy="-3" r="1.3" fill="#111827"/>
+    <line x1="9" y1="-3" x2="15" y2="6" stroke="#111827" stroke-width="1.3"/>
+    <path d="M -5 -10 q 25 0 20 20" fill="none" stroke="#111827" stroke-width="0.6" stroke-dasharray="2,2"/>
+  </g>
+  <text x="1180" y="244" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Disjuntor tripolar</text>
+
+  <!-- Transformador MT -->
+  <g transform="translate(1140, 274)">
+    <circle cx="-6" cy="0" r="9" fill="none" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="6" cy="0" r="9" fill="none" stroke="#111827" stroke-width="1.3"/>
+  </g>
+  <text x="1180" y="278" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Transformador MT</text>
+
+  <!-- Medidor CELESC -->
+  <g transform="translate(1140, 302)">
+    <rect x="-15" y="-10" width="30" height="20" fill="none" stroke="#111827" stroke-width="1.3" rx="1"/>
+    <text x="0" y="5" font-family="Helvetica, Arial, sans-serif" font-size="8" font-weight="bold" text-anchor="middle" fill="#111827">kWh</text>
+  </g>
+  <text x="1180" y="306" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Medidor CELESC (bidirecional)</text>
+
+  <!-- Bateria -->
+  <g transform="translate(1140, 328)">
+    <line x1="-8" y1="-6" x2="-8" y2="6" stroke="#111827" stroke-width="1.6"/>
+    <line x1="-3" y1="-4" x2="-3" y2="4" stroke="#111827" stroke-width="1.6"/>
+    <line x1="2" y1="-6" x2="2" y2="6" stroke="#111827" stroke-width="1.6"/>
+    <line x1="7" y1="-4" x2="7" y2="4" stroke="#111827" stroke-width="1.6"/>
+  </g>
+  <text x="1180" y="332" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Bateria (BESS)</text>
+
+  <!-- NOTAS TÉCNICAS -->
+  <rect x="1100" y="360" width="466" height="240" fill="none" stroke="#111827" stroke-width="1"/>
+  <text x="1112" y="380" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#1a4f8b">NOTAS TÉCNICAS</text>
+  <line x1="1100" y1="388" x2="1566" y2="388" stroke="#111827" stroke-width="0.6"/>
+
+  <text x="1112" y="405" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">1. Fornecedor inversores garante desconexão da central geradora durante manutenção da Concessionária.</text>
+  <text x="1112" y="422" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">2. Inversores atendem ABNT NBR IEC 62116 e especificação técnica nº 122.</text>
+  <text x="1112" y="439" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">3. Aterramento do sistema de geração conectado ao aterramento da UC (NBR 5410).</text>
+  <text x="1112" y="456" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">4. Identificar QDG e tampa da caixa de passagem: "Cuidado - Geração Distribuída no Circuito".</text>
+  <text x="1112" y="473" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">5. Dispositivo de seccionamento visível conforme NR-10.</text>
+  <text x="1112" y="490" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">6. Inversores em local de fácil acesso, protegidos contra intempéries (IP), com acesso pra fiscalização.</text>
+  <text x="1112" y="507" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">7. Instalações elétricas em conformidade com NR-10 e normas técnicas/segurança ABNT.</text>
+  <text x="1112" y="524" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">8. Baterias com sistema BMS integrado; comunicação RS485 entre inversores e Energy Analyzer.</text>
+  <text x="1112" y="541" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">9. Circuitos EPS (Emergency Power Supply) isolados dos circuitos convencionais — cargas críticas.</text>
+  <text x="1112" y="558" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">10. Setpoints ANSI: 27/59 (sub/sobretensão), 81U/81O (sub/sobrefreq), 25 (sincronismo), 78 (salto vetor).</text>
+  <text x="1112" y="575" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">11. Multimedidor de Grandezas (Energy Analyzer) responsável pelo controle e medição de importação/exportação.</text>
+  <text x="1112" y="592" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">12. Placa de advertência CUIDADO (180x250mm - amarelo epóxi - letras pretas) instalada no QM.</text>
+
+  <!-- CARIMBO SPIN -->
+  <rect x="1100" y="610" width="466" height="490" fill="none" stroke="#111827" stroke-width="1.3"/>
+
+  <!-- Logo SPIN grande -->
+  <g transform="translate(1120, 630)">
+    <rect x="0" y="0" width="6" height="34" fill="#1a4f8b"/>
+    <rect x="9" y="0" width="6" height="34" fill="#0e7490"/>
+    <rect x="18" y="0" width="6" height="34" fill="#f4d000"/>
+    <rect x="27" y="0" width="6" height="34" fill="#0f766e"/>
+    <text x="45" y="27" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="900" fill="#1a4f8b">SPIN</text>
+    <text x="122" y="15" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#6b7280">®</text>
+  </g>
+
+  <line x1="1100" y1="685" x2="1566" y2="685" stroke="#111827" stroke-width="0.6"/>
+
+  <!-- Campos do carimbo -->
+  <text x="1112" y="708" font-family="Helvetica, Arial, sans-serif" font-size="7" text-transform="uppercase" fill="#6b7280">TÍTULO</text>
+  <text x="1112" y="722" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#111827">DIAGRAMA UNIFILAR SIMPLIFICADO</text>
+
+  <text x="1112" y="742" font-family="Helvetica, Arial, sans-serif" font-size="7" text-transform="uppercase" fill="#6b7280">PROJETO</text>
+  <text x="1112" y="756" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">{CODIGO_PROJETO} - {POTENCIA_KWP} kWp HÍBRIDO</text>
+  <text x="1112" y="769" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">{RESUMO_INVERSORES}</text>
+
+  <text x="1112" y="788" font-family="Helvetica, Arial, sans-serif" font-size="7" text-transform="uppercase" fill="#6b7280">PROPRIETÁRIO / UC</text>
+  <text x="1112" y="802" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">{CLIENTE_RAZAO_SOCIAL}</text>
+  <text x="1112" y="815" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">UC {UC_GERADORA} - {CIDADE_UF}</text>
+
+  <text x="1112" y="834" font-family="Helvetica, Arial, sans-serif" font-size="7" text-transform="uppercase" fill="#6b7280">ENDEREÇO OBRA</text>
+  <text x="1112" y="848" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">{ENDERECO_OBRA}</text>
+
+  <text x="1112" y="868" font-family="Helvetica, Arial, sans-serif" font-size="7" text-transform="uppercase" fill="#6b7280">RESP. TÉCNICO</text>
+  <text x="1112" y="882" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">{RT_NOME}</text>
+  <text x="1112" y="895" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">{RT_TITULO} - Reg. {RT_CREA}</text>
+  <text x="1112" y="908" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">ART: {RT_ART}</text>
+
+  <!-- Bloco POTÊNCIA / ARMAZENAMENTO -->
+  <rect x="1112" y="922" width="440" height="50" fill="#f0f9ff" stroke="#1a4f8b" stroke-width="0.8"/>
+  <text x="1130" y="940" font-family="Helvetica, Arial, sans-serif" font-size="8" text-transform="uppercase" fill="#6b7280">POTÊNCIA CC / CA / ARMAZ.</text>
+  <text x="1130" y="962" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#1a4f8b">{POTENCIA_KWP} kWp / {POTENCIA_CA_KW} kW / {ARMAZENAMENTO_KWH} kWh</text>
+
+  <!-- Rodapé carimbo: data, folha, revisão -->
+  <line x1="1112" y1="990" x2="1554" y2="990" stroke="#111827" stroke-width="0.6"/>
+  <text x="1112" y="1008" font-family="Helvetica, Arial, sans-serif" font-size="7" text-transform="uppercase" fill="#6b7280">DATA</text>
+  <text x="1112" y="1022" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">{DATA_EMISSAO}</text>
+
+  <text x="1240" y="1008" font-family="Helvetica, Arial, sans-serif" font-size="7" text-transform="uppercase" fill="#6b7280">TAMANHO</text>
+  <text x="1240" y="1022" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">A3</text>
+
+  <text x="1330" y="1008" font-family="Helvetica, Arial, sans-serif" font-size="7" text-transform="uppercase" fill="#6b7280">FOLHA</text>
+  <text x="1330" y="1022" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">01/01</text>
+
+  <text x="1420" y="1008" font-family="Helvetica, Arial, sans-serif" font-size="7" text-transform="uppercase" fill="#6b7280">REVISÃO</text>
+  <text x="1420" y="1022" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">Rev.00</text>
+
+  <!-- Empresa -->
+  <line x1="1112" y1="1045" x2="1554" y2="1045" stroke="#111827" stroke-width="0.6"/>
+  <text x="1112" y="1063" font-family="Helvetica, Arial, sans-serif" font-size="7.5" font-weight="bold" fill="#111827">{EMPRESA_RAZAO_SOCIAL} - CNPJ {EMPRESA_CNPJ}</text>
+  <text x="1112" y="1076" font-family="Helvetica, Arial, sans-serif" font-size="7" fill="#6b7280">{EMPRESA_ENDERECO}</text>
+  <text x="1112" y="1088" font-family="Helvetica, Arial, sans-serif" font-size="7" fill="#6b7280">{EMPRESA_TELEFONE} - {EMPRESA_EMAIL}</text>
+</svg>
