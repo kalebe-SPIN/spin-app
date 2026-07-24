@@ -11,6 +11,8 @@ export type EmpresaInput = {
   email: string | null
   site: string | null
   logo_url: string | null
+  favicon_url: string | null
+  papel_timbrado_url: string | null
 
   rt_nome: string
   rt_titulo: string

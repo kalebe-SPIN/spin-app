@@ -23,6 +23,8 @@ export function EmpresaForm({ configSalva }: Props) {
     email: configSalva?.email || '',
     site: configSalva?.site || '',
     logo_url: configSalva?.logo_url || '',
+    favicon_url: configSalva?.favicon_url || '',
+    papel_timbrado_url: configSalva?.papel_timbrado_url || '',
     rt_nome: configSalva?.rt_nome || '',
     rt_titulo: configSalva?.rt_titulo || 'Eletrotécnico',
     rt_crea: configSalva?.rt_crea || '',
@@ -68,7 +70,25 @@ export function EmpresaForm({ configSalva }: Props) {
               valorAtual={form.logo_url || ''}
               onChange={url => setForm({ ...form, logo_url: url })}
               pasta="logo"
-              ajuda="PNG transparente, min 300px. Aparece no canto superior de cada diagrama."
+              ajuda="PNG transparente, mín 300px. Aparece nos diagramas, PDFs e cabeçalhos."
+            />
+          </div>
+          <div className="md:col-span-2">
+            <UploadImagem
+              label="🌐 Favicon do portal"
+              valorAtual={form.favicon_url || ''}
+              onChange={url => setForm({ ...form, favicon_url: url })}
+              pasta="favicon"
+              ajuda="Ícone quadrado 256×256 PNG. Aparece na aba do browser e como atalho na tela do celular."
+            />
+          </div>
+          <div className="md:col-span-2">
+            <UploadImagem
+              label="📄 Papel timbrado (contratos e procurações)"
+              valorAtual={form.papel_timbrado_url || ''}
+              onChange={url => setForm({ ...form, papel_timbrado_url: url })}
+              pasta="papel-timbrado"
+              ajuda="PNG A4 (~2480×3508px @300dpi). Fundo dos contratos, procurações e docs oficiais gerados pelo sistema."
             />
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { PerfilForm } from '@/components/PerfilForm'
 
 /**
  * Página de perfil do usuário logado — /conta
@@ -48,24 +49,19 @@ export default async function ContaPage() {
           </p>
         </header>
 
-        {/* Card de dados */}
+        {/* Card de dados editáveis */}
         <div className="bg-white/5 border border-white/10 rounded-xl p-6 md:p-8 mb-6">
           <h2 className="text-lg font-bold text-white mb-6">Dados pessoais</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <CampoExibicao label="Nome completo" valor={profile?.nome_completo || '—'} />
-            <CampoExibicao label="Email" valor={user.email || '—'} />
-            <CampoExibicao label="Telefone" valor={profile?.telefone || '—'} />
-            <CampoExibicao label="Papel no sistema" valor={profile?.role || '—'} badge />
-          </div>
-
-          {/* Botão editar — implementação na próxima iteração */}
-          <button
-            disabled
-            className="mt-8 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold text-white/40 cursor-not-allowed"
-          >
-            Editar dados (em breve)
-          </button>
+          <PerfilForm
+            profileInicial={{
+              nome_completo: profile?.nome_completo,
+              telefone: profile?.telefone,
+              avatar_url: profile?.avatar_url,
+              email: user.email,
+              role: profile?.role,
+            }}
+          />
         </div>
 
         {/* Card "Perfil público" — só pra vendedores/instaladores */}
