@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildSystemPrompt, buildUserPrompt } from '@/lib/prompts/gerar-diagrama'
+import { executarProjetista } from '@/lib/projetista/pipeline'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -21,207 +19,95 @@ export async function POST(req: NextRequest) {
     }
 
     diagramaId = diagrama_id
-    const supabase = createClient()
     const supabaseAdmin = createAdminClient()
 
-    // Chave Anthropic
     const anthropicKey = process.env.ANTHROPIC_API_KEY
     if (!anthropicKey) {
-      await marcarErro(supabaseAdmin, diagrama_id, 'ANTHROPIC_API_KEY não configurada no Vercel. Configure em Settings → Environment Variables.')
+      await marcarErro(supabaseAdmin, diagrama_id, 'ANTHROPIC_API_KEY não configurada no Vercel')
       return NextResponse.json({ erro: 'ANTHROPIC_API_KEY faltando' }, { status: 500 })
     }
 
-    // 1. Carrega projeto — usa ADMIN client (bypass RLS)
-    // Rota interna acionada por action autorizada, seguro usar admin aqui
+    // 1. Carrega projeto
     const { data: projeto, error: pErr } = await supabaseAdmin
-      .from('projetos')
-      .select('*')
-      .eq('id', projeto_id)
-      .maybeSingle()
+      .from('projetos').select('*').eq('id', projeto_id).maybeSingle()
 
     if (pErr || !projeto) {
-      const msg = pErr?.message || `Projeto ${projeto_id} não existe no banco`
+      const msg = pErr?.message || `Projeto ${projeto_id} não existe`
       await marcarErro(supabaseAdmin, diagrama_id, `Projeto não encontrado: ${msg}`)
       return NextResponse.json({ erro: 'Projeto não encontrado', detalhes: msg }, { status: 404 })
     }
 
     // 2. Carrega config empresa
     const { data: configEmpresa } = await supabaseAdmin
-      .from('configuracoes_empresa')
-      .select('*')
-      .eq('singleton', true)
-      .maybeSingle()
+      .from('configuracoes_empresa').select('*').eq('singleton', true).maybeSingle()
 
     if (!configEmpresa || !configEmpresa.rt_nome) {
       await marcarErro(supabaseAdmin, diagrama_id, 'Configuração da empresa incompleta')
       return NextResponse.json({ erro: 'Config empresa incompleta' }, { status: 400 })
     }
 
-    // 3.0 Busca seções do telhado (tabela separada) e injeta no projeto
-    // pra que o prompt Claude tenha acesso via projeto.telhado_secoes
+    // 3. Injeta telhado
     const { data: telhadoSecoes } = await supabaseAdmin
-      .from('projetos_telhado_secoes')
-      .select('*')
-      .eq('projeto_id', projeto_id)
+      .from('projetos_telhado_secoes').select('*').eq('projeto_id', projeto_id)
       .order('ordem', { ascending: true })
-
     ;(projeto as any).telhado_secoes = telhadoSecoes || []
 
-    // 3. Validação mínima
-    const faltando: string[] = []
-    if (!projeto.analise_fatura) faltando.push('análise da fatura (Passo 2)')
-    if (!telhadoSecoes || telhadoSecoes.length === 0) faltando.push('telhado (Passo 3)')
-    if (!projeto.padrao_entrada) faltando.push('padrão de entrada (Passo 4)')
-    // kit_selecionado é ideal mas não bloqueia — Claude pode sugerir a partir do dimensionado
-
-    if (faltando.length > 0) {
-      const msg = `Dados incompletos: falta ${faltando.join(', ')}. Preencha antes de gerar o diagrama.`
-      await marcarErro(supabaseAdmin, diagrama_id, msg)
-      return NextResponse.json({ erro: msg }, { status: 400 })
-    }
-
-    // 3.5. Se HÍBRIDO, busca dimensionamento + análise do wizard híbrido
+    // 4. Se HÍBRIDO, busca dimensionamento + análise
     let hibridoDimensionamento: any = null
     let hibridoAnalise: any = null
     if (tipo_desenho === 'unifilar_hibrido') {
       const { data: dim } = await supabaseAdmin
-        .from('projeto_hibrido_dimensionamento')
-        .select('*')
-        .eq('projeto_id', projeto_id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        .from('projeto_hibrido_dimensionamento').select('*').eq('projeto_id', projeto_id)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
       hibridoDimensionamento = dim
 
       const { data: ana } = await supabaseAdmin
-        .from('projeto_hibrido_analise')
-        .select('*')
-        .eq('projeto_id', projeto_id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        .from('projeto_hibrido_analise').select('*').eq('projeto_id', projeto_id)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
       hibridoAnalise = ana
     }
 
-    // 3.5. Se ha instrucao de ajuste (refinamento de versao anterior), carrega
-    // Kalebe pode ter clicado em '✏️ Refinar' passando feedback pro Claude
+    // 5. Se refinamento de versão anterior, carrega instrução
     const { data: diagramaRegistro } = await supabaseAdmin
-      .from('projetos_diagramas')
-      .select('instrucao_ajuste, baseado_em_id')
-      .eq('id', diagrama_id)
-      .maybeSingle()
+      .from('projetos_diagramas').select('instrucao_ajuste, baseado_em_id')
+      .eq('id', diagrama_id).maybeSingle()
 
-    const instrucaoAjuste = diagramaRegistro?.instrucao_ajuste || null
+    const instrucaoAjuste = diagramaRegistro?.instrucao_ajuste || undefined
 
-    // 4. Chama Claude API
-    const anthropic = new Anthropic({ apiKey: anthropicKey })
-
-    const systemPrompt = buildSystemPrompt()
-    let userPrompt = buildUserPrompt({
-      projeto,
-      configEmpresa,
-      tipoDesenho: tipo_desenho as 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada',
-      hibridoDimensionamento,
-      hibridoAnalise,
-    })
-
-    // Se e refinamento de versao anterior, adiciona instrucao no final
-    if (instrucaoAjuste) {
-      userPrompt += `\n\n=== AJUSTE PEDIDO PELO CONSULTOR ===\n${instrucaoAjuste}\n\nMantenha tudo o resto igual, mas aplique esse ajuste especificamente.`
-    }
-
-    // Streaming obrigatorio pra max_tokens alto (SDK bloqueia non-stream se >10min).
-    // Anthropic SDK oferece stream() que junta chunks automaticamente e retorna
-    // final message com content_block completo.
-    let rawText = ''
-    let stopReason: string | null = null
+    // 6. ═══ EXECUTA PIPELINE PROJETISTA SPIN (skill completa multi-etapa) ═══
+    let resultado: Awaited<ReturnType<typeof executarProjetista>>
     try {
-      const stream = anthropic.messages.stream({
-        model: 'claude-sonnet-5',
-        max_tokens: 32000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-      })
-
-      // Coleta cada delta de texto conforme chega
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta') {
-          const delta = event.delta as any
-          if (delta.type === 'text_delta' && typeof delta.text === 'string') {
-            rawText += delta.text
-          }
-        }
-        if (event.type === 'message_delta') {
-          const delta = event.delta as any
-          if (delta.stop_reason) stopReason = delta.stop_reason
-        }
-      }
-    } catch (aiErr: any) {
-      console.error('[gerar-diagrama] Anthropic stream error:', aiErr)
-      await marcarErro(supabaseAdmin, diagrama_id, `Erro na API Claude: ${aiErr.message}`)
-      return NextResponse.json({ erro: aiErr.message }, { status: 500 })
-    }
-
-    // 5. Extrai JSON da resposta
-
-    // Extrai bloco JSON (dentro de ```json ... ``` ou solto)
-    const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/) || rawText.match(/(\{[\s\S]*\})/)
-    if (!jsonMatch) {
-      // Deixa evidencia detalhada no card pra debug
-      const stopHint = stopReason === 'max_tokens'
-        ? ' [TRUNCADO — Claude atingiu max_tokens antes de fechar JSON. Simplifique o pedido ou aumente max_tokens]'
-        : ''
-      const preview = rawText.slice(-400)  // ultimos 400 chars mostram onde cortou
-      await marcarErro(
-        supabaseAdmin,
-        diagrama_id,
-        `Claude nao retornou JSON valido${stopHint} | Stop: ${stopReason} | Chars: ${rawText.length} | Final: ...${preview}`,
+      resultado = await executarProjetista(
+        {
+          projeto,
+          configEmpresa,
+          tipoDesenho: tipo_desenho as 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada',
+          hibridoDimensionamento,
+          hibridoAnalise,
+          instrucaoAjuste,
+        },
+        anthropicKey,
       )
-      return NextResponse.json({
-        erro: 'Resposta invalida do Claude',
-        stop_reason: stopReason,
-        chars: rawText.length,
-        raw_final: preview,
-      }, { status: 500 })
+    } catch (pipErr: any) {
+      console.error('[gerar-diagrama] pipeline error:', pipErr)
+      await marcarErro(supabaseAdmin, diagrama_id, `Pipeline projetista falhou: ${pipErr.message}`)
+      return NextResponse.json({ erro: pipErr.message }, { status: 500 })
     }
 
-    let parsed: { svg: string; memoria_calculo: any; avisos: string[] }
-    try {
-      parsed = JSON.parse(jsonMatch[1])
-    } catch (parseErr: any) {
-      const preview = jsonMatch[1].slice(-400)
-      const stopHint = stopReason === 'max_tokens' ? ' [TRUNCADO]' : ''
-      await marcarErro(
-        supabaseAdmin,
-        diagrama_id,
-        `JSON invalido${stopHint}: ${parseErr.message} | Final: ...${preview}`,
-      )
-      return NextResponse.json({
-        erro: 'JSON parse failed',
-        stop_reason: stopReason,
-        raw_final: preview,
-      }, { status: 500 })
-    }
-
-    if (!parsed.svg || !parsed.svg.includes('<svg')) {
-      await marcarErro(supabaseAdmin, diagrama_id, 'SVG ausente ou inválido na resposta')
+    // 7. Valida SVG
+    if (!resultado.svg || !resultado.svg.includes('<svg')) {
+      await marcarErro(supabaseAdmin, diagrama_id, 'SVG ausente ou inválido no retorno do pipeline')
       return NextResponse.json({ erro: 'SVG inválido' }, { status: 500 })
     }
 
-    // 5.5 Pos-processa o SVG:
-    // - Se usa xlink:href mas nao declarou xmlns:xlink no root, adiciona.
-    //   Sem isso, o SVG quebra ao abrir direto no browser (parser estrito).
-    // - Se nao tem xmlns padrao, adiciona tambem (defesa em profundidade).
-    const svgLimpo = corrigirNamespacesSvg(parsed.svg)
+    // 8. Corrige namespaces XML antes de subir
+    const svgLimpo = corrigirNamespacesSvg(resultado.svg)
 
-    // 6. Upload do SVG
+    // 9. Upload do SVG
     const path = `${projeto_id}/${diagrama_id}/unifilar.svg`
     const { error: upErr } = await supabaseAdmin.storage
       .from(BUCKET_DIAGRAMAS)
-      .upload(path, svgLimpo, {
-        contentType: 'image/svg+xml',
-        upsert: true,
-      })
+      .upload(path, svgLimpo, { contentType: 'image/svg+xml', upsert: true })
 
     if (upErr) {
       console.error('[gerar-diagrama] upload error:', upErr)
@@ -232,14 +118,30 @@ export async function POST(req: NextRequest) {
     const { data: urlData } = supabaseAdmin.storage.from(BUCKET_DIAGRAMAS).getPublicUrl(path)
     const publicUrl = urlData.publicUrl
 
-    // 7. Atualiza registro como PRONTO
+    // 10. Atualiza registro como PRONTO — incluindo relatório de auditoria
+    const avisosFinais = [
+      ...(resultado.avisos || []),
+      ...(!resultado.auditoria.passou && resultado.auditoria.itens_falhados.length > 0
+        ? [`🔍 Auditoria: ${resultado.auditoria.itens_falhados.length} pontos falharam após ${resultado.auditoria.tentativas} tentativa(s). Verifique visualmente.`]
+        : []),
+    ]
+
     const { error: updErr } = await supabaseAdmin
       .from('projetos_diagramas')
       .update({
         status: 'pronto',
         url_svg: publicUrl,
-        memoria_calculo: parsed.memoria_calculo,
-        avisos: parsed.avisos || [],
+        memoria_calculo: {
+          ...resultado.memoria_calculo,
+          _meta: {
+            template_usado: resultado.meta.template_usado,
+            auditoria_passou: resultado.auditoria.passou,
+            auditoria_tentativas: resultado.auditoria.tentativas,
+            auditoria_itens_falhados: resultado.auditoria.itens_falhados,
+            tempo_geracao_ms: resultado.meta.tempo_ms,
+          },
+        },
+        avisos: avisosFinais,
         erro_mensagem: null,
       })
       .eq('id', diagrama_id)
@@ -249,14 +151,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ erro: updErr.message }, { status: 500 })
     }
 
-    // 8. Bidirecional: se este projeto tem homologação, atualiza a etapa
-    // 'diagrama_unifilar' com a URL do SVG gerado
+    // 11. Bidirecional: linkar homologação se existir
     try {
       const { data: hom } = await supabaseAdmin
-        .from('homologacoes')
-        .select('id')
-        .eq('projeto_id', projeto_id)
-        .maybeSingle()
+        .from('homologacoes').select('id').eq('projeto_id', projeto_id).maybeSingle()
 
       if (hom) {
         await supabaseAdmin
@@ -265,21 +163,22 @@ export async function POST(req: NextRequest) {
             status: 'em_andamento',
             iniciado_em: new Date().toISOString(),
             url_arquivo_svg: publicUrl,
-            observacoes: '✓ Unifilar gerado via IA (Claude). Revise antes de marcar concluído.',
+            observacoes: `✓ Unifilar gerado via Projetista SPIN (template: ${resultado.meta.template_usado}, auditoria: ${resultado.auditoria.passou ? 'passou' : 'com ressalvas'}). Revise antes de marcar concluído.`,
           })
           .eq('homologacao_id', hom.id)
           .eq('chave', 'diagrama_unifilar')
       }
     } catch (linkErr) {
-      console.error('[gerar-diagrama] falha ao vincular à homologação:', linkErr)
-      // Não bloqueia — o diagrama já foi gerado
+      console.error('[gerar-diagrama] falha ao vincular homologação:', linkErr)
     }
 
     return NextResponse.json({
       sucesso: true,
       url_svg: publicUrl,
-      memoria_calculo: parsed.memoria_calculo,
-      avisos: parsed.avisos,
+      memoria_calculo: resultado.memoria_calculo,
+      avisos: avisosFinais,
+      auditoria: resultado.auditoria,
+      meta: resultado.meta,
     })
   } catch (e: any) {
     console.error('[gerar-diagrama] exception:', e)
@@ -301,10 +200,8 @@ async function marcarErro(supabaseAdmin: any, diagramaId: string, mensagem: stri
 }
 
 /**
- * Garante que o <svg root> tem xmlns padrao E xmlns:xlink quando usa xlink:href.
- * Sem xmlns:xlink declarado, o browser recusa o arquivo com:
- *   "Namespace prefix xlink for href on image is not defined"
- * (bug real reportado pelo Kalebe em 21/07/2026)
+ * Garante que o <svg root> tem xmlns padrão E xmlns:xlink quando usa xlink:href.
+ * Sem xmlns:xlink declarado, browser recusa com "Namespace prefix xlink not defined".
  */
 function corrigirNamespacesSvg(svg: string): string {
   const usaXlink = /xlink:href/.test(svg)
@@ -313,12 +210,8 @@ function corrigirNamespacesSvg(svg: string): string {
 
   return svg.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
     let novosAttrs = attrs
-    if (!jaTemXmlns) {
-      novosAttrs = ' xmlns="http://www.w3.org/2000/svg"' + novosAttrs
-    }
-    if (usaXlink && !jaTemXmlnsXlink) {
-      novosAttrs = ' xmlns:xlink="http://www.w3.org/1999/xlink"' + novosAttrs
-    }
+    if (!jaTemXmlns) novosAttrs = ' xmlns="http://www.w3.org/2000/svg"' + novosAttrs
+    if (usaXlink && !jaTemXmlnsXlink) novosAttrs = ' xmlns:xlink="http://www.w3.org/1999/xlink"' + novosAttrs
     return `<svg${novosAttrs}>`
   })
 }
