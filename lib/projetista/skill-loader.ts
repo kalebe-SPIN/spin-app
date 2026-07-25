@@ -87,7 +87,10 @@ export function escolherTemplate(dados: {
   } else {
     // on-grid
     if (dados.fase === 'tri') preferencias.push('unifilar-ongrid-tri')
-    preferencias.push('unifilar-ongrid-mono')  // fallback padrão
+    // Prioridade: template CELESC micro-geração oficial (Kalebe validou 24/07/2026)
+    // Fallback antigo unifilar-ongrid-mono só se micro-geração não existir
+    preferencias.push('unifilar-microgeracao-mono')
+    preferencias.push('unifilar-ongrid-mono')
   }
 
   for (const key of preferencias) {
