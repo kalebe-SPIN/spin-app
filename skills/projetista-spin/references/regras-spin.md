@@ -11,6 +11,8 @@ Estas regras têm **prioridade sobre qualquer padrão genérico de mercado**. To
   - Rotule o trecho como `"CC direto ao inversor (sem quadro de proteção CC)"`
 - **Legenda:** NÃO inclua o símbolo "string box" ou "proteção CC"
 - **Se pedido de revisão vier com string box:** REMOVA sem perguntar
+- **Confirmado por Kalebe 2026-07-28:** "nos nossos projetos nunca usaremos stringbox CC"
+- **Implicação em multifilar CC:** ao gerar prancha multifilar CC (ex: Zero Grid), representar strings indo DIRETAMENTE aos bornes MPPT do inversor. NÃO desenhar caixa intermediária de fusíveis+seccionador+DPS CC. Projetos de terceiros (Engetelks, Growatt reference designs) mostram stringbox — ignorar esse padrão.
 
 ## 2. SEMPRE usar Quadro de Proteção CA (QPCA)
 
