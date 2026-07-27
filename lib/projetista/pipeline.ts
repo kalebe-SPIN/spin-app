@@ -213,11 +213,14 @@ function construirPromptUsuario(
     `- Telefone: ${configEmpresa.telefone || ''}`,
     `- Email: ${configEmpresa.email || ''}`,
     ``,
-    `## RESPONSÁVEL TÉCNICO (pro carimbo)`,
-    `- Nome: ${configEmpresa.rt_nome}`,
+    `## RESPONSÁVEL TÉCNICO (pro carimbo) — SEMPRE Kalebe Grün`,
+    `- Nome: ${configEmpresa.rt_nome || 'Kalebe Grün'}`,
     `- Título: ${configEmpresa.rt_titulo || 'Eletrotécnico'}`,
-    `- Registro: ${configEmpresa.rt_crea}`,
-    `- ART: ${configEmpresa.rt_art_padrao || 'a definir'}`,
+    `- Registro: ${configEmpresa.rt_crea || '94312176000'}`,
+    `- ART: ${projeto.art_numero || configEmpresa.rt_art_padrao || 'a definir'}`,
+    ``,
+    `**IMPORTANTE (regra fixa 5.1):** o RT do carimbo é SEMPRE Kalebe Grün, Eletrotécnico, Reg. 94312176000.`,
+    `Se o config vier vazio, use esses valores como default. Nunca deixe o carimbo com RT em branco.`,
   )
 
   // Template escolhido (se disponível)

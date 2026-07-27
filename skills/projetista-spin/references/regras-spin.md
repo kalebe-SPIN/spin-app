@@ -55,10 +55,27 @@ Estas regras têm **prioridade sobre qualquer padrão genérico de mercado**. To
   - PROJETO (código + cliente)
   - PROPRIETÁRIO / UC
   - ENDEREÇO DA OBRA
-  - RESP. TÉCNICO / CREA / ART
+  - RESP. TÉCNICO / Registro / ART
   - DATA + TAMANHO (A3/A4) + REVISÃO + FOLHA
   - POTÊNCIA (kWp)
 - **Empresa:** razão social + CNPJ + endereço + contato
+
+### 5.1 Responsável Técnico — SEMPRE Kalebe Grün
+
+- **Nome:** Kalebe Grün
+- **Título:** Eletrotécnico
+- **Registro:** 94312176000
+- **ART:** varia por projeto (único campo dinâmico do RT)
+- **Confirmado por Kalebe em 2026-07-28:** "o responsável técnico será sempre o Kalebe Grun"
+- **Implicação:** os templates devem ter RT como default fixo. NÃO parametrizar RT como variável obrigatória — usar como constante embutida. Se o payload de entrada não trouxer RT, preenche automaticamente com esses dados.
+
+### 5.2 Procuração CELESC (feature futura)
+
+- Cliente PJ ou PF outorga poderes a **DOIS procuradores conjuntamente**:
+  1. **Spin Solar Energias Renováveis Ltda** (CNPJ 22.279.642/0001-04)
+  2. **Kalebe Grün** (pessoa física)
+- Escopo: representar cliente perante CELESC pra tramitar homologação de GD
+- **Modelo pendente:** Kalebe vai enviar procuração modelo — quando chegar, criar template `procuracao-celesc.svg` na skill
 
 ## 6. Formato de entrega
 
