@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 
-export type ModoVisualizacao = 'admin' | 'consultor'
+export type ModoVisualizacao = 'admin' | 'consultor' | 'vendedor_servicos'
 
 const COOKIE_NAME = 'modo_visualizacao'
 
@@ -12,6 +12,11 @@ const COOKIE_NAME = 'modo_visualizacao'
  *   - Se o usuário NÃO é admin no banco, sempre retorna 'consultor'
  *     (usuário comum não pode ver como admin nem que quisesse)
  *   - Se é admin, respeita o cookie. Sem cookie, default = 'admin'
+ *
+ * Modos disponíveis (só admin real pode alternar entre eles):
+ *   - admin: visão completa do portal
+ *   - consultor: simula um representante de solar
+ *   - vendedor_servicos: simula um vendedor do Módulo Serviços (adicionado 2026-07-29)
  */
 export async function getModoVisualizacao(): Promise<{
   modo: ModoVisualizacao
@@ -38,7 +43,10 @@ export async function getModoVisualizacao(): Promise<{
   }
 
   const cookieValor = cookies().get(COOKIE_NAME)?.value
-  const modo: ModoVisualizacao = cookieValor === 'consultor' ? 'consultor' : 'admin'
+  const modo: ModoVisualizacao =
+    cookieValor === 'consultor' || cookieValor === 'vendedor_servicos'
+      ? cookieValor
+      : 'admin'
 
   return { modo, ehAdminReal: true, perfil }
 }
