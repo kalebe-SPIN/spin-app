@@ -136,6 +136,13 @@ export default async function DashboardPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <DashboardCard
+              titulo="⚡ Orçamento Rápido"
+              desc="Estimativa em 30s a partir de kWh/mês, R$/mês ou qtd de placas. Envia WhatsApp e converte em projeto."
+              disponivel={true}
+              href="/orcamento-rapido"
+              destaque
+            />
+            <DashboardCard
               titulo="🎯 CRM"
               desc="Clientes, leads e pipeline comercial — do primeiro contato até a venda."
               disponivel={true}
