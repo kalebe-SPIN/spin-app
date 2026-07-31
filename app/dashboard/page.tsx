@@ -100,21 +100,21 @@ export default async function DashboardPage() {
             />
             <DashboardCard
               etapa={2}
-              titulo="🎯 CRM"
-              desc="Clientes, leads e pipeline comercial — do primeiro contato até a venda."
-              disponivel={true}
-              href="/crm/pipeline"
-            >
-              <StatsCRM />
-            </DashboardCard>
-            <DashboardCard
-              etapa={3}
               titulo="📋 Projetos"
-              desc="Proposta técnica, dimensionamento, negociação, venda."
+              desc="Consolida o interesse do lead — dimensionamento, kit, proposta técnica com PDF oficial."
               disponivel={true}
               href="/projetos"
             >
               <StatsProjetos />
+            </DashboardCard>
+            <DashboardCard
+              etapa={3}
+              titulo="🎯 CRM"
+              desc="Proposta oficial vira negociação — funil de fechamento até o contrato assinado."
+              disponivel={true}
+              href="/crm/pipeline"
+            >
+              <StatsCRM />
             </DashboardCard>
             <DashboardCard
               etapa={4}
