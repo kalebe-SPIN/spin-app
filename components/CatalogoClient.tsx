@@ -161,6 +161,10 @@ export function CatalogoClient({ historico, produtos }: Props) {
     return true
   })
 
+  // Último upload concluído por tipo (pra mostrar preview "capa" no card)
+  const ultimaPlanilha = historico.find(h => h.tipo === 'planilha_precos' && h.status === 'concluido')
+  const ultimoEstoque = historico.find(h => h.tipo === 'pdf_estoque' && h.status === 'concluido')
+
   return (
     <div className="space-y-8">
       {/* Uploads principais */}
@@ -185,20 +189,17 @@ export function CatalogoClient({ historico, produtos }: Props) {
               if (inputPlanilhaRef.current) inputPlanilhaRef.current.value = ''
             }}
           />
-          <button
+          <UploadCardSlot
+            enviando={enviandoPlanilha}
+            ultimo={ultimaPlanilha}
+            corGradient="from-verde/20 via-verde/5 to-transparent"
+            icone="📗"
+            iconeLabel="Excel"
+            labelEscolher="Escolher arquivo Excel"
+            hintVazio='Aba lida: "Composição Preços"'
+            hintProcessando="⏳ Processando planilha... (~15-30s)"
             onClick={() => inputPlanilhaRef.current?.click()}
-            disabled={enviandoPlanilha}
-            className="w-full p-4 border-2 border-dashed border-white/20 rounded-lg text-center hover:border-sol/40 hover:bg-white/[0.02] transition disabled:opacity-40"
-          >
-            {enviandoPlanilha ? (
-              <p className="text-sm text-sol">⏳ Processando planilha... (~15-30s)</p>
-            ) : (
-              <>
-                <p className="text-sm font-bold text-white">📤 Escolher arquivo Excel</p>
-                <p className="text-xs text-white/40 mt-1">Aba lida: "Composição Preços"</p>
-              </>
-            )}
-          </button>
+          />
         </div>
 
         {/* PDF estoque */}
@@ -221,20 +222,17 @@ export function CatalogoClient({ historico, produtos }: Props) {
               if (inputEstoqueRef.current) inputEstoqueRef.current.value = ''
             }}
           />
-          <button
+          <UploadCardSlot
+            enviando={enviandoEstoque}
+            ultimo={ultimoEstoque}
+            corGradient="from-coral/20 via-coral/5 to-transparent"
+            icone="📕"
+            iconeLabel="PDF"
+            labelEscolher="Escolher PDF"
+            hintVazio="Lê códigos SAP + status por linha"
+            hintProcessando="⏳ Processando PDF..."
             onClick={() => inputEstoqueRef.current?.click()}
-            disabled={enviandoEstoque}
-            className="w-full p-4 border-2 border-dashed border-white/20 rounded-lg text-center hover:border-sol/40 hover:bg-white/[0.02] transition disabled:opacity-40"
-          >
-            {enviandoEstoque ? (
-              <p className="text-sm text-sol">⏳ Processando PDF...</p>
-            ) : (
-              <>
-                <p className="text-sm font-bold text-white">📤 Escolher PDF</p>
-                <p className="text-xs text-white/40 mt-1">Lê códigos SAP + status por linha</p>
-              </>
-            )}
-          </button>
+          />
         </div>
       </section>
 
@@ -354,6 +352,91 @@ export function CatalogoClient({ historico, produtos }: Props) {
         </div>
       </section>
     </div>
+  )
+}
+
+/**
+ * Slot de upload no card. Três estados:
+ *  - enviando:  spinner + "Processando..."
+ *  - ultimo:    "capa" gradient com nome + data + badge stats; botão discreto "Substituir"
+ *  - vazio:     dashed border com CTA "Escolher arquivo"
+ */
+function UploadCardSlot({
+  enviando, ultimo, corGradient, icone, iconeLabel,
+  labelEscolher, hintVazio, hintProcessando, onClick,
+}: {
+  enviando: boolean
+  ultimo?: HistoricoItem
+  corGradient: string
+  icone: string
+  iconeLabel: string
+  labelEscolher: string
+  hintVazio: string
+  hintProcessando: string
+  onClick: () => void
+}) {
+  if (enviando) {
+    return (
+      <div className="w-full p-6 border-2 border-dashed border-sol/40 rounded-lg text-center bg-sol/5">
+        <p className="text-sm text-sol font-semibold">{hintProcessando}</p>
+      </div>
+    )
+  }
+
+  if (ultimo) {
+    const data = new Date(ultimo.created_at).toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    })
+    const stats: string[] = []
+    if (ultimo.produtos_criados > 0) stats.push(`+${ultimo.produtos_criados} novos`)
+    if (ultimo.produtos_atualizados > 0) stats.push(`✎ ${ultimo.produtos_atualizados} atualizados`)
+
+    return (
+      <div className="space-y-2">
+        <div className={`relative w-full rounded-lg overflow-hidden border border-white/10 bg-gradient-to-br ${corGradient}`}>
+          <div className="p-4 flex items-start gap-3">
+            {/* Icone "capa" */}
+            <div className="flex-shrink-0 w-14 h-16 bg-white/5 border border-white/10 rounded-md flex flex-col items-center justify-center shadow-lg">
+              <span className="text-3xl leading-none">{icone}</span>
+              <span className="text-[8px] text-white/50 font-bold uppercase mt-0.5">{iconeLabel}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-[9px] uppercase font-bold text-verde bg-verde/15 border border-verde/30 px-1.5 py-0.5 rounded">
+                  ✓ Ativo
+                </span>
+                <span className="text-[10px] text-white/50">
+                  Enviado em <strong className="text-white/80">{data}</strong>
+                </span>
+              </div>
+              <p className="text-sm font-bold text-white truncate leading-tight" title={ultimo.arquivo_nome_original}>
+                {ultimo.arquivo_nome_original}
+              </p>
+              {stats.length > 0 && (
+                <p className="text-[10px] text-white/60 mt-1">{stats.join(' · ')}</p>
+              )}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={onClick}
+          className="w-full py-2 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/30 rounded-md transition"
+        >
+          🔄 Substituir por novo arquivo
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full p-4 border-2 border-dashed border-white/20 rounded-lg text-center hover:border-sol/40 hover:bg-white/[0.02] transition"
+    >
+      <p className="text-sm font-bold text-white">📤 {labelEscolher}</p>
+      <p className="text-xs text-white/40 mt-1">{hintVazio}</p>
+    </button>
   )
 }
 
