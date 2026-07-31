@@ -79,7 +79,8 @@ export default async function DashboardPage() {
           </div>
         </header>
 
-        {/* Sec. 1: JORNADA DO CLIENTE — linha do tempo (LEAD → PÓS-VENDA) */}
+        {/* Sec. 1: JORNADA DO CLIENTE — linha do tempo (LEAD → PÓS-VENDA)
+            Admin vê 6 etapas (com Homologações CELESC ④); demais veem 5. */}
         <section className="mb-10">
           <div className="mb-4">
             <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
@@ -87,9 +88,10 @@ export default async function DashboardPage() {
             </h2>
             <p className="text-xs text-white/50 mt-0.5">
               Linha do tempo — do primeiro toque até a garantia
+              {mostraAdmin && <span className="text-weg-azul ml-1">(visão administrador · inclui homologação CELESC)</span>}
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${mostraAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
             <DashboardCard
               etapa={1}
               titulo="⚡ Orçamento Rápido"
@@ -116,8 +118,20 @@ export default async function DashboardPage() {
             >
               <StatsCRM />
             </DashboardCard>
+            {mostraAdmin && (
+              <DashboardCard
+                etapa={4}
+                titulo="⚡ Homologação CELESC"
+                desc="Contrato assinado → 6 etapas de aprovação junto à distribuidora."
+                disponivel={true}
+                adminOnly
+                href="/admin/homologacoes"
+              >
+                <StatsHomologacoes />
+              </DashboardCard>
+            )}
             <DashboardCard
-              etapa={4}
+              etapa={mostraAdmin ? 5 : 4}
               titulo="🔨 Operações"
               desc="Obras e serviços contratados — agendamento até entrega."
               disponivel={true}
@@ -126,7 +140,7 @@ export default async function DashboardPage() {
               <StatsOperacoes />
             </DashboardCard>
             <DashboardCard
-              etapa={5}
+              etapa={mostraAdmin ? 6 : 5}
               titulo="🛠️ Pós-venda"
               desc="OS, garantias, monitoramento O&M — depois da entrega."
               disponivel={true}
@@ -156,18 +170,6 @@ export default async function DashboardPage() {
             >
               <StatsAgenda />
             </DashboardCard>
-
-            {mostraAdmin && (
-              <DashboardCard
-                titulo="⚡ Homologações CELESC"
-                desc="Pipeline de aprovação — 6 etapas por projeto vendido, atraso vs prazo."
-                disponivel={true}
-                adminOnly
-                href="/admin/homologacoes"
-              >
-                <StatsHomologacoes />
-              </DashboardCard>
-            )}
           </div>
         </section>
 
