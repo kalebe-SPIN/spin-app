@@ -59,8 +59,10 @@ export async function POST(req: NextRequest) {
 
     const historicoId = histRow!.id
 
-    // Parse PDF — dynamic import (pdf-parse v1: API funcional, roda em Node puro)
-    const pdfParse = (await import('pdf-parse')).default
+    // Parse PDF — importa direto de pdf-parse/lib/pdf-parse.js pra evitar o
+    // "self-test" do index.js que tenta abrir ./test/data/05-versions-space.pdf
+    // e quebra em produção com ENOENT (bug conhecido do pdf-parse v1).
+    const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default
     const { text } = await pdfParse(buffer)
 
     // Extrai linhas com SAP + status
