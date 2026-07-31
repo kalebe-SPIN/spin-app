@@ -79,26 +79,82 @@ export default async function DashboardPage() {
           </div>
         </header>
 
-        {/* Sec. 1: OPERAÇÃO CORRENTE — o que está rodando agora */}
+        {/* Sec. 1: JORNADA DO CLIENTE — linha do tempo (LEAD → PÓS-VENDA) */}
         <section className="mb-10">
-          <div className="flex items-baseline justify-between mb-4">
-            <div>
-              <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
-                🎼 Operação corrente
-              </h2>
-              <p className="text-xs text-white/50 mt-0.5">
-                Projetos ativos, pipeline CELESC e agenda do dia
-              </p>
-            </div>
+          <div className="mb-4">
+            <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
+              🛤️ Jornada do cliente
+            </h2>
+            <p className="text-xs text-white/50 mt-0.5">
+              Linha do tempo — do primeiro toque até a garantia
+            </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <DashboardCard
+              etapa={1}
+              titulo="⚡ Orçamento Rápido"
+              desc="Estimativa em 30s a partir de kWh/mês, R$/mês ou qtd de placas. Envia WhatsApp e converte em projeto."
+              disponivel={true}
+              href="/orcamento-rapido"
+              destaque
+            />
+            <DashboardCard
+              etapa={2}
+              titulo="🎯 CRM"
+              desc="Clientes, leads e pipeline comercial — do primeiro contato até a venda."
+              disponivel={true}
+              href="/crm/pipeline"
+            >
+              <StatsCRM />
+            </DashboardCard>
+            <DashboardCard
+              etapa={3}
               titulo="📋 Projetos"
-              desc="Todos os projetos em andamento — proposta, negociação, venda, execução."
+              desc="Proposta técnica, dimensionamento, negociação, venda."
               disponivel={true}
               href="/projetos"
             >
               <StatsProjetos />
+            </DashboardCard>
+            <DashboardCard
+              etapa={4}
+              titulo="🔨 Operações"
+              desc="Obras e serviços contratados — agendamento até entrega."
+              disponivel={true}
+              href="/execucoes"
+            >
+              <StatsOperacoes />
+            </DashboardCard>
+            <DashboardCard
+              etapa={5}
+              titulo="🛠️ Pós-venda"
+              desc="OS, garantias, monitoramento O&M — depois da entrega."
+              disponivel={true}
+              href="/pos-venda"
+            >
+              <StatsPosVenda />
+            </DashboardCard>
+          </div>
+        </section>
+
+        {/* Sec. 2: UTILITÁRIOS TRANSVERSAIS — atravessam todas as fases */}
+        <section className="mb-10">
+          <div className="mb-4">
+            <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
+              🧰 Utilitários transversais
+            </h2>
+            <p className="text-xs text-white/50 mt-0.5">
+              Ferramentas que atravessam a jornada inteira
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <DashboardCard
+              titulo="👩‍💼 Agenda + Bianca"
+              desc="Tarefas do dia, eventos, respostas de clientes, sugestões da IA."
+              disponivel={true}
+              href="/agenda"
+            >
+              <StatsAgenda />
             </DashboardCard>
 
             {mostraAdmin && (
@@ -112,61 +168,6 @@ export default async function DashboardPage() {
                 <StatsHomologacoes />
               </DashboardCard>
             )}
-
-            <DashboardCard
-              titulo="👩‍💼 Agenda + Bianca"
-              desc="Tarefas do dia, eventos, respostas de clientes, sugestões da IA."
-              disponivel={true}
-              href="/agenda"
-            >
-              <StatsAgenda />
-            </DashboardCard>
-          </div>
-        </section>
-
-        {/* Sec. 2: Módulos operacionais — engrenagens do atendimento */}
-        <section className="mb-10">
-          <div className="mb-4">
-            <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
-              🏭 Módulos operacionais
-            </h2>
-            <p className="text-xs text-white/50 mt-0.5">
-              Do primeiro contato até a garantia — engrenagens do atendimento
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <DashboardCard
-              titulo="⚡ Orçamento Rápido"
-              desc="Estimativa em 30s a partir de kWh/mês, R$/mês ou qtd de placas. Envia WhatsApp e converte em projeto."
-              disponivel={true}
-              href="/orcamento-rapido"
-              destaque
-            />
-            <DashboardCard
-              titulo="🎯 CRM"
-              desc="Clientes, leads e pipeline comercial — do primeiro contato até a venda."
-              disponivel={true}
-              href="/crm/pipeline"
-            >
-              <StatsCRM />
-            </DashboardCard>
-            <DashboardCard
-              titulo="🔨 Operações"
-              desc="Pipeline de obras e serviços contratados — agendamento até entrega."
-              disponivel={true}
-              href="/execucoes"
-              destaque
-            >
-              <StatsOperacoes />
-            </DashboardCard>
-            <DashboardCard
-              titulo="🛠️ Pós-venda"
-              desc="OS, garantias, monitoramento O&M — depois da entrega."
-              disponivel={true}
-              href="/pos-venda"
-            >
-              <StatsPosVenda />
-            </DashboardCard>
           </div>
         </section>
 
@@ -229,7 +230,7 @@ function ModuloAtalho({
 }
 
 function DashboardCard({
-  titulo, desc, disponivel = false, adminOnly = false, href, children, destaque = false,
+  titulo, desc, disponivel = false, adminOnly = false, href, children, destaque = false, etapa,
 }: {
   titulo: string
   desc: string
@@ -238,13 +239,14 @@ function DashboardCard({
   href: string
   children?: React.ReactNode
   destaque?: boolean
+  etapa?: number
 }) {
   const Tag = disponivel ? 'a' : 'div'
   return (
     <Tag
       href={disponivel ? href : undefined}
       className={`
-        relative p-6 rounded-xl border transition-all flex flex-col
+        relative p-5 rounded-xl border transition-all flex flex-col
         ${disponivel
           ? destaque
             ? 'bg-gradient-to-br from-coral/10 to-sol/5 border-coral/40 hover:border-coral/70 cursor-pointer'
@@ -253,6 +255,11 @@ function DashboardCard({
         }
       `}
     >
+      {typeof etapa === 'number' && (
+        <span className="absolute -top-2 -left-2 w-7 h-7 rounded-full bg-sol text-noite text-xs font-black flex items-center justify-center shadow-lg ring-2 ring-noite">
+          {etapa}
+        </span>
+      )}
       {adminOnly && (
         <span className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-wider text-weg-azul bg-white px-2 py-0.5 rounded-full">
           Admin
@@ -263,8 +270,8 @@ function DashboardCard({
           Novo
         </span>
       )}
-      <h3 className="text-lg font-bold text-white mb-2">{titulo}</h3>
-      <p className="text-sm text-white/60 leading-relaxed">{desc}</p>
+      <h3 className="text-base font-bold text-white mb-1.5">{titulo}</h3>
+      <p className="text-xs text-white/60 leading-relaxed">{desc}</p>
       {!disponivel && (
         <span className="mt-3 inline-block text-xs uppercase tracking-wider text-white/40 font-semibold">
           Em breve
