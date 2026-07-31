@@ -116,71 +116,68 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // 4. Upsert produtos (mantém url_datasheet se já existir!)
-    let atualizados = 0, criados = 0
-    for (const p of produtos) {
-      const { data: existente } = await supabaseAdmin
-        .from('produtos')
-        .select('id, url_datasheet')
-        .eq('codigo_weg', p.codigo_weg)
-        .maybeSingle()
+    // 4. Batch upsert produtos (era 448 round-trips, agora 1 → cabe no timeout do Vercel)
+    // Busca códigos que já existem em UMA query
+    const codigosNovos = produtos.map(p => p.codigo_weg)
+    const { data: existentes } = await supabaseAdmin
+      .from('produtos')
+      .select('codigo_weg')
+      .in('codigo_weg', codigosNovos)
+    const existentesSet = new Set((existentes || []).map(e => e.codigo_weg))
 
-      if (existente) {
-        const { error } = await supabaseAdmin
-          .from('produtos')
-          .update({
-            modelo: p.modelo,
-            fabricante: p.fabricante,
-            categoria: p.categoria,
-            subcategoria: p.subcategoria,
-            descricao_curta: p.descricao_curta,
-            specs: p.specs,
-            ativo: true,
-          })
-          .eq('id', existente.id)
-        if (!error) atualizados++
-      } else {
-        const { error } = await supabaseAdmin
-          .from('produtos')
-          .insert({
-            codigo_weg: p.codigo_weg,
-            modelo: p.modelo,
-            fabricante: p.fabricante,
-            categoria: p.categoria,
-            subcategoria: p.subcategoria,
-            descricao_curta: p.descricao_curta,
-            specs: p.specs,
-            ativo: true,
-            disponivel_estoque: true,
-          })
-        if (!error) criados++
-      }
+    const payloadUpsert = produtos.map(p => ({
+      codigo_weg: p.codigo_weg,
+      modelo: p.modelo,
+      fabricante: p.fabricante,
+      categoria: p.categoria,
+      subcategoria: p.subcategoria,
+      descricao_curta: p.descricao_curta,
+      specs: p.specs,
+      ativo: true,
+      // disponivel_estoque só na criação — respeitamos o valor atual pra existentes
+    }))
 
-      // Preço vigente
-      if (p.preco_unitario || p.preco_com_frete) {
-        const { data: prod } = await supabaseAdmin
-          .from('produtos')
-          .select('id')
-          .eq('codigo_weg', p.codigo_weg)
-          .single()
-        if (prod) {
-          // Encerra preço anterior vigente
-          await supabaseAdmin
-            .from('precos_produtos')
-            .update({ vigente_ate: new Date().toISOString().slice(0, 10) })
-            .eq('produto_id', prod.id)
-            .is('vigente_ate', null)
-          // Cria novo preço vigente
-          await supabaseAdmin
-            .from('precos_produtos')
-            .insert({
-              produto_id: prod.id,
-              preco_venda: p.preco_com_frete || p.preco_unitario,
-              preco_custo: p.preco_unitario || (p.preco_com_frete || 0.01),
-              vigente_de: new Date().toISOString().slice(0, 10),
-            })
-        }
-      }
+    // UPSERT único usando codigo_weg como chave (UNIQUE existente na tabela)
+    const { error: upsertErr } = await supabaseAdmin
+      .from('produtos')
+      .upsert(payloadUpsert, { onConflict: 'codigo_weg', ignoreDuplicates: false })
+    if (upsertErr) throw upsertErr
+
+    const criados = produtos.filter(p => !existentesSet.has(p.codigo_weg)).length
+    const atualizados = produtos.length - criados
+
+    // Busca IDs em uma query pra montar preços
+    const { data: prodsComId } = await supabaseAdmin
+      .from('produtos')
+      .select('id, codigo_weg')
+      .in('codigo_weg', codigosNovos)
+    const idByCodigo = new Map((prodsComId || []).map(p => [p.codigo_weg, p.id]))
+    const hoje = new Date().toISOString().slice(0, 10)
+
+    // Preços — só pros que têm valor. Encerra preços vigentes anteriores em batch.
+    const produtosComPreco = produtos.filter(p => p.preco_unitario || p.preco_com_frete)
+    const idsComPreco = produtosComPreco
+      .map(p => idByCodigo.get(p.codigo_weg))
+      .filter((id): id is string => !!id)
+
+    if (idsComPreco.length > 0) {
+      await supabaseAdmin
+        .from('precos_produtos')
+        .update({ vigente_ate: hoje })
+        .in('produto_id', idsComPreco)
+        .is('vigente_ate', null)
+
+      const novosPrecos = produtosComPreco.map(p => ({
+        produto_id: idByCodigo.get(p.codigo_weg)!,
+        preco_venda: p.preco_com_frete || p.preco_unitario!,
+        preco_custo: p.preco_unitario || (p.preco_com_frete || 0.01),
+        vigente_de: hoje,
+      })).filter(np => np.produto_id)
+
+      const { error: precoErr } = await supabaseAdmin
+        .from('precos_produtos')
+        .insert(novosPrecos)
+      if (precoErr) console.error('[importar-planilha-weg] erro preços (não fatal):', precoErr)
     }
 
     // 5. Atualiza histórico

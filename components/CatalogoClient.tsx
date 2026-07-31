@@ -49,6 +49,21 @@ export function CatalogoClient({ historico, produtos }: Props) {
   const inputPlanilhaRef = useRef<HTMLInputElement>(null)
   const inputEstoqueRef = useRef<HTMLInputElement>(null)
 
+  /** Parse resiliente: server pode retornar HTML de timeout/500, não só JSON */
+  async function parseResp(res: Response): Promise<{ ok: boolean; data: Record<string, unknown>; erro?: string }> {
+    const text = await res.text()
+    try {
+      const data = JSON.parse(text)
+      return { ok: res.ok, data, erro: res.ok ? undefined : (data.erro || 'Erro ao processar') }
+    } catch {
+      if (res.status === 504 || res.status === 408) {
+        return { ok: false, data: {}, erro: 'Servidor demorou demais (timeout). O processamento pode estar rodando em segundo plano — recarregue em ~30s.' }
+      }
+      const preview = text.slice(0, 100).replace(/<[^>]+>/g, '').trim()
+      return { ok: false, data: {}, erro: `Servidor retornou erro (HTTP ${res.status}): ${preview || 'sem detalhes'}` }
+    }
+  }
+
   async function enviarPlanilha(file: File) {
     setEnviandoPlanilha(true)
     setErro(null)
@@ -57,12 +72,13 @@ export function CatalogoClient({ historico, produtos }: Props) {
       const formData = new FormData()
       formData.append('arquivo', file)
       const res = await fetch('/api/importar-planilha-weg', { method: 'POST', body: formData })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.erro || 'Erro ao processar')
-      setResultado(`✅ Planilha processada: ${json.produtos_criados} novos + ${json.produtos_atualizados} atualizados = ${json.total_processados} produtos.`)
+      const { ok, data, erro } = await parseResp(res)
+      if (!ok) throw new Error(erro)
+      setResultado(`✅ Planilha processada: ${data.produtos_criados} novos + ${data.produtos_atualizados} atualizados = ${data.total_processados} produtos.`)
       router.refresh()
-    } catch (e: any) {
-      setErro(e.message || 'Falha ao processar planilha')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Falha ao processar planilha'
+      setErro(msg)
     } finally {
       setEnviandoPlanilha(false)
     }
@@ -76,12 +92,13 @@ export function CatalogoClient({ historico, produtos }: Props) {
       const formData = new FormData()
       formData.append('arquivo', file)
       const res = await fetch('/api/atualizar-estoque', { method: 'POST', body: formData })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.erro || 'Erro ao processar')
-      setResultado(`✅ Estoque atualizado: ${json.produtos_atualizados} produtos afetados (${json.total_skus_no_pdf} SKUs no PDF).`)
+      const { ok, data, erro } = await parseResp(res)
+      if (!ok) throw new Error(erro)
+      setResultado(`✅ Estoque atualizado: ${data.produtos_atualizados} produtos afetados (${data.total_skus_no_pdf} SKUs no PDF).`)
       router.refresh()
-    } catch (e: any) {
-      setErro(e.message || 'Falha ao atualizar estoque')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Falha ao atualizar estoque'
+      setErro(msg)
     } finally {
       setEnviandoEstoque(false)
     }
