@@ -59,10 +59,9 @@ export async function POST(req: NextRequest) {
 
     const historicoId = histRow!.id
 
-    // Parse PDF — dynamic import
-    const { PDFParse } = await import('pdf-parse')
-    const parser = new PDFParse({ data: buffer })
-    const { text } = await parser.getText()
+    // Parse PDF — dynamic import (pdf-parse v1: API funcional, roda em Node puro)
+    const pdfParse = (await import('pdf-parse')).default
+    const { text } = await pdfParse(buffer)
 
     // Extrai linhas com SAP + status
     const estoqueMap = new Map<string, { disponivel: boolean; previsao: string | null }>()
