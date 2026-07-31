@@ -69,69 +69,50 @@ export async function POST(req: NextRequest) {
     const composicao = XLSX.utils.sheet_to_json(workbook.Sheets['Composição Preços'], {
       header: 1,
       defval: '',
-    }) as any[][]
+    }) as unknown[][]
 
-    // Parse produtos: linhas 1-4 são módulos, linhas 7+ são inversores
-    const produtos: any[] = []
+    // Parser genérico: cada linha tem [nome, tipoTraduzido, itemSAP, unitario, unitarioComFrete, ...]
+    // Classifica pela coluna "Tipo" (regex) → uma das categorias do enum categoria_principal.
+    // Ignora cabeçalhos (SAP vazio ou não numérico) e linhas sem SAP.
+    const produtos: {
+      categoria: string
+      subcategoria: string
+      codigo_weg: string
+      modelo: string
+      fabricante: string
+      descricao_curta: string
+      specs: Record<string, unknown>
+      preco_unitario: number | null
+      preco_com_frete: number | null
+    }[] = []
     const codigosVistos = new Set<string>()
 
-    // Módulos
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 0; i < composicao.length; i++) {
       const l = composicao[i]
-      if (!l || !l[2]) continue
-      const [nome, tipo, sap, unitario, unitarioComFrete, _fator, wp, _rsWp, fabricante, area, largura, modelo] = l
-      if (!sap || codigosVistos.has(String(sap))) continue
-      codigosVistos.add(String(sap))
-      produtos.push({
-        categoria: 'placa',
-        subcategoria: 'modulo_fotovoltaico',
-        codigo_weg: String(sap),
-        modelo: modelo || nome,
-        fabricante: fabricante || 'WEG',
-        descricao_curta: nome,
-        specs: {
-          potencia_wp: Number(wp) || null,
-          area_m2: Number(area) || null,
-          largura_mm: Number(largura) || null,
-          tipo_celula: tipo || null,
-        },
-        preco_unitario: Number(unitario) || null,
-        preco_com_frete: Number(unitarioComFrete) || null,
-      })
-    }
+      if (!l || l.length < 3) continue
+      const nome = String(l[0] || '').trim()
+      const tipo = String(l[1] || '').trim()
+      const sapRaw = String(l[2] || '').trim()
+      // SAP WEG tem 7-8 dígitos numéricos — cabeçalho e linhas vazias caem fora
+      if (!/^\d{7,8}$/.test(sapRaw)) continue
+      if (!nome || !tipo) continue
+      if (codigosVistos.has(sapRaw)) continue
+      codigosVistos.add(sapRaw)
 
-    // Inversores
-    for (let i = 7; i < composicao.length; i++) {
-      const l = composicao[i]
-      if (!l || !l[2]) break
-      const [nome, tipo, sap, unitario, unitarioComFrete, _, kw, disjuntorEq, entradas] = l
-      if (!sap || !nome) continue
-      if (codigosVistos.has(String(sap))) continue
-      codigosVistos.add(String(sap))
-
-      let categoria: string = 'inversor'
-      let subcategoria = 'inversor_string'
-      const tipoLower = String(tipo).toLowerCase()
-      if (tipoLower.includes('micro')) subcategoria = 'microinversor'
-      if (tipoLower.includes('bomba')) subcategoria = 'inversor_bombeamento'
-      if (tipoLower.includes('monitoramento')) { categoria = 'monitoramento'; subcategoria = 'gateway' }
-      if (tipoLower.includes('otimizador')) subcategoria = 'otimizador'
+      const unitario = Number(l[3]) || null
+      const unitarioComFrete = Number(l[4]) || null
+      const { categoria, subcategoria, fabricante, specs } = classificar(tipo, nome, l)
 
       produtos.push({
         categoria,
         subcategoria,
-        codigo_weg: String(sap),
-        modelo: nome,
-        fabricante: 'WEG',
-        descricao_curta: `${nome} — ${tipo}`,
-        specs: {
-          potencia_kw: Number(kw) || null,
-          tensao_desc: tipo || null,
-          disjuntor_equivalente: disjuntorEq || null,
-          entradas_mppt: Number(entradas) || null,
-        },
-        preco_unitario: Number(unitario) || null,
-        preco_com_frete: Number(unitarioComFrete) || null,
+        codigo_weg: sapRaw,
+        modelo: extrairModelo(nome, l),
+        fabricante,
+        descricao_curta: nome,
+        specs,
+        preco_unitario: unitario,
+        preco_com_frete: unitarioComFrete,
       })
     }
 
@@ -219,8 +200,212 @@ export async function POST(req: NextRequest) {
       produtos_criados: criados,
       total_processados: produtos.length,
     })
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('[importar-planilha-weg]', e)
-    return NextResponse.json({ erro: e.message || 'Erro desconhecido' }, { status: 500 })
+    const msg = e instanceof Error ? e.message : 'Erro desconhecido'
+    return NextResponse.json({ erro: msg }, { status: 500 })
   }
+}
+
+/**
+ * Classifica um item da planilha WEG na categoria do enum categoria_principal
+ * pela coluna "Tipo Traduzido" + fallback pelo nome.
+ * Ver enum em migration 002_catalogo_weg.sql.
+ */
+function classificar(
+  tipo: string,
+  nome: string,
+  linha: unknown[],
+): { categoria: string; subcategoria: string; fabricante: string; specs: Record<string, unknown> } {
+  const t = tipo.toLowerCase()
+  const n = nome.toLowerCase()
+
+  // MÓDULO FOTOVOLTAICO
+  if (t.includes('módulo') || t.includes('modulo') || t.includes('celula') || t.includes('célula')) {
+    return {
+      categoria: 'placa',
+      subcategoria: 'modulo_fotovoltaico',
+      fabricante: String(linha[8] || 'WEG'),
+      specs: {
+        potencia_wp: Number(linha[6]) || null,
+        area_m2: Number(linha[9]) || null,
+        largura_mm: Number(linha[10]) || null,
+        tipo_celula: tipo,
+      },
+    }
+  }
+
+  // MICROINVERSOR
+  if (t.includes('micro')) {
+    return {
+      categoria: 'inversor',
+      subcategoria: 'microinversor',
+      fabricante: 'WEG',
+      specs: {
+        potencia_kw: Number(linha[6]) || null,
+        tensao_desc: tipo,
+        disjuntor_equivalente: String(linha[7] || '') || null,
+        entradas_mppt: Number(linha[8]) || null,
+      },
+    }
+  }
+
+  // INVERSOR DE BOMBEAMENTO (CFW)
+  if (t.includes('bomba') || /^cfw/i.test(nome)) {
+    return {
+      categoria: 'inversor',
+      subcategoria: 'inversor_bombeamento',
+      fabricante: 'WEG',
+      specs: {
+        potencia_kw: Number(linha[6]) || null,
+        tensao_desc: tipo,
+      },
+    }
+  }
+
+  // INVERSOR STRING (mono/trifásico)
+  if (t.includes('inversor')) {
+    return {
+      categoria: 'inversor',
+      subcategoria: 'inversor_string',
+      fabricante: 'WEG',
+      specs: {
+        potencia_kw: Number(linha[6]) || null,
+        tensao_desc: tipo,
+        disjuntor_equivalente: String(linha[7] || '') || null,
+        entradas_mppt: Number(linha[8]) || null,
+      },
+    }
+  }
+
+  // ESTAÇÃO DE RECARGA VE (WEMOB)
+  if (t.includes('estação recarga') || t.includes('recarga') || /^wemob/i.test(nome)) {
+    return { categoria: 'outro', subcategoria: 've_wallbox', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // MONITORAMENTO
+  if (t.includes('monitoramento') || n.includes('dongle') || n.includes('smart dongle')) {
+    return { categoria: 'monitoramento', subcategoria: 'gateway', fabricante: 'WEG', specs: {} }
+  }
+
+  // CÂMERAS / INTERRUPTORES / TOMADAS / SMART HOME
+  if (t.includes('câmera') || t.includes('camera') || t.includes('interruptor') || t.includes('tomada')) {
+    return { categoria: 'outro', subcategoria: 'smart_home', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // ESTRUTURAS DE FIXAÇÃO
+  if (t.includes('estrutura') || t.includes('componente de estrutura') ||
+      /kit p\/ ?\d+ ?módul/i.test(nome) || /^grampo|^suporte|^kit fix/i.test(nome)) {
+    return {
+      categoria: 'estrutura',
+      subcategoria: t.includes('telhado') ? 'telhado' :
+                    t.includes('laje') ? 'laje' :
+                    t.includes('solo') ? 'solo' : 'acessorio',
+      fabricante: 'WEG',
+      specs: { descricao: tipo },
+    }
+  }
+
+  // CABOS
+  if (t.includes('cabo') || /^cabo/i.test(nome)) {
+    const isCC = /cc|solar|fotov/i.test(tipo + ' ' + nome)
+    return {
+      categoria: isCC ? 'cabo_cc' : 'cabo_ca',
+      subcategoria: 'cabo',
+      fabricante: 'WEG',
+      specs: { descricao: tipo },
+    }
+  }
+
+  // DISJUNTORES
+  if (t.includes('disjuntor') || /^md[wm]p|^mdw|^disj/i.test(nome)) {
+    return { categoria: 'disjuntor', subcategoria: 'disjuntor_ca', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // STRING BOX
+  if (t.includes('string box') || t.includes('stringbox') || /^sb-/i.test(nome)) {
+    return { categoria: 'string_box', subcategoria: 'stringbox_cc', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // FUSÍVEIS / BASE FUSÍVEIS
+  if (t.includes('fusível') || t.includes('fusivel') || t.includes('base fusível')) {
+    return { categoria: 'outro', subcategoria: 'fusivel', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // DPS
+  if (t.includes('dps') || t.includes('protetor') || t.includes('surto')) {
+    return { categoria: 'dps', subcategoria: 'dps', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // CAPACITORES / REATÂNCIAS (correção de fator de potência)
+  if (t.includes('capacit') || t.includes('reatância') || t.includes('reatancia')) {
+    return { categoria: 'outro', subcategoria: 'correcao_fp', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // FRETE / CIF
+  if (t.includes('frete') || t.includes('cif') || n.includes('cif ') || n.includes('- frete') || n.includes('retirada')) {
+    return { categoria: 'frete', subcategoria: 'frete', fabricante: 'WEG', specs: { descricao: nome } }
+  }
+
+  // BATERIA / BESS / NOBREAK
+  if (t.includes('bateria') || t.includes('cabine de bateria') || t.includes('nobreak') ||
+      /^sbw|^bscw|^bcw/i.test(nome)) {
+    return { categoria: 'bateria', subcategoria: t.includes('nobreak') ? 'nobreak' : 'bess', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // QUADRO DE TRANSFERÊNCIA / SMARTGUARD (ATS)
+  if (t.includes('quadro de transferência') || t.includes('quadro de transferencia') ||
+      /^smartguard|^tbw/i.test(nome)) {
+    return { categoria: 'quadro', subcategoria: 'quadro_transferencia', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // CONTROLADOR (EMBOX, EDGE BOX — controle de sistemas híbridos)
+  if (t.includes('controlador') || /^embox|^edge box/i.test(nome)) {
+    return { categoria: 'monitoramento', subcategoria: 'controlador', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // MULTIMEDIDOR / SMART METER (DTSU666, DDSU666, MMW03)
+  if (t.includes('multimedidor') || t.includes('medidor') || t.includes('smart meter') ||
+      /^dtsu|^ddsu|^mmw/i.test(nome)) {
+    return { categoria: 'smart_meter', subcategoria: 'medidor', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // OTIMIZADOR
+  if (t.includes('otimizador')) {
+    return { categoria: 'inversor', subcategoria: 'otimizador', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // RSD (Rapid Shutdown — segurança de módulos)
+  if (t.includes('rsd') || /^rsdw/i.test(nome)) {
+    return { categoria: 'outro', subcategoria: 'rapid_shutdown', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // KIT ACESSÓRIOS
+  if (t.includes('kit acessórios') || t.includes('kit acessorios')) {
+    return { categoria: 'outro', subcategoria: 'kit_acessorios', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // SMART HOME (Plugue, Controle, Fonte USB, Sensor, Controle Remoto)
+  if (t.includes('plugue') || t.includes('controle') || t.includes('sensor') || t.includes('fonte usb') ||
+      n.includes('wi-fi')) {
+    return { categoria: 'outro', subcategoria: 'smart_home', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // CAIXA DE JUNÇÃO (JBW)
+  if (t.includes('caixa de junção') || t.includes('caixa de juncao') || /^jbw/i.test(nome)) {
+    return { categoria: 'string_box', subcategoria: 'caixa_juncao', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
+  // Fallback
+  return { categoria: 'outro', subcategoria: 'sem_categoria', fabricante: 'WEG', specs: { descricao: tipo, nome } }
+}
+
+/**
+ * Extrai o "modelo" — normalmente na coluna 11 pra placas, e no próprio nome
+ * pros outros itens (que já vêm em formato de código WEG tipo "SIW300H M060 W00").
+ */
+function extrairModelo(nome: string, linha: unknown[]): string {
+  const c11 = String(linha[11] || '').trim()
+  if (c11 && c11.length < 40) return c11
+  return nome
 }
