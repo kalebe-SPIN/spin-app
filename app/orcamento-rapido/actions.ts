@@ -4,10 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { TipoItem } from '@/lib/tipos-projeto'
-import type { ModoEntrada, ResultadoOrcamento } from '@/lib/orcamento-rapido/tipos'
-import { PARAMETROS_DEFAULT } from '@/lib/orcamento-rapido/tipos'
+import type { ModoEntrada, ResultadoOrcamento, TipoRede } from '@/lib/orcamento-rapido/tipos'
+import { PARAMETROS_DEFAULT, TIPOS_REDE_INFO, fatorSolPorCidade } from '@/lib/orcamento-rapido/tipos'
 import { adaptadorSolar, type EntradaSolar } from '@/lib/orcamento-rapido/solar'
 import { adaptadorServicoPlacas, type EntradaServicoPlacas } from '@/lib/orcamento-rapido/servico-placas'
+import { montarKit } from '@/lib/orcamento-rapido/catalogo'
 
 type EntradaGenerica = EntradaSolar | EntradaServicoPlacas
 
@@ -24,6 +25,12 @@ function pegarAdaptador(tipo: TipoItem) {
 /**
  * Calcula orçamento (chamada síncrona pra preview em tempo real).
  * NÃO persiste — só devolve o resultado.
+ *
+ * PRA SOLAR: se conseguir montar kit real do catálogo (placa disponível +
+ * inversor compatível com tipo_rede), sobrescreve o valor_estimado com o
+ * custo bruto REAL (placa+inversor da WEG) — muito mais fiel que R$/kWp fixo.
+ * Cai no fallback (R$/kWp) só quando catálogo desabastecido ou entrada.qtd_placas
+ * (nesse modo o usuário já definiu qtd, não precisa reescolher placa).
  */
 export async function calcularOrcamentoAction(
   tipo: TipoItem,
@@ -35,7 +42,53 @@ export async function calcularOrcamentoAction(
   }
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const resultado = (adaptador as any).calcular(entrada, PARAMETROS_DEFAULT)
+    const resultado = (adaptador as any).calcular(entrada, PARAMETROS_DEFAULT) as ResultadoOrcamento
+
+    // Solar: tenta enriquecer com kit real do catálogo
+    const tipoSolar: TipoItem[] = ['fv_ongrid', 'fv_hibrido', 'fv_zero_grid', 'fv_offgrid']
+    if (tipoSolar.includes(tipo)) {
+      const es = entrada as EntradaSolar
+      const kwpEstimado = (resultado.estimativa_tecnica as { kwp?: number } | undefined)?.kwp || 0
+      const infoRede = TIPOS_REDE_INFO[es.tipo_rede]
+      if (kwpEstimado > 0 && infoRede) {
+        const kit = await montarKit({
+          kwp_desejado: kwpEstimado,
+          fases: infoRede.fases,
+          tensao_v: infoRede.tensao,
+        })
+        if (kit.placa && kit.inversor) {
+          // Substitui o valor_estimado (chute) pelo custo bruto REAL WEG.
+          // O R$/kWp do fallback vira só uma referência inicial — nunca o final.
+          resultado.detalhes = [
+            { label: 'Placa selecionada', valor: `${kit.qtd_placas} × ${kit.placa.modelo} (${kit.placa.potencia_wp}Wp)` },
+            { label: 'Inversor selecionado', valor: `${kit.inversor.modelo} (${kit.inversor.potencia_kw}kW ${infoRede.label})` },
+            { label: 'Potência real do kit', valor: `${kit.kwp_real.toFixed(2).replace('.', ',')} kWp` },
+            ...resultado.detalhes.filter(d => !d.label.startsWith('Placa') && !d.label.startsWith('Quantidade')),
+            { label: 'Custo bruto WEG (placa+inv)', valor: `R$ ${kit.custo_bruto_weg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` },
+          ]
+          // ⚠️ valor_estimado = custo BRUTO (sem MO, frete, projeto, ART, margem, impostos).
+          // Vai continuar mostrando o valor do fallback como referência até Kalebe
+          // definir os parâmetros comerciais reais (task #79 item F).
+          resultado.estimativa_tecnica = {
+            ...(resultado.estimativa_tecnica || {}),
+            kit_real: {
+              placa_id: kit.placa.id,
+              placa_modelo: kit.placa.modelo,
+              placa_wp: kit.placa.potencia_wp,
+              qtd_placas: kit.qtd_placas,
+              inversor_id: kit.inversor.id,
+              inversor_modelo: kit.inversor.modelo,
+              inversor_kw: kit.inversor.potencia_kw,
+              custo_bruto_weg: kit.custo_bruto_weg,
+              preco_tabela_weg: kit.preco_tabela_weg,
+            },
+          }
+        } else if (kit.aviso_estoque) {
+          resultado.detalhes.push({ label: '⚠️ Estoque', valor: kit.aviso_estoque })
+        }
+      }
+    }
+
     return { resultado }
   } catch (e) {
     return { erro: `Erro no cálculo: ${(e as Error).message}` }

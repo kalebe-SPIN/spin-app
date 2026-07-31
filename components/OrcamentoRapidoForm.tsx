@@ -2,8 +2,8 @@
 
 import { useState, useTransition, useMemo } from 'react'
 import { TIPOS_ITEM, type TipoItem } from '@/lib/tipos-projeto'
-import type { ModoEntrada, ResultadoOrcamento } from '@/lib/orcamento-rapido/tipos'
-import { fmtBRL } from '@/lib/orcamento-rapido/tipos'
+import type { ModoEntrada, ResultadoOrcamento, TipoRede } from '@/lib/orcamento-rapido/tipos'
+import { fmtBRL, TIPOS_REDE_INFO } from '@/lib/orcamento-rapido/tipos'
 import { adaptadorSolar } from '@/lib/orcamento-rapido/solar'
 import { adaptadorServicoPlacas } from '@/lib/orcamento-rapido/servico-placas'
 import {
@@ -34,12 +34,17 @@ export function OrcamentoRapidoForm({
   const [tipo, setTipo] = useState<TipoItem>('fv_ongrid')
   const [modo, setModo] = useState<ModoEntrada>('consumo_kwh')
   const [valorInput, setValorInput] = useState<string>('')
+  const [tipoRede, setTipoRede] = useState<TipoRede>('mono_220')
+  const [cidade, setCidade] = useState<string>('')
   const [resultado, setResultado] = useState<ResultadoOrcamento | null>(null)
   const [ajuste, setAjuste] = useState<number>(0)
   const [justificativa, setJustificativa] = useState<string>('')
   const [telefone, setTelefone] = useState<string>(telefoneLead || '')
   const [orcamentoSalvoId, setOrcamentoSalvoId] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+
+  const ehSolar = ['fv_ongrid', 'fv_hibrido', 'fv_zero_grid', 'fv_offgrid'].includes(tipo)
+  const cidadeObrigatoria = ehSolar && modo !== 'fatura'
 
   const adaptador = pegarAdaptadorFront(tipo)
 
@@ -61,10 +66,12 @@ export function OrcamentoRapidoForm({
   function montarEntrada(): Record<string, unknown> | null {
     const num = parseFloat(valorInput.replace(',', '.'))
     if (isNaN(num) || num <= 0) return null
+    // Solar SEMPRE carrega tipo_rede + cidade (regra Kalebe 2026-07-31)
+    const extraSolar = ehSolar ? { tipo_rede: tipoRede, cidade: cidade.trim() || undefined } : {}
     switch (modo) {
-      case 'consumo_kwh':  return { modo, consumo_kwh: num }
-      case 'qtd_placas':   return { modo, qtd_placas: Math.round(num) }
-      case 'valor_mensal': return { modo, valor_mensal: num }
+      case 'consumo_kwh':  return { modo, consumo_kwh: num, ...extraSolar }
+      case 'qtd_placas':   return { modo, qtd_placas: Math.round(num), ...extraSolar }
+      case 'valor_mensal': return { modo, valor_mensal: num, ...extraSolar }
       default:             return null
     }
   }
@@ -74,6 +81,10 @@ export function OrcamentoRapidoForm({
     const entrada = montarEntrada()
     if (!entrada) {
       setErro('Preencha o valor primeiro')
+      return
+    }
+    if (cidadeObrigatoria && !cidade.trim()) {
+      setErro('Cidade é obrigatória quando não é pela fatura — pra estimar a irradiação solar certa.')
       return
     }
     startTransition(async () => {
@@ -187,6 +198,54 @@ export function OrcamentoRapidoForm({
           MVP: FV + limpeza. BESS · VE · manutenção · alvenaria vêm na Fase 2.
         </p>
       </section>
+
+      {/* ETAPA 1.5 — Tipo de rede + cidade (só solar) */}
+      {ehSolar && (
+        <section className="p-5 rounded-xl bg-white/[0.04] border border-white/10 space-y-4">
+          <div>
+            <label className="block text-xs uppercase tracking-wider text-white/50 font-bold mb-3">
+              1.a Tipo de rede elétrica <span className="text-coral">*</span>
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {(Object.entries(TIPOS_REDE_INFO) as [TipoRede, typeof TIPOS_REDE_INFO[TipoRede]][]).map(([chave, info]) => {
+                const ativo = tipoRede === chave
+                return (
+                  <button
+                    key={chave}
+                    type="button"
+                    onClick={() => { setTipoRede(chave); setResultado(null); setOrcamentoSalvoId(null) }}
+                    className={`p-2 rounded-lg border transition-all text-left ${
+                      ativo
+                        ? 'bg-weg-azul/15 border-weg-azul text-white'
+                        : 'bg-white/[0.02] border-white/10 text-white/70 hover:border-white/30'
+                    }`}
+                  >
+                    <div className="text-xs font-bold leading-tight">{info.label}</div>
+                    <div className="text-[9px] text-white/50 mt-0.5">{info.hint}</div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs uppercase tracking-wider text-white/50 font-bold mb-2">
+              1.b Cidade {cidadeObrigatoria && <span className="text-coral">*</span>}
+              {!cidadeObrigatoria && <span className="text-white/30 font-normal normal-case ml-1">(opcional — fatura já traz)</span>}
+            </label>
+            <input
+              type="text"
+              value={cidade}
+              onChange={(e) => { setCidade(e.target.value); setResultado(null) }}
+              placeholder="Ex: Florianópolis, Chapecó, Joinville..."
+              className="w-full px-3 py-2 bg-noite border border-white/20 rounded-lg text-white placeholder-white/30 focus:border-sol focus:outline-none"
+            />
+            <p className="text-[10px] text-white/40 mt-1">
+              Ajusta a irradiação solar da região (SC varia de 4,0 no litoral sul a 4,35 no oeste).
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* ETAPA 2 — Modo de entrada + valor */}
       <section className="p-5 rounded-xl bg-white/[0.04] border border-white/10">

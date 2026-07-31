@@ -33,18 +33,68 @@ export type ParametrosOrcamento = {
   }[]
 }
 
+// ⚠️ TODO KALEBE — valores abaixo são placeholders. Precisam vir do painel
+// admin/precificacao (a criar) OU serem confirmados por Kalebe:
+//   - preco_medio_kwh_celesc: R$/kWh que aparece na fatura CELESC (~0,75-0,90 varia mês)
+//   - fator_dimensionamento_sc: horas de sol/dia em SC (3,9-4,4 depende da cidade)
+//   - preco_medio_kwp_instalado: R$/kWp instalado — CHUTE ATUAL FICOU MUITO ACIMA (Kalebe apontou 2026-07-31)
+// Enquanto isso, o adaptador solar já busca placas e inversores REAIS do catálogo
+// Supabase (ver lib/orcamento-rapido/catalogo.ts) — só o R$/kWp final ainda usa esse fallback.
 export const PARAMETROS_DEFAULT: ParametrosOrcamento = {
   preco_medio_kwh_celesc: 0.75,
   fator_dimensionamento_sc: 4.0,
-  potencia_padrao_modulo_wp: 555,
-  preco_medio_kwp_instalado: 6000,
-  kit_por_faixa_kwp: [
-    { min: 0,    max: 5,   descricao: '~5,5 kWp · 10 mód WEG 555W · 1 inv WEG 5K mono' },
-    { min: 5,    max: 10,  descricao: '~8,9 kWp · 16 mód WEG 555W · 1 inv WEG 8K mono' },
-    { min: 10,  max: 20,  descricao: '~13,3 kWp · 24 mód WEG 555W · 1 inv WEG 15K tri' },
-    { min: 20,  max: 40,  descricao: '~27,7 kWp · 50 mód WEG 555W · 1 inv WEG 25K tri' },
-    { min: 40,  max: 999, descricao: 'Sob dimensionamento — sugerir visita técnica' },
-  ],
+  // potencia_padrao_modulo_wp: DEPRECATED — usar placaPadrao() do catalogo.ts
+  potencia_padrao_modulo_wp: 615, // 615 Wp WEG BIFACIAL é a placa hoje disponível
+  // preco_medio_kwp_instalado: DEPRECATED — usar montarKit() do catalogo.ts e somar custos reais
+  preco_medio_kwp_instalado: 4200, // ⚠️ ESTIMATIVA — confirmar com Kalebe
+  kit_por_faixa_kwp: [], // vazio — kit vem dinâmico do catálogo agora
+}
+
+/** Tipo de rede elétrica pra escolha do inversor no Orçamento Rápido */
+export type TipoRede = 'mono_220' | 'bi_220' | 'tri_220' | 'tri_380'
+
+export const TIPOS_REDE_INFO: Record<TipoRede, { label: string; fases: 'mono' | 'bi' | 'tri'; tensao: 220 | 380; hint: string }> = {
+  mono_220: { label: 'Monofásico 220V', fases: 'mono', tensao: 220, hint: 'Residencial pequeno (padrão ≤ 40A)' },
+  bi_220:   { label: 'Bifásico 220V',   fases: 'bi',   tensao: 220, hint: 'Residencial médio (padrão 60-80A)' },
+  tri_220:  { label: 'Trifásico 220V',  fases: 'tri',  tensao: 220, hint: 'Comercial/rural (rede antiga)' },
+  tri_380:  { label: 'Trifásico 380V',  fases: 'tri',  tensao: 380, hint: 'Comercial/industrial (padrão moderno)' },
+}
+
+/** Fator de dimensionamento (horas sol/dia) por macrorregião SC. Valores CRESESB médios anuais. */
+export const FATOR_SOL_POR_CIDADE: Record<string, number> = {
+  florianopolis: 4.10,
+  saojose: 4.10,
+  palhoca: 4.10,
+  biguacu: 4.10,
+  tijucas: 4.15,
+  itajai: 4.15,
+  balnearioCamboriu: 4.15,
+  itapema: 4.15,
+  brusque: 4.20,
+  blumenau: 4.20,
+  joinville: 4.15,
+  jaragua: 4.20,
+  chapeco: 4.35,
+  concordia: 4.30,
+  xanxere: 4.35,
+  lages: 4.25,
+  criciuma: 4.05,
+  tubarao: 4.05,
+  araranguá: 4.00,
+  saoBento: 4.20,
+  rioNegrinho: 4.15,
+}
+
+/** Retorna fator de sol pra cidade (case-insensitive, sem acentos), fallback default. */
+export function fatorSolPorCidade(cidade: string | undefined | null, fallback = 4.10): number {
+  if (!cidade) return fallback
+  // Remove acentos combinantes (U+0300..U+036F), espaços, hífens e apóstrofos
+  const chave = cidade
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\s'-]/g, '')
+  return FATOR_SOL_POR_CIDADE[chave] || fallback
 }
 
 /**

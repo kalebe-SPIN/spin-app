@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
       specs: Record<string, unknown>
       preco_unitario: number | null
       preco_com_frete: number | null
+      preco_custo_spin: number | null
     }[] = []
     const codigosVistos = new Set<string>()
 
@@ -101,6 +102,8 @@ export async function POST(req: NextRequest) {
 
       const unitario = Number(l[3]) || null
       const unitarioComFrete = Number(l[4]) || null
+      // Coluna 5 = "Fator 0,4182" = preço com desconto WEG aplicado = custo real Spin
+      const custoComDesconto = Number(l[5]) || null
       const { categoria, subcategoria, fabricante, specs } = classificar(tipo, nome, l)
 
       produtos.push({
@@ -111,8 +114,9 @@ export async function POST(req: NextRequest) {
         fabricante,
         descricao_curta: nome,
         specs,
-        preco_unitario: unitario,
+        preco_unitario: unitario,        // Preço tabela WEG (bruto)
         preco_com_frete: unitarioComFrete,
+        preco_custo_spin: custoComDesconto, // Custo real Spin (WEG × 0,4182)
       })
     }
 
@@ -169,8 +173,10 @@ export async function POST(req: NextRequest) {
 
       const novosPrecos = produtosComPreco.map(p => ({
         produto_id: idByCodigo.get(p.codigo_weg)!,
+        // preco_venda = preço tabela WEG (o "cheio" que o cliente vê como referência)
         preco_venda: p.preco_com_frete || p.preco_unitario!,
-        preco_custo: p.preco_unitario || (p.preco_com_frete || 0.01),
+        // preco_custo = preço com desconto WEG 0,4182 (o que a Spin realmente paga)
+        preco_custo: p.preco_custo_spin || p.preco_unitario || (p.preco_com_frete || 0.01),
         vigente_de: hoje,
       })).filter(np => np.produto_id)
 
