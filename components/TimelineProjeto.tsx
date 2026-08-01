@@ -1,21 +1,24 @@
+import Link from 'next/link'
+
+// path = sub-rota relativa ao /projetos/[id]/. String vazia = fica na tela do projeto.
 const ETAPAS_FV = [
-  { chave: 'cliente',     label: 'Cliente',    statusApos: 'rascunho',            ordem: 0 },
-  { chave: 'fatura',      label: 'Fatura',     statusApos: 'fatura_analisada',    ordem: 1 },
-  { chave: 'telhado',     label: 'Telhado',    statusApos: 'telhado_preenchido',  ordem: 2 },
-  { chave: 'padrao',      label: 'Padrão',     statusApos: 'dimensionado',        ordem: 3 },
-  { chave: 'kit',         label: 'Kit',        statusApos: 'kit_selecionado',     ordem: 4 },
-  { chave: 'lista_ca',    label: 'Lista CA',   statusApos: 'lista_ca_confirmada', ordem: 5 },
-  { chave: 'orcamento',   label: 'Orçamento',  statusApos: 'orcamento_gerado',    ordem: 6 },
-  { chave: 'proposta',    label: 'Proposta',   statusApos: 'proposta_enviada',    ordem: 7 },
-  { chave: 'fechado',     label: 'Fechado',    statusApos: 'aceito',              ordem: 8 },
+  { chave: 'cliente',   label: 'Cliente',   statusApos: 'rascunho',            ordem: 0, path: 'editar'    },
+  { chave: 'fatura',    label: 'Fatura',    statusApos: 'fatura_analisada',    ordem: 1, path: 'fatura'    },
+  { chave: 'telhado',   label: 'Telhado',   statusApos: 'telhado_preenchido',  ordem: 2, path: 'telhado'   },
+  { chave: 'padrao',    label: 'Padrão',    statusApos: 'dimensionado',        ordem: 3, path: 'padrao'    },
+  { chave: 'kit',       label: 'Kit',       statusApos: 'kit_selecionado',     ordem: 4, path: 'kit'       },
+  { chave: 'lista_ca',  label: 'Lista CA',  statusApos: 'lista_ca_confirmada', ordem: 5, path: 'lista-ca'  },
+  { chave: 'orcamento', label: 'Orçamento', statusApos: 'orcamento_gerado',    ordem: 6, path: 'orcamento' },
+  { chave: 'proposta',  label: 'Proposta',  statusApos: 'proposta_enviada',    ordem: 7, path: 'orcamento' },
+  { chave: 'fechado',   label: 'Fechado',   statusApos: 'aceito',              ordem: 8, path: ''          },
 ] as const
 
 // Timeline simplificada pra projetos SÓ serviço (sem fatura/telhado/padrao/kit)
 const ETAPAS_SERVICO = [
-  { chave: 'cliente',    label: 'Cliente',   statusApos: 'rascunho',         ordem: 0 },
-  { chave: 'escopo',     label: 'Escopo',    statusApos: 'orcamento_gerado', ordem: 1 },
-  { chave: 'proposta',   label: 'Proposta',  statusApos: 'proposta_enviada', ordem: 2 },
-  { chave: 'fechado',    label: 'Fechado',   statusApos: 'aceito',           ordem: 3 },
+  { chave: 'cliente',  label: 'Cliente',  statusApos: 'rascunho',         ordem: 0, path: 'editar'    },
+  { chave: 'escopo',   label: 'Escopo',   statusApos: 'orcamento_gerado', ordem: 1, path: 'tipos'     },
+  { chave: 'proposta', label: 'Proposta', statusApos: 'proposta_enviada', ordem: 2, path: 'orcamento' },
+  { chave: 'fechado',  label: 'Fechado',  statusApos: 'aceito',           ordem: 3, path: ''          },
 ] as const
 
 const STATUS_ORDEM: Record<string, number> = {
@@ -69,10 +72,13 @@ export function TimelineProjeto({
   status,
   compacto = false,
   soServicos = false,
+  projetoId,
 }: {
   status: string
   compacto?: boolean
   soServicos?: boolean
+  /** Se passado, cada etapa vira Link pra sua rota (acesso rápido). Omitir = timeline visual só. */
+  projetoId?: string
 }) {
   const ETAPAS = soServicos ? ETAPAS_SERVICO : ETAPAS_FV
   const mapaOrdem = soServicos ? STATUS_ORDEM_SERVICO : STATUS_ORDEM
@@ -81,6 +87,12 @@ export function TimelineProjeto({
 
   const infoStatus = STATUS_INFO_LOCAL[status] || STATUS_INFO_LOCAL.rascunho
   const proxima = ETAPAS.find((e) => e.ordem === ordemAtual + 1)
+
+  function hrefEtapa(path: string): string | null {
+    if (!projetoId) return null
+    const base = `/projetos/${projetoId}`
+    return path ? `${base}/${path}` : base
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -104,41 +116,57 @@ export function TimelineProjeto({
         )}
       </div>
 
-      {/* Barra de progresso */}
+      {/* Barra de progresso — clicável quando projetoId passado */}
       {!compacto && (
         <div className="flex items-center gap-1 mt-1">
           {ETAPAS.slice(0, soServicos ? 4 : 8).map((etapa) => {
             const concluida = etapa.ordem <= ordemAtual && ordemAtual >= 0
             const atual = etapa.ordem === ordemAtual + 1 && !encerrado
-            const proxima = etapa.ordem > ordemAtual + 1
-            return (
-              <div
-                key={etapa.chave}
-                className="flex-1 flex flex-col items-center gap-1"
-                title={etapa.label}
-              >
+            const posterior = etapa.ordem > ordemAtual + 1
+            const href = hrefEtapa(etapa.path)
+
+            const Conteudo = (
+              <>
                 <div
-                  className={`w-full h-1 rounded ${
+                  className={`w-full h-1 rounded transition ${
                     concluida
-                      ? 'bg-verde/60'
+                      ? 'bg-verde/60 group-hover:bg-verde'
                       : atual
                       ? 'bg-sol animate-pulse'
-                      : proxima
-                      ? 'bg-white/10'
+                      : posterior
+                      ? 'bg-white/10 group-hover:bg-white/25'
                       : 'bg-white/5'
                   }`}
                 />
                 <span
-                  className={`text-[8px] uppercase font-bold truncate max-w-full ${
+                  className={`text-[8px] uppercase font-bold truncate max-w-full transition ${
                     concluida
-                      ? 'text-verde/70'
+                      ? 'text-verde/70 group-hover:text-verde'
                       : atual
                       ? 'text-sol'
-                      : 'text-white/30'
+                      : 'text-white/30 group-hover:text-white/70'
                   }`}
                 >
                   {etapa.label}
                 </span>
+              </>
+            )
+
+            if (href) {
+              return (
+                <Link
+                  key={etapa.chave}
+                  href={href}
+                  className="group flex-1 flex flex-col items-center gap-1 cursor-pointer"
+                  title={`Ir para ${etapa.label}`}
+                >
+                  {Conteudo}
+                </Link>
+              )
+            }
+            return (
+              <div key={etapa.chave} className="flex-1 flex flex-col items-center gap-1" title={etapa.label}>
+                {Conteudo}
               </div>
             )
           })}

@@ -97,7 +97,7 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             </div>
           </div>
           <div className="p-4 bg-white/[0.02] border border-white/10 rounded-xl">
-            <TimelineProjeto status={projeto.status} soServicos={soServicos} />
+            <TimelineProjeto status={projeto.status} soServicos={soServicos} projetoId={projeto.id} />
           </div>
         </header>
 
