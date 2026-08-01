@@ -8,7 +8,7 @@ import type { ModoEntrada, ResultadoOrcamento, TipoRede } from '@/lib/orcamento-
 import { PARAMETROS_DEFAULT, TIPOS_REDE_INFO, fatorSolPorCidade } from '@/lib/orcamento-rapido/tipos'
 import { adaptadorSolar, type EntradaSolar } from '@/lib/orcamento-rapido/solar'
 import { adaptadorServicoPlacas, type EntradaServicoPlacas } from '@/lib/orcamento-rapido/servico-placas'
-import { montarKit } from '@/lib/orcamento-rapido/catalogo'
+import { montarKit, buscarPrecoKwpPorFaixa } from '@/lib/orcamento-rapido/catalogo'
 
 type EntradaGenerica = EntradaSolar | EntradaServicoPlacas
 
@@ -44,12 +44,26 @@ export async function calcularOrcamentoAction(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resultado = (adaptador as any).calcular(entrada, PARAMETROS_DEFAULT) as ResultadoOrcamento
 
-    // Solar: tenta enriquecer com kit real do catálogo
+    // Solar: tenta enriquecer com kit real do catálogo E preço R$/kWp do banco
     const tipoSolar: TipoItem[] = ['fv_ongrid', 'fv_hibrido', 'fv_zero_grid', 'fv_offgrid']
     if (tipoSolar.includes(tipo)) {
       const es = entrada as EntradaSolar
       const kwpEstimado = (resultado.estimativa_tecnica as { kwp?: number } | undefined)?.kwp || 0
       const infoRede = TIPOS_REDE_INFO[es.tipo_rede]
+
+      // Sobrescreve valor_estimado com R$/kWp da FAIXA do banco (se cadastrado)
+      // Vem do painel /admin/precificacao/fotovoltaico → tabela parametros_precificacao.
+      if (kwpEstimado > 0) {
+        const faixaBanco = await buscarPrecoKwpPorFaixa(kwpEstimado)
+        if (faixaBanco) {
+          resultado.valor_estimado = Math.round(kwpEstimado * faixaBanco.preco_kwp)
+          resultado.detalhes.push({
+            label: 'R$/kWp praticado',
+            valor: `R$ ${faixaBanco.preco_kwp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${faixaBanco.descricao})`,
+          })
+        }
+      }
+
       if (kwpEstimado > 0 && infoRede) {
         const kit = await montarKit({
           kwp_desejado: kwpEstimado,

@@ -83,15 +83,29 @@ export default async function HubPrecificacaoPage() {
           </p>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
+          <Link
+            href="/admin/precificacao/fotovoltaico"
+            className="bg-gradient-to-br from-sol/10 to-verde/5 border border-sol/40 hover:border-sol/70 rounded-xl p-5 transition relative"
+          >
+            <span className="absolute top-3 right-3 text-[9px] font-bold uppercase text-coral bg-coral/10 border border-coral/30 px-1.5 py-0.5 rounded">
+              Novo
+            </span>
+            <p className="text-2xl mb-2">☀️</p>
+            <p className="text-lg font-bold text-white mb-1">Fotovoltaico</p>
+            <p className="text-xs text-white/60">
+              Faixas R$/kWp por porte, preço médio kWh CELESC, fator de perdas, potência
+              padrão do módulo. Lido pelo Orçamento Rápido e Formal.
+            </p>
+          </Link>
           <Link
             href="/admin/precificacao/servicos"
             className="bg-white/[0.03] border border-white/10 hover:border-sol/40 rounded-xl p-5 transition"
           >
             <p className="text-2xl mb-2">⚙️</p>
-            <p className="text-lg font-bold text-white mb-1">Parâmetros detalhados</p>
+            <p className="text-lg font-bold text-white mb-1">Serviços — parâmetros</p>
             <p className="text-xs text-white/60">
-              Fatores por telhado, pavimento, KM, diárias, materiais, etc.
+              Fatores por telhado, pavimento, KM, diárias, materiais.
               Usados pelo cálculo automático em cada form de serviço.
             </p>
           </Link>
@@ -100,7 +114,7 @@ export default async function HubPrecificacaoPage() {
             className="bg-white/[0.03] border border-white/10 hover:border-sol/40 rounded-xl p-5 transition"
           >
             <p className="text-2xl mb-2">📊</p>
-            <p className="text-lg font-bold text-white mb-1">Faixas de referência</p>
+            <p className="text-lg font-bold text-white mb-1">Serviços — faixas</p>
             <p className="text-xs text-white/60">
               Por qtd de placas, potência kWp, horas, m², metros, dias.
               Aparece como referência rápida no orçamento.

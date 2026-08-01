@@ -74,12 +74,23 @@ export default async function CatalogoAdminPage() {
           <Link href="/admin" className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
             ← Voltar ao admin
           </Link>
-          <h1 className="text-3xl md:text-4xl font-black text-white">
-            Catálogo WEG
-          </h1>
-          <p className="text-white/60 mt-1 text-sm">
-            Uploads de planilhas de preço, PDF de estoque e datasheets dos produtos.
-          </p>
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-black text-white">
+                Catálogo WEG
+              </h1>
+              <p className="text-white/60 mt-1 text-sm">
+                Uploads de planilhas de preço, PDF de estoque e datasheets dos produtos.
+              </p>
+            </div>
+            <Link
+              href="/admin/precificacao/fotovoltaico"
+              className="inline-flex items-center gap-2 px-3 py-2 bg-sol/10 border border-sol/30 text-sol text-xs font-bold rounded-lg hover:bg-sol/20 transition self-start md:self-auto"
+              title="Faixas R$/kWp, preço médio kWh CELESC, fator perdas — usados pelo Orçamento Rápido"
+            >
+              ☀️ Editar precificação FV →
+            </Link>
+          </div>
         </header>
 
         {migrationPendente && (

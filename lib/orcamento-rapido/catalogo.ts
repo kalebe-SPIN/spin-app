@@ -6,6 +6,42 @@
 
 import { createClient } from '@/lib/supabase/server'
 
+/**
+ * Lê faixas de R$/kWp do banco (parametros_precificacao / grupo=fotovoltaico).
+ * Retorna null quando não configurado — caller cai no fallback do código.
+ */
+export async function buscarPrecoKwpPorFaixa(kwp: number): Promise<{ preco_kwp: number; descricao: string } | null> {
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('parametros_precificacao')
+    .select('valor_json')
+    .eq('chave', 'fv_faixas_preco_kwp')
+    .is('vigente_ate', null)
+    .eq('ativo', true)
+    .maybeSingle()
+
+  if (!data?.valor_json) return null
+  const faixas = data.valor_json as { min_kwp: number; max_kwp: number; preco_kwp: number | null; descricao: string }[]
+  const match = faixas.find(f => kwp >= f.min_kwp && kwp < f.max_kwp)
+  if (!match || match.preco_kwp == null) return null
+  return { preco_kwp: match.preco_kwp, descricao: match.descricao }
+}
+
+/**
+ * Lê parâmetro numérico do banco (fallback pra defaults do código quando não configurado).
+ */
+export async function buscarParametroNumerico(chave: string, fallback: number): Promise<number> {
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('parametros_precificacao')
+    .select('valor_numero')
+    .eq('chave', chave)
+    .is('vigente_ate', null)
+    .eq('ativo', true)
+    .maybeSingle()
+  return data?.valor_numero ?? fallback
+}
+
 export type PlacaCatalogo = {
   id: string
   codigo_weg: string
