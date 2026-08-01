@@ -123,24 +123,48 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
             {itens.map((it) => {
               const info = getInfoTipo(it.tipo as TipoItem)
               const valor = parseFloat(String(it.valor_estimado)) || 0
+              // Descrição customizada + subitens vêm de it.dados (preenchidos no ServicoGenericoForm).
+              const dados = (it.dados || {}) as {
+                descricao?: string
+                quantidades?: { item: string; qtd: number }[]
+                observacoes?: string
+              }
+              const subitens = (dados.quantidades || []).filter(s => s.item?.trim())
+              const descCustom = dados.descricao?.trim()
               return (
                 <div key={it.id} className="bg-white/[0.02] border border-white/10 rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="flex items-start gap-3 flex-1">
                       <span className="text-2xl shrink-0">{info?.emoji || '📋'}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-white">
                           {it.titulo || info?.label || it.tipo}
                         </p>
-                        {info?.descricao && (
+                        {descCustom ? (
+                          <p className="text-xs text-white/70 mt-1 leading-relaxed whitespace-pre-wrap">{descCustom}</p>
+                        ) : info?.descricao ? (
                           <p className="text-[10px] text-white/50 mt-0.5">{info.descricao}</p>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                     <p className="text-lg font-bold text-verde shrink-0">
                       {valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </p>
                   </div>
+                  {subitens.length > 0 && (
+                    <ul className="ml-9 pl-3 border-l-2 border-white/10 space-y-0.5">
+                      {subitens.map((s, i) => (
+                        <li key={i} className="text-xs text-white/60">
+                          <span className="text-white/80 font-semibold">{s.qtd}×</span> {s.item}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {dados.observacoes?.trim() && (
+                    <p className="ml-9 mt-2 text-[10px] text-white/40 italic">
+                      Obs: {dados.observacoes.trim()}
+                    </p>
+                  )}
                 </div>
               )
             })}
@@ -515,15 +539,40 @@ function TemplatePdf({
             {itens.map((it, idx) => {
               const info = getInfoTipo(it.tipo as TipoItem)
               const valor = parseFloat(String(it.valor_estimado)) || 0
+              const dados = (it.dados || {}) as {
+                descricao?: string
+                quantidades?: { item: string; qtd: number }[]
+                observacoes?: string
+              }
+              const subitens = (dados.quantidades || []).filter(s => s.item?.trim())
+              const descCustom = dados.descricao?.trim()
               return (
                 <tr key={it.id} style={{ borderBottom: '1px solid #e5e7eb', background: idx % 2 === 0 ? '#FFFFFF' : '#f9fafb' }}>
-                  <td style={{ padding: '10px 12px', fontSize: '12px' }}>
+                  <td style={{ padding: '10px 12px', fontSize: '12px', verticalAlign: 'top' }}>
                     <div style={{ fontWeight: 'bold' }}>{it.titulo || info?.label || it.tipo}</div>
-                    {info?.descricao && (
+                    {descCustom ? (
+                      <div style={{ fontSize: '11px', color: '#374151', marginTop: '3px', whiteSpace: 'pre-wrap', lineHeight: 1.4 }}>
+                        {descCustom}
+                      </div>
+                    ) : info?.descricao ? (
                       <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>{info.descricao}</div>
+                    ) : null}
+                    {subitens.length > 0 && (
+                      <ul style={{ margin: '6px 0 0 0', paddingLeft: '18px', color: '#374151', fontSize: '10.5px', lineHeight: 1.5 }}>
+                        {subitens.map((s, i) => (
+                          <li key={i}>
+                            <strong>{s.qtd}×</strong> {s.item}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {dados.observacoes?.trim() && (
+                      <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '4px', fontStyle: 'italic' }}>
+                        Obs: {dados.observacoes.trim()}
+                      </div>
                     )}
                   </td>
-                  <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '12px', fontWeight: 'bold' }}>
+                  <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '12px', fontWeight: 'bold', verticalAlign: 'top' }}>
                     {brl(valor)}
                   </td>
                 </tr>
