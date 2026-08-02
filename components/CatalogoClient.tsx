@@ -259,18 +259,36 @@ export function CatalogoClient({ historico, produtos }: Props) {
         </div>
       )}
 
-      {/* Histórico */}
+      {/* Botão de acesso ao histórico completo (era lista inline) */}
       <section>
-        <h2 className="text-lg font-bold text-white mb-3">📜 Histórico de uploads</h2>
-        {historico.length === 0 ? (
-          <p className="text-xs text-white/40">Nenhum upload registrado ainda.</p>
-        ) : (
-          <div className="space-y-2">
-            {historico.map(h => (
-              <HistoricoRow key={h.id} item={h} />
-            ))}
+        <a
+          href="/admin/catalogo/historico"
+          className="flex items-center justify-between gap-4 bg-white/[0.03] border border-white/10 hover:border-sol/40 hover:bg-white/[0.06] rounded-xl p-4 transition group"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📜</span>
+            <div>
+              <p className="text-sm font-bold text-white group-hover:text-sol transition">
+                Histórico de uploads
+              </p>
+              <p className="text-xs text-white/50">
+                {historico.length === 0
+                  ? 'Nenhum upload registrado ainda'
+                  : `${historico.length} upload${historico.length > 1 ? 's' : ''} registrado${historico.length > 1 ? 's' : ''}`}
+              </p>
+            </div>
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            {historico[0] && (
+              <span className="text-[10px] text-white/40 hidden md:inline">
+                último: {new Date(historico[0].created_at).toLocaleString('pt-BR', {
+                  day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
+                })}
+              </span>
+            )}
+            <span className="text-white/40 group-hover:text-sol transition text-xl">→</span>
+          </div>
+        </a>
       </section>
 
       {/* Datasheets individuais */}
@@ -454,37 +472,6 @@ function UploadCardSlot({
       <p className="text-sm font-bold text-white">📤 {labelEscolher}</p>
       <p className="text-xs text-white/40 mt-1">{hintVazio}</p>
     </button>
-  )
-}
-
-function HistoricoRow({ item }: { item: HistoricoItem }) {
-  const data = new Date(item.created_at).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  })
-  const tipoLabel = item.tipo === 'planilha_precos' ? '📊 Planilha' : item.tipo === 'pdf_estoque' ? '📦 Estoque' : '📄 Datasheet'
-  const statusCor = item.status === 'concluido' ? 'text-verde bg-verde/10 border-verde/30'
-    : item.status === 'processando' ? 'text-sol bg-sol/10 border-sol/30'
-    : 'text-coral bg-coral/10 border-coral/30'
-
-  return (
-    <div className="bg-white/[0.02] border border-white/10 rounded-lg p-3 flex items-center gap-3 text-xs">
-      <span className="text-[10px] text-white/40 font-mono w-20">{data}</span>
-      <span className="text-white/60 w-24">{tipoLabel}</span>
-      <span className="text-white/80 flex-1 truncate">{item.arquivo_nome_original}</span>
-      <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${statusCor}`}>
-        {item.status}
-      </span>
-      {item.status === 'concluido' && (
-        <span className="text-[10px] text-white/60">
-          {item.produtos_criados > 0 && <>+{item.produtos_criados} novos · </>}
-          {item.produtos_atualizados > 0 && <>✎ {item.produtos_atualizados}</>}
-        </span>
-      )}
-      {item.erro_mensagem && (
-        <span className="text-[10px] text-coral truncate max-w-xs">{item.erro_mensagem}</span>
-      )}
-    </div>
   )
 }
 
