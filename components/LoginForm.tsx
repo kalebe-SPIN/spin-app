@@ -98,13 +98,22 @@ export default function LoginForm() {
         {loading ? 'Entrando...' : 'Entrar no sistema'}
       </button>
 
-      {/* Link "esqueci senha" — implementar depois */}
       <a
-        href="#"
+        href="/esqueci-senha"
         className="text-center text-sm text-white/50 hover:text-sol transition-colors mt-2"
       >
         Esqueci minha senha
       </a>
+
+      <div className="mt-4 pt-4 border-t border-white/10 text-center">
+        <p className="text-xs text-white/40 mb-2">Quer virar parceiro Spin?</p>
+        <a
+          href="/cadastro/parceiro"
+          className="text-xs text-sol hover:underline font-semibold"
+        >
+          🤝 Cadastre-se como representante →
+        </a>
+      </div>
     </form>
   )
 }

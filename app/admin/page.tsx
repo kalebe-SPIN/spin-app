@@ -63,8 +63,7 @@ export default async function AdminHomePage() {
             href="/admin/usuarios"
             icon="👥"
             titulo="Usuários e permissões"
-            desc="Convidar consultores, definir papéis, autorizar acesso a áreas específicas."
-            emBreve
+            desc="Convidar novos usuários por email, editar papéis, ativar/desativar acesso. Substitui o Supabase Studio."
           />
         </Grupo>
 
