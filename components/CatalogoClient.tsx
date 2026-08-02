@@ -32,6 +32,28 @@ type Produto = {
 type Props = {
   historico: HistoricoItem[]
   produtos: Produto[]
+  porCategoria?: Record<string, number>
+}
+
+/** Categorias que podem aparecer nos badges — bate com o enum categoria_principal + filtro do dropdown. */
+const CATEGORIA_INFO: Record<string, { label: string; emoji: string; cor: string }> = {
+  placa:         { label: 'Placas',         emoji: '☀️', cor: 'text-sol       bg-sol/10       border-sol/30' },
+  inversor:      { label: 'Inversores',    emoji: '⚡', cor: 'text-weg-azul  bg-weg-azul/10  border-weg-azul/30' },
+  bateria:       { label: 'Baterias',       emoji: '🔋', cor: 'text-verde    bg-verde/10     border-verde/30' },
+  estrutura:     { label: 'Estruturas',     emoji: '🏗️', cor: 'text-white/70 bg-white/10     border-white/20' },
+  cabo_cc:       { label: 'Cabos CC',       emoji: '🔌', cor: 'text-white/70 bg-white/10     border-white/20' },
+  cabo_ca:       { label: 'Cabos CA',       emoji: '🔌', cor: 'text-white/70 bg-white/10     border-white/20' },
+  conector:      { label: 'Conectores',     emoji: '🔗', cor: 'text-white/70 bg-white/10     border-white/20' },
+  string_box:    { label: 'String Boxes',   emoji: '📦', cor: 'text-white/70 bg-white/10     border-white/20' },
+  disjuntor:     { label: 'Disjuntores',    emoji: '⚙️', cor: 'text-coral    bg-coral/10     border-coral/30' },
+  dps:           { label: 'DPS',            emoji: '⚡', cor: 'text-coral    bg-coral/10     border-coral/30' },
+  eletroduto:    { label: 'Eletrodutos',    emoji: '🟫', cor: 'text-white/70 bg-white/10     border-white/20' },
+  aterramento:   { label: 'Aterramento',    emoji: '⏚',  cor: 'text-white/70 bg-white/10     border-white/20' },
+  quadro:        { label: 'Quadros',        emoji: '🗄️', cor: 'text-white/70 bg-white/10     border-white/20' },
+  smart_meter:   { label: 'Smart Meters',   emoji: '📊', cor: 'text-verde    bg-verde/10     border-verde/30' },
+  monitoramento: { label: 'Monitoramento',  emoji: '📡', cor: 'text-weg-azul bg-weg-azul/10  border-weg-azul/30' },
+  frete:         { label: 'Frete',          emoji: '🚚', cor: 'text-white/60 bg-white/5      border-white/10' },
+  outro:         { label: 'Outros',         emoji: '📦', cor: 'text-white/60 bg-white/5      border-white/10' },
 }
 
 // Estilo inline pras <option> — Chrome/Windows ignora className em <option>,
@@ -39,7 +61,7 @@ type Props = {
 const OPT_STYLE: React.CSSProperties = { backgroundColor: '#050B16', color: '#ffffff' }
 const OPTGROUP_STYLE: React.CSSProperties = { backgroundColor: '#050B16', color: '#FFC300', fontWeight: 'bold' }
 
-export function CatalogoClient({ historico, produtos }: Props) {
+export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
   const router = useRouter()
   const [enviandoPlanilha, setEnviandoPlanilha] = useState(false)
   const [enviandoEstoque, setEnviandoEstoque] = useState(false)
@@ -257,6 +279,50 @@ export function CatalogoClient({ historico, produtos }: Props) {
         <div className={`p-4 rounded-lg border text-sm ${erro ? 'bg-coral/10 border-coral/30 text-coral' : 'bg-verde/10 border-verde/30 text-verde'}`}>
           {erro || resultado}
         </div>
+      )}
+
+      {/* Distribuição por categoria — badges clicáveis que aplicam o filtro */}
+      {porCategoria && Object.keys(porCategoria).length > 0 && (
+        <section>
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
+              📊 Produtos por categoria
+            </h2>
+            <span className="text-[10px] text-white/40">
+              {Object.values(porCategoria).reduce((s, n) => s + n, 0)} produtos ativos ·
+              clique num card pra filtrar
+            </span>
+          </div>
+          <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-8 gap-2">
+            {Object.entries(porCategoria)
+              .sort((a, b) => b[1] - a[1])
+              .map(([cat, qtd]) => {
+                const info = CATEGORIA_INFO[cat] || { label: cat, emoji: '📦', cor: 'text-white/60 bg-white/5 border-white/10' }
+                const ativo = filtroCategoria === cat
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setFiltroCategoria(ativo ? 'todos' : cat)}
+                    className={`px-2.5 py-2 rounded-lg border text-left transition ${
+                      ativo
+                        ? 'bg-sol/15 border-sol text-white'
+                        : `${info.cor} hover:opacity-100 opacity-90`
+                    }`}
+                    title={ativo ? 'Clique pra remover filtro' : `Filtrar por ${info.label}`}
+                  >
+                    <div className="flex items-baseline justify-between gap-1">
+                      <span className="text-lg leading-none">{info.emoji}</span>
+                      <span className="text-lg font-black leading-none">{qtd}</span>
+                    </div>
+                    <p className="text-[9px] uppercase tracking-wide font-bold mt-1 truncate">
+                      {info.label}
+                    </p>
+                  </button>
+                )
+              })}
+          </div>
+        </section>
       )}
 
       {/* Botão de acesso ao histórico completo (era lista inline) */}

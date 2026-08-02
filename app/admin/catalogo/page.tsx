@@ -51,6 +51,15 @@ export default async function CatalogoAdminPage() {
   const comDatasheet = await safeCount(() =>
     supabase.from('produtos').select('*', { count: 'exact', head: true }).eq('ativo', true).not('url_datasheet', 'is', null))
 
+  // Contagem por categoria — usa GROUP BY implícito lendo todos os produtos ativos.
+  // Só um round-trip a mais; devolve mapa {categoria: qtd} pra exibir badges.
+  const contagemPorCategoria = await safeData(() =>
+    supabase.from('produtos').select('categoria').eq('ativo', true))
+  const porCategoria: Record<string, number> = {}
+  for (const p of (contagemPorCategoria || []) as { categoria: string }[]) {
+    porCategoria[p.categoria] = (porCategoria[p.categoria] || 0) + 1
+  }
+
   const historico = await safeData(() =>
     supabase.from('catalogo_uploads_historico')
       .select('id, tipo, arquivo_nome_original, status, produtos_atualizados, produtos_criados, erro_mensagem, created_at, processado_em')
@@ -116,6 +125,7 @@ export default async function CatalogoAdminPage() {
         <CatalogoClient
           historico={historico}
           produtos={produtosSemDatasheet}
+          porCategoria={porCategoria}
         />
       </div>
     </main>
