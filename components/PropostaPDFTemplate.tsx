@@ -2,6 +2,7 @@
 
 import { forwardRef } from 'react'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
+import { formatarCpfCnpj, formatarTelefone } from '@/lib/formatters'
 
 type Props = {
   projeto: any
@@ -71,8 +72,8 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
             <h3 style={estilos.cardTitulo}>Dados do Cliente</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', fontSize: 11 }}>
               <div><strong>Razão social:</strong><br />{projeto.cliente_razao_social}</div>
-              <div><strong>CPF/CNPJ:</strong><br />{projeto.cliente_cpf_cnpj || '—'}</div>
-              <div><strong>WhatsApp:</strong><br />{projeto.cliente_telefone || '—'}</div>
+              <div><strong>CPF/CNPJ:</strong><br />{projeto.cliente_cpf_cnpj ? formatarCpfCnpj(String(projeto.cliente_cpf_cnpj)) : '—'}</div>
+              <div><strong>WhatsApp:</strong><br />{projeto.cliente_telefone ? formatarTelefone(String(projeto.cliente_telefone)) : '—'}</div>
               <div><strong>UC geradora:</strong><br />{projeto.uc_geradora || '—'}</div>
               <div style={{ gridColumn: '1 / 3' }}>
                 <strong>Endereço:</strong><br />

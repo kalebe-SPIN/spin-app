@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { getInfoTipo, type TipoItem } from '@/lib/tipos-projeto'
+import { formatarCpfCnpj, formatarTelefone } from '@/lib/formatters'
 
 type Item = {
   id: string
@@ -516,10 +517,10 @@ function TemplatePdf({
         </div>
         <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{projeto.cliente_razao_social}</div>
         {projeto.cliente_cpf_cnpj && (
-          <div style={{ fontSize: '11px', color: '#6b7280' }}>CPF/CNPJ: {projeto.cliente_cpf_cnpj}</div>
+          <div style={{ fontSize: '11px', color: '#6b7280' }}>CPF/CNPJ: {formatarCpfCnpj(String(projeto.cliente_cpf_cnpj))}</div>
         )}
         {projeto.cliente_telefone && (
-          <div style={{ fontSize: '11px', color: '#6b7280' }}>WhatsApp: {projeto.cliente_telefone}</div>
+          <div style={{ fontSize: '11px', color: '#6b7280' }}>WhatsApp: {formatarTelefone(String(projeto.cliente_telefone))}</div>
         )}
       </div>
 
