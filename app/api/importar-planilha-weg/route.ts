@@ -309,6 +309,11 @@ function classificar(
     }
   }
 
+  // CONECTORES (MC4, kit conector CA/CC, terminais elétricos)
+  if (t.includes('conector') || /^mc4|^mc-4/i.test(nome)) {
+    return { categoria: 'conector', subcategoria: 'conector', fabricante: 'WEG', specs: { descricao: tipo } }
+  }
+
   // CABOS
   if (t.includes('cabo') || /^cabo/i.test(nome)) {
     const isCC = /cc|solar|fotov/i.test(tipo + ' ' + nome)
