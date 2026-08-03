@@ -378,24 +378,19 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
               <option style={OPT_STYLE} value="inversor">Inversores</option>
               <option style={OPT_STYLE} value="bateria">Baterias (BESS)</option>
             </optgroup>
-            <optgroup style={OPTGROUP_STYLE} label="Hibrido / BESS">
-              <option style={OPT_STYLE} value="controlador">Controlador (EMBOX)</option>
-              <option style={OPT_STYLE} value="multimedidor">Multimedidor (MMW03)</option>
-              <option style={OPT_STYLE} value="caixa_juncao">Caixa de juncao (JBW)</option>
-            </optgroup>
             <optgroup style={OPTGROUP_STYLE} label="Estrutura & CA">
               <option style={OPT_STYLE} value="estrutura">Estrutura</option>
               <option style={OPT_STYLE} value="cabo_cc">Cabos CC</option>
               <option style={OPT_STYLE} value="cabo_ca">Cabos CA</option>
-              <option style={OPT_STYLE} value="conector">Conectores</option>
-              <option style={OPT_STYLE} value="string_box">String box</option>
+              <option style={OPT_STYLE} value="conector">Conectores (MC4)</option>
+              <option style={OPT_STYLE} value="string_box">String Box (SB, JBW)</option>
               <option style={OPT_STYLE} value="disjuntor">Disjuntores</option>
               <option style={OPT_STYLE} value="dps">DPS</option>
               <option style={OPT_STYLE} value="eletroduto">Eletrodutos</option>
               <option style={OPT_STYLE} value="aterramento">Aterramento</option>
-              <option style={OPT_STYLE} value="quadro">Quadros</option>
-              <option style={OPT_STYLE} value="smart_meter">Smart meter</option>
-              <option style={OPT_STYLE} value="monitoramento">Monitoramento</option>
+              <option style={OPT_STYLE} value="quadro">Quadros (SmartGuard, TBW)</option>
+              <option style={OPT_STYLE} value="smart_meter">Smart Meter (MMW03, DTSU)</option>
+              <option style={OPT_STYLE} value="monitoramento">Monitoramento (EMBOX, Dongle)</option>
             </optgroup>
             <optgroup style={OPTGROUP_STYLE} label="Servicos">
               <option style={OPT_STYLE} value="mao_de_obra">Mao de obra</option>
