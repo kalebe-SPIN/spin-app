@@ -17,6 +17,7 @@ export async function PortalHeader() {
   const { modo, ehAdminReal, perfil } = await getModoVisualizacao()
 
   if (!perfil) return null // não logado — sem header
+  if (perfil.role === 'candidato') return null // candidato tem layout próprio em /vaga
 
   const modoAtivo = modo
 

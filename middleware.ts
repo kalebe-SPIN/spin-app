@@ -55,10 +55,19 @@ export async function middleware(request: NextRequest) {
     ]
     const ehRotaPrivada = rotasPrivadas.some((r) => pathname.startsWith(r))
 
+    // Área do candidato: /vaga/* é protegida, EXCETO /vaga/login
+    const ehAreaCandidato = pathname.startsWith('/vaga') && pathname !== '/vaga/login'
+
     // Não logado tentando acessar rota privada → manda pro login
     if (!user && ehRotaPrivada) {
       url.pathname = '/login'
       url.searchParams.set('redirect', pathname)
+      return NextResponse.redirect(url)
+    }
+
+    // Não logado na área do candidato → manda pro login do candidato
+    if (!user && ehAreaCandidato) {
+      url.pathname = '/vaga/login'
       return NextResponse.redirect(url)
     }
 

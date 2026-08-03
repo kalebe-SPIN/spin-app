@@ -65,6 +65,13 @@ export default async function AdminHomePage() {
             titulo="Usuários e permissões"
             desc="Convidar novos usuários por email, editar papéis, ativar/desativar acesso. Substitui o Supabase Studio."
           />
+          <AdminCard
+            href="/admin/vagas"
+            icon="🤝"
+            titulo="Convites de trabalho"
+            desc="Gerar acesso (login + senha) pra candidatos verem a proposta, assinarem o contrato e enviarem documentos. Acesso limitado a 2 entradas."
+            destaque
+          />
         </Grupo>
 
         {/* Grupo 2: Precificação e catálogo — estratégico */}
