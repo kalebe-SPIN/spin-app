@@ -105,6 +105,39 @@ export async function liberarAcessoAction(conviteId: string): Promise<{ sucesso:
   return { sucesso: true }
 }
 
+/** Aprova ou reprova um documento enviado pelo candidato. */
+export async function revisarDocumentoAction(
+  docId: string,
+  status: 'aprovado' | 'reprovado',
+  observacao?: string
+): Promise<{ sucesso: true } | { erro: string }> {
+  const check = await verificarAdmin()
+  if (!check.ok) return { erro: check.erro }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('documentos_candidato')
+    .update({ status, observacao: observacao?.trim() || null })
+    .eq('id', docId)
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/vagas')
+  return { sucesso: true }
+}
+
+/** Marca o onboarding do candidato como concluído. */
+export async function concluirOnboardingAction(conviteId: string): Promise<{ sucesso: true } | { erro: string }> {
+  const check = await verificarAdmin()
+  if (!check.ok) return { erro: check.erro }
+
+  const admin = createAdminClient()
+  const { error } = await admin.from('convites_trabalho').update({ status: 'concluido' }).eq('id', conviteId)
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/vagas')
+  return { sucesso: true }
+}
+
 /** Gera uma nova senha pro candidato (caso tenha perdido). */
 export async function redefinirSenhaCandidatoAction(
   conviteId: string

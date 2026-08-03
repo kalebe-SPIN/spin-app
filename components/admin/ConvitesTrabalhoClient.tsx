@@ -137,10 +137,10 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
               const expirado = c.bloqueado || c.entradas_usadas >= c.max_entradas
               return (
                 <div key={c.id} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
-                  <div className="flex-1 min-w-0">
+                  <a href={`/admin/vagas/${c.id}`} className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
                     <p className="text-white font-semibold">{c.nome_candidato}</p>
                     <p className="text-white/50 text-sm truncate">{c.email_candidato}{c.zona ? ` · ${c.zona}` : ''}</p>
-                  </div>
+                  </a>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${st.cor}`}>{st.txt}</span>
                     <span className={`text-xs px-2.5 py-1 rounded-full border ${expirado ? 'text-coral bg-coral/10 border-coral/25' : 'text-white/50 bg-white/5 border-white/10'}`}>
@@ -154,6 +154,9 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
                     <button onClick={() => redefinir(c.id)} disabled={pending} className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white/70 hover:bg-white/10 transition-colors disabled:opacity-50">
                       Redefinir senha
                     </button>
+                    <a href={`/admin/vagas/${c.id}`} className="text-xs px-3 py-1.5 bg-sol/15 border border-sol/40 text-sol rounded-lg hover:bg-sol/25 transition-colors">
+                      Detalhes →
+                    </a>
                   </div>
                 </div>
               )

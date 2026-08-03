@@ -1,6 +1,8 @@
 import { getConviteAtual } from '@/lib/convite'
 import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 import { AceitarPropostaBtn } from '@/components/vaga/AceitarPropostaBtn'
+import { BaixarPropostaPdf } from '@/components/vaga/BaixarPropostaPdf'
 
 /**
  * Apresentação da proposta de trabalho — /vaga/proposta
@@ -14,6 +16,13 @@ export default async function PropostaPage() {
   const jaAceita = ['proposta_aceita', 'contrato_assinado', 'docs_enviados', 'concluido'].includes(convite.status)
   const recusada = convite.status === 'recusado'
   const primeiroNome = convite.nome_candidato?.split(' ')[0] || ''
+
+  const supabase = createClient()
+  const { data: empresa } = await supabase
+    .from('configuracoes_empresa')
+    .select('razao_social, cnpj')
+    .eq('singleton', true)
+    .maybeSingle()
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">
@@ -39,6 +48,9 @@ export default async function PropostaPage() {
             Zona de atuação: <span className="text-white/70 font-semibold">{convite.zona}</span>
           </p>
         )}
+        <div className="mt-6">
+          <BaixarPropostaPdf nomeCandidato={convite.nome_candidato} empresa={empresa} />
+        </div>
       </header>
 
       {/* ===== A OPORTUNIDADE ===== */}
