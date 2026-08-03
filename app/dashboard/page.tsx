@@ -31,6 +31,9 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .single()
 
+  // Candidato não tem portal interno — vai pra própria área
+  if (profile?.role === 'candidato') redirect('/vaga')
+
   const { modo } = await getModoVisualizacao()
   const mostraAdmin = profile?.role === 'admin' && modo === 'admin'
 
