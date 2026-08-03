@@ -335,6 +335,8 @@ function ModalConvite({
   const [telefone, setTelefone] = useState('')
   const [role, setRole] = useState<Role>('representante')
   const [erroLocal, setErroLocal] = useState<string | null>(null)
+  const [linkGerado, setLinkGerado] = useState<{ email: string; telefone: string; link: string } | null>(null)
+  const [copiado, setCopiado] = useState(false)
 
   function handleConvidar() {
     setErroLocal(null)
@@ -351,14 +353,37 @@ function ModalConvite({
       if ('erro' in res) {
         setErroLocal(res.erro)
       } else {
-        onMsg({
-          tipo: 'sucesso',
-          texto: `✉️ Convite enviado pra ${email}. Se não chegar em 5min, use "🔗 Reenviar" no card do usuário pra gerar link manual e enviar pelo WhatsApp.`,
+        // Mostra o link gerado no próprio modal — email pode não chegar,
+        // WhatsApp SEMPRE funciona (fallback à prova de SMTP)
+        setLinkGerado({
+          email: email.trim(),
+          telefone: telefone.replace(/\D/g, ''),
+          link: res.link_acesso,
         })
-        onFechar()
         router.refresh()
       }
     })
+  }
+
+  async function copiarLink() {
+    if (!linkGerado) return
+    try { await navigator.clipboard.writeText(linkGerado.link); setCopiado(true); setTimeout(() => setCopiado(false), 2500) } catch {}
+  }
+
+  function abrirWhatsApp() {
+    if (!linkGerado) return
+    const tel = linkGerado.telefone
+    if (!tel || tel.length < 10) {
+      alert('Telefone não informado ou inválido. Copie o link e envie manualmente.')
+      return
+    }
+    const msg = `Oi ${nome.split(' ')[0]}! Aqui é da Spin Solar 👋\n\nVocê foi convidado(a) pro portal como *${role.replace('_', ' ')}*. Clique no link abaixo pra definir sua senha:\n\n${linkGerado.link}\n\nO link é único e vale por 24h. Qualquer dúvida, me chama!`
+    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, '_blank')
+  }
+
+  function encerrar() {
+    onMsg({ tipo: 'sucesso', texto: `✓ Usuário ${nome} criado. Link disponível no card dele em /admin/usuarios (botão 🔗 Reenviar).` })
+    onFechar()
   }
 
   return (
@@ -369,10 +394,61 @@ function ModalConvite({
           <button onClick={onFechar} className="text-white/60 hover:text-white text-xl">✕</button>
         </div>
 
+        {linkGerado ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-verde/10 border border-verde/30 rounded-lg text-center space-y-2">
+              <p className="text-3xl">✅</p>
+              <p className="text-sm font-bold text-verde">Usuário criado com sucesso</p>
+              <p className="text-xs text-white/60">
+                {nome} · {linkGerado.email} · {ROLES_INFO[role].label}
+              </p>
+            </div>
+
+            <div className="p-3 bg-sol/10 border border-sol/30 rounded-lg space-y-2">
+              <p className="text-xs font-bold text-sol">📮 Link de acesso gerado</p>
+              <p className="text-[10px] text-white/60 leading-relaxed">
+                O email <strong>pode não chegar</strong> se o SMTP não estiver configurado ou por spam.
+                <strong className="text-sol"> Use o WhatsApp abaixo</strong> — sempre funciona.
+              </p>
+              <div className="bg-noite border border-white/10 rounded p-2 max-h-16 overflow-y-auto">
+                <p className="text-[10px] text-white/50 font-mono break-all">{linkGerado.link}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={copiarLink}
+                className={`py-2.5 border rounded-lg text-xs font-bold transition ${
+                  copiado
+                    ? 'bg-verde/20 border-verde text-verde'
+                    : 'bg-white/5 border-white/20 text-white hover:bg-white/10'
+                }`}
+              >
+                {copiado ? '✓ Copiado' : '📋 Copiar link'}
+              </button>
+              <button
+                onClick={abrirWhatsApp}
+                disabled={!linkGerado.telefone || linkGerado.telefone.length < 10}
+                className="py-2.5 bg-[#25D366] text-white font-bold text-xs rounded-lg hover:bg-[#25D366]/90 disabled:opacity-40 transition"
+                title={!linkGerado.telefone ? 'Telefone não informado' : 'Abrir WhatsApp com mensagem pronta'}
+              >
+                📱 Enviar por WhatsApp
+              </button>
+            </div>
+
+            <button
+              onClick={encerrar}
+              className="w-full py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg hover:bg-white/10 transition"
+            >
+              Fechar
+            </button>
+          </div>
+        ) : (
+        <>
         <p className="text-xs text-white/60 leading-relaxed">
           O usuário receberá um email com link pra definir a própria senha e entrar.
-          <strong className="text-sol"> Se não receber</strong>, você pode gerar um link manual
-          depois (botão "🔗 Reenviar" no card) e enviar por WhatsApp.
+          <strong className="text-sol"> Se o email não chegar</strong>, um link pronto pra copiar/enviar
+          por WhatsApp aparece logo após clicar em "Enviar convite".
         </p>
 
         <div>
@@ -452,6 +528,8 @@ function ModalConvite({
             {pending ? 'Enviando...' : '✉️ Enviar convite'}
           </button>
         </div>
+        </>
+        )}
       </div>
     </div>
   )

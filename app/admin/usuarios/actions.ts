@@ -20,16 +20,18 @@ async function verificarAdmin(): Promise<{ ok: true } | { ok: false; erro: strin
 }
 
 /**
- * Convida novo usuário por email. Supabase envia link mágico — usuário clica,
- * define senha, entra. Já cria row em profiles via trigger handle_new_user.
- * Depois do convite, atualiza role escolhido pelo admin.
+ * Convida novo usuário. Estratégia dupla, à prova de SMTP quebrado:
+ * 1. Chama inviteUserByEmail — Supabase tenta enviar email
+ * 2. INDEPENDENTE se o email sai OU não, gera um link de acesso e devolve
+ *    pro admin copiar e mandar por WhatsApp
+ * Assim funciona mesmo com SMTP não configurado (limite 4/h no plano free).
  */
 export async function convidarUsuarioAction(input: {
   email: string
   nome_completo: string
   role: Role
   telefone?: string
-}): Promise<{ sucesso: true; user_id: string } | { erro: string }> {
+}): Promise<{ sucesso: true; user_id: string; link_acesso: string } | { erro: string }> {
   const check = await verificarAdmin()
   if (!check.ok) return { erro: check.erro }
 
@@ -39,19 +41,20 @@ export async function convidarUsuarioAction(input: {
   if (nome.length < 3) return { erro: 'Nome completo é obrigatório (mín 3 caracteres)' }
 
   const admin = createAdminClient()
+  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://app.spinsolar.com.br'}/definir-senha`
 
-  // 1. Convida — Supabase gera link mágico e envia por email
+  // 1. Convida — Supabase cria auth.user + trigger cria row em profiles + email é DISPARADO
+  //    (mas pode não chegar se SMTP não configurado / rate limitado / spam)
   const { data: convite, error: erroConvite } = await admin.auth.admin.inviteUserByEmail(email, {
     data: { nome_completo: nome, role: input.role },
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://app.spinsolar.com.br'}/definir-senha`,
+    redirectTo,
   })
 
   if (erroConvite || !convite?.user) {
-    return { erro: `Erro ao enviar convite: ${erroConvite?.message || 'sem detalhes'}` }
+    return { erro: `Erro ao criar usuário: ${erroConvite?.message || 'sem detalhes'}` }
   }
 
-  // 2. Trigger handle_new_user já criou row em profiles com role='colaborador' default.
-  //    Atualiza pro role escolhido + telefone.
+  // 2. Atualiza role + telefone (trigger criou com role='colaborador' default)
   const { error: erroUpdate } = await admin
     .from('profiles')
     .update({
@@ -63,11 +66,23 @@ export async function convidarUsuarioAction(input: {
     .eq('id', convite.user.id)
 
   if (erroUpdate) {
-    return { erro: `Convite enviado mas erro ao atualizar perfil: ${erroUpdate.message}` }
+    return { erro: `Usuário criado mas erro ao atualizar perfil: ${erroUpdate.message}` }
   }
 
+  // 3. Gera link de acesso INDEPENDENTE do email (fallback via WhatsApp)
+  //    Type 'recovery' funciona pra convite também — leva a /definir-senha
+  const { data: linkData } = await admin.auth.admin.generateLink({
+    type: 'recovery',
+    email,
+    options: { redirectTo },
+  })
+
   revalidatePath('/admin/usuarios')
-  return { sucesso: true, user_id: convite.user.id }
+  return {
+    sucesso: true,
+    user_id: convite.user.id,
+    link_acesso: linkData?.properties?.action_link || '',
+  }
 }
 
 /** Reenviar link de convite/definição de senha (se usuário perdeu o email). */
