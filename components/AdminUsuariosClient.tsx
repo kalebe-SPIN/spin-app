@@ -208,9 +208,25 @@ function LinhaUsuario({
       const res = await reenviarConviteAction(usuario.id)
       if ('erro' in res) {
         onMsg({ tipo: 'erro', texto: res.erro })
+        return
+      }
+      let copiado = false
+      try { await navigator.clipboard.writeText(res.link); copiado = true } catch {}
+      // Se tem telefone, abre WhatsApp direto — 1 clique a menos
+      const tel = usuario.telefone?.replace(/\D/g, '') || ''
+      if (tel.length >= 10) {
+        const primeiroNome = usuario.nome_completo.trim().split(' ')[0]
+        const msg = `Oi ${primeiroNome}! Aqui é da Spin Solar 👋\n\nGerei um novo link de acesso pro portal. Clique abaixo pra ${usuario.convite_pendente ? 'definir sua senha' : 'entrar / redefinir sua senha'}:\n\n${res.link}\n\nO link é único e vale por 24h.`
+        window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, '_blank')
+        onMsg({
+          tipo: 'sucesso',
+          texto: `✓ Link ${copiado ? 'copiado + ' : ''}WhatsApp aberto pra ${usuario.nome_completo}. Só clicar em enviar.`,
+        })
       } else {
-        try { await navigator.clipboard.writeText(res.link) } catch {}
-        onMsg({ tipo: 'sucesso', texto: `Link de acesso gerado e copiado pra área de transferência. Envie via WhatsApp pra ${usuario.nome_completo}.` })
+        onMsg({
+          tipo: 'sucesso',
+          texto: `✓ Link ${copiado ? 'copiado pra área de transferência. ' : 'gerado (falha ao copiar). '}Envie manualmente pra ${usuario.nome_completo} (sem telefone cadastrado).`,
+        })
       }
     })
   }
@@ -301,16 +317,22 @@ function LinhaUsuario({
 
         {/* Ações */}
         <div className="flex items-center gap-1 shrink-0">
-          {usuario.convite_pendente && (
-            <button
-              onClick={handleReenviarConvite}
-              disabled={pending}
-              title="Gerar novo link e copiar pra área de transferência"
-              className="px-2 py-1.5 text-xs text-sol bg-sol/10 border border-sol/30 rounded hover:bg-sol/20 disabled:opacity-40 transition"
-            >
-              🔗 Reenviar
-            </button>
-          )}
+          {/* Botão sempre visível — pra reenviar convite OU gerar link de reset
+              pra quem já acessou (esqueceu senha, mudou de dispositivo, etc). */}
+          <button
+            onClick={handleReenviarConvite}
+            disabled={pending}
+            title={usuario.convite_pendente
+              ? 'Gerar novo link de convite e copiar pra área de transferência'
+              : 'Gerar link de reset de senha e copiar pra área de transferência'}
+            className={`px-2 py-1.5 text-xs rounded border transition disabled:opacity-40 ${
+              usuario.convite_pendente
+                ? 'text-sol bg-sol/10 border-sol/30 hover:bg-sol/20'
+                : 'text-weg-azul bg-weg-azul/10 border-weg-azul/30 hover:bg-weg-azul/20'
+            }`}
+          >
+            {usuario.convite_pendente ? '🔗 Reenviar convite' : '🔗 Novo link'}
+          </button>
           <button
             onClick={handleToggleAtivo}
             disabled={pending || ehVoceMesmo}
