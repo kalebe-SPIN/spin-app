@@ -15,10 +15,13 @@ export function PropostaConteudo({
   nomeCandidato,
   zona,
   empresa,
+  podeBaixarPdf = false,
 }: {
   nomeCandidato: string
   zona?: string | null
   empresa?: { razao_social?: string | null; cnpj?: string | null } | null
+  /** PDF da proposta só libera depois do contrato assinado. */
+  podeBaixarPdf?: boolean
 }) {
   const primeiroNome = nomeCandidato?.split(' ')[0] || ''
 
@@ -47,7 +50,13 @@ export function PropostaConteudo({
           </p>
         )}
         <div className="mt-6">
-          <BaixarPropostaPdf nomeCandidato={nomeCandidato} empresa={empresa} />
+          {podeBaixarPdf ? (
+            <BaixarPropostaPdf nomeCandidato={nomeCandidato} empresa={empresa} />
+          ) : (
+            <p className="inline-flex items-center gap-2 text-sm text-white/40">
+              🔒 O PDF da proposta fica disponível para download após a assinatura do contrato.
+            </p>
+          )}
         </div>
       </header>
 
