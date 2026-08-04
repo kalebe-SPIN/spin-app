@@ -34,12 +34,20 @@ export default async function AdminVagasPage() {
         <nav className="mb-6">
           <Link href="/admin" className="text-sm text-white/50 hover:text-sol transition-colors">← Voltar ao admin</Link>
         </nav>
-        <header className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-black text-white">🤝 Convites de trabalho</h1>
-          <p className="text-white/60 mt-1 text-sm">
-            Gere o acesso do candidato. Ele entra em <span className="text-sol">app.spinsolar.com.br/vaga/login</span>,
-            lê a proposta, assina o contrato e envia os documentos. O login funciona só 2 vezes e depois expira.
-          </p>
+        <header className="mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black text-white">🤝 Convites de trabalho</h1>
+            <p className="text-white/60 mt-1 text-sm">
+              Gere o acesso do candidato. Ele entra em <span className="text-sol">app.spinsolar.com.br/vaga/login</span>,
+              lê a proposta, assina o contrato e envia os documentos. O login funciona só 2 vezes e depois expira.
+            </p>
+          </div>
+          <Link
+            href="/admin/vagas/previa"
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 bg-sol/15 border border-sol/40 text-sol font-semibold rounded-lg hover:bg-sol/25 transition-colors whitespace-nowrap"
+          >
+            👁 Ver a página do candidato
+          </Link>
         </header>
 
         <ConvitesTrabalhoClient convites={convites || []} />
