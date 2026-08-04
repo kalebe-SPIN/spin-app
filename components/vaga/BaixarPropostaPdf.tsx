@@ -2,9 +2,13 @@
 
 import { useRef, useState } from 'react'
 import {
-  FIXO_MENSAL, GARANTIA_INICIO, MULTIPLICADOR_LABEL, COMISSAO_FAIXAS,
+  FIXO_MENSAL, GARANTIA_ESCALONADA, MULTIPLICADOR_LABEL, COMISSAO_FAIXAS,
   PROJECAO, METAS, MODULOS_MIN,
 } from '@/lib/proposta-om'
+
+const rampaGarantido = GARANTIA_ESCALONADA
+  .map((g) => `Mês ${g.mes} R$ ${g.valor.toLocaleString('pt-BR')}`)
+  .join(' · ')
 
 const brl = (n: number) => `R$ ${n.toLocaleString('pt-BR')}`
 
@@ -146,9 +150,10 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
       <section style={P}>
         <h2 style={H2}>Remuneração</h2>
         <p style={TXT}>
-          <strong>Fixo mensal de {brl(FIXO_MENSAL)}</strong> (vinculado à meta de atividade) +{' '}
-          <strong>garantia de {brl(GARANTIA_INICIO)}/mês nos 3 primeiros meses</strong>, independente de resultado.
-          Construir carteira leva de 60 a 90 dias — a SPIN banca esse período.
+          <strong>Fixo mensal de {brl(FIXO_MENSAL)}, sempre pago pelo trabalho de base.</strong> Nos 3 primeiros
+          meses, um piso garantido crescente — <strong>{rampaGarantido}</strong> — seu independente do resultado.
+          Depois desse período, o fixo de {brl(FIXO_MENSAL)} continua todo mês pelo mesmo motivo: você nunca fica
+          sem piso. Construir carteira leva de 60 a 90 dias, e a SPIN banca esse período.
         </p>
 
         <p style={{ ...TXT, fontWeight: 700, color: '#0B0F1A', margin: '18px 0 8px' }}>Comissão escalonada</p>

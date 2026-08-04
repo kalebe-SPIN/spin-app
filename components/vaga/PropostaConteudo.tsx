@@ -1,6 +1,6 @@
 import { BaixarPropostaPdf } from '@/components/vaga/BaixarPropostaPdf'
 import {
-  FIXO_MENSAL, GARANTIA_INICIO, MULTIPLICADOR_LABEL, COMISSAO_FAIXAS,
+  FIXO_MENSAL, GARANTIA_ESCALONADA, MULTIPLICADOR_LABEL, COMISSAO_FAIXAS,
   PROJECAO, METAS, EXTRAS, REGIME_FAIXA_LABEL, MODULOS_MIN,
 } from '@/lib/proposta-om'
 
@@ -124,12 +124,32 @@ export function PropostaConteudo({
       {/* ===== REMUNERAÇÃO ===== */}
       <Secao titulo="Remuneração" numero="04">
         <div className="grid sm:grid-cols-2 gap-4 mb-6">
-          <Card destaque titulo="Fixo mensal" valor={brl(FIXO_MENSAL)} sub="vinculado à meta de atividade do mês" />
-          <Card destaque titulo="Garantia de início" valor={`${brl(GARANTIA_INICIO)}/mês`} sub="nos 3 primeiros meses, independente de resultado" />
+          <Card destaque titulo="Fixo mensal" valor={brl(FIXO_MENSAL)} sub="sempre pago pelo trabalho de base, todo mês" />
+          <Card destaque titulo="Garantido de início" valor="3 meses" sub="piso crescente enquanto você monta sua carteira" />
         </div>
+
+        {/* Escadinha do garantido + ênfase de que o piso é sempre pago pelo trabalho de base */}
+        <div className="p-5 md:p-6 bg-sol/[0.08] border border-sol/30 rounded-2xl mb-6">
+          <p className="text-sol font-bold mb-4">Seu piso garantido nos 3 primeiros meses</p>
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            {GARANTIA_ESCALONADA.map((g) => (
+              <div key={g.mes} className="text-center p-3 bg-white/[0.04] border border-white/10 rounded-xl">
+                <p className="text-[11px] text-white/50 uppercase tracking-wider mb-1">Mês {g.mes}</p>
+                <p className="text-xl md:text-2xl font-black text-white">{brl(g.valor)}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-white/80 text-sm md:text-base leading-relaxed">
+            <strong className="text-white">Esse valor é seu pelo trabalho de base</strong> — cai na conta
+            independente do resultado. E <strong className="text-white">depois dos 3 meses, o fixo de {brl(FIXO_MENSAL)} continua
+            sendo pago todo mês</strong> pelo mesmo motivo: manter a base viva.{' '}
+            <strong className="text-sol">Você nunca fica sem piso.</strong>
+          </p>
+        </div>
+
         <p className="text-sm text-white/55 leading-relaxed mb-8">
-          Construir carteira nesse mercado leva de 60 a 90 dias. A SPIN banca esse período — é a nossa aposta
-          em você, não um risco que jogamos no seu colo.
+          A escadinha cresce conforme você mostra comprometimento e entrega a meta com excelência — e abre
+          espaço pra renovarmos esse apoio. Construir carteira leva de 60 a 90 dias, e a SPIN banca esse período.
         </p>
 
         <h4 className="text-white font-bold mb-3">Comissão escalonada</h4>

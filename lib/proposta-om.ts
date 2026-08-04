@@ -10,8 +10,16 @@
 
 // Base fixa
 export const FIXO_MENSAL = 2000
-export const GARANTIA_INICIO = 4000
 export const MESES_GARANTIA = 3
+
+// Garantido de início — escadinha crescente nos 3 primeiros meses.
+// Premia comprometimento/entrega e sinaliza valorização. É piso pelo
+// trabalho de base; depois dos 3 meses o FIXO_MENSAL segue sendo pago.
+export const GARANTIA_ESCALONADA: { mes: number; valor: number }[] = [
+  { mes: 1, valor: 3000 },
+  { mes: 2, valor: 3500 },
+  { mes: 3, valor: 4000 },
+]
 
 // Multiplicador de prospecção (cliente que o rep caçou)
 export const MULTIPLICADOR_PROSPECCAO = 1.3
@@ -30,7 +38,7 @@ export const COMISSAO_FAIXAS: { faixa: string; pct: string }[] = [
 
 // Projeção de ganhos (teto ~R$ 12k total no regime)
 export const PROJECAO: { fase: string; faturamento: string; remuneracao: string }[] = [
-  { fase: 'Meses 1 a 3', faturamento: 'em construção', remuneracao: 'R$ 4.000 garantidos' },
+  { fase: 'Meses 1 a 3', faturamento: 'em construção', remuneracao: 'R$ 3.000 a 4.000 garantidos' },
   { fase: 'Meses 4 a 6', faturamento: 'R$ 35–45 mil', remuneracao: 'R$ 4.500 a 6.000' },
   { fase: 'Regime (mês 7+)', faturamento: 'R$ 60–80 mil', remuneracao: 'R$ 8.000 a 12.000' },
 ]
