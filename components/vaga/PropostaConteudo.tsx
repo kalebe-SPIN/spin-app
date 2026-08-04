@@ -1,4 +1,10 @@
 import { BaixarPropostaPdf } from '@/components/vaga/BaixarPropostaPdf'
+import {
+  FIXO_MENSAL, GARANTIA_INICIO, MULTIPLICADOR_LABEL, COMISSAO_FAIXAS,
+  PROJECAO, METAS, EXTRAS, REGIME_FAIXA_LABEL, MODULOS_MIN,
+} from '@/lib/proposta-om'
+
+const brl = (n: number) => `R$ ${n.toLocaleString('pt-BR')}`
 
 /**
  * Conteúdo apresentacional da proposta de trabalho (Representante Comercial O&M).
@@ -93,6 +99,7 @@ export function PropostaConteudo({
             ['Leads de campanha', 'Tráfego pago rodando, leads chegando'],
             ['App SPIN', 'CRM, calculadora, gerador de proposta em PDF — tudo no celular'],
             ['Proposta automática', 'O sistema calcula preço, prazo e quanto o cliente perde'],
+            ['Painel de controle', 'Suas atividades, resultados de vendas e agenda — tudo em tempo real, no seu login'],
             ['Equipe de campo', 'Técnicos próprios — você não executa nada'],
             ['Protocolo de trabalho', 'Método testado, não é "se vira aí"'],
             ['Trabalho remoto', 'Sem deslocamento, sem escritório, sem custo seu'],
@@ -108,8 +115,8 @@ export function PropostaConteudo({
       {/* ===== REMUNERAÇÃO ===== */}
       <Secao titulo="Remuneração" numero="04">
         <div className="grid sm:grid-cols-2 gap-4 mb-6">
-          <Card destaque titulo="Fixo mensal" valor="R$ 2.000" sub="vinculado à meta de atividade do mês" />
-          <Card destaque titulo="Garantia de início" valor="R$ 5.000/mês" sub="nos 3 primeiros meses, independente de resultado" />
+          <Card destaque titulo="Fixo mensal" valor={brl(FIXO_MENSAL)} sub="vinculado à meta de atividade do mês" />
+          <Card destaque titulo="Garantia de início" valor={`${brl(GARANTIA_INICIO)}/mês`} sub="nos 3 primeiros meses, independente de resultado" />
         </div>
         <p className="text-sm text-white/55 leading-relaxed mb-8">
           Construir carteira nesse mercado leva de 60 a 90 dias. A SPIN banca esse período — é a nossa aposta
@@ -130,16 +137,10 @@ export function PropostaConteudo({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {[
-                ['até R$ 15.000', '—'],
-                ['R$ 15.001 a 30.000', '10%'],
-                ['R$ 30.001 a 50.000', '13%'],
-                ['R$ 50.001 a 80.000', '16%'],
-                ['acima de R$ 80.000', '18%'],
-              ].map(([faixa, com], i) => (
+              {COMISSAO_FAIXAS.map((f, i) => (
                 <tr key={i} className="text-white/75">
-                  <td className="px-4 py-3">{faixa}</td>
-                  <td className="px-4 py-3 text-right font-bold text-sol">{com}</td>
+                  <td className="px-4 py-3">{f.faixa}</td>
+                  <td className="px-4 py-3 text-right font-bold text-sol">{f.pct}</td>
                 </tr>
               ))}
             </tbody>
@@ -147,24 +148,19 @@ export function PropostaConteudo({
         </div>
 
         <div className="p-5 bg-sol/[0.06] border border-sol/25 rounded-xl mb-8">
-          <p className="text-sol font-bold mb-1">Multiplicador de prospecção · 1,6×</p>
+          <p className="text-sol font-bold mb-1">Multiplicador de prospecção · {MULTIPLICADOR_LABEL}</p>
           <p className="text-white/65 text-sm leading-relaxed">
-            Cliente que <strong className="text-white">você</strong> encontrou e trouxe vale 1,6× a comissão
-            normal. Quem farma a base recebe menos. Quem caça recebe mais.
+            Cliente que <strong className="text-white">você</strong> encontrou e trouxe vale {MULTIPLICADOR_LABEL} a
+            comissão normal. Quem farma a base recebe menos. Quem caça recebe mais.
           </p>
         </div>
 
         <h4 className="text-white font-bold mb-3">Extras</h4>
         <div className="grid gap-2 mb-8">
-          {[
-            ['Contrato recorrente assinado', 'R$ 150 residencial · R$ 500 comercial · R$ 1.200 usina'],
-            ['Prêmio de upsell (termografia, laudo, reaperto)', '15% a 30% do valor'],
-            ['Carteira própria ativa', 'R$ 500 (10) · R$ 1.500 (25) · R$ 4.000 (50) · R$ 10.000 (100)'],
-            ['Indicação para o time de solar', '0,5% do projeto fechado'],
-          ].map(([t, v], i) => (
+          {EXTRAS.map((e, i) => (
             <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-4 py-3 bg-white/[0.03] border border-white/10 rounded-lg">
-              <span className="text-white/70 text-sm">{t}</span>
-              <span className="text-white font-semibold text-sm">{v}</span>
+              <span className="text-white/70 text-sm">{e.item}</span>
+              <span className="text-white font-semibold text-sm">{e.valor}</span>
             </div>
           ))}
         </div>
@@ -190,15 +186,11 @@ export function PropostaConteudo({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {[
-                ['Meses 1 a 3', 'em construção', 'R$ 5.000 garantidos'],
-                ['Meses 4 a 6', 'R$ 35–45 mil', 'R$ 6.000 a 8.000'],
-                ['Regime (mês 7+)', 'R$ 60–77 mil', 'R$ 11.000 a 16.000'],
-              ].map(([fase, fat, rem], i) => (
+              {PROJECAO.map((p, i) => (
                 <tr key={i} className="text-white/75">
-                  <td className="px-4 py-3 font-semibold text-white">{fase}</td>
-                  <td className="px-4 py-3">{fat}</td>
-                  <td className="px-4 py-3 text-right font-bold text-sol">{rem}</td>
+                  <td className="px-4 py-3 font-semibold text-white">{p.fase}</td>
+                  <td className="px-4 py-3">{p.faturamento}</td>
+                  <td className="px-4 py-3 text-right font-bold text-sol">{p.remuneracao}</td>
                 </tr>
               ))}
             </tbody>
@@ -216,9 +208,9 @@ export function PropostaConteudo({
         </p>
         <div className="grid grid-cols-3 gap-3 mb-4">
           {[
-            ['176', 'Telhados mapeados / mês'],
-            ['66', 'Conversas com decisor / mês'],
-            ['33', 'Propostas enviadas / mês'],
+            [String(METAS.telhados), `Telhados ≥ ${MODULOS_MIN} módulos / mês`],
+            [String(METAS.conversas), 'Conversas com decisor / mês'],
+            [String(METAS.propostas), 'Propostas enviadas / mês'],
           ].map(([n, l], i) => (
             <div key={i} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl text-center">
               <p className="text-2xl md:text-3xl font-black text-sol">{n}</p>
@@ -251,7 +243,7 @@ export function PropostaConteudo({
           </div>
         </div>
         <p className="mt-5 text-sm text-white/55 leading-relaxed">
-          A projeção de R$ 11.000 a 16.000 em regime já considera isso — é remuneração líquida bem acima do
+          A projeção de {REGIME_FAIXA_LABEL} em regime já considera isso — é remuneração líquida bem acima do
           que a função paga em carteira na região.
         </p>
       </Secao>

@@ -1,6 +1,12 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import {
+  FIXO_MENSAL, GARANTIA_INICIO, MULTIPLICADOR_LABEL, COMISSAO_FAIXAS,
+  PROJECAO, METAS, MODULOS_MIN,
+} from '@/lib/proposta-om'
+
+const brl = (n: number) => `R$ ${n.toLocaleString('pt-BR')}`
 
 /**
  * Botão + template A4 (branco) da proposta de trabalho O&M.
@@ -130,8 +136,8 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
         <h2 style={{ ...H2, marginTop: 24 }}>O que a SPIN entrega</h2>
         <p style={TXT}>
           Lista de alvos (ANEEL filtrada), base própria de clientes já instalados, leads de campanha, app com
-          CRM e proposta automática, equipe de campo própria e protocolo de trabalho testado. Trabalho remoto,
-          sem custo seu.
+          CRM e proposta automática, <strong>painel de controle com suas atividades, resultados de vendas e
+          agenda</strong>, equipe de campo própria e protocolo de trabalho testado. Trabalho remoto, sem custo seu.
         </p>
         <Rodape />
       </section>
@@ -140,9 +146,9 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
       <section style={P}>
         <h2 style={H2}>Remuneração</h2>
         <p style={TXT}>
-          <strong>Fixo mensal de R$ 2.000</strong> (vinculado à meta de atividade) +{' '}
-          <strong>garantia de R$ 5.000/mês nos 3 primeiros meses</strong>, independente de resultado. Construir
-          carteira leva de 60 a 90 dias — a SPIN banca esse período.
+          <strong>Fixo mensal de {brl(FIXO_MENSAL)}</strong> (vinculado à meta de atividade) +{' '}
+          <strong>garantia de {brl(GARANTIA_INICIO)}/mês nos 3 primeiros meses</strong>, independente de resultado.
+          Construir carteira leva de 60 a 90 dias — a SPIN banca esse período.
         </p>
 
         <p style={{ ...TXT, fontWeight: 700, color: '#0B0F1A', margin: '18px 0 8px' }}>Comissão escalonada</p>
@@ -150,15 +156,15 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
         <table style={{ width: '100%', borderCollapse: 'collapse', margin: '0 0 18px' }}>
           <thead><tr><th style={TH}>Faturamento no mês</th><th style={{ ...TH, textAlign: 'right' }}>Comissão</th></tr></thead>
           <tbody>
-            {[['até R$ 15.000', '—'], ['R$ 15.001 a 30.000', '10%'], ['R$ 30.001 a 50.000', '13%'], ['R$ 50.001 a 80.000', '16%'], ['acima de R$ 80.000', '18%']].map((r, i) => (
-              <tr key={i}><td style={TD}>{r[0]}</td><td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#0B0F1A' }}>{r[1]}</td></tr>
+            {COMISSAO_FAIXAS.map((f, i) => (
+              <tr key={i}><td style={TD}>{f.faixa}</td><td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#0B0F1A' }}>{f.pct}</td></tr>
             ))}
           </tbody>
         </table>
 
         <p style={TXT}>
-          <strong>Multiplicador de prospecção 1,6×:</strong> cliente que você encontrou e trouxe vale 1,6× a
-          comissão normal. Quem caça recebe mais.
+          <strong>Multiplicador de prospecção {MULTIPLICADOR_LABEL}:</strong> cliente que você encontrou e trouxe
+          vale {MULTIPLICADOR_LABEL} a comissão normal. Quem caça recebe mais.
         </p>
         <p style={TXT}>
           <strong>Extras:</strong> bônus por contrato recorrente (R$ 150 residencial · R$ 500 comercial ·
@@ -174,8 +180,8 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr><th style={TH}>Fase</th><th style={TH}>Faturamento gerado</th><th style={{ ...TH, textAlign: 'right' }}>Sua remuneração</th></tr></thead>
           <tbody>
-            {[['Meses 1 a 3', 'em construção', 'R$ 5.000 garantidos'], ['Meses 4 a 6', 'R$ 35–45 mil', 'R$ 6.000 a 8.000'], ['Regime (mês 7+)', 'R$ 60–77 mil', 'R$ 11.000 a 16.000']].map((r, i) => (
-              <tr key={i}><td style={{ ...TD, fontWeight: 700, color: '#0B0F1A' }}>{r[0]}</td><td style={TD}>{r[1]}</td><td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: SOL }}>{r[2]}</td></tr>
+            {PROJECAO.map((p, i) => (
+              <tr key={i}><td style={{ ...TD, fontWeight: 700, color: '#0B0F1A' }}>{p.fase}</td><td style={TD}>{p.faturamento}</td><td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: SOL }}>{p.remuneracao}</td></tr>
             ))}
           </tbody>
         </table>
@@ -200,9 +206,10 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
 
         <h2 style={{ ...H2, marginTop: 24 }}>O que esperamos</h2>
         <p style={TXT}>
-          Meta de atividade (não de sorte), por mês: <strong>176 telhados mapeados</strong>,{' '}
-          <strong>66 conversas com decisor</strong> e <strong>33 propostas enviadas</strong>. Rampa de 60% no
-          mês 1, 80% no mês 2 e 100% a partir do mês 3.
+          Meta de atividade (não de sorte), por mês: <strong>{METAS.telhados} telhados com ≥ {MODULOS_MIN} módulos
+          mapeados</strong>, <strong>{METAS.conversas} conversas com decisor</strong> e{' '}
+          <strong>{METAS.propostas} propostas enviadas</strong>. Rampa de 60% no mês 1, 80% no mês 2 e 100% a
+          partir do mês 3.
         </p>
 
         <div style={{ marginTop: 24, padding: 20, background: '#FFF8E6', border: `1px solid ${SOL}`, borderRadius: 12 }}>
