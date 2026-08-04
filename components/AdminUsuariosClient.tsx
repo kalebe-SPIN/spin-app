@@ -22,13 +22,20 @@ type Usuario = {
   convite_pendente: boolean
 }
 
-const ROLES_INFO: Record<Role, { label: string; emoji: string; cor: string; bg: string }> = {
+type RoleInfo = { label: string; emoji: string; cor: string; bg: string }
+
+const ROLES_INFO: Record<Role, RoleInfo> = {
   admin:              { label: 'Admin',              emoji: '👑', cor: 'text-sol',      bg: 'bg-sol/10 border-sol/30' },
   representante:      { label: 'Representante',      emoji: '🤝', cor: 'text-weg-azul', bg: 'bg-weg-azul/10 border-weg-azul/30' },
   instalador:         { label: 'Instalador',         emoji: '🔧', cor: 'text-verde',    bg: 'bg-verde/10 border-verde/30' },
   colaborador:        { label: 'Colaborador',        emoji: '👤', cor: 'text-white/70', bg: 'bg-white/10 border-white/20' },
   vendedor_servicos:  { label: 'Vendedor Serviços',  emoji: '📞', cor: 'text-coral',    bg: 'bg-coral/10 border-coral/30' },
 }
+
+/** Fallback pra role desconhecido — evita crash "Cannot read 'bg' of undefined"
+ *  se banco tiver algum role fora do enum previsto (ex: valor legacy, typo em UPDATE manual). */
+const ROLE_FALLBACK: RoleInfo = { label: '(desconhecido)', emoji: '❓', cor: 'text-white/50', bg: 'bg-white/5 border-white/10' }
+const infoDo = (r: string | null | undefined): RoleInfo => (r && (ROLES_INFO as Record<string, RoleInfo>)[r]) || ROLE_FALLBACK
 
 export function AdminUsuariosClient({ usuarios, meuId }: { usuarios: Usuario[]; meuId: string }) {
   const [busca, setBusca] = useState('')
@@ -168,7 +175,7 @@ function LinhaUsuario({
   const [pending, startTransition] = useTransition()
   const [editando, setEditando] = useState(false)
   const [novoRole, setNovoRole] = useState<Role>(usuario.role)
-  const info = ROLES_INFO[usuario.role]
+  const info = infoDo(usuario.role)
 
   function handleSalvarRole() {
     if (novoRole === usuario.role) { setEditando(false); return }
@@ -177,7 +184,7 @@ function LinhaUsuario({
       if ('erro' in res) {
         onMsg({ tipo: 'erro', texto: res.erro })
       } else {
-        onMsg({ tipo: 'sucesso', texto: `Role de ${usuario.nome_completo} atualizado pra ${ROLES_INFO[novoRole].label}` })
+        onMsg({ tipo: 'sucesso', texto: `Role de ${usuario.nome_completo} atualizado pra ${infoDo(novoRole).label}` })
         setEditando(false)
         router.refresh()
       }
@@ -400,7 +407,7 @@ function ModalConvite({
               <p className="text-3xl">✅</p>
               <p className="text-sm font-bold text-verde">Usuário criado com sucesso</p>
               <p className="text-xs text-white/60">
-                {nome} · {linkGerado.email} · {ROLES_INFO[role].label}
+                {nome} · {linkGerado.email} · {infoDo(role).label}
               </p>
             </div>
 
