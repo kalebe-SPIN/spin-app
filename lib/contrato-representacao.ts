@@ -7,9 +7,19 @@
  * digital aqui vale como assinatura eletrônica simples (MP 2.200-2, Lei 14.063/20)
  * — uma trilha de auditoria (nome, CPF, IP, data/hora, hash do documento).
  *
- * Os valores comerciais abaixo vêm da proposta enviada — não invente novos.
+ * Os valores comerciais vêm de lib/proposta-om.ts (fonte única) — não invente novos.
  */
+import {
+  FIXO_MENSAL, GARANTIA_INICIO, MESES_GARANTIA, MULTIPLICADOR_LABEL, COMISSAO_FAIXAS,
+} from '@/lib/proposta-om'
+
 export const CONTRATO_VERSAO = 'v1'
+
+const brl2 = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+
+const faixasContrato = COMISSAO_FAIXAS
+  .map((f) => `     - ${f.faixa}: ${f.pct === '—' ? 'sem comissão' : f.pct};`)
+  .join('\n')
 
 export function montarContrato(dados: {
   nomeCandidato: string
@@ -41,15 +51,11 @@ CLÁUSULA 2 — ZONA DE ATUAÇÃO
 A representação será exercida na zona: ${zona}. Cliente prospectado pelo REPRESENTANTE fica vinculado a ele pelo prazo de 24 (vinte e quatro) meses (titularidade), gerando comissão sobre toda limpeza realizada nesse período, inclusive as recorrentes de contrato.
 
 CLÁUSULA 3 — REMUNERAÇÃO
-3.1. Fixo mensal de R$ 2.000,00, vinculado ao cumprimento da meta de atividade do mês.
-3.2. Garantia de início: R$ 5.000,00/mês nos 3 (três) primeiros meses, independentemente de resultado.
+3.1. Fixo mensal de ${brl2(FIXO_MENSAL)}, vinculado ao cumprimento da meta de atividade do mês.
+3.2. Garantia de início: ${brl2(GARANTIA_INICIO)}/mês nos ${MESES_GARANTIA} (três) primeiros meses, independentemente de resultado.
 3.3. Comissão escalonada sobre o faturamento RECEBIDO no mês, incidindo cada faixa apenas sobre a parcela nela contida:
-     - até R$ 15.000: sem comissão;
-     - R$ 15.001 a 30.000: 10%;
-     - R$ 30.001 a 50.000: 13%;
-     - R$ 50.001 a 80.000: 16%;
-     - acima de R$ 80.000: 18%.
-3.4. Multiplicador de prospecção: cliente encontrado e trazido pelo REPRESENTANTE gera comissão de 1,6× a normal.
+${faixasContrato}
+3.4. Multiplicador de prospecção: cliente encontrado e trazido pelo REPRESENTANTE gera comissão de ${MULTIPLICADOR_LABEL} a normal.
 3.5. Extras: bônus por contrato recorrente assinado (R$ 150 residencial, R$ 500 comercial, R$ 1.200 usina), prêmio de upsell (15% a 30%), bônus de carteira própria ativa e 0,5% por indicação fechada ao time de solar.
 
 CLÁUSULA 4 — METAS DE ATIVIDADE
