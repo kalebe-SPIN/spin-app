@@ -210,22 +210,31 @@ function LinhaUsuario({
         onMsg({ tipo: 'erro', texto: res.erro })
         return
       }
+      const credsTexto = `Login: ${res.email}\nSenha temporária: ${res.senha_temp}`
       let copiado = false
-      try { await navigator.clipboard.writeText(res.link); copiado = true } catch {}
-      // Se tem telefone, abre WhatsApp direto — 1 clique a menos
+      try { await navigator.clipboard.writeText(credsTexto); copiado = true } catch {}
+
       const tel = usuario.telefone?.replace(/\D/g, '') || ''
       if (tel.length >= 10) {
         const primeiroNome = usuario.nome_completo.trim().split(' ')[0]
-        const msg = `Oi ${primeiroNome}! Aqui é da Spin Solar 👋\n\nGerei um novo link de acesso pro portal. Clique abaixo pra ${usuario.convite_pendente ? 'definir sua senha' : 'entrar / redefinir sua senha'}:\n\n${res.link}\n\nO link é único e vale por 24h.`
+        const msg = `Oi ${primeiroNome}! Aqui é da Spin Solar 👋
+
+Sua senha foi redefinida. Use pra entrar:
+
+🔗 *Portal:* https://app.spinsolar.com.br/login
+📧 *Login:* ${res.email}
+🔑 *Senha temporária:* ${res.senha_temp}
+
+Ao entrar o sistema pede pra trocar por uma senha só sua.`
         window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, '_blank')
         onMsg({
           tipo: 'sucesso',
-          texto: `✓ Link ${copiado ? 'copiado + ' : ''}WhatsApp aberto pra ${usuario.nome_completo}. Só clicar em enviar.`,
+          texto: `✓ WhatsApp aberto pra ${usuario.nome_completo} com senha temp ${copiado ? '(também copiada)' : ''}. Só apertar Enviar.`,
         })
       } else {
         onMsg({
           tipo: 'sucesso',
-          texto: `✓ Link ${copiado ? 'copiado pra área de transferência. ' : 'gerado (falha ao copiar). '}Envie manualmente pra ${usuario.nome_completo} (sem telefone cadastrado).`,
+          texto: `✓ Nova senha gerada: ${res.senha_temp} ${copiado ? '(copiada)' : ''}. Envie manualmente pra ${usuario.nome_completo}.`,
         })
       }
     })
@@ -364,7 +373,7 @@ function ModalConvite({
   const [telefone, setTelefone] = useState('')
   const [role, setRole] = useState<Role>('representante')
   const [erroLocal, setErroLocal] = useState<string | null>(null)
-  const [linkGerado, setLinkGerado] = useState<{ email: string; telefone: string; link: string } | null>(null)
+  const [credenciais, setCredenciais] = useState<{ email: string; senha_temp: string; telefone: string } | null>(null)
   const [copiado, setCopiado] = useState(false)
 
   function handleConvidar() {
@@ -382,36 +391,44 @@ function ModalConvite({
       if ('erro' in res) {
         setErroLocal(res.erro)
       } else {
-        // Mostra o link gerado no próprio modal — email pode não chegar,
-        // WhatsApp SEMPRE funciona (fallback à prova de SMTP)
-        setLinkGerado({
-          email: email.trim(),
+        setCredenciais({
+          email: res.email,
+          senha_temp: res.senha_temp,
           telefone: telefone.replace(/\D/g, ''),
-          link: res.link_acesso,
         })
         router.refresh()
       }
     })
   }
 
-  async function copiarLink() {
-    if (!linkGerado) return
-    try { await navigator.clipboard.writeText(linkGerado.link); setCopiado(true); setTimeout(() => setCopiado(false), 2500) } catch {}
+  async function copiarCredenciais() {
+    if (!credenciais) return
+    const texto = `Login: ${credenciais.email}\nSenha temporária: ${credenciais.senha_temp}`
+    try { await navigator.clipboard.writeText(texto); setCopiado(true); setTimeout(() => setCopiado(false), 2500) } catch {}
   }
 
   function abrirWhatsApp() {
-    if (!linkGerado) return
-    const tel = linkGerado.telefone
+    if (!credenciais) return
+    const tel = credenciais.telefone
     if (!tel || tel.length < 10) {
-      alert('Telefone não informado ou inválido. Copie o link e envie manualmente.')
+      alert('Telefone não informado ou inválido. Copie as credenciais e envie manualmente.')
       return
     }
-    const msg = `Oi ${nome.split(' ')[0]}! Aqui é da Spin Solar 👋\n\nVocê foi convidado(a) pro portal como *${role.replace('_', ' ')}*. Clique no link abaixo pra definir sua senha:\n\n${linkGerado.link}\n\nO link é único e vale por 24h. Qualquer dúvida, me chama!`
+    const msg = `Oi ${nome.split(' ')[0]}! Aqui é da Spin Solar 👋
+
+Sua conta no portal foi criada. Use pra fazer o primeiro acesso:
+
+🔗 *Portal:* https://app.spinsolar.com.br/login
+📧 *Login:* ${credenciais.email}
+🔑 *Senha temporária:* ${credenciais.senha_temp}
+
+Ao entrar, o sistema vai pedir pra você trocar por uma senha só sua.
+Qualquer dúvida, me chama!`
     window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
   function encerrar() {
-    onMsg({ tipo: 'sucesso', texto: `✓ Usuário ${nome} criado. Link disponível no card dele em /admin/usuarios (botão 🔗 Reenviar).` })
+    onMsg({ tipo: 'sucesso', texto: `✓ ${nome} criado(a). Credenciais mostradas — se precisar de novo, use "🔗 Novo link" no card.` })
     onFechar()
   }
 
@@ -423,46 +440,60 @@ function ModalConvite({
           <button onClick={onFechar} className="text-white/60 hover:text-white text-xl">✕</button>
         </div>
 
-        {linkGerado ? (
+        {credenciais ? (
           <div className="space-y-4">
             <div className="p-4 bg-verde/10 border border-verde/30 rounded-lg text-center space-y-2">
               <p className="text-3xl">✅</p>
-              <p className="text-sm font-bold text-verde">Usuário criado com sucesso</p>
-              <p className="text-xs text-white/60">
-                {nome} · {linkGerado.email} · {infoDo(role).label}
-              </p>
+              <p className="text-sm font-bold text-verde">Conta criada com sucesso</p>
+              <p className="text-xs text-white/60">{nome} · {infoDo(role).label}</p>
             </div>
 
-            <div className="p-3 bg-sol/10 border border-sol/30 rounded-lg space-y-2">
-              <p className="text-xs font-bold text-sol">📮 Link de acesso gerado</p>
+            <div className="p-4 bg-sol/10 border border-sol/30 rounded-lg space-y-3">
+              <p className="text-xs font-bold text-sol">🔑 Credenciais de primeiro acesso</p>
               <p className="text-[10px] text-white/60 leading-relaxed">
-                O email <strong>pode não chegar</strong> se o SMTP não estiver configurado ou por spam.
-                <strong className="text-sol"> Use o WhatsApp abaixo</strong> — sempre funciona.
+                Envie os 3 dados abaixo pelo WhatsApp. Ao entrar, o sistema pede pra
+                trocar a senha temporária por uma definitiva.
               </p>
-              <div className="bg-noite border border-white/10 rounded p-2 max-h-16 overflow-y-auto">
-                <p className="text-[10px] text-white/50 font-mono break-all">{linkGerado.link}</p>
+              <div className="bg-noite border border-white/10 rounded p-3 space-y-1.5 font-mono text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 shrink-0 w-14">Portal:</span>
+                  <span className="text-white">app.spinsolar.com.br/login</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 shrink-0 w-14">Email:</span>
+                  <span className="text-white break-all">{credenciais.email}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 shrink-0 w-14">Senha:</span>
+                  <span className="text-sol font-bold text-base tracking-wider">{credenciais.senha_temp}</span>
+                </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={copiarLink}
+                onClick={copiarCredenciais}
                 className={`py-2.5 border rounded-lg text-xs font-bold transition ${
                   copiado
                     ? 'bg-verde/20 border-verde text-verde'
                     : 'bg-white/5 border-white/20 text-white hover:bg-white/10'
                 }`}
               >
-                {copiado ? '✓ Copiado' : '📋 Copiar link'}
+                {copiado ? '✓ Copiado' : '📋 Copiar credenciais'}
               </button>
               <button
                 onClick={abrirWhatsApp}
-                disabled={!linkGerado.telefone || linkGerado.telefone.length < 10}
+                disabled={!credenciais.telefone || credenciais.telefone.length < 10}
                 className="py-2.5 bg-[#25D366] text-white font-bold text-xs rounded-lg hover:bg-[#25D366]/90 disabled:opacity-40 transition"
-                title={!linkGerado.telefone ? 'Telefone não informado' : 'Abrir WhatsApp com mensagem pronta'}
+                title={!credenciais.telefone ? 'Telefone não informado' : 'Abrir WhatsApp com mensagem pronta'}
               >
                 📱 Enviar por WhatsApp
               </button>
+            </div>
+
+            <div className="p-2.5 bg-coral/5 border border-coral/20 rounded text-[10px] text-white/60 leading-relaxed">
+              ⚠️ A senha aparece <strong>só desta vez</strong>. Se fechar sem copiar,
+              você precisa clicar em "🔗 Novo link" no card do usuário pra gerar outra.
             </div>
 
             <button

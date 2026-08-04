@@ -77,6 +77,16 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
+    // Se user logou com senha temporária → força trocar antes de qualquer coisa
+    // (rota /trocar-senha + /api/auth/signout ficam liberadas pra ele conseguir agir)
+    if (user && user.user_metadata?.must_change_password === true) {
+      const rotasLiberadas = ['/trocar-senha', '/api/auth/signout']
+      if (!rotasLiberadas.some(r => pathname.startsWith(r))) {
+        url.pathname = '/trocar-senha'
+        return NextResponse.redirect(url)
+      }
+    }
+
     return response
   } catch (err: any) {
     // Fail-soft: qualquer erro no middleware não pode bloquear a app inteira

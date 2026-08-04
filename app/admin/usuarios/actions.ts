@@ -20,18 +20,37 @@ async function verificarAdmin(): Promise<{ ok: true } | { ok: false; erro: strin
 }
 
 /**
- * Convida novo usuário. Estratégia dupla, à prova de SMTP quebrado:
- * 1. Chama inviteUserByEmail — Supabase tenta enviar email
- * 2. INDEPENDENTE se o email sai OU não, gera um link de acesso e devolve
- *    pro admin copiar e mandar por WhatsApp
- * Assim funciona mesmo com SMTP não configurado (limite 4/h no plano free).
+ * Gera senha temporária forte, legível (sem confundíveis como 0/O, 1/l/I).
+ * Formato: 3 blocos de 3 chars separados por hífen — ex: "aB3-9k7-Qw4"
+ * Fácil de ditar/copiar/colar no WhatsApp, difícil de brute-forçar.
+ */
+function gerarSenhaTemporaria(): string {
+  const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789' // sem 0/O/1/l/I
+  const bytes = new Uint8Array(9)
+  crypto.getRandomValues(bytes)
+  const chars = Array.from(bytes, b => alfabeto[b % alfabeto.length])
+  return `${chars.slice(0, 3).join('')}-${chars.slice(3, 6).join('')}-${chars.slice(6, 9).join('')}`
+}
+
+/**
+ * Convida novo usuário criando conta COM SENHA TEMPORÁRIA já definida.
+ * Sem link mágico → sem problema de preview do WhatsApp gastar token.
+ *
+ * Fluxo:
+ * 1. Gera senha temp forte
+ * 2. Cria auth.user com email_confirm=true + senha já setada
+ * 3. Marca user_metadata.must_change_password=true (login redireciona pra /trocar-senha)
+ * 4. Trigger handle_new_user já criou profile — atualiza role/nome/telefone
+ * 5. Retorna email + senha temp pro admin copiar e mandar via WhatsApp
  */
 export async function convidarUsuarioAction(input: {
   email: string
   nome_completo: string
   role: Role
   telefone?: string
-}): Promise<{ sucesso: true; user_id: string; link_acesso: string } | { erro: string }> {
+}): Promise<
+  { sucesso: true; user_id: string; email: string; senha_temp: string } | { erro: string }
+> {
   const check = await verificarAdmin()
   if (!check.ok) return { erro: check.erro }
 
@@ -41,20 +60,29 @@ export async function convidarUsuarioAction(input: {
   if (nome.length < 3) return { erro: 'Nome completo é obrigatório (mín 3 caracteres)' }
 
   const admin = createAdminClient()
-  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://app.spinsolar.com.br'}/definir-senha`
+  const senhaTemp = gerarSenhaTemporaria()
 
-  // 1. Convida — Supabase cria auth.user + trigger cria row em profiles + email é DISPARADO
-  //    (mas pode não chegar se SMTP não configurado / rate limitado / spam)
-  const { data: convite, error: erroConvite } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: { nome_completo: nome, role: input.role },
-    redirectTo,
+  // 1. Cria usuário com senha já setada + email já confirmado (não precisa clicar em nada)
+  const { data: criado, error: erroCriar } = await admin.auth.admin.createUser({
+    email,
+    password: senhaTemp,
+    email_confirm: true,
+    user_metadata: {
+      nome_completo: nome,
+      role: input.role,
+      must_change_password: true, // primeiro login redireciona pra trocar senha
+    },
   })
 
-  if (erroConvite || !convite?.user) {
-    return { erro: `Erro ao criar usuário: ${erroConvite?.message || 'sem detalhes'}` }
+  if (erroCriar || !criado?.user) {
+    // Se email já existe, mensagem específica
+    if (erroCriar?.message?.includes('already') || erroCriar?.message?.includes('registered')) {
+      return { erro: `Email ${email} já está cadastrado. Use "Novo link" no card do usuário existente pra gerar reset.` }
+    }
+    return { erro: `Erro ao criar usuário: ${erroCriar?.message || 'sem detalhes'}` }
   }
 
-  // 2. Atualiza role + telefone (trigger criou com role='colaborador' default)
+  // 2. Atualiza role + nome + telefone no profile (trigger handle_new_user criou o registro)
   const { error: erroUpdate } = await admin
     .from('profiles')
     .update({
@@ -63,31 +91,25 @@ export async function convidarUsuarioAction(input: {
       telefone: input.telefone?.trim() || null,
       ativo: true,
     })
-    .eq('id', convite.user.id)
+    .eq('id', criado.user.id)
 
   if (erroUpdate) {
     return { erro: `Usuário criado mas erro ao atualizar perfil: ${erroUpdate.message}` }
   }
 
-  // 3. Gera link de acesso INDEPENDENTE do email (fallback via WhatsApp)
-  //    Type 'recovery' funciona pra convite também — leva a /definir-senha
-  const { data: linkData } = await admin.auth.admin.generateLink({
-    type: 'recovery',
-    email,
-    options: { redirectTo },
-  })
-
   revalidatePath('/admin/usuarios')
-  return {
-    sucesso: true,
-    user_id: convite.user.id,
-    link_acesso: linkData?.properties?.action_link || '',
-  }
+  return { sucesso: true, user_id: criado.user.id, email, senha_temp: senhaTemp }
 }
 
-/** Reenviar link de convite/definição de senha (se usuário perdeu o email). */
+/**
+ * Reseta senha do usuário — gera NOVA senha temporária + força troca no próximo login.
+ * Usado quando:
+ *   - Usuário esqueceu senha (sem depender de link mágico que expira)
+ *   - Reenvio de convite pra quem nunca acessou (sobrescreve a senha original)
+ * Devolve email + senha_temp pro admin enviar via WhatsApp.
+ */
 export async function reenviarConviteAction(userId: string): Promise<
-  { sucesso: true; link: string } | { erro: string }
+  { sucesso: true; email: string; senha_temp: string } | { erro: string }
 > {
   const check = await verificarAdmin()
   if (!check.ok) return { erro: check.erro }
@@ -96,17 +118,17 @@ export async function reenviarConviteAction(userId: string): Promise<
   const { data: userData } = await admin.auth.admin.getUserById(userId)
   if (!userData?.user?.email) return { erro: 'Usuário sem email cadastrado' }
 
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: 'recovery',
-    email: userData.user.email,
-    options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://app.spinsolar.com.br'}/definir-senha`,
+  const senhaTemp = gerarSenhaTemporaria()
+  const { error } = await admin.auth.admin.updateUserById(userId, {
+    password: senhaTemp,
+    user_metadata: {
+      ...userData.user.user_metadata,
+      must_change_password: true,
     },
   })
-  if (error || !data?.properties?.action_link) {
-    return { erro: `Erro ao gerar link: ${error?.message || 'sem detalhes'}` }
-  }
-  return { sucesso: true, link: data.properties.action_link }
+  if (error) return { erro: `Erro ao resetar senha: ${error.message}` }
+
+  return { sucesso: true, email: userData.user.email, senha_temp: senhaTemp }
 }
 
 /** Muda role do usuário. Não permite rebaixar o último admin. */
