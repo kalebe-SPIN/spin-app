@@ -13,6 +13,7 @@ export default async function PropostaPage() {
   if (!convite) redirect('/vaga/login')
 
   const jaAceita = ['proposta_aceita', 'contrato_assinado', 'docs_enviados', 'concluido'].includes(convite.status)
+  const contratoAssinado = ['contrato_assinado', 'docs_enviados', 'concluido'].includes(convite.status)
   const recusada = convite.status === 'recusado'
 
   const supabase = createClient()
@@ -24,7 +25,7 @@ export default async function PropostaPage() {
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">
-      <PropostaConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} empresa={empresa} />
+      <PropostaConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} empresa={empresa} podeBaixarPdf={contratoAssinado} />
 
       {/* ===== CTA / DECISÃO ===== */}
       {recusada ? (
