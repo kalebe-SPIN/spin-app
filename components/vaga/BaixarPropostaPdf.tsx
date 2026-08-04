@@ -164,7 +164,7 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
 
         <p style={TXT}>
           <strong>Multiplicador de prospecção {MULTIPLICADOR_LABEL}:</strong> cliente que você encontrou e trouxe
-          vale {MULTIPLICADOR_LABEL} a comissão normal. Quem caça recebe mais.
+          vale {MULTIPLICADOR_LABEL} a comissão normal. Quem traz cliente novo recebe mais.
         </p>
         <p style={TXT}>
           <strong>Extras:</strong> bônus por contrato recorrente (R$ 150 residencial · R$ 500 comercial ·

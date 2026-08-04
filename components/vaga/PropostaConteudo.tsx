@@ -160,7 +160,7 @@ export function PropostaConteudo({
           <p className="text-sol font-bold mb-1">Multiplicador de prospecção · {MULTIPLICADOR_LABEL}</p>
           <p className="text-white/65 text-sm leading-relaxed">
             Cliente que <strong className="text-white">você</strong> encontrou e trouxe vale {MULTIPLICADOR_LABEL} a
-            comissão normal. Quem farma a base recebe menos. Quem caça recebe mais.
+            comissão normal. Quem só atende a base pronta recebe menos. Quem traz cliente novo recebe mais.
           </p>
         </div>
 
