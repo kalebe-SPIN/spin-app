@@ -37,9 +37,11 @@ export default async function DashboardPage() {
   const { modo } = await getModoVisualizacao()
   const mostraAdmin = profile?.role === 'admin' && modo === 'admin'
 
-  // Vendedor de serviços tem dashboard próprio focado em desempenho + resultado + meta
-  const ehVendedorServicos = profile?.role === 'vendedor_servicos' && modo !== 'admin'
-  if (ehVendedorServicos) {
+  // Vendedor de serviços tem dashboard próprio focado em desempenho + resultado + meta.
+  // Aciona por MODO (não role) — admin que alterna pra "Vendedor Serv." no toggle
+  // vê a experiência do vendedor pra validar. Vendedor real sempre cai aqui
+  // porque getModoVisualizacao força modo=role quando não é admin.
+  if (modo === 'vendedor_servicos') {
     const { DashboardVendedorServicos } = await import('@/components/DashboardVendedorServicos')
     return <DashboardVendedorServicos userId={user.id} nome={profile?.nome_completo || 'Vendedor'} />
   }
