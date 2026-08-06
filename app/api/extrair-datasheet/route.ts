@@ -4,18 +4,17 @@ import { createClient } from '@/lib/supabase/server'
 
 /**
  * Extrai as informações de um produto a partir do DATASHEET (PDF/imagem)
- * usando Claude com leitura nativa de documento. Retorna JSON alinhado ao
- * shape que o catálogo/montador de kit usa (specs.potencia_wp p/ placa,
- * specs.potencia_kw p/ inversor, etc).
+ * usando Claude com leitura nativa de documento. Retorna, no topo da resposta,
+ * os campos alinhados ao que o catálogo/montador de kit usa
+ * (specs.potencia_wp p/ placa, specs.potencia_kw p/ inversor, etc).
  *
- * Fluxo: admin escolhe a categoria, sobe o datasheet, a IA preenche os campos,
- * o admin confere e informa o preço (de tabela WEG, sem o fator de desconto).
+ * Consumido por components/CadastroDatasheetModal.tsx.
  */
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
 
-const MAX_BYTES = 10 * 1024 * 1024
+const MAX_BYTES = 32 * 1024 * 1024
 const TIPOS_ACEITOS = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp']
 
 /** Campos de specs esperados por categoria (nomes que o app já consome). */
@@ -103,7 +102,7 @@ Extraia as informações para cadastro. Responda APENAS com JSON válido, SEM te
 {
   "modelo": string (modelo/SKU técnico do produto),
   "fabricante": string (ex: "WEG", "Canadian Solar"),
-  "codigo_weg": string ou null (código/SKU do fabricante, se houver),
+  "codigo_sugerido": string ou null (código/SKU do fabricante, se houver no datasheet),
   "subcategoria": string ou null (ex: "monofacial 575W", "string trifásico"),
   "descricao_curta": string (1 linha, ex: "Módulo 575W n-TYPE bifacial"),
   "descricao_tecnica": string ou null (2-4 linhas com os destaques),
@@ -144,7 +143,8 @@ Regras:
       return NextResponse.json({ erro: `Falha ao ler o JSON da IA: ${e.message}`, raw: jsonMatch[1].slice(0, 400) }, { status: 500 })
     }
 
-    return NextResponse.json({ sucesso: true, dados: parsed })
+    // Campos no topo da resposta (o modal lê json.fabricante, json.modelo, etc.)
+    return NextResponse.json({ sucesso: true, ...parsed })
   } catch (e: any) {
     console.error('[extrair-datasheet]', e)
     return NextResponse.json({ erro: e?.message || 'Erro na extração' }, { status: 500 })
