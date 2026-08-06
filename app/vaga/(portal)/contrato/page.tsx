@@ -48,6 +48,27 @@ export default async function ContratoPage() {
         </pre>
       </div>
 
+      {/* Aviso PJ / CNPJ antes de assinar */}
+      {!jaAssinado && (
+        <div className="mb-6 p-5 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl">
+          <p className="text-white font-bold mb-2">📋 Você precisa de CNPJ (contratação PJ)</p>
+          <p className="text-white/80 text-sm leading-relaxed">
+            Como é uma contratação como pessoa jurídica, você vai precisar de um <strong className="text-white">CNPJ
+            ativo</strong> — um <strong className="text-white">MEI</strong> já resolve na maioria dos casos. Ainda
+            não tem? Sem problema: <strong className="text-white">você pode assinar agora</strong> e a Spin te
+            orienta a abrir o CNPJ, que entra depois na etapa de documentos.{' '}
+            <a
+              href="https://wa.me/554832630182?text=Olá Spin! Preciso de orientação para abrir meu CNPJ/MEI para a contratação."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sol underline"
+            >
+              Falar com a Spin sobre o CNPJ
+            </a>.
+          </p>
+        </div>
+      )}
+
       {jaAssinado ? (
         <div className="p-6 bg-verde/[0.06] border border-verde/25 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
           <span className="inline-flex items-center gap-2 text-verde font-semibold">

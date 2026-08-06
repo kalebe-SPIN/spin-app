@@ -57,6 +57,24 @@ export default async function DocumentosPage() {
         </div>
       )}
 
+      {/* Aviso sobre CNPJ (contratação PJ) */}
+      <div className="mb-6 p-5 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl">
+        <p className="text-white font-bold mb-2">📋 Sobre o CNPJ (contratação PJ)</p>
+        <p className="text-white/80 text-sm leading-relaxed">
+          A contratação é como pessoa jurídica, então o <strong className="text-white">CNPJ é obrigatório</strong> —
+          um <strong className="text-white">MEI</strong> costuma atender. Ainda não tem? A Spin te orienta a abrir
+          (é rápido e online).{' '}
+          <a
+            href="https://wa.me/554832630182?text=Olá Spin! Preciso de orientação para abrir meu CNPJ/MEI."
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sol underline"
+          >
+            Falar com a Spin sobre o CNPJ
+          </a>.
+        </p>
+      </div>
+
       <div className="grid gap-3 mb-8">
         {DOCS.map((d) => (
           <UploadDocumento
