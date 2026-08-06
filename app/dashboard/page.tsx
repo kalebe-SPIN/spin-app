@@ -37,6 +37,13 @@ export default async function DashboardPage() {
   const { modo } = await getModoVisualizacao()
   const mostraAdmin = profile?.role === 'admin' && modo === 'admin'
 
+  // Vendedor de serviços tem dashboard próprio focado em desempenho + resultado + meta
+  const ehVendedorServicos = profile?.role === 'vendedor_servicos' && modo !== 'admin'
+  if (ehVendedorServicos) {
+    const { DashboardVendedorServicos } = await import('@/components/DashboardVendedorServicos')
+    return <DashboardVendedorServicos userId={user.id} nome={profile?.nome_completo || 'Vendedor'} />
+  }
+
   return (
     <main className="min-h-screen p-8 md:p-12">
       <div className="max-w-6xl mx-auto">
