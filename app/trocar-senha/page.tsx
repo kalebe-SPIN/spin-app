@@ -82,7 +82,7 @@ export default function TrocarSenhaPage() {
         <div>
           <label className="block text-xs font-semibold text-white/70 mb-1">Nova senha *</label>
           <input
-            type="password"
+            type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true"
             value={senha}
             onChange={e => setSenha(e.target.value)}
             placeholder="Mín 8 caracteres"
@@ -94,7 +94,7 @@ export default function TrocarSenhaPage() {
         <div>
           <label className="block text-xs font-semibold text-white/70 mb-1">Confirme a senha *</label>
           <input
-            type="password"
+            type="password" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true"
             value={confirmar}
             onChange={e => setConfirmar(e.target.value)}
             placeholder="Repita"
