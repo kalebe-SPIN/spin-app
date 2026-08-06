@@ -476,22 +476,42 @@ function ModalNovoProduto({ onFechar }: { onFechar: () => void }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [categoria, setCategoria] = useState<CategoriaProduto>('outro')
-  const [fabricante, setFabricante] = useState('')
+  const [fabricante, setFabricante] = useState('WEG')
   const [modelo, setModelo] = useState('')
   const [descricao, setDescricao] = useState('')
   const [subcategoria, setSubcategoria] = useState('')
   const [codigoWeg, setCodigoWeg] = useState('')
-  const [potencia, setPotencia] = useState('')
-  const [precoCusto, setPrecoCusto] = useState('')
+  const [descricaoTecnica, setDescricaoTecnica] = useState('')
+  // Campos específicos por categoria
+  const [potenciaWp, setPotenciaWp] = useState('')
+  const [areaM2, setAreaM2] = useState('')
+  const [larguraMm, setLarguraMm] = useState('')
+  const [tipoCelula, setTipoCelula] = useState('')
+  const [potenciaKw, setPotenciaKw] = useState('')
+  const [tensaoDesc, setTensaoDesc] = useState('')
+  const [disjuntorEq, setDisjuntorEq] = useState('')
+  const [entradasMppt, setEntradasMppt] = useState('')
+  const [capacidadeKwh, setCapacidadeKwh] = useState('')
+  // Preços
   const [precoVenda, setPrecoVenda] = useState('')
+  const [precoCusto, setPrecoCusto] = useState('')
   const [erro, setErro] = useState<string | null>(null)
 
-  const potenciaLabel = categoria === 'placa' ? 'Potência (Wp)'
-    : categoria === 'inversor' ? 'Potência (kW)'
-    : categoria === 'bateria' ? 'Capacidade (kWh)'
-    : 'Potência / capacidade (número)'
-
   const catInfoLocal = CATEGORIA_INFO[categoria] || { label: categoria, emoji: '📦', cor: '' }
+  const ehWeg = fabricante.trim().toUpperCase().startsWith('WEG')
+
+  // Botão "Aplicar desconto WEG" — mesma lógica da coluna 5 da planilha (0,4182)
+  function aplicarDescontoWeg() {
+    const venda = parseFloat(precoVenda.replace(',', '.'))
+    if (isNaN(venda) || venda <= 0) { setErro('Preencha primeiro o Preço venda (tabela WEG)'); return }
+    setErro(null)
+    setPrecoCusto((venda * 0.4182).toFixed(2).replace('.', ','))
+  }
+
+  function num(s: string): number | undefined {
+    const n = parseFloat(s.replace(',', '.'))
+    return (!isNaN(n) && s.trim() !== '') ? n : undefined
+  }
 
   function handleSalvar() {
     setErro(null)
@@ -500,10 +520,6 @@ function ModalNovoProduto({ onFechar }: { onFechar: () => void }) {
     if (!descricao.trim()) { setErro('Descrição curta obrigatória'); return }
 
     startTransition(async () => {
-      const potNum = potencia.trim() ? parseFloat(potencia.replace(',', '.')) : undefined
-      const custoNum = precoCusto.trim() ? parseFloat(precoCusto.replace(',', '.')) : undefined
-      const vendaNum = precoVenda.trim() ? parseFloat(precoVenda.replace(',', '.')) : undefined
-
       const res = await criarProdutoManualAction({
         categoria,
         modelo: modelo.trim(),
@@ -511,9 +527,21 @@ function ModalNovoProduto({ onFechar }: { onFechar: () => void }) {
         codigo_weg: codigoWeg.trim() || undefined,
         subcategoria: subcategoria.trim() || undefined,
         descricao_curta: descricao.trim(),
-        potencia_valor: (potNum && !isNaN(potNum)) ? potNum : undefined,
-        preco_custo: (custoNum && !isNaN(custoNum)) ? custoNum : undefined,
-        preco_venda: (vendaNum && !isNaN(vendaNum)) ? vendaNum : undefined,
+        descricao_tecnica: descricaoTecnica.trim() || undefined,
+        // Placa
+        potencia_wp: categoria === 'placa' ? num(potenciaWp) : undefined,
+        area_m2: categoria === 'placa' ? num(areaM2) : undefined,
+        largura_mm: categoria === 'placa' ? num(larguraMm) : undefined,
+        tipo_celula: categoria === 'placa' ? (tipoCelula.trim() || undefined) : undefined,
+        // Inversor
+        potencia_kw: (categoria === 'inversor' || categoria === 'bateria') ? num(potenciaKw) : undefined,
+        tensao_desc: (categoria === 'inversor' || categoria === 'bateria') ? (tensaoDesc.trim() || undefined) : undefined,
+        disjuntor_equivalente: categoria === 'inversor' ? (disjuntorEq.trim() || undefined) : undefined,
+        entradas_mppt: categoria === 'inversor' ? num(entradasMppt) : undefined,
+        // Bateria
+        capacidade_kwh: categoria === 'bateria' ? num(capacidadeKwh) : undefined,
+        preco_custo: num(precoCusto),
+        preco_venda: num(precoVenda),
       })
 
       if ('erro' in res) { setErro(res.erro); return }
@@ -615,44 +643,111 @@ function ModalNovoProduto({ onFechar }: { onFechar: () => void }) {
           </div>
         </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-white/70 mb-1">{potenciaLabel}</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            value={potencia}
-            onChange={e => setPotencia(e.target.value)}
-            placeholder="Opcional"
-            className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
-          />
-        </div>
+        {/* CAMPOS ESPECÍFICOS POR CATEGORIA — espelham o parser da planilha WEG */}
+        {categoria === 'placa' && (
+          <div className="p-3 rounded-lg bg-sol/5 border border-sol/20 space-y-3">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-sol">☀️ Specs de módulo fotovoltaico</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-white/70 mb-1">Potência (Wp) *</label>
+                <input type="number" inputMode="decimal" step="1" value={potenciaWp} onChange={e => setPotenciaWp(e.target.value)}
+                  placeholder="Ex: 615" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white/70 mb-1">Tipo de célula</label>
+                <input type="text" value={tipoCelula} onChange={e => setTipoCelula(e.target.value)}
+                  placeholder="Ex: n-TYPE, PERC, n-TYPE BC" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white/70 mb-1">Área (m²)</label>
+                <input type="number" inputMode="decimal" step="0.001" value={areaM2} onChange={e => setAreaM2(e.target.value)}
+                  placeholder="Ex: 2,701" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white/70 mb-1">Largura (mm)</label>
+                <input type="number" inputMode="numeric" step="1" value={larguraMm} onChange={e => setLarguraMm(e.target.value)}
+                  placeholder="Ex: 1134" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+              </div>
+            </div>
+          </div>
+        )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-white/70 mb-1">Preço custo (R$)</label>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              value={precoCusto}
-              onChange={e => setPrecoCusto(e.target.value)}
-              placeholder="Interno"
-              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
-            />
+        {(categoria === 'inversor' || categoria === 'bateria') && (
+          <div className="p-3 rounded-lg bg-weg-azul/5 border border-weg-azul/20 space-y-3">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-weg-azul">
+              ⚡ Specs de {categoria === 'inversor' ? 'inversor' : 'bateria'}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-white/70 mb-1">Potência (kW)</label>
+                <input type="number" inputMode="decimal" step="0.1" value={potenciaKw} onChange={e => setPotenciaKw(e.target.value)}
+                  placeholder="Ex: 5" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white/70 mb-1">Tipo de rede / tensão</label>
+                <input type="text" value={tensaoDesc} onChange={e => setTensaoDesc(e.target.value)}
+                  placeholder="Ex: Monofásico 220V" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+              </div>
+              {categoria === 'inversor' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-white/70 mb-1">Disjuntor equivalente</label>
+                    <input type="text" value={disjuntorEq} onChange={e => setDisjuntorEq(e.target.value)}
+                      placeholder="Ex: MDWP-C32-2" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-white/70 mb-1">Entradas MPPT</label>
+                    <input type="number" inputMode="numeric" step="1" value={entradasMppt} onChange={e => setEntradasMppt(e.target.value)}
+                      placeholder="Ex: 2" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+                  </div>
+                </>
+              )}
+              {categoria === 'bateria' && (
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-white/70 mb-1">Capacidade (kWh)</label>
+                  <input type="number" inputMode="decimal" step="0.1" value={capacidadeKwh} onChange={e => setCapacidadeKwh(e.target.value)}
+                    placeholder="Ex: 10" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+                </div>
+              )}
+            </div>
           </div>
+        )}
+
+        {/* Descrição técnica livre pra outras categorias */}
+        {categoria !== 'placa' && categoria !== 'inversor' && categoria !== 'bateria' && (
           <div>
-            <label className="block text-xs font-semibold text-white/70 mb-1">Preço venda (R$)</label>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              value={precoVenda}
-              onChange={e => setPrecoVenda(e.target.value)}
-              placeholder="Cliente"
-              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
-            />
+            <label className="block text-xs font-semibold text-white/70 mb-1">Descrição técnica (opcional)</label>
+            <textarea rows={2} value={descricaoTecnica} onChange={e => setDescricaoTecnica(e.target.value)}
+              placeholder="Detalhes técnicos que ficam no specs.descricao"
+              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none resize-none" />
           </div>
+        )}
+
+        {/* PREÇOS — venda primeiro (referência); custo pode vir auto do desconto WEG */}
+        <div className="p-3 rounded-lg bg-verde/5 border border-verde/20 space-y-3">
+          <p className="text-[10px] uppercase tracking-wider font-bold text-verde">💰 Preços</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-white/70 mb-1">Preço venda / tabela (R$)</label>
+              <input type="number" inputMode="decimal" step="0.01" value={precoVenda} onChange={e => setPrecoVenda(e.target.value)}
+                placeholder="Ex: 1370,36" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-white/70 mb-1">Preço custo Spin (R$)</label>
+              <input type="number" inputMode="decimal" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)}
+                placeholder="Ex: 573,08" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+            </div>
+          </div>
+          {ehWeg && (
+            <button type="button" onClick={aplicarDescontoWeg}
+              className="w-full py-1.5 text-xs bg-weg-azul/10 border border-weg-azul/30 text-weg-azul rounded hover:bg-weg-azul/20 transition font-semibold">
+              💡 Aplicar desconto WEG 0,4182 (calcula custo = venda × 41,82%)
+            </button>
+          )}
+          <p className="text-[10px] text-white/40 leading-relaxed">
+            Preço venda = valor de tabela (mostrado como referência).
+            Preço custo = o que a Spin realmente paga (planilha WEG traz na coluna 5 já com desconto).
+          </p>
         </div>
 
         {erro && (

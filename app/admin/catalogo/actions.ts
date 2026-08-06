@@ -47,9 +47,19 @@ export type NovoProdutoInput = {
   subcategoria?: string
   descricao_curta: string
   descricao_tecnica?: string
-  potencia_valor?: number          // Wp pra placa, kW pra inversor, kWh pra bateria
-  preco_custo?: number             // R$
-  preco_venda?: number             // R$
+  // Campos específicos por categoria (espelham o que o parser da planilha WEG guarda)
+  potencia_wp?: number             // placa
+  area_m2?: number                 // placa
+  largura_mm?: number              // placa
+  tipo_celula?: string             // placa (n-TYPE, PERC, n-TYPE BC, bifacial…)
+  potencia_kw?: number             // inversor, bomba, bateria
+  tensao_desc?: string             // inversor — "Monofásico 220V", "Trifásico 380V"…
+  disjuntor_equivalente?: string   // inversor — "MDWP-C50-2"
+  entradas_mppt?: number           // inversor
+  capacidade_kwh?: number          // bateria
+  // Preços
+  preco_custo?: number             // R$ — custo real Spin
+  preco_venda?: number             // R$ — preço tabela / cliente
   ativo?: boolean
   disponivel_estoque?: boolean
 }
@@ -84,13 +94,26 @@ export async function criarProdutoManualAction(input: NovoProdutoInput): Promise
   const codigoSpin = input.codigo_interno_spin?.trim()
     || (codigoWeg ? null : `SPIN-${Date.now().toString(36).toUpperCase()}`)
 
-  // Monta specs baseado na categoria (só o campo de potência que o form pergunta)
+  // Monta specs por categoria — mesmo shape que o parser da planilha WEG usa,
+  // pra ler no simulador/orçamento sem tratar 2 formatos.
   const specs: Record<string, unknown> = {}
-  if (input.potencia_valor != null && !isNaN(input.potencia_valor)) {
-    if (input.categoria === 'placa') specs.potencia_wp = input.potencia_valor
-    else if (input.categoria === 'inversor') specs.potencia_kw = input.potencia_valor
-    else if (input.categoria === 'bateria') specs.capacidade_kwh = input.potencia_valor
-    else specs.potencia = input.potencia_valor
+  if (input.categoria === 'placa') {
+    if (input.potencia_wp != null) specs.potencia_wp = input.potencia_wp
+    if (input.area_m2 != null) specs.area_m2 = input.area_m2
+    if (input.largura_mm != null) specs.largura_mm = input.largura_mm
+    if (input.tipo_celula?.trim()) specs.tipo_celula = input.tipo_celula.trim()
+  } else if (input.categoria === 'inversor') {
+    if (input.potencia_kw != null) specs.potencia_kw = input.potencia_kw
+    if (input.tensao_desc?.trim()) specs.tensao_desc = input.tensao_desc.trim()
+    if (input.disjuntor_equivalente?.trim()) specs.disjuntor_equivalente = input.disjuntor_equivalente.trim()
+    if (input.entradas_mppt != null) specs.entradas_mppt = input.entradas_mppt
+  } else if (input.categoria === 'bateria') {
+    if (input.capacidade_kwh != null) specs.capacidade_kwh = input.capacidade_kwh
+    if (input.potencia_kw != null) specs.potencia_kw = input.potencia_kw
+    if (input.tensao_desc?.trim()) specs.tensao_desc = input.tensao_desc.trim()
+  } else {
+    // Demais categorias: só a descrição técnica no specs
+    if (input.descricao_tecnica?.trim()) specs.descricao = input.descricao_tecnica.trim()
   }
 
   const { data: criado, error } = await supabase
