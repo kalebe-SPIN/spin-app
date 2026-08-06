@@ -29,6 +29,11 @@ export default function TrocarSenhaPage() {
     setErro(null)
     if (senha.length < 8) { setErro('Senha precisa ter no mínimo 8 caracteres.'); return }
     if (senha !== confirmar) { setErro('As senhas não coincidem.'); return }
+    // Heurística: senha temp tem formato "xxx-xxx-xxx" (11 chars com 2 hífens)
+    if (/^[A-Za-z0-9]{3}-[A-Za-z0-9]{3}-[A-Za-z0-9]{3}$/.test(senha)) {
+      setErro('Essa parece ser a senha temporária que você recebeu. Crie uma senha NOVA, só sua, sem hífens.')
+      return
+    }
 
     startTransition(async () => {
       const supabase = createClient()
@@ -37,7 +42,20 @@ export default function TrocarSenhaPage() {
         password: senha,
         data: { must_change_password: false },
       })
-      if (error) { setErro(error.message); return }
+      if (error) {
+        // Traduz mensagens comuns do Supabase pra português
+        const msg = error.message.toLowerCase()
+        if (msg.includes('different from the old') || msg.includes('same as the old')) {
+          setErro('A nova senha precisa ser DIFERENTE da senha temporária que você recebeu. Escolha uma senha nova que só você conheça.')
+        } else if (msg.includes('at least') && msg.includes('character')) {
+          setErro('Senha muito curta. Use pelo menos 8 caracteres.')
+        } else if (msg.includes('weak') || msg.includes('pwned') || msg.includes('leaked')) {
+          setErro('Essa senha é considerada fraca ou já apareceu em vazamentos. Escolha outra combinação.')
+        } else {
+          setErro(error.message)
+        }
+        return
+      }
       router.push('/dashboard')
     })
   }
@@ -49,11 +67,16 @@ export default function TrocarSenhaPage() {
           <p className="text-3xl mb-2">🔐</p>
           <h1 className="text-2xl font-black text-white">Defina sua senha</h1>
           <p className="text-xs text-white/60 mt-2 leading-relaxed">
-            Primeiro acesso — troque a senha temporária por uma que só você conhece.
+            Primeiro acesso — crie uma senha nova, só sua.
           </p>
           {email && (
             <p className="text-[10px] text-white/40 mt-1">Conta: <strong className="text-white/70">{email}</strong></p>
           )}
+        </div>
+
+        <div className="p-3 bg-sol/10 border border-sol/30 rounded-lg text-xs text-white/80 leading-relaxed">
+          ⚠️ <strong className="text-sol">Atenção:</strong> a nova senha NÃO pode ser igual à
+          senha temporária que você recebeu no WhatsApp. Escolha uma senha nova, só sua.
         </div>
 
         <div>
