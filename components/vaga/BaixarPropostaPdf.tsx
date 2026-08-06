@@ -112,7 +112,7 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
           </div>
         </div>
 
-        <p style={{ fontSize: 13, color: SOL, fontWeight: 700, letterSpacing: 1.5, margin: '0 0 6px' }}>REPRESENTANTE COMERCIAL</p>
+        <p style={{ fontSize: 13, color: SOL, fontWeight: 700, letterSpacing: 1.5, margin: '0 0 6px' }}>PARCEIRO COMERCIAL</p>
         <h1 style={{ fontSize: 38, fontWeight: 900, color: '#0B0F1A', lineHeight: 1.05, margin: '0 0 28px' }}>
           Serviços de O&amp;M
         </h1>
@@ -150,10 +150,11 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
       <section style={P}>
         <h2 style={H2}>Remuneração</h2>
         <p style={TXT}>
-          <strong>Fixo mensal de {brl(FIXO_MENSAL)}, sempre pago pelo trabalho de base.</strong> Nos 3 primeiros
-          meses, um piso garantido crescente — <strong>{rampaGarantido}</strong> — seu independente do resultado.
-          Depois desse período, o fixo de {brl(FIXO_MENSAL)} continua todo mês pelo mesmo motivo: você nunca fica
-          sem piso. Construir carteira leva de 60 a 90 dias, e a SPIN banca esse período.
+          <strong>Fixo mensal de {brl(FIXO_MENSAL)}, pago pelo trabalho de campo.</strong> Nos 3 primeiros meses
+          (período de experiência), um piso garantido crescente — <strong>{rampaGarantido}</strong>. Esse piso é
+          pago <strong>integralmente quando a meta de trabalho do mês é cumprida</strong>; se a meta não for
+          atingida, é ajustado proporcionalmente ao efetivamente entregue. Depois dos 3 meses, o fixo de{' '}
+          {brl(FIXO_MENSAL)} segue a mesma lógica. Construir carteira leva de 60 a 90 dias, e a SPIN banca esse período.
         </p>
 
         <p style={{ ...TXT, fontWeight: 700, color: '#0B0F1A', margin: '18px 0 8px' }}>Comissão escalonada</p>
@@ -200,7 +201,7 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
           <p style={{ ...TXT, margin: '0 0 4px', fontWeight: 800, color: '#0B0F1A' }}>Contratação PJ — sem vínculo empregatício</p>
           <p style={{ ...TXT, margin: 0 }}>
             Esta é uma contratação como <strong>pessoa jurídica (PJ)</strong>: você atua como{' '}
-            <strong>representante comercial autônomo</strong> (Lei 4.886/65), com <strong>CNPJ próprio</strong>,
+            <strong>parceiro comercial autônomo</strong> (representação comercial, Lei 4.886/65), com <strong>CNPJ próprio</strong>,
             zona definida e contrato formal registrado. <strong>Não há vínculo empregatício</strong> — não é CLT,
             não há subordinação, FGTS, 13º nem férias remuneradas.
           </p>
@@ -221,6 +222,11 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
           mapeados</strong>, <strong>{METAS.conversas} conversas com decisor</strong> e{' '}
           <strong>{METAS.propostas} propostas enviadas</strong>. Rampa de 60% no mês 1, 80% no mês 2 e 100% a
           partir do mês 3.
+        </p>
+        <p style={TXT}>
+          <strong>Renovação da experiência:</strong> depende de meta de trabalho cumprida <strong>e</strong>{' '}
+          desempenho de vendas (resultado real) juntos — não basta cumprir tabela. É assim que avaliamos se o
+          perfil de venda encaixa para seguir na contratação.
         </p>
 
         <div style={{ marginTop: 24, padding: 20, background: '#FFF8E6', border: `1px solid ${SOL}`, borderRadius: 12 }}>

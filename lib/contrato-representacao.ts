@@ -46,33 +46,34 @@ PARTES
 
 CONTRATANTE (REPRESENTADA): SPIN SOLAR — ${razao}, inscrita no CNPJ sob nº ${cnpj}, com sede em ${endereco}.
 
-REPRESENTANTE: ${dados.nomeCandidato}, doravante REPRESENTANTE COMERCIAL AUTÔNOMO, que atuará mediante pessoa jurídica própria (CNPJ), conforme exigido para o exercício da representação.
+PARCEIRO COMERCIAL: ${dados.nomeCandidato}, doravante PARCEIRO COMERCIAL (representante comercial autônomo, nos termos da Lei 4.886/1965), que atuará mediante pessoa jurídica própria (CNPJ), conforme exigido para o exercício da representação.
 
 CLÁUSULA 1 — OBJETO
-O REPRESENTANTE promoverá, em caráter autônomo, a venda de contratos de limpeza e manutenção (O&M) de sistemas fotovoltaicos comerciais e industriais da CONTRATANTE, identificando telhados, abordando decisores, negociando e acompanhando o fechamento e o recebimento.
+O PARCEIRO COMERCIAL promoverá, em caráter autônomo, a venda de contratos de limpeza e manutenção (O&M) de sistemas fotovoltaicos comerciais e industriais da CONTRATANTE, identificando telhados, abordando decisores, negociando e acompanhando o fechamento e o recebimento.
 
 CLÁUSULA 2 — ZONA DE ATUAÇÃO
-A representação será exercida na zona: ${zona}. Cliente prospectado pelo REPRESENTANTE fica vinculado a ele pelo prazo de 24 (vinte e quatro) meses (titularidade), gerando comissão sobre toda limpeza realizada nesse período, inclusive as recorrentes de contrato.
+A representação será exercida na zona: ${zona}. Cliente prospectado pelo PARCEIRO COMERCIAL fica vinculado a ele pelo prazo de 24 (vinte e quatro) meses (titularidade), gerando comissão sobre toda limpeza realizada nesse período, inclusive as recorrentes de contrato.
 
 CLÁUSULA 3 — REMUNERAÇÃO
-3.1. Fixo mensal de ${brl2(FIXO_MENSAL)}, sempre devido pelo trabalho de base (manutenção e prospecção da carteira), independentemente de comissão.
-3.2. Garantia de início (piso pelo trabalho de base), independentemente de resultado, nos 3 (três) primeiros meses, de forma crescente: ${garantidoContrato}. Após esse período, permanece devido o fixo mensal da cláusula 3.1.
+3.1. Fixo mensal de ${brl2(FIXO_MENSAL)}, devido pelo trabalho de base (manutenção e prospecção da carteira) conforme o cumprimento da meta de atividade do mês, independentemente de comissão.
+3.2. Garantia de início (piso pelo trabalho de base) nos 3 (três) primeiros meses — período de experiência —, de forma crescente: ${garantidoContrato}. O piso é devido INTEGRALMENTE mediante o cumprimento da meta de atividade do mês; NÃO atingida a meta, o valor é ajustado PROPORCIONALMENTE ao efetivamente entregue. Após esse período, permanece devido o fixo mensal da cláusula 3.1, sob a mesma regra de proporcionalidade.
 3.3. Comissão escalonada sobre o faturamento RECEBIDO no mês, incidindo cada faixa apenas sobre a parcela nela contida:
 ${faixasContrato}
-3.4. Multiplicador de prospecção: cliente encontrado e trazido pelo REPRESENTANTE gera comissão de ${MULTIPLICADOR_LABEL} a normal.
+3.4. Multiplicador de prospecção: cliente encontrado e trazido pelo PARCEIRO COMERCIAL gera comissão de ${MULTIPLICADOR_LABEL} a normal.
 3.5. Extras: bônus por contrato recorrente assinado (R$ 150 residencial, R$ 500 comercial, R$ 1.200 usina), prêmio de upsell (15% a 30%), bônus de carteira própria ativa e 0,5% por indicação fechada ao time de solar.
 
-CLÁUSULA 4 — METAS DE ATIVIDADE
-O REPRESENTANTE compromete-se com metas de atividade mensais (mapeamento de telhados, conversas com decisores e propostas enviadas), com rampa de 60% no mês 1, 80% no mês 2 e 100% a partir do mês 3.
+CLÁUSULA 4 — METAS, DESEMPENHO E RENOVAÇÃO DA EXPERIÊNCIA
+4.1. O PARCEIRO COMERCIAL compromete-se com metas de atividade mensais (mapeamento de telhados com no mínimo 50 módulos, conversas com decisores e propostas enviadas), com rampa de 60% no mês 1, 80% no mês 2 e 100% a partir do mês 3.
+4.2. A renovação do período de experiência e a efetivação da contratação dependem, de forma CONJUNTA, do (a) cumprimento da meta de atividade e do (b) desempenho de vendas (resultado efetivamente realizado). O cumprimento isolado da atividade, sem o correspondente resultado de vendas, não assegura a renovação — a avaliação verifica se o perfil de vendas é compatível com a continuidade.
 
 CLÁUSULA 5 — NATUREZA DO VÍNCULO (CONTRATAÇÃO PJ)
-5.1. O REPRESENTANTE é contratado como PESSOA JURÍDICA (PJ), atuando por meio de CNPJ próprio, em regime de representação comercial autônoma.
+5.1. O PARCEIRO COMERCIAL é contratado como PESSOA JURÍDICA (PJ), atuando por meio de CNPJ próprio, em regime de representação comercial autônoma.
 5.2. NÃO há, entre as partes, qualquer vínculo empregatício. A relação NÃO é regida pela CLT, inexistindo subordinação, habitualidade, pessoalidade, controle de jornada, FGTS, 13º salário, férias remuneradas ou quaisquer verbas trabalhistas.
-5.3. O REPRESENTANTE responde por seus próprios tributos e obrigações como pessoa jurídica.
+5.3. O PARCEIRO COMERCIAL responde por seus próprios tributos e obrigações como pessoa jurídica.
 5.4. A CONTRATANTE disponibiliza base de alvos, leads, aplicativo (CRM/propostas/painel de controle), equipe de campo e protocolo de trabalho, sem que isso caracterize subordinação.
 
 CLÁUSULA 6 — PRAZO E RESCISÃO
-Prazo inicial de 12 (doze) meses, renovável automaticamente. A rescisão observará o aviso prévio e as verbas da Lei 4.886/1965.
+Período inicial de experiência de 3 (três) meses. A continuidade e a efetivação observam a Cláusula 4 (metas de atividade + desempenho de vendas, avaliados em conjunto). Confirmada a efetivação, o contrato vigora por prazo determinado, renovável. A rescisão observará o aviso prévio e as verbas da Lei 4.886/1965.
 
 CLÁUSULA 7 — CONFIDENCIALIDADE
 As bases de dados, listas de alvos e informações de clientes são de propriedade da CONTRATANTE e não podem ser usadas fora do objeto deste contrato.

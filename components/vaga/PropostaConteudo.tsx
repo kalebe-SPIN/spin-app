@@ -7,7 +7,7 @@ import {
 const brl = (n: number) => `R$ ${n.toLocaleString('pt-BR')}`
 
 /**
- * Conteúdo apresentacional da proposta de trabalho (Representante Comercial O&M).
+ * Conteúdo apresentacional da proposta de trabalho (Parceiro Comercial O&M).
  * Reutilizado pela página do candidato (/vaga/proposta) e pela prévia do admin
  * (/admin/vagas/previa). NÃO inclui o CTA de aceite — cada página põe o seu.
  */
@@ -35,7 +35,7 @@ export function PropostaConteudo({
         </div>
 
         <h1 className="text-3xl md:text-5xl font-black text-white leading-[1.05] tracking-tighter2 mb-4">
-          Representante Comercial
+          Parceiro Comercial
           <br />
           <span className="text-sol">Serviços de O&amp;M</span>
         </h1>
@@ -124,11 +124,11 @@ export function PropostaConteudo({
       {/* ===== REMUNERAÇÃO ===== */}
       <Secao titulo="Remuneração" numero="04">
         <div className="grid sm:grid-cols-2 gap-4 mb-6">
-          <Card destaque titulo="Fixo mensal" valor={brl(FIXO_MENSAL)} sub="sempre pago pelo trabalho de base, todo mês" />
-          <Card destaque titulo="Garantido de início" valor="3 meses" sub="piso crescente enquanto você monta sua carteira" />
+          <Card destaque titulo="Fixo mensal" valor={brl(FIXO_MENSAL)} sub="base pelo trabalho de campo, conforme a meta do mês" />
+          <Card destaque titulo="Garantido de início" valor="3 meses" sub="piso crescente durante o período de experiência" />
         </div>
 
-        {/* Escadinha do garantido + ênfase de que o piso é sempre pago pelo trabalho de base */}
+        {/* Escadinha do garantido — piso condicionado ao cumprimento da meta de trabalho */}
         <div className="p-5 md:p-6 bg-sol/[0.08] border border-sol/30 rounded-2xl mb-6">
           <p className="text-sol font-bold mb-4">Seu piso garantido nos 3 primeiros meses</p>
           <div className="grid grid-cols-3 gap-3 mb-5">
@@ -140,16 +140,19 @@ export function PropostaConteudo({
             ))}
           </div>
           <p className="text-white/80 text-sm md:text-base leading-relaxed">
-            <strong className="text-white">Esse valor é seu pelo trabalho de base</strong> — cai na conta
-            independente do resultado. E <strong className="text-white">depois dos 3 meses, o fixo de {brl(FIXO_MENSAL)} continua
-            sendo pago todo mês</strong> pelo mesmo motivo: manter a base viva.{' '}
-            <strong className="text-sol">Você nunca fica sem piso.</strong>
+            Esse piso é a sua base pelo trabalho de campo. Ele é pago{' '}
+            <strong className="text-white">integralmente quando você cumpre a meta de trabalho do mês</strong>.
+            Se a meta não for atingida, o valor é{' '}
+            <strong className="text-white">ajustado proporcionalmente ao que você efetivamente entregou</strong> —
+            você é pago pelo que produz. Depois dos 3 meses, o fixo de {brl(FIXO_MENSAL)} segue a mesma lógica.{' '}
+            <strong className="text-sol">Fazendo o trabalho, você tem piso.</strong>
           </p>
         </div>
 
         <p className="text-sm text-white/55 leading-relaxed mb-8">
-          A escadinha cresce conforme você mostra comprometimento e entrega a meta com excelência — e abre
-          espaço pra renovarmos esse apoio. Construir carteira leva de 60 a 90 dias, e a SPIN banca esse período.
+          Os 3 primeiros meses são o seu <strong className="text-white/80">período de experiência</strong>: a
+          escadinha cresce a cada mês entregue e a continuidade depende de meta cumprida <em>com</em> resultado de
+          vendas (veja “O que esperamos”). Construir carteira leva de 60 a 90 dias, e a SPIN banca esse período.
         </p>
 
         <h4 className="text-white font-bold mb-3">Comissão escalonada</h4>
@@ -247,7 +250,31 @@ export function PropostaConteudo({
             </div>
           ))}
         </div>
-        <p className="text-sm text-white/45">Rampa: 60% da meta no mês 1, 80% no mês 2, 100% a partir do mês 3.</p>
+        <p className="text-sm text-white/45 mb-6">Rampa: 60% da meta no mês 1, 80% no mês 2, 100% a partir do mês 3.</p>
+
+        {/* Renovação da experiência: meta de trabalho + desempenho de vendas */}
+        <div className="p-5 md:p-6 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl">
+          <p className="text-white font-bold text-base md:text-lg mb-2">Como funciona a renovação da experiência</p>
+          <p className="text-white/80 text-sm md:text-base leading-relaxed mb-3">
+            O período de experiência renova (e vira contratação efetiva) quando <strong className="text-white">duas
+            coisas andam juntas</strong>:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3 mb-3">
+            <div className="p-4 bg-white/[0.04] border border-white/10 rounded-xl">
+              <p className="text-sol font-bold text-sm mb-1">1 · Meta de trabalho</p>
+              <p className="text-white/65 text-sm leading-snug">Cumprir a atividade acima (telhados, conversas, propostas).</p>
+            </div>
+            <div className="p-4 bg-white/[0.04] border border-white/10 rounded-xl">
+              <p className="text-sol font-bold text-sm mb-1">2 · Desempenho de vendas</p>
+              <p className="text-white/65 text-sm leading-snug">Resultado real — contratos fechados que mostram que o seu perfil de venda encaixa.</p>
+            </div>
+          </div>
+          <p className="text-white/70 text-sm leading-relaxed">
+            <strong className="text-white">Não basta cumprir tabela.</strong> A gente avalia atividade{' '}
+            <em>e</em> resultado juntos: é isso que diz se faz sentido seguir. Entregando os dois, renovamos e
+            seguimos juntos.
+          </p>
+        </div>
       </Secao>
 
       {/* ===== FORMATO DE CONTRATAÇÃO ===== */}
@@ -258,8 +285,8 @@ export function PropostaConteudo({
           </p>
           <p className="text-white/80 text-sm md:text-base leading-relaxed">
             Esta é uma <strong className="text-white">contratação como pessoa jurídica (PJ)</strong>: você atua como{' '}
-            <strong className="text-white">representante comercial autônomo</strong> (Lei 4.886/65), com{' '}
-            <strong className="text-white">CNPJ próprio</strong>, zona definida e contrato formal registrado.{' '}
+            <strong className="text-white">parceiro comercial autônomo</strong> (representação comercial, Lei 4.886/65),
+            com <strong className="text-white">CNPJ próprio</strong>, zona definida e contrato formal registrado.{' '}
             <strong className="text-sol">Não há vínculo empregatício</strong> — não é CLT, não há subordinação,
             FGTS, 13º nem férias remuneradas.
           </p>

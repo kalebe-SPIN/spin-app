@@ -76,7 +76,7 @@ export async function criarConviteAction(input: {
     email_candidato: email,
     telefone: input.telefone?.trim() || null,
     zona: input.zona?.trim() || null,
-    cargo: input.cargo?.trim() || undefined,
+    cargo: input.cargo?.trim() || 'Parceiro Comercial — Serviços de O&M',
     created_by: check.userId,
   })
   if (erroConvite) {

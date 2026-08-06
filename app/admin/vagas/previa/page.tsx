@@ -33,7 +33,7 @@ export default async function PreviaVagaPage() {
 
   const nomeExemplo = 'Fulano de Tal'
   const zonaExemplo = 'Grande Florianópolis'
-  const contrato = montarContrato({ nomeCandidato: nomeExemplo, cargo: 'Representante Comercial — Serviços de O&M', zona: zonaExemplo, empresa })
+  const contrato = montarContrato({ nomeCandidato: nomeExemplo, cargo: 'Parceiro Comercial — Serviços de O&M', zona: zonaExemplo, empresa })
 
   return (
     <div className="min-h-screen">
