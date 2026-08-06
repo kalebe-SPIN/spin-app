@@ -196,9 +196,15 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
       {/* PÁGINA 3 — Contratação */}
       <section style={P}>
         <h2 style={H2}>Formato de contratação</h2>
-        <p style={TXT}>
-          Representação comercial autônoma (Lei 4.886/65), com zona definida e contrato formal registrado.
-        </p>
+        <div style={{ padding: 16, background: '#EEF3FF', border: '1px solid #0047BB', borderRadius: 10, marginBottom: 12 }}>
+          <p style={{ ...TXT, margin: '0 0 4px', fontWeight: 800, color: '#0B0F1A' }}>Contratação PJ — sem vínculo empregatício</p>
+          <p style={{ ...TXT, margin: 0 }}>
+            Esta é uma contratação como <strong>pessoa jurídica (PJ)</strong>: você atua como{' '}
+            <strong>representante comercial autônomo</strong> (Lei 4.886/65), com <strong>CNPJ próprio</strong>,
+            zona definida e contrato formal registrado. <strong>Não há vínculo empregatício</strong> — não é CLT,
+            não há subordinação, FGTS, 13º nem férias remuneradas.
+          </p>
+        </div>
         <p style={TXT}>
           <strong>A favor:</strong> autonomia de ritmo e método, remuneração sem teto, carteira própria com
           titularidade, sem desconto de INSS sobre comissão.<br />

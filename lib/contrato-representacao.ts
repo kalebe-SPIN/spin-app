@@ -65,8 +65,11 @@ ${faixasContrato}
 CLÁUSULA 4 — METAS DE ATIVIDADE
 O REPRESENTANTE compromete-se com metas de atividade mensais (mapeamento de telhados, conversas com decisores e propostas enviadas), com rampa de 60% no mês 1, 80% no mês 2 e 100% a partir do mês 3.
 
-CLÁUSULA 5 — NATUREZA DO VÍNCULO
-Trata-se de representação comercial autônoma, sem vínculo empregatício, subordinação, FGTS, 13º ou férias remuneradas, exigindo-se CNPJ do REPRESENTANTE. A CONTRATANTE disponibiliza base de alvos, leads, aplicativo (CRM/propostas), equipe de campo e protocolo de trabalho.
+CLÁUSULA 5 — NATUREZA DO VÍNCULO (CONTRATAÇÃO PJ)
+5.1. O REPRESENTANTE é contratado como PESSOA JURÍDICA (PJ), atuando por meio de CNPJ próprio, em regime de representação comercial autônoma.
+5.2. NÃO há, entre as partes, qualquer vínculo empregatício. A relação NÃO é regida pela CLT, inexistindo subordinação, habitualidade, pessoalidade, controle de jornada, FGTS, 13º salário, férias remuneradas ou quaisquer verbas trabalhistas.
+5.3. O REPRESENTANTE responde por seus próprios tributos e obrigações como pessoa jurídica.
+5.4. A CONTRATANTE disponibiliza base de alvos, leads, aplicativo (CRM/propostas/painel de controle), equipe de campo e protocolo de trabalho, sem que isso caracterize subordinação.
 
 CLÁUSULA 6 — PRAZO E RESCISÃO
 Prazo inicial de 12 (doze) meses, renovável automaticamente. A rescisão observará o aviso prévio e as verbas da Lei 4.886/1965.

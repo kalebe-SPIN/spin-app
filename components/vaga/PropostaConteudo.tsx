@@ -252,9 +252,20 @@ export function PropostaConteudo({
 
       {/* ===== FORMATO DE CONTRATAÇÃO ===== */}
       <Secao titulo="Formato de contratação" numero="07">
+        <div className="p-5 md:p-6 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl mb-6">
+          <p className="text-white font-bold text-base md:text-lg mb-2">
+            📋 Contratação PJ — sem vínculo empregatício
+          </p>
+          <p className="text-white/80 text-sm md:text-base leading-relaxed">
+            Esta é uma <strong className="text-white">contratação como pessoa jurídica (PJ)</strong>: você atua como{' '}
+            <strong className="text-white">representante comercial autônomo</strong> (Lei 4.886/65), com{' '}
+            <strong className="text-white">CNPJ próprio</strong>, zona definida e contrato formal registrado.{' '}
+            <strong className="text-sol">Não há vínculo empregatício</strong> — não é CLT, não há subordinação,
+            FGTS, 13º nem férias remuneradas.
+          </p>
+        </div>
         <p className="text-white/70 leading-relaxed mb-6">
-          <Destaque>Representação comercial autônoma</Destaque> (Lei 4.886/65), com zona definida e contrato
-          formal registrado. Sendo transparente sobre o que isso significa:
+          Sendo transparente sobre o que isso significa na prática:
         </p>
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="p-5 bg-verde/[0.06] border border-verde/25 rounded-xl">
