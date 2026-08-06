@@ -154,3 +154,92 @@ export async function criarProdutoManualAction(input: NovoProdutoInput): Promise
   revalidatePath('/admin/catalogo')
   return { sucesso: true, produto_id: criado.id }
 }
+
+/**
+ * Cadastra produto a partir do datasheet (specs já extraídas pela IA).
+ * - `specs` é gravado inteiro (chaves alinhadas ao que o montador de kit usa).
+ * - `preco_tabela_weg` é o preço SEM o fator de desconto WEG → vai em preco_venda
+ *   (o fator 0,4182 é aplicado automaticamente no cálculo do kit).
+ * - ativo=true e disponivel_estoque=true → o item já aparece na escolha da placa.
+ */
+const FATOR_WEG = 0.4182
+
+export async function criarProdutoViaDatasheetAction(input: {
+  categoria: CategoriaProduto
+  modelo: string
+  fabricante: string
+  codigo_weg?: string
+  subcategoria?: string
+  descricao_curta: string
+  descricao_tecnica?: string
+  specs: Record<string, unknown>
+  preco_tabela_weg?: number
+  url_datasheet?: string
+  disponivel_estoque?: boolean
+}): Promise<{ sucesso: true; produto_id: string } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autorizado' }
+  const { data: perfil } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (perfil?.role !== 'admin') return { erro: 'Apenas admin pode cadastrar produtos' }
+
+  const modelo = input.modelo.trim()
+  const fabricante = input.fabricante.trim()
+  const descricao = input.descricao_curta.trim()
+  if (!modelo) return { erro: 'Modelo é obrigatório' }
+  if (!fabricante) return { erro: 'Fabricante é obrigatório' }
+  if (!descricao) return { erro: 'Descrição curta é obrigatória' }
+
+  const codigoWeg = input.codigo_weg?.trim() || null
+  const codigoSpin = codigoWeg ? null : `SPIN-${Date.now().toString(36).toUpperCase()}`
+
+  // Limpa specs: descarta null/''/undefined
+  const specs: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(input.specs || {})) {
+    if (v !== null && v !== undefined && v !== '') specs[k] = v
+  }
+
+  const { data: criado, error } = await supabase
+    .from('produtos')
+    .insert({
+      codigo_weg: codigoWeg,
+      codigo_interno_spin: codigoSpin,
+      modelo,
+      fabricante,
+      categoria: input.categoria,
+      subcategoria: input.subcategoria?.trim() || null,
+      descricao_curta: descricao,
+      descricao_tecnica: input.descricao_tecnica?.trim() || null,
+      specs,
+      ativo: true,
+      disponivel_estoque: input.disponivel_estoque ?? true,
+      url_datasheet: input.url_datasheet?.trim() || null,
+    })
+    .select('id')
+    .single()
+
+  if (error || !criado) {
+    if (error?.code === '23505') return { erro: 'Código já cadastrado. Use um SKU/código diferente.' }
+    return { erro: `Erro ao criar produto: ${error?.message || 'sem detalhes'}` }
+  }
+
+  // Preço: usuário informa SEMPRE o preço cheio (sem desconto) → preco_venda.
+  // preco_custo aplica o fator só se fabricante é WEG (integrador tem 0,4182 de
+  // desconto). Outros fabricantes: custo = preço cheio (fornecedor já dá final).
+  if (input.preco_tabela_weg != null && input.preco_tabela_weg > 0) {
+    const fabUpper = fabricante.toUpperCase()
+    const eWeg = fabUpper.startsWith('WEG')
+    const custo = eWeg
+      ? Math.round(input.preco_tabela_weg * FATOR_WEG * 100) / 100
+      : input.preco_tabela_weg
+    await supabase.from('precos_produtos').insert({
+      produto_id: criado.id,
+      preco_venda: input.preco_tabela_weg,
+      preco_custo: custo,
+      vigente_de: new Date().toISOString().slice(0, 10),
+    })
+  }
+
+  revalidatePath('/admin/catalogo')
+  return { sucesso: true, produto_id: criado.id }
+}

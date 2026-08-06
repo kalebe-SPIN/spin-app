@@ -4,6 +4,7 @@ import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { togglarAtivoProdutoAction, criarProdutoManualAction, type CategoriaProduto } from '@/app/admin/catalogo/actions'
+import { CadastroDatasheetModal } from '@/components/CadastroDatasheetModal'
 
 type HistoricoItem = {
   id: string
@@ -184,6 +185,7 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
 
   const [filtroCategoria, setFiltroCategoria] = useState<string>('todos')
   const [abrindoNovoProduto, setAbrindoNovoProduto] = useState(false)
+  const [abrindoDatasheet, setAbrindoDatasheet] = useState(false)
   const [filtroDatasheet, setFiltroDatasheet] = useState<'todos' | 'com' | 'sem'>('todos')
   const [filtroAtivo, setFiltroAtivo] = useState<'todos' | 'ativos' | 'inativos'>('ativos')
   const [busca, setBusca] = useState('')
@@ -362,12 +364,20 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
       <section>
         <div className="flex items-center justify-between gap-3 mb-3">
           <h2 className="text-lg font-bold text-white">📄 Produtos do catálogo</h2>
-          <button
-            onClick={() => setAbrindoNovoProduto(true)}
-            className="px-3 py-2 bg-sol text-noite text-xs font-bold rounded-lg hover:bg-sol/90 transition"
-          >
-            ➕ Novo produto manual
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAbrindoDatasheet(true)}
+              className="px-3 py-2 bg-weg-azul text-white text-xs font-bold rounded-lg hover:bg-weg-azul/90 transition"
+            >
+              📄 Cadastrar via datasheet (IA)
+            </button>
+            <button
+              onClick={() => setAbrindoNovoProduto(true)}
+              className="px-3 py-2 bg-sol text-noite text-xs font-bold rounded-lg hover:bg-sol/90 transition"
+            >
+              ➕ Novo produto manual
+            </button>
+          </div>
         </div>
         <p className="text-xs text-white/50 mb-4">
           Para cada produto: anexar <strong className="text-white/80">datasheet PDF</strong>, <strong className="text-white/80">imagem PNG</strong>,
@@ -462,6 +472,13 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
 
       {abrindoNovoProduto && (
         <ModalNovoProduto onFechar={() => setAbrindoNovoProduto(false)} />
+      )}
+
+      {abrindoDatasheet && (
+        <CadastroDatasheetModal
+          onClose={() => setAbrindoDatasheet(false)}
+          onCreated={() => router.refresh()}
+        />
       )}
     </div>
   )
