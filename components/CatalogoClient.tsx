@@ -3,7 +3,7 @@
 import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { togglarAtivoProdutoAction } from '@/app/admin/catalogo/actions'
+import { togglarAtivoProdutoAction, criarProdutoManualAction, type CategoriaProduto } from '@/app/admin/catalogo/actions'
 
 type HistoricoItem = {
   id: string
@@ -183,6 +183,7 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
   }
 
   const [filtroCategoria, setFiltroCategoria] = useState<string>('todos')
+  const [abrindoNovoProduto, setAbrindoNovoProduto] = useState(false)
   const [filtroDatasheet, setFiltroDatasheet] = useState<'todos' | 'com' | 'sem'>('todos')
   const [filtroAtivo, setFiltroAtivo] = useState<'todos' | 'ativos' | 'inativos'>('ativos')
   const [busca, setBusca] = useState('')
@@ -359,10 +360,21 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
 
       {/* Datasheets individuais */}
       <section>
-        <h2 className="text-lg font-bold text-white mb-3">📄 Produtos do catálogo</h2>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-lg font-bold text-white">📄 Produtos do catálogo</h2>
+          <button
+            onClick={() => setAbrindoNovoProduto(true)}
+            className="px-3 py-2 bg-sol text-noite text-xs font-bold rounded-lg hover:bg-sol/90 transition"
+          >
+            ➕ Novo produto manual
+          </button>
+        </div>
         <p className="text-xs text-white/50 mb-4">
           Para cada produto: anexar <strong className="text-white/80">datasheet PDF</strong>, <strong className="text-white/80">imagem PNG</strong>,
           ligar/desligar do <strong className="text-white/80">simulador de kits</strong>, ou ver <strong className="text-sol">pontos críticos elétricos</strong> extraídos do datasheet.
+          <span className="text-white/40 ml-1">
+            Use <strong className="text-sol">"Novo produto manual"</strong> pra itens fora da planilha WEG (outros fabricantes, materiais avulsos).
+          </span>
         </p>
 
         {/* Filtros */}
@@ -447,6 +459,221 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
           ))}
         </div>
       </section>
+
+      {abrindoNovoProduto && (
+        <ModalNovoProduto onFechar={() => setAbrindoNovoProduto(false)} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Modal pra cadastrar produto manual (fora da planilha WEG).
+ * Campos: categoria + fabricante + modelo + descrição (obrigatórios) +
+ * SKU/potência/preços (opcionais).
+ */
+function ModalNovoProduto({ onFechar }: { onFechar: () => void }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [categoria, setCategoria] = useState<CategoriaProduto>('outro')
+  const [fabricante, setFabricante] = useState('')
+  const [modelo, setModelo] = useState('')
+  const [descricao, setDescricao] = useState('')
+  const [subcategoria, setSubcategoria] = useState('')
+  const [codigoWeg, setCodigoWeg] = useState('')
+  const [potencia, setPotencia] = useState('')
+  const [precoCusto, setPrecoCusto] = useState('')
+  const [precoVenda, setPrecoVenda] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+
+  const potenciaLabel = categoria === 'placa' ? 'Potência (Wp)'
+    : categoria === 'inversor' ? 'Potência (kW)'
+    : categoria === 'bateria' ? 'Capacidade (kWh)'
+    : 'Potência / capacidade (número)'
+
+  const catInfoLocal = CATEGORIA_INFO[categoria] || { label: categoria, emoji: '📦', cor: '' }
+
+  function handleSalvar() {
+    setErro(null)
+    if (!fabricante.trim()) { setErro('Fabricante obrigatório'); return }
+    if (!modelo.trim()) { setErro('Modelo obrigatório'); return }
+    if (!descricao.trim()) { setErro('Descrição curta obrigatória'); return }
+
+    startTransition(async () => {
+      const potNum = potencia.trim() ? parseFloat(potencia.replace(',', '.')) : undefined
+      const custoNum = precoCusto.trim() ? parseFloat(precoCusto.replace(',', '.')) : undefined
+      const vendaNum = precoVenda.trim() ? parseFloat(precoVenda.replace(',', '.')) : undefined
+
+      const res = await criarProdutoManualAction({
+        categoria,
+        modelo: modelo.trim(),
+        fabricante: fabricante.trim(),
+        codigo_weg: codigoWeg.trim() || undefined,
+        subcategoria: subcategoria.trim() || undefined,
+        descricao_curta: descricao.trim(),
+        potencia_valor: (potNum && !isNaN(potNum)) ? potNum : undefined,
+        preco_custo: (custoNum && !isNaN(custoNum)) ? custoNum : undefined,
+        preco_venda: (vendaNum && !isNaN(vendaNum)) ? vendaNum : undefined,
+      })
+
+      if ('erro' in res) { setErro(res.erro); return }
+      onFechar()
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-noite border border-white/20 rounded-xl p-6 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-bold text-white">➕ Novo produto manual</h3>
+          <button onClick={onFechar} className="text-white/60 hover:text-white text-xl">✕</button>
+        </div>
+
+        <p className="text-xs text-white/60 leading-relaxed">
+          Cadastro pra itens <strong>fora da planilha WEG</strong> — outros fabricantes,
+          serviços customizados, materiais avulsos. Só admin.
+        </p>
+
+        <div>
+          <label className="block text-xs font-semibold text-white/70 mb-2">Categoria *</label>
+          <div className="grid grid-cols-4 gap-1.5">
+            {(Object.entries(CATEGORIA_INFO) as [CategoriaProduto, typeof CATEGORIA_INFO[string]][]).map(([k, info]) => {
+              const ativo = categoria === k
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setCategoria(k as CategoriaProduto)}
+                  className={`p-1.5 rounded border text-center transition ${
+                    ativo ? 'bg-sol/15 border-sol text-white' : 'bg-white/[0.02] border-white/10 text-white/60 hover:border-white/30'
+                  }`}
+                  title={info.label}
+                >
+                  <div className="text-base leading-none">{info.emoji}</div>
+                  <div className="text-[9px] font-bold mt-0.5 truncate">{info.label}</div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-white/70 mb-1">Fabricante *</label>
+            <input
+              type="text"
+              value={fabricante}
+              onChange={e => setFabricante(e.target.value)}
+              placeholder="Ex: Fronius, Growatt"
+              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-white/70 mb-1">Modelo *</label>
+            <input
+              type="text"
+              value={modelo}
+              onChange={e => setModelo(e.target.value)}
+              placeholder="Ex: Primo 5.0-1"
+              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-white/70 mb-1">Descrição curta *</label>
+          <input
+            type="text"
+            value={descricao}
+            onChange={e => setDescricao(e.target.value)}
+            placeholder="Como aparece na proposta"
+            className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-white/70 mb-1">Subcategoria</label>
+            <input
+              type="text"
+              value={subcategoria}
+              onChange={e => setSubcategoria(e.target.value)}
+              placeholder="Ex: monofásico, tipo A"
+              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-white/70 mb-1">SKU / Código</label>
+            <input
+              type="text"
+              value={codigoWeg}
+              onChange={e => setCodigoWeg(e.target.value)}
+              placeholder="Se tiver (autogero senão)"
+              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-white/70 mb-1">{potenciaLabel}</label>
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            value={potencia}
+            onChange={e => setPotencia(e.target.value)}
+            placeholder="Opcional"
+            className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-white/70 mb-1">Preço custo (R$)</label>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              value={precoCusto}
+              onChange={e => setPrecoCusto(e.target.value)}
+              placeholder="Interno"
+              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-white/70 mb-1">Preço venda (R$)</label>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              value={precoVenda}
+              onChange={e => setPrecoVenda(e.target.value)}
+              placeholder="Cliente"
+              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {erro && (
+          <div className="p-2.5 bg-coral/10 border border-coral/30 rounded text-xs text-coral">
+            ⚠️ {erro}
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          <button onClick={onFechar} className="flex-1 py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg hover:bg-white/10 transition">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSalvar}
+            disabled={pending}
+            className="flex-1 py-2 bg-sol text-noite text-sm font-bold rounded-lg hover:bg-sol/90 disabled:opacity-40 transition"
+          >
+            {pending ? 'Salvando...' : `${catInfoLocal.emoji} Cadastrar ${catInfoLocal.label}`}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
