@@ -9,8 +9,16 @@ const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curren
 
 type Periodo = 'mes1' | 'mes2' | 'mes3' | 'regime'
 
-// Cor por faixa (na ordem 10% / 14% / 18% / 20%)
-const CORES_FAIXA = ['#FFD64A', '#F5B400', '#4EDC8A', '#4EA8DE']
+// Faixas para a coluna visual (do piso ao topo). O topo (20%) é limitado a
+// COL_MAX só para desenho; acima disso a faixa aparece cheia.
+const COL_MAX = 125000
+const FAIXA_VIS = [
+  { min: 0,     max: 15000,   pct: 0,    cor: '#6B7280', label: 'Até R$ 15.000',   sub: 'sem comissão' },
+  { min: 15000, max: 30000,   pct: 0.10, cor: '#FFD64A', label: 'R$ 15k – 30k',    sub: '10%' },
+  { min: 30000, max: 50000,   pct: 0.14, cor: '#F5B400', label: 'R$ 30k – 50k',    sub: '14%' },
+  { min: 50000, max: 75000,   pct: 0.18, cor: '#4EDC8A', label: 'R$ 50k – 75k',    sub: '18%' },
+  { min: 75000, max: COL_MAX, pct: 0.20, cor: '#4EA8DE', label: 'Acima de R$ 75k', sub: '20%' },
+]
 
 /**
  * Simulador de ganhos.
@@ -39,6 +47,17 @@ export function SimuladorGanhos() {
   const metaFrac = Math.min(1, metaPct / 100)
 
   const com = useMemo(() => calcularComissao(faturamento), [faturamento])
+
+  // Segmentos da coluna: quanto de cada faixa a simulação alcançou
+  const segs = useMemo(() => FAIXA_VIS.map((s) => {
+    const alcancado = Math.max(0, Math.min(faturamento, s.max) - s.min)
+    return {
+      ...s,
+      fillFrac: Math.max(0, Math.min(1, alcancado / (s.max - s.min))),
+      valor: alcancado * s.pct,
+      pesoAltura: s.max - s.min,
+    }
+  }), [faturamento])
 
   const bonus = useMemo(() => {
     if (!superou || fatProsp <= 0) return 0
@@ -145,40 +164,42 @@ export function SimuladorGanhos() {
 
           <Linha rotulo={bateuMeta ? 'Base fixa' : `Base (${metaPct}% da meta)`} valor={baseEfetiva} />
 
-          {/* Comissão + barra colorida */}
+          {/* Comissão — coluna vertical (vibrante até onde chegou, opaco acima) + legenda */}
           <div className="mt-3">
-            <div className="flex items-center justify-between text-sm mb-2">
+            <div className="flex items-center justify-between text-sm mb-3">
               <span className="text-white/70">Comissão por faixa</span>
               <span className="text-white font-semibold">{brl(com.total)}</span>
             </div>
-            {com.total > 0 ? (
-              <>
-                {/* Barra empilhada */}
-                <div className="flex h-3 w-full rounded-full overflow-hidden bg-white/5">
-                  {com.faixas.map((f, i) => (
-                    <div
-                      key={i}
-                      style={{ width: `${(f.valor / com.total) * 100}%`, background: CORES_FAIXA[i % CORES_FAIXA.length] }}
-                      title={`${f.label} · ${brl(f.valor)}`}
-                    />
-                  ))}
-                </div>
-                {/* Legenda */}
-                <div className="mt-2 flex flex-col gap-1">
-                  {com.faixas.map((f, i) => (
-                    <div key={i} className="flex items-center justify-between text-[11px]">
-                      <span className="flex items-center gap-1.5 text-white/55">
-                        <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CORES_FAIXA[i % CORES_FAIXA.length] }} />
-                        {f.label} · {Math.round(f.pct * 100)}%
+            <div className="flex gap-4">
+              {/* Coluna */}
+              <div className="flex flex-col-reverse w-11 shrink-0 rounded-lg overflow-hidden" style={{ height: 220 }}>
+                {segs.map((s, i) => (
+                  <div
+                    key={i}
+                    className="relative w-full"
+                    style={{ flexGrow: s.pesoAltura, background: `${s.cor}22`, borderTop: i > 0 ? '1px solid rgba(0,0,0,0.35)' : undefined }}
+                    title={`${s.label} · ${brl(s.valor)}`}
+                  >
+                    <div className="absolute inset-x-0 bottom-0" style={{ height: `${s.fillFrac * 100}%`, background: s.cor }} />
+                  </div>
+                ))}
+              </div>
+              {/* Legenda (topo → base, alinhada às cores da coluna) */}
+              <div className="flex-1 flex flex-col-reverse justify-between py-0.5">
+                {segs.filter((s) => s.pct > 0).map((s, i) => {
+                  const ativa = s.fillFrac > 0
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <span className={`flex items-center gap-2 text-xs ${ativa ? 'text-white/75' : 'text-white/30'}`}>
+                        <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: s.cor, opacity: ativa ? 1 : 0.35 }} />
+                        {s.label} · {s.sub}
                       </span>
-                      <span className="text-white/70">{brl(f.valor)}</span>
+                      <span className={`text-xs font-semibold ${ativa ? 'text-white' : 'text-white/30'}`}>{brl(s.valor)}</span>
                     </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="text-[11px] text-white/40">Sem comissão nesta faixa (faturamento até R$ 15.000).</p>
-            )}
+                  )
+                })}
+              </div>
+            </div>
           </div>
 
           {bonus > 0 && <div className="mt-3"><Linha rotulo="Bônus prospecção (+30%)" valor={bonus} cor="text-sol" /></div>}
