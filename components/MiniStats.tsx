@@ -15,15 +15,15 @@ export function Kpi({
     azul: 'text-weg-azul',
   }
   return (
-    <div className="flex flex-col">
-      <span className={`text-2xl font-black ${cores[cor]} leading-none`}>{valor}</span>
-      <span className="text-[9px] uppercase tracking-wider text-white/50 mt-1">{label}</span>
+    <div className="flex items-center gap-3">
+      <span className={`text-2xl font-black ${cores[cor]} leading-none tabular-nums w-10 text-right shrink-0`}>{valor}</span>
+      <span className="text-[10px] uppercase tracking-wider text-white/50 leading-tight">{label}</span>
     </div>
   )
 }
 
 export function KpiRow({ children }: { children: React.ReactNode }) {
-  return <div className="flex gap-4 mt-3">{children}</div>
+  return <div className="flex flex-col gap-2 mt-3">{children}</div>
 }
 
 /** Gráfico de barras horizontais compacto */
