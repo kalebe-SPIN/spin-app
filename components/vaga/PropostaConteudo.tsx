@@ -271,30 +271,63 @@ export function PropostaConteudo({
         </div>
         <p className="text-sm text-white/45 mb-6">Rampa: 60% da meta no mês 1, 80% no mês 2, 100% a partir do mês 3.</p>
 
-        {/* Onde a empresa quer chegar com essa meta */}
-        <div className="p-5 md:p-6 bg-white/[0.03] border border-white/10 rounded-2xl mb-6">
-          <p className="text-white font-bold mb-1">Onde essa meta leva</p>
-          <p className="text-white/55 text-sm leading-relaxed mb-4">
-            Cumprindo as <strong className="text-white/80">{METAS.propostas} propostas/mês</strong>, com{' '}
-            <strong className="text-white/80">50% de conversão</strong> e ticket médio de{' '}
-            <strong className="text-white/80">70 módulos</strong> por contrato, é aonde a empresa quer chegar:
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              [`${METAS.propostas}`, 'propostas enviadas'],
-              [`${Math.round(METAS.propostas * 0.5)}`, 'contratos fechados / mês'],
-              [`${Math.round(METAS.propostas * 0.5) * 70}`, 'módulos em manutenção / mês'],
-            ].map(([n, l], i) => (
-              <div key={i} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl text-center">
-                <p className="text-2xl md:text-3xl font-black text-verde">{n}</p>
-                <p className="text-white/50 text-xs mt-1 leading-tight">{l}</p>
+        {/* Onde a empresa quer chegar — mix de contratos por perfil */}
+        {(() => {
+          const contratos = Math.round(METAS.propostas * 0.5) // 50% de conversão
+          const mix = [
+            { perfil: 'Comercial pequeno', pct: 0.30, modulos: 70 },
+            { perfil: 'Comercial médio', pct: 0.30, modulos: 200 },
+            { perfil: 'Industrial / usina', pct: 0.30, modulos: 500 },
+            { perfil: 'Residencial', pct: 0.10, modulos: 10 },
+          ].map((m) => {
+            const qtd = Math.round(contratos * m.pct)
+            return { ...m, qtd, total: qtd * m.modulos }
+          })
+          const totalModulos = mix.reduce((s, m) => s + m.total, 0)
+          return (
+            <div className="p-5 md:p-6 bg-white/[0.03] border border-white/10 rounded-2xl mb-6">
+              <p className="text-white font-bold mb-1">Onde essa meta leva</p>
+              <p className="text-white/55 text-sm leading-relaxed mb-4">
+                Cumprindo as <strong className="text-white/80">{METAS.propostas} propostas/mês</strong> com{' '}
+                <strong className="text-white/80">50% de conversão</strong>, são{' '}
+                <strong className="text-white/80">{contratos} contratos/mês</strong>. E eles não têm o mesmo
+                tamanho — o que muda tudo na escala:
+              </p>
+              <div className="overflow-hidden rounded-xl border border-white/10 mb-3">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-white/[0.04] text-white/50 text-left">
+                      <th className="px-4 py-2.5 font-semibold">Perfil</th>
+                      <th className="px-4 py-2.5 font-semibold text-center">Contratos</th>
+                      <th className="px-4 py-2.5 font-semibold text-center">Módulos cada</th>
+                      <th className="px-4 py-2.5 font-semibold text-right">Módulos/mês</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {mix.map((m, i) => (
+                      <tr key={i} className="text-white/75">
+                        <td className="px-4 py-2.5">{m.perfil}</td>
+                        <td className="px-4 py-2.5 text-center">{m.qtd} <span className="text-white/40">({Math.round(m.pct * 100)}%)</span></td>
+                        <td className="px-4 py-2.5 text-center">{m.modulos}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-white">{m.total.toLocaleString('pt-BR')}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-verde/[0.06] text-white font-bold">
+                      <td className="px-4 py-2.5">Total</td>
+                      <td className="px-4 py-2.5 text-center">{contratos}</td>
+                      <td className="px-4 py-2.5 text-center">—</td>
+                      <td className="px-4 py-2.5 text-right text-verde">{totalModulos.toLocaleString('pt-BR')}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-            ))}
-          </div>
-          <p className="text-white/40 text-xs mt-3">
-            É a base de cálculo da meta — bater isso de forma consistente é o que sustenta a projeção de ganhos.
-          </p>
-        </div>
+              <p className="text-white/40 text-xs">
+                Um contrato industrial de 500 módulos vale por vários pequenos — por isso o foco no telhado grande.
+                É a base de cálculo da meta e o que sustenta a projeção de ganhos.
+              </p>
+            </div>
+          )
+        })()}
 
         {/* Renovação da experiência: meta de trabalho + desempenho de vendas */}
         <div className="p-5 md:p-6 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl">
