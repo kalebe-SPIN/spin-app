@@ -38,6 +38,7 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
   const [email, setEmail] = useState('')
   const [telefone, setTelefone] = useState('')
   const [zona, setZona] = useState('')
+  const [cidades, setCidades] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [cred, setCred] = useState<{ email: string; senha: string; link: string } | null>(null)
 
@@ -46,10 +47,11 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
     setErro(null)
     setCred(null)
     startTransition(async () => {
-      const res = await criarConviteAction({ nome, email, telefone, zona })
+      const listaCidades = cidades.split(',').map((c) => c.trim()).filter(Boolean)
+      const res = await criarConviteAction({ nome, email, telefone, zona, cidades: listaCidades })
       if ('erro' in res) { setErro(res.erro); return }
       setCred({ email: res.email, senha: res.senha, link: res.link })
-      setNome(''); setEmail(''); setTelefone(''); setZona('')
+      setNome(''); setEmail(''); setTelefone(''); setZona(''); setCidades('')
       router.refresh()
     })
   }
@@ -88,6 +90,11 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-semibold text-white/80">Zona de atuação (opcional)</label>
             <input value={zona} onChange={(e) => setZona(e.target.value)} placeholder="Ex.: Grande Florianópolis" className="input-spin" />
+          </div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <label className="text-sm font-semibold text-white/80">Cidades de atuação (separadas por vírgula)</label>
+            <input value={cidades} onChange={(e) => setCidades(e.target.value)} placeholder="Ex.: Florianópolis, Itajaí, Blumenau, Joinville" className="input-spin" />
+            <p className="text-xs text-white/40">Aparecem com bandeirinha no mapa de SC na proposta.</p>
           </div>
 
           {erro && <div className="sm:col-span-2 px-4 py-3 bg-coral/10 border border-coral/30 rounded-lg text-sm text-coral">{erro}</div>}

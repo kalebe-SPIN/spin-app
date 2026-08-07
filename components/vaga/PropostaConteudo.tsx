@@ -1,5 +1,6 @@
 import { BaixarPropostaPdf } from '@/components/vaga/BaixarPropostaPdf'
 import { SimuladorGanhos } from '@/components/vaga/SimuladorGanhos'
+import { MapaSantaCatarina } from '@/components/vaga/MapaSantaCatarina'
 import {
   FIXO_MENSAL, GARANTIA_ESCALONADA, MULTIPLICADOR_LABEL, COMISSAO_FAIXAS,
   PROJECAO, METAS, EXTRAS, REGIME_FAIXA_LABEL, MODULOS_MIN,
@@ -17,12 +18,15 @@ export function PropostaConteudo({
   zona,
   empresa,
   podeBaixarPdf = false,
+  cidades = [],
 }: {
   nomeCandidato: string
   zona?: string | null
   empresa?: { razao_social?: string | null; cnpj?: string | null } | null
   /** PDF da proposta só libera depois do contrato assinado. */
   podeBaixarPdf?: boolean
+  /** Cidades de atuação — marcadas no mapa de SC. */
+  cidades?: string[]
 }) {
   const primeiroNome = nomeCandidato?.split(' ')[0] || ''
 
@@ -60,6 +64,17 @@ export function PropostaConteudo({
           )}
         </div>
       </header>
+
+      {/* ===== ÁREA DE ATUAÇÃO (mapa SC) ===== */}
+      {cidades.length > 0 && (
+        <Secao titulo="Sua área de atuação" numero="00">
+          <p className="text-white/60 leading-relaxed mb-6">
+            Em Santa Catarina, sua zona{zona ? <> (<span className="text-white/80">{zona}</span>)</> : ''} cobre as
+            cidades marcadas abaixo. É onde estão os seus alvos.
+          </p>
+          <MapaSantaCatarina cidades={cidades} />
+        </Secao>
+      )}
 
       {/* ===== A OPORTUNIDADE ===== */}
       <Secao titulo="A oportunidade" numero="01">

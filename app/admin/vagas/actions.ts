@@ -32,6 +32,7 @@ export async function criarConviteAction(input: {
   telefone?: string
   zona?: string
   cargo?: string
+  cidades?: string[]
 }): Promise<
   | { sucesso: true; email: string; senha: string; link: string }
   | { erro: string }
@@ -76,6 +77,7 @@ export async function criarConviteAction(input: {
     email_candidato: email,
     telefone: input.telefone?.trim() || null,
     zona: input.zona?.trim() || null,
+    cidades: (input.cidades || []).map((c) => c.trim()).filter(Boolean),
     cargo: input.cargo?.trim() || 'Parceiro Comercial — Serviços de O&M',
     created_by: check.userId,
   })

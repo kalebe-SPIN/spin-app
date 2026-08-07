@@ -25,7 +25,7 @@ export default async function PropostaPage() {
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">
-      <PropostaConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} empresa={empresa} podeBaixarPdf={contratoAssinado} />
+      <PropostaConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} empresa={empresa} podeBaixarPdf={contratoAssinado} cidades={convite.cidades || []} />
 
       {/* ===== CTA / DECISÃO ===== */}
       {recusada ? (

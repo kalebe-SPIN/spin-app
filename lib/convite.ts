@@ -8,6 +8,7 @@ export type ConviteTrabalho = {
   telefone: string | null
   cargo: string
   zona: string | null
+  cidades: string[]
   status: 'enviado' | 'proposta_aceita' | 'contrato_assinado' | 'docs_enviados' | 'concluido' | 'recusado'
   entradas_usadas: number
   max_entradas: number

@@ -61,7 +61,12 @@ export default async function PreviaVagaPage() {
         {/* ETAPA 1 — Proposta */}
         <section id="proposta" className="scroll-mt-20">
           {/* Espelha o candidato: PDF só libera após assinatura, então na prévia fica travado */}
-          <PropostaConteudo nomeCandidato={nomeExemplo} zona={zonaExemplo} empresa={empresa} />
+          <PropostaConteudo
+            nomeCandidato={nomeExemplo}
+            zona={zonaExemplo}
+            empresa={empresa}
+            cidades={['Florianópolis', 'Itajaí', 'Blumenau', 'Joinville', 'Criciúma', 'Chapecó', 'Lages']}
+          />
           <div className="mb-16 p-6 bg-white/[0.03] border border-white/10 rounded-2xl">
             <p className="text-white/50 text-sm">
               🔒 Aqui o candidato vê os botões <strong className="text-white/80">"Aceitar proposta"</strong> e
