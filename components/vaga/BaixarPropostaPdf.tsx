@@ -131,7 +131,7 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
           avicultura, frigoríficos, supermercados e usinas. O ciclo completo é seu:
         </p>
         <ol style={{ ...TXT, paddingLeft: 20 }}>
-          <li><strong>Identificar</strong> o telhado (base ANEEL + satélite).</li>
+          <li><strong>Receber os alvos</strong> — a SPIN te entrega telhados qualificados.</li>
           <li><strong>Abordar</strong> o decisor com um diagnóstico pronto.</li>
           <li><strong>Negociar e fechar</strong> — de preferência em contrato de 12 ou 24 meses.</li>
           <li><strong>Acompanhar</strong> o agendamento e o recebimento.</li>
@@ -139,9 +139,10 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
 
         <h2 style={{ ...H2, marginTop: 24 }}>O que a SPIN entrega</h2>
         <p style={TXT}>
-          Lista de alvos (ANEEL filtrada), base própria de clientes já instalados, leads de campanha, app com
-          CRM e proposta automática, <strong>painel de controle com suas atividades, resultados de vendas e
-          agenda</strong>, equipe de campo própria e protocolo de trabalho testado. Trabalho remoto, sem custo seu.
+          Lista de alvos qualificados, base própria de clientes já instalados, leads de campanha, app com CRM e
+          proposta automática, <strong>painel de controle com suas atividades, resultados de vendas e
+          agenda</strong>, equipe de campo própria e protocolo de trabalho testado.{' '}
+          <strong>Trabalho 100% remoto — só um celular e internet, de qualquer lugar.</strong>
         </p>
         <Rodape />
       </section>
@@ -169,8 +170,9 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
         </table>
 
         <p style={TXT}>
-          <strong>Multiplicador de prospecção {MULTIPLICADOR_LABEL}:</strong> cliente que você encontrou e trouxe
-          vale {MULTIPLICADOR_LABEL} a comissão normal. Quem traz cliente novo recebe mais.
+          <strong>Bônus de prospecção (+30%):</strong> ao SUPERAR a meta mínima de atividade, as vendas do mês
+          de clientes que você prospectou depois de bater a meta recebem +30% sobre a comissão da faixa. Bateu a
+          meta e continuou caçando? Ganha mais.
         </p>
         <p style={TXT}>
           <strong>Extras:</strong> bônus por contrato recorrente (R$ 150 residencial · R$ 500 comercial ·
@@ -233,8 +235,29 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
           <h2 style={{ ...H2, margin: '0 0 8px' }}>Por que agora</h2>
           <p style={{ ...TXT, margin: 0 }}>
             O boom de instalações de 2021 e 2022 está completando quatro anos — uma safra inteira de sistemas
-            sujos, com endereço e CNPJ em base pública. Quem chegar primeiro pega o mercado com contrato de dois
-            anos assinado.
+            sujos, perdendo geração, esperando manutenção. Quem chegar primeiro pega o mercado com contrato de
+            dois anos assinado.
+          </p>
+        </div>
+        <Rodape />
+      </section>
+
+      {/* PÁGINA 4 — Como você recebe */}
+      <section style={P}>
+        <h2 style={H2}>Como e quando você recebe</h2>
+        <ol style={{ ...TXT, paddingLeft: 20 }}>
+          <li><strong>Último dia do mês:</strong> fecha o ciclo — apuramos atividade e vendas.</li>
+          <li><strong>Consolidação:</strong> base + comissão + bônus do período.</li>
+          <li><strong>Nota fiscal:</strong> como PJ, você emite a NF do valor apurado.</li>
+          <li><strong>Até o dia 05:</strong> o pagamento cai no seu PIX no mês seguinte.</li>
+        </ol>
+        <div style={{ marginTop: 16, padding: 16, background: '#EAF7EF', border: '1px solid #4EDC8A', borderRadius: 10 }}>
+          <p style={{ ...TXT, margin: '0 0 4px', fontWeight: 800, color: '#0B0F1A' }}>Exemplo prático</p>
+          <p style={{ ...TXT, margin: 0 }}>
+            Em março você bateu a meta e fechou <strong>R$ 40.000</strong> em contratos. No dia 31/03 o ciclo
+            fecha: base <strong>{brl(FIXO_MENSAL)}</strong> + comissão <strong>R$ 2.900</strong>{' '}
+            (10% de 15k + 14% de 10k) = <strong>R$ 4.900</strong>. Você emite a NF e, até 05/04, o valor cai no
+            seu PIX.
           </p>
         </div>
         <Rodape />

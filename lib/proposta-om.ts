@@ -21,11 +21,44 @@ export const GARANTIA_ESCALONADA: { mes: number; valor: number }[] = [
   { mes: 3, valor: 4000 },
 ]
 
-// Multiplicador de prospecção (cliente que o rep caçou)
+// Multiplicador de prospecção — +30% (1,3×). Vale SÓ quando o vendedor SUPERA a
+// meta mínima de atividade: as vendas do mês de clientes prospectados por ele
+// APÓS bater a meta recebem +30% sobre a comissão da faixa correspondente.
 export const MULTIPLICADOR_PROSPECCAO = 1.3
+export const MULTIPLICADOR_PCT = 0.30
 
 /** "1,3×" */
 export const MULTIPLICADOR_LABEL = `${MULTIPLICADOR_PROSPECCAO.toFixed(1).replace('.', ',')}×`
+
+// Faixas em formato NUMÉRICO para o simulador de ganhos (marginal por faixa).
+export const COMISSAO_FAIXAS_CALC: { min: number; max: number; pct: number }[] = [
+  { min: 0, max: 15000, pct: 0 },
+  { min: 15000, max: 30000, pct: 0.10 },
+  { min: 30000, max: 50000, pct: 0.14 },
+  { min: 50000, max: 75000, pct: 0.18 },
+  { min: 75000, max: Infinity, pct: 0.20 },
+]
+
+/** Comissão marginal por faixa sobre o faturamento recebido no mês. */
+export function calcularComissao(faturamento: number): {
+  total: number
+  faixas: { label: string; pct: number; base: number; valor: number }[]
+} {
+  let total = 0
+  const faixas: { label: string; pct: number; base: number; valor: number }[] = []
+  for (const f of COMISSAO_FAIXAS_CALC) {
+    if (faturamento <= f.min) break
+    const base = Math.min(faturamento, f.max) - f.min
+    if (base <= 0) continue
+    const valor = base * f.pct
+    total += valor
+    if (f.pct > 0) {
+      const topo = f.max === Infinity ? '+' : `R$ ${f.max.toLocaleString('pt-BR')}`
+      faixas.push({ label: `R$ ${f.min.toLocaleString('pt-BR')} – ${topo}`, pct: f.pct, base, valor })
+    }
+  }
+  return { total, faixas }
+}
 
 // Comissão escalonada do representante (marginal por faixa, sobre faturamento recebido)
 export const COMISSAO_FAIXAS: { faixa: string; pct: string }[] = [

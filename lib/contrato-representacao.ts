@@ -59,8 +59,9 @@ CLÁUSULA 3 — REMUNERAÇÃO
 3.2. Garantia de início (piso pelo trabalho de base) nos 3 (três) primeiros meses — período de experiência —, de forma crescente: ${garantidoContrato}. O piso é devido INTEGRALMENTE mediante o cumprimento da meta de atividade do mês; NÃO atingida a meta, o valor é ajustado PROPORCIONALMENTE ao efetivamente entregue. Após esse período, permanece devido o fixo mensal da cláusula 3.1, sob a mesma regra de proporcionalidade.
 3.3. Comissão escalonada sobre o faturamento RECEBIDO no mês, incidindo cada faixa apenas sobre a parcela nela contida:
 ${faixasContrato}
-3.4. Multiplicador de prospecção: cliente encontrado e trazido pelo PARCEIRO COMERCIAL gera comissão de ${MULTIPLICADOR_LABEL} a normal.
+3.4. Bônus de prospecção: uma vez SUPERADA a meta mínima de atividade do mês, as vendas fechadas com clientes prospectados pelo PARCEIRO COMERCIAL após o cumprimento da meta recebem acréscimo de 30% (trinta por cento) sobre a comissão da faixa correspondente. Não há bônus sobre vendas quando a meta não é superada.
 3.5. Extras: bônus por contrato recorrente assinado (R$ 150 residencial, R$ 500 comercial, R$ 1.200 usina), prêmio de upsell (15% a 30%), bônus de carteira própria ativa e 0,5% por indicação fechada ao time de solar.
+3.6. Apuração e pagamento: o ciclo fecha no último dia de cada mês; apurados atividade e vendas e consolidado o montante devido, o PARCEIRO COMERCIAL emite a nota fiscal e o pagamento é realizado via PIX até o dia 05 (cinco) do mês subsequente.
 
 CLÁUSULA 4 — METAS, DESEMPENHO E RENOVAÇÃO DA EXPERIÊNCIA
 4.1. O PARCEIRO COMERCIAL compromete-se com metas de atividade mensais (mapeamento de telhados com no mínimo 50 módulos, conversas com decisores e propostas enviadas), com rampa de 60% no mês 1, 80% no mês 2 e 100% a partir do mês 3.

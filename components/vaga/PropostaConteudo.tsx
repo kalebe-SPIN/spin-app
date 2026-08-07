@@ -1,4 +1,5 @@
 import { BaixarPropostaPdf } from '@/components/vaga/BaixarPropostaPdf'
+import { SimuladorGanhos } from '@/components/vaga/SimuladorGanhos'
 import {
   FIXO_MENSAL, GARANTIA_ESCALONADA, MULTIPLICADOR_LABEL, COMISSAO_FAIXAS,
   PROJECAO, METAS, EXTRAS, REGIME_FAIXA_LABEL, MODULOS_MIN,
@@ -82,7 +83,7 @@ export function PropostaConteudo({
         </p>
         <div className="grid gap-4">
           {[
-            ['Identificar', 'O telhado — base pública da ANEEL cruzada com imagem de satélite. Você sabe quantos módulos tem, quando foi conectado e quanto está perdendo antes da primeira ligação.'],
+            ['Receber os alvos', 'A SPIN te entrega telhados qualificados — você já sabe o porte e o potencial de cada um antes da primeira ligação. O trabalho de garimpo é nosso; o de fechar é seu.'],
             ['Abordar', 'O decisor com um diagnóstico pronto, não com uma oferta fria.'],
             ['Negociar e fechar', 'De preferência em contrato de 12 ou 24 meses.'],
             ['Acompanhar', 'O agendamento e o recebimento.'],
@@ -103,21 +104,28 @@ export function PropostaConteudo({
       <Secao titulo="O que a SPIN entrega" numero="03">
         <div className="grid sm:grid-cols-2 gap-3">
           {[
-            ['Lista de alvos', 'Base ANEEL filtrada por porte, segmento e tempo sem limpeza'],
+            ['Lista de alvos', 'Telhados qualificados por porte, segmento e potencial — prontos pra você abordar'],
             ['Base própria', 'Clientes que a SPIN já instalou — contato quente, conversão alta'],
             ['Leads de campanha', 'Tráfego pago rodando, leads chegando'],
-            ['App SPIN', 'CRM, calculadora, gerador de proposta em PDF — tudo no celular'],
+            ['App SPIN no celular', 'CRM, calculadora e gerador de proposta em PDF — tudo na palma da mão'],
             ['Proposta automática', 'O sistema calcula preço, prazo e quanto o cliente perde'],
-            ['Painel de controle', 'Suas atividades, resultados de vendas e agenda — tudo em tempo real, no seu login'],
+            ['Painel de controle', 'Suas atividades, resultados de vendas e agenda — em tempo real, no seu login'],
             ['Equipe de campo', 'Técnicos próprios — você não executa nada'],
             ['Protocolo de trabalho', 'Método testado, não é "se vira aí"'],
-            ['Trabalho remoto', 'Sem deslocamento, sem escritório, sem custo seu'],
+            ['100% remoto', 'Só um celular e internet. Você trabalha de qualquer lugar'],
           ].map(([t, d], i) => (
             <div key={i} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
               <p className="text-white font-bold text-sm mb-1">{t}</p>
               <p className="text-white/55 text-sm leading-snug">{d}</p>
             </div>
           ))}
+        </div>
+        <div className="mt-4 flex items-center gap-3 p-4 bg-sol/[0.06] border border-sol/25 rounded-xl">
+          <span className="text-2xl">📱</span>
+          <p className="text-white/75 text-sm leading-relaxed">
+            <strong className="text-white">Trabalho de qualquer lugar.</strong> Tudo o que você precisa é um
+            celular e conexão à internet — sem escritório, sem deslocamento obrigatório, sem custo de estrutura.
+          </p>
         </div>
       </Secao>
 
@@ -180,10 +188,12 @@ export function PropostaConteudo({
         </div>
 
         <div className="p-5 bg-sol/[0.06] border border-sol/25 rounded-xl mb-8">
-          <p className="text-sol font-bold mb-1">Multiplicador de prospecção · {MULTIPLICADOR_LABEL}</p>
+          <p className="text-sol font-bold mb-1">Bônus de prospecção · +30%</p>
           <p className="text-white/65 text-sm leading-relaxed">
-            Cliente que <strong className="text-white">você</strong> encontrou e trouxe vale {MULTIPLICADOR_LABEL} a
-            comissão normal. Quem só atende a base pronta recebe menos. Quem traz cliente novo recebe mais.
+            Não é um bônus para qualquer cliente. Ele vale quando você <strong className="text-white">supera a meta
+            mínima de atividade</strong>: as vendas fechadas no mês com clientes que você prospectou{' '}
+            <strong className="text-white">depois de bater a meta</strong> recebem <strong className="text-sol">+30% sobre
+            a comissão da faixa</strong> em que a venda caiu. Bateu a meta e continuou caçando? Ganha mais.
           </p>
         </div>
 
@@ -206,8 +216,17 @@ export function PropostaConteudo({
         </div>
       </Secao>
 
+      {/* ===== SIMULADOR ===== */}
+      <Secao titulo="Simule o seu ganho" numero="05">
+        <p className="text-white/60 leading-relaxed mb-6">
+          Sem letra miúda: escolha o período, diga se bateu a meta de trabalho e informe quanto vendeu. O cálculo
+          mostra a sua base + a comissão por faixa + o bônus de prospecção, ao vivo.
+        </p>
+        <SimuladorGanhos />
+      </Secao>
+
       {/* ===== O QUE DÁ PARA GANHAR ===== */}
-      <Secao titulo="O que dá para ganhar" numero="05">
+      <Secao titulo="O que dá para ganhar" numero="06">
         <div className="overflow-hidden rounded-xl border border-white/10">
           <table className="w-full text-sm">
             <thead>
@@ -234,7 +253,7 @@ export function PropostaConteudo({
       </Secao>
 
       {/* ===== O QUE ESPERAMOS ===== */}
-      <Secao titulo="O que esperamos" numero="06">
+      <Secao titulo="O que esperamos" numero="07">
         <p className="text-white/70 leading-relaxed mb-6">
           Meta de <Destaque>atividade</Destaque>, não de sorte. O que você controla:
         </p>
@@ -251,6 +270,31 @@ export function PropostaConteudo({
           ))}
         </div>
         <p className="text-sm text-white/45 mb-6">Rampa: 60% da meta no mês 1, 80% no mês 2, 100% a partir do mês 3.</p>
+
+        {/* Onde a empresa quer chegar com essa meta */}
+        <div className="p-5 md:p-6 bg-white/[0.03] border border-white/10 rounded-2xl mb-6">
+          <p className="text-white font-bold mb-1">Onde essa meta leva</p>
+          <p className="text-white/55 text-sm leading-relaxed mb-4">
+            Cumprindo as <strong className="text-white/80">{METAS.propostas} propostas/mês</strong>, com{' '}
+            <strong className="text-white/80">50% de conversão</strong> e ticket médio de{' '}
+            <strong className="text-white/80">70 módulos</strong> por contrato, é aonde a empresa quer chegar:
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              [`${METAS.propostas}`, 'propostas enviadas'],
+              [`${Math.round(METAS.propostas * 0.5)}`, 'contratos fechados / mês'],
+              [`${Math.round(METAS.propostas * 0.5) * 70}`, 'módulos em manutenção / mês'],
+            ].map(([n, l], i) => (
+              <div key={i} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl text-center">
+                <p className="text-2xl md:text-3xl font-black text-verde">{n}</p>
+                <p className="text-white/50 text-xs mt-1 leading-tight">{l}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-white/40 text-xs mt-3">
+            É a base de cálculo da meta — bater isso de forma consistente é o que sustenta a projeção de ganhos.
+          </p>
+        </div>
 
         {/* Renovação da experiência: meta de trabalho + desempenho de vendas */}
         <div className="p-5 md:p-6 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl">
@@ -278,7 +322,7 @@ export function PropostaConteudo({
       </Secao>
 
       {/* ===== FORMATO DE CONTRATAÇÃO ===== */}
-      <Secao titulo="Formato de contratação" numero="07">
+      <Secao titulo="Formato de contratação" numero="08">
         <div className="p-5 md:p-6 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl mb-6">
           <p className="text-white font-bold text-base md:text-lg mb-2">
             📋 Contratação PJ — sem vínculo empregatício
@@ -315,12 +359,41 @@ export function PropostaConteudo({
         </p>
       </Secao>
 
+      {/* ===== COMO E QUANDO VOCÊ RECEBE ===== */}
+      <Secao titulo="Como e quando você recebe" numero="09">
+        <div className="grid sm:grid-cols-4 gap-3 mb-6">
+          {[
+            ['Último dia do mês', 'Fecha o ciclo: apuramos sua atividade e suas vendas.'],
+            ['Consolidação', 'O sistema consolida base + comissão + bônus do período.'],
+            ['Você emite a NF', 'Como PJ, você emite a nota fiscal do valor apurado.'],
+            ['Até o dia 05', 'O pagamento cai no seu PIX até o dia 05 do mês seguinte.'],
+          ].map(([t, d], i) => (
+            <div key={i} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+              <div className="w-7 h-7 rounded-lg bg-sol/15 text-sol font-black flex items-center justify-center mb-2 text-sm">{i + 1}</div>
+              <p className="text-white font-bold text-sm mb-1">{t}</p>
+              <p className="text-white/55 text-xs leading-snug">{d}</p>
+            </div>
+          ))}
+        </div>
+        <div className="p-5 bg-verde/[0.06] border border-verde/25 rounded-2xl">
+          <p className="text-verde font-bold mb-2">Exemplo prático</p>
+          <p className="text-white/75 text-sm leading-relaxed">
+            Em março você bateu a meta de trabalho e fechou <strong className="text-white">R$ 40.000</strong> em
+            contratos. No dia <strong className="text-white">31/03</strong> o ciclo fecha: base{' '}
+            <strong className="text-white">{brl(FIXO_MENSAL)}</strong> + comissão{' '}
+            <strong className="text-white">R$ 2.900</strong> (10% de 15k + 14% de 10k) ={' '}
+            <strong className="text-sol">R$ 4.900</strong>. Você emite a NF e, até{' '}
+            <strong className="text-white">05/04</strong>, o valor cai no seu PIX.
+          </p>
+        </div>
+      </Secao>
+
       {/* ===== POR QUE AGORA ===== */}
       <div className="mb-16 p-6 md:p-8 bg-gradient-to-br from-sol/[0.08] to-transparent border border-sol/20 rounded-2xl">
         <h3 className="text-xl md:text-2xl font-black text-white mb-3">Por que agora</h3>
         <p className="text-white/70 leading-relaxed">
-          O boom de instalações de 2021 e 2022 está completando quatro anos. É uma safra inteira de sistemas
-          sujos, com endereço e CNPJ em base pública.{' '}
+          O boom de instalações de 2021 e 2022 está completando quatro anos — é uma safra inteira de sistemas
+          sujos, perdendo geração, esperando manutenção.{' '}
           <span className="text-white font-semibold">Quem chegar primeiro pega o mercado com contrato de dois anos assinado.</span>
         </p>
       </div>
