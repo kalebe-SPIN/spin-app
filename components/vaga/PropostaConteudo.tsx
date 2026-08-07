@@ -133,12 +133,13 @@ export function PropostaConteudo({
       <Secao titulo="Remuneração" numero="04">
         <div className="grid sm:grid-cols-2 gap-4 mb-6">
           <Card destaque titulo="Fixo mensal" valor={brl(FIXO_MENSAL)} sub="base pelo trabalho de campo, conforme a meta do mês" />
-          <Card destaque titulo="Garantido de início" valor="3 meses" sub="piso crescente durante o período de experiência" />
+          <Card destaque titulo="Seguro mínimo" valor="3 meses" sub="rede de segurança crescente na experiência" />
         </div>
 
-        {/* Escadinha do garantido — piso condicionado ao cumprimento da meta de trabalho */}
+        {/* Garantido = seguro mínimo nos 3 primeiros meses */}
         <div className="p-5 md:p-6 bg-sol/[0.08] border border-sol/30 rounded-2xl mb-6">
-          <p className="text-sol font-bold mb-4">Seu piso garantido nos 3 primeiros meses</p>
+          <p className="text-sol font-bold mb-1">🛡 Seguro mínimo nos 3 primeiros meses</p>
+          <p className="text-white/60 text-sm mb-4">Você nunca recebe menos que isto no período de experiência:</p>
           <div className="grid grid-cols-3 gap-3 mb-5">
             {GARANTIA_ESCALONADA.map((g) => (
               <div key={g.mes} className="text-center p-3 bg-white/[0.04] border border-white/10 rounded-xl">
@@ -148,12 +149,11 @@ export function PropostaConteudo({
             ))}
           </div>
           <p className="text-white/80 text-sm md:text-base leading-relaxed">
-            Esse piso é a sua base pelo trabalho de campo. Ele é pago{' '}
-            <strong className="text-white">integralmente quando você cumpre a meta de trabalho do mês</strong>.
-            Se a meta não for atingida, o valor é{' '}
-            <strong className="text-white">ajustado proporcionalmente ao que você efetivamente entregou</strong> —
-            você é pago pelo que produz. Depois dos 3 meses, o fixo de {brl(FIXO_MENSAL)} segue a mesma lógica.{' '}
-            <strong className="text-sol">Fazendo o trabalho, você tem piso.</strong>
+            O garantido funciona como um <strong className="text-white">seguro</strong>, não uma soma: se a sua{' '}
+            <strong className="text-white">base ({brl(FIXO_MENSAL)}) + comissão</strong> do mês <strong className="text-white">não
+            alcançar</strong> esse valor, você recebe o garantido. Se <strong className="text-white">ultrapassar</strong>,
+            recebe base + comissão normalmente — sempre o que for maior. É uma rede de segurança enquanto você
+            constrói carteira, paga integral com a meta cumprida (proporcional se não atingir).
           </p>
         </div>
 

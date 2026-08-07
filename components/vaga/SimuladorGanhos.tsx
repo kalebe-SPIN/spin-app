@@ -9,31 +9,37 @@ const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curren
 
 type Periodo = 'mes1' | 'mes2' | 'mes3' | 'regime'
 
+// Cor por faixa (na ordem 10% / 14% / 18% / 20%)
+const CORES_FAIXA = ['#FFD64A', '#F5B400', '#4EDC8A', '#4EA8DE']
+
 /**
- * Simulador de ganhos — o vendedor informa o cumprimento da meta de trabalho e
- * um resultado de venda (faturamento) e vê todo o rendimento do período:
- * base (integral só com a meta batida, senão proporcional) + comissão por faixa
- * + bônus de prospecção (+30%) quando supera a meta.
+ * Simulador de ganhos.
+ *
+ * Regra do garantido (meses 1-3) = SEGURO MÍNIMO, não soma:
+ *   rendimento normal = base (R$ 2.000) + comissão + bônus
+ *   nos 3 primeiros meses o vendedor recebe o MAIOR entre o garantido do mês e
+ *   o rendimento normal. Cumprida a meta, garantido integral; senão, proporcional.
+ *   No regime não há garantido — recebe base + comissão + bônus.
  */
 export function SimuladorGanhos() {
-  const [periodo, setPeriodo] = useState<Periodo>('regime')
+  const [periodo, setPeriodo] = useState<Periodo>('mes1')
   const [metaPct, setMetaPct] = useState(100)
-  const [faturamento, setFaturamento] = useState(40000)
+  const [faturamento, setFaturamento] = useState(100000)
   const [fatProsp, setFatProsp] = useState(0)
 
-  const baseCheia = useMemo(() => {
-    if (periodo === 'regime') return FIXO_MENSAL
+  const isExp = periodo !== 'regime'
+  const garantidoMes = useMemo(() => {
+    if (periodo === 'regime') return 0
     const idx = periodo === 'mes1' ? 0 : periodo === 'mes2' ? 1 : 2
     return GARANTIA_ESCALONADA[idx].valor
   }, [periodo])
 
   const bateuMeta = metaPct >= 100
   const superou = metaPct > 100
-  const baseEfetiva = bateuMeta ? baseCheia : Math.round(baseCheia * (metaPct / 100))
+  const metaFrac = Math.min(1, metaPct / 100)
 
   const com = useMemo(() => calcularComissao(faturamento), [faturamento])
 
-  // Bônus: +30% sobre a comissão da parcela de prospecção (fatia de topo do faturamento)
   const bonus = useMemo(() => {
     if (!superou || fatProsp <= 0) return 0
     const prosp = Math.min(fatProsp, faturamento)
@@ -41,13 +47,17 @@ export function SimuladorGanhos() {
     return Math.max(0, comTopo * MULTIPLICADOR_PCT)
   }, [superou, fatProsp, faturamento, com.total])
 
-  const total = baseEfetiva + com.total + bonus
+  const baseEfetiva = Math.round(FIXO_MENSAL * metaFrac)
+  const rendimentoNormal = baseEfetiva + com.total + bonus
+  const pisoSeguro = isExp ? Math.round(garantidoMes * metaFrac) : 0
+  const seguroAcionado = isExp && pisoSeguro > rendimentoNormal
+  const total = Math.max(pisoSeguro, rendimentoNormal)
 
-  const periodos: { v: Periodo; label: string; base: number }[] = [
-    { v: 'mes1', label: 'Mês 1', base: GARANTIA_ESCALONADA[0].valor },
-    { v: 'mes2', label: 'Mês 2', base: GARANTIA_ESCALONADA[1].valor },
-    { v: 'mes3', label: 'Mês 3', base: GARANTIA_ESCALONADA[2].valor },
-    { v: 'regime', label: 'Regime', base: FIXO_MENSAL },
+  const periodos: { v: Periodo; label: string }[] = [
+    { v: 'mes1', label: 'Mês 1' },
+    { v: 'mes2', label: 'Mês 2' },
+    { v: 'mes3', label: 'Mês 3' },
+    { v: 'regime', label: 'Regime' },
   ]
 
   return (
@@ -60,7 +70,6 @@ export function SimuladorGanhos() {
       <div className="grid md:grid-cols-2 gap-6 p-5 md:p-6">
         {/* ENTRADAS */}
         <div className="flex flex-col gap-5">
-          {/* Período */}
           <div>
             <label className="text-xs font-semibold text-white/60 uppercase tracking-wider">Período</label>
             <div className="grid grid-cols-4 gap-1.5 mt-2">
@@ -76,10 +85,12 @@ export function SimuladorGanhos() {
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-white/40 mt-1.5">Base do período: <strong className="text-white/70">{brl(baseCheia)}</strong></p>
+            <p className="text-[11px] text-white/40 mt-1.5">
+              Base fixa: <strong className="text-white/70">{brl(FIXO_MENSAL)}</strong>
+              {isExp && <> · seguro mínimo do mês: <strong className="text-white/70">{brl(garantidoMes)}</strong></>}
+            </p>
           </div>
 
-          {/* Meta de trabalho */}
           <div>
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-white/60 uppercase tracking-wider">Cumprimento da meta de trabalho</label>
@@ -94,12 +105,11 @@ export function SimuladorGanhos() {
               {superou
                 ? <span className="text-verde">Superou a meta ✓ — bônus de prospecção liberado</span>
                 : bateuMeta
-                  ? <span className="text-verde">Meta batida ✓ — base paga integral</span>
-                  : <span className="text-coral">Abaixo da meta — base paga proporcional ao entregue</span>}
+                  ? <span className="text-verde">Meta batida ✓ — base e seguro integrais</span>
+                  : <span className="text-coral">Abaixo da meta — base e seguro proporcionais ao entregue</span>}
             </p>
           </div>
 
-          {/* Faturamento */}
           <div>
             <label className="text-xs font-semibold text-white/60 uppercase tracking-wider">Resultado de venda (faturamento recebido no mês)</label>
             <div className="flex items-center gap-2 mt-2">
@@ -112,7 +122,6 @@ export function SimuladorGanhos() {
             </div>
           </div>
 
-          {/* Prospecção acima da meta (bônus) */}
           {superou && (
             <div>
               <label className="text-xs font-semibold text-white/60 uppercase tracking-wider">
@@ -134,33 +143,67 @@ export function SimuladorGanhos() {
         <div className="rounded-xl bg-noite-0/60 border border-white/10 p-5 flex flex-col">
           <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3">Seu rendimento no mês</p>
 
-          <Linha rotulo={`Base (${bateuMeta ? 'meta batida' : `${metaPct}% da meta`})`} valor={baseEfetiva} />
+          <Linha rotulo={bateuMeta ? 'Base fixa' : `Base (${metaPct}% da meta)`} valor={baseEfetiva} />
 
-          <div className="mt-2">
-            <div className="flex items-center justify-between text-sm">
+          {/* Comissão + barra colorida */}
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-sm mb-2">
               <span className="text-white/70">Comissão por faixa</span>
               <span className="text-white font-semibold">{brl(com.total)}</span>
             </div>
-            {com.faixas.length > 0 && (
-              <div className="mt-1 pl-3 border-l border-white/10 flex flex-col gap-0.5">
-                {com.faixas.map((f, i) => (
-                  <div key={i} className="flex items-center justify-between text-[11px] text-white/45">
-                    <span>{f.label} · {Math.round(f.pct * 100)}%</span>
-                    <span>{brl(f.valor)}</span>
-                  </div>
-                ))}
-              </div>
+            {com.total > 0 ? (
+              <>
+                {/* Barra empilhada */}
+                <div className="flex h-3 w-full rounded-full overflow-hidden bg-white/5">
+                  {com.faixas.map((f, i) => (
+                    <div
+                      key={i}
+                      style={{ width: `${(f.valor / com.total) * 100}%`, background: CORES_FAIXA[i % CORES_FAIXA.length] }}
+                      title={`${f.label} · ${brl(f.valor)}`}
+                    />
+                  ))}
+                </div>
+                {/* Legenda */}
+                <div className="mt-2 flex flex-col gap-1">
+                  {com.faixas.map((f, i) => (
+                    <div key={i} className="flex items-center justify-between text-[11px]">
+                      <span className="flex items-center gap-1.5 text-white/55">
+                        <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CORES_FAIXA[i % CORES_FAIXA.length] }} />
+                        {f.label} · {Math.round(f.pct * 100)}%
+                      </span>
+                      <span className="text-white/70">{brl(f.valor)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-[11px] text-white/40">Sem comissão nesta faixa (faturamento até R$ 15.000).</p>
             )}
           </div>
 
-          {bonus > 0 && <Linha rotulo="Bônus prospecção (+30%)" valor={bonus} cor="text-sol" />}
+          {bonus > 0 && <div className="mt-3"><Linha rotulo="Bônus prospecção (+30%)" valor={bonus} cor="text-sol" /></div>}
+
+          {/* Seguro mínimo (meses 1-3) */}
+          {isExp && (
+            <div className="mt-3 flex items-center justify-between text-sm">
+              <span className="text-white/70 flex items-center gap-2">
+                🛡 Seguro mínimo garantido
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                  seguroAcionado ? 'bg-verde/15 text-verde' : 'bg-white/5 text-white/40'
+                }`}>{seguroAcionado ? 'aplicado' : 'já superado'}</span>
+              </span>
+              <span className="text-white/70 font-semibold">{brl(pisoSeguro)}</span>
+            </div>
+          )}
 
           <div className="mt-auto pt-4 border-t border-white/10 flex items-center justify-between">
             <span className="text-white font-bold">Total do mês</span>
             <span className="text-2xl md:text-3xl font-black text-sol">{brl(total)}</span>
           </div>
           <p className="text-[11px] text-white/35 mt-2">
-            Estimativa. A comissão incide sobre o faturamento efetivamente recebido; o bônus vale sobre as vendas de prospecção acima da meta.
+            {isExp
+              ? 'Nos 3 primeiros meses você recebe o MAIOR entre o seguro mínimo e (base + comissão + bônus).'
+              : 'Estimativa: base + comissão por faixa + bônus de prospecção.'}
           </p>
         </div>
       </div>

@@ -152,10 +152,10 @@ function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa
         <h2 style={H2}>Remuneração</h2>
         <p style={TXT}>
           <strong>Fixo mensal de {brl(FIXO_MENSAL)}, pago pelo trabalho de campo.</strong> Nos 3 primeiros meses
-          (período de experiência), um piso garantido crescente — <strong>{rampaGarantido}</strong>. Esse piso é
-          pago <strong>integralmente quando a meta de trabalho do mês é cumprida</strong>; se a meta não for
-          atingida, é ajustado proporcionalmente ao efetivamente entregue. Depois dos 3 meses, o fixo de{' '}
-          {brl(FIXO_MENSAL)} segue a mesma lógica. Construir carteira leva de 60 a 90 dias, e a SPIN banca esse período.
+          (período de experiência), há um <strong>seguro mínimo crescente</strong> — <strong>{rampaGarantido}</strong>.
+          Funciona como seguro, não soma: se a base + comissão do mês não alcançar esse valor, você recebe o
+          garantido; se ultrapassar, recebe base + comissão — sempre o que for maior. Pago integral com a meta
+          cumprida (proporcional se não atingir). Construir carteira leva de 60 a 90 dias, e a SPIN banca esse período.
         </p>
 
         <p style={{ ...TXT, fontWeight: 700, color: '#0B0F1A', margin: '18px 0 8px' }}>Comissão escalonada</p>
