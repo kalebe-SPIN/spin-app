@@ -21,8 +21,9 @@ export async function PortalHeader() {
 
   const modoAtivo = modo
 
-  // Contador de sugestoes pendentes da Bianca (silencioso em falha)
+  // Contador de sugestoes pendentes da Bianca + logo da empresa (silencioso em falha)
   let sugestoesPendentes = 0
+  let logoUrl: string | null = null
   try {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -34,6 +35,12 @@ export async function PortalHeader() {
         .eq('status', 'sugerida')
       sugestoesPendentes = count || 0
     }
+    const { data: emp } = await supabase
+      .from('configuracoes_empresa')
+      .select('logo_url')
+      .eq('singleton', true)
+      .maybeSingle()
+    logoUrl = emp?.logo_url || null
   } catch {}
 
   return (
@@ -42,7 +49,16 @@ export async function PortalHeader() {
         {/* Logo + nome */}
         <div className="flex items-center gap-4">
           <Link href="/projetos" className="flex items-center gap-2">
-            <span className="text-sol font-black text-lg">SPIN</span>
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt="Spin Solar"
+                className="h-8 w-auto object-contain"
+              />
+            ) : (
+              <span className="text-sol font-black text-lg">SPIN</span>
+            )}
             <span className="text-white/40 text-xs font-mono uppercase tracking-widest">
               portal
             </span>
@@ -69,17 +85,29 @@ export async function PortalHeader() {
           <div className="flex items-center gap-2 pl-3 border-l border-white/10">
             <div className="text-right hidden sm:block">
               <p className="text-xs font-semibold text-white leading-tight">
-                {perfil.nome || 'Usuário'}
+                {(perfil as { nome_completo?: string }).nome_completo || 'Usuário'}
               </p>
               <p className="text-[10px] uppercase tracking-wider text-white/40">
-                {modoAtivo === 'admin' ? 'Administrador' : 'Consultor'}
+                {modoAtivo === 'admin' ? 'Administrador'
+                  : modoAtivo === 'vendedor_servicos' ? 'Vendedor de serviços'
+                  : 'Consultor'}
               </p>
             </div>
             <Link
               href="/conta"
-              className="w-8 h-8 rounded-full bg-sol/20 border border-sol/40 flex items-center justify-center text-xs font-bold text-sol"
+              className="w-8 h-8 rounded-full overflow-hidden bg-sol/20 border border-sol/40 flex items-center justify-center text-xs font-bold text-sol shrink-0"
+              title={(perfil as { nome_completo?: string }).nome_completo || 'Minha conta'}
             >
-              {(perfil.nome || 'U').charAt(0).toUpperCase()}
+              {(perfil as { avatar_url?: string | null }).avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={(perfil as { avatar_url?: string | null }).avatar_url!}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                ((perfil as { nome_completo?: string }).nome_completo || 'U').charAt(0).toUpperCase()
+              )}
             </Link>
           </div>
         </div>
