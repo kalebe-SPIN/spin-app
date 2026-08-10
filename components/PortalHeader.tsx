@@ -91,6 +91,7 @@ export async function PortalHeader() {
               <p className="text-[10px] uppercase tracking-wider text-white/40">
                 {modoAtivo === 'admin' ? 'Administrador'
                   : modoAtivo === 'vendedor_servicos' ? 'Vendedor de serviços'
+                  : modoAtivo === 'profissional_campo' ? 'Profissional de campo'
                   : 'Consultor'}
               </p>
             </div>

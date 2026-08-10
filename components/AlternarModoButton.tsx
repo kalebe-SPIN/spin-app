@@ -36,6 +36,13 @@ const MODOS: {
     classeAtivo: 'bg-coral/20 text-coral border-coral/50',
     classeInativo: 'text-white/50 hover:text-coral hover:bg-coral/10 border-transparent',
   },
+  {
+    chave: 'profissional_campo',
+    labelCurto: 'Campo',
+    emoji: '🚐',
+    classeAtivo: 'bg-weg-azul/25 text-weg-azul border-weg-azul/50',
+    classeInativo: 'text-white/50 hover:text-weg-azul hover:bg-weg-azul/10 border-transparent',
+  },
 ]
 
 export function AlternarModoButton({ modoAtual }: Props) {
