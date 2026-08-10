@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getConviteAtual } from '@/lib/convite'
+import { createClient } from '@/lib/supabase/server'
 import { VagaStepper } from '@/components/vaga/VagaStepper'
 
 /**
@@ -10,6 +11,13 @@ export default async function VagaPortalLayout({ children }: { children: React.R
   const convite = await getConviteAtual()
   if (!convite) redirect('/vaga/login')
 
+  const supabase = createClient()
+  const { data: empresa } = await supabase
+    .from('configuracoes_empresa')
+    .select('logo_url')
+    .eq('singleton', true)
+    .maybeSingle()
+
   const primeiroNome = convite.nome_candidato?.split(' ')[0] || 'candidato'
 
   return (
@@ -18,7 +26,12 @@ export default async function VagaPortalLayout({ children }: { children: React.R
       <header className="border-b border-white/10 bg-white/[0.02] backdrop-blur sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-sol font-black text-lg">SPIN</span>
+            {empresa?.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={empresa.logo_url} alt="Spin Solar" className="h-7 w-auto object-contain" />
+            ) : (
+              <span className="text-sol font-black text-lg">SPIN</span>
+            )}
             <span className="text-white/40 text-xs font-mono uppercase tracking-widest hidden sm:inline">
               convite de trabalho
             </span>

@@ -29,7 +29,7 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
 
   const { data: empresa } = await supabase
     .from('configuracoes_empresa')
-    .select('razao_social, cnpj, endereco')
+    .select('razao_social, cnpj, endereco, logo_url')
     .eq('singleton', true)
     .maybeSingle()
 
@@ -72,6 +72,7 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
               nomeCandidato={nomeExemplo}
               zona={zonaExemplo}
               cidades={['Florianópolis', 'Itajaí', 'Blumenau', 'Joinville', 'Criciúma', 'Chapecó', 'Lages']}
+              empresa={empresa}
             />
           ) : (
           <>

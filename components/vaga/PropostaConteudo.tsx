@@ -22,7 +22,7 @@ export function PropostaConteudo({
 }: {
   nomeCandidato: string
   zona?: string | null
-  empresa?: { razao_social?: string | null; cnpj?: string | null } | null
+  empresa?: { razao_social?: string | null; cnpj?: string | null; logo_url?: string | null } | null
   /** PDF da proposta só libera depois do contrato assinado. */
   podeBaixarPdf?: boolean
   /** Cidades de atuação — marcadas no mapa de SC. */
@@ -34,10 +34,15 @@ export function PropostaConteudo({
     <>
       {/* ===== HERO ===== */}
       <header className="mb-16">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-sol/10 border border-sol/25 rounded-full mb-6">
-          <span className="text-sol text-xs font-bold uppercase tracking-wider">SPIN Solar</span>
-          <span className="text-white/40 text-xs">· Proposta de trabalho</span>
-        </div>
+        {empresa?.logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={empresa.logo_url} alt={empresa.razao_social || 'Spin Solar'} className="h-12 w-auto object-contain mb-6" />
+        ) : (
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-sol/10 border border-sol/25 rounded-full mb-6">
+            <span className="text-sol text-xs font-bold uppercase tracking-wider">SPIN Solar</span>
+            <span className="text-white/40 text-xs">· Proposta de trabalho</span>
+          </div>
+        )}
 
         <h1 className="text-3xl md:text-5xl font-black text-white leading-[1.05] tracking-tighter2 mb-4">
           Parceiro Comercial

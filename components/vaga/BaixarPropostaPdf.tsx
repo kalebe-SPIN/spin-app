@@ -22,7 +22,7 @@ export function BaixarPropostaPdf({
   empresa,
 }: {
   nomeCandidato: string
-  empresa?: { razao_social?: string | null; cnpj?: string | null } | null
+  empresa?: { razao_social?: string | null; cnpj?: string | null; logo_url?: string | null } | null
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [gerando, setGerando] = useState(false)
@@ -93,15 +93,22 @@ function Rodape() {
   )
 }
 
-function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa?: { razao_social?: string | null } | null }) {
+function PdfPaginas({ nomeCandidato, empresa }: { nomeCandidato: string; empresa?: { razao_social?: string | null; logo_url?: string | null } | null }) {
   return (
     <>
       {/* PÁGINA 1 */}
       <section style={P}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
           <div>
-            <span style={{ fontSize: 26, fontWeight: 900, color: '#0B0F1A' }}>SPIN </span>
-            <span style={{ fontSize: 26, fontWeight: 900, color: SOL }}>SOLAR</span>
+            {empresa?.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={empresa.logo_url} alt="Spin Solar" crossOrigin="anonymous" style={{ height: 46, width: 'auto', objectFit: 'contain' }} />
+            ) : (
+              <>
+                <span style={{ fontSize: 26, fontWeight: 900, color: '#0B0F1A' }}>SPIN </span>
+                <span style={{ fontSize: 26, fontWeight: 900, color: SOL }}>SOLAR</span>
+              </>
+            )}
             <p style={{ fontSize: 10, color: '#999', margin: '2px 0 0', letterSpacing: 1 }}>
               {empresa?.razao_social || 'Spin Solar Energias Renováveis'}
             </p>

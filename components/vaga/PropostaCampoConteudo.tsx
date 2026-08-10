@@ -9,20 +9,27 @@ export function PropostaCampoConteudo({
   nomeCandidato,
   zona,
   cidades = [],
+  empresa,
 }: {
   nomeCandidato: string
   zona?: string | null
   cidades?: string[]
+  empresa?: { razao_social?: string | null; logo_url?: string | null } | null
 }) {
   const primeiroNome = nomeCandidato?.split(' ')[0] || ''
 
   return (
     <>
       <header className="mb-12">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-sol/10 border border-sol/25 rounded-full mb-6">
-          <span className="text-sol text-xs font-bold uppercase tracking-wider">SPIN Solar</span>
-          <span className="text-white/40 text-xs">· Proposta de parceria</span>
-        </div>
+        {empresa?.logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={empresa.logo_url} alt={empresa.razao_social || 'Spin Solar'} className="h-12 w-auto object-contain mb-6" />
+        ) : (
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-sol/10 border border-sol/25 rounded-full mb-6">
+            <span className="text-sol text-xs font-bold uppercase tracking-wider">SPIN Solar</span>
+            <span className="text-white/40 text-xs">· Proposta de parceria</span>
+          </div>
+        )}
         <h1 className="text-3xl md:text-5xl font-black text-white leading-[1.05] tracking-tighter2 mb-4">
           Profissional de Campo
           <br />

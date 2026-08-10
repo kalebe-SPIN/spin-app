@@ -20,7 +20,7 @@ export default async function PropostaPage() {
   const supabase = createClient()
   const { data: empresa } = await supabase
     .from('configuracoes_empresa')
-    .select('razao_social, cnpj')
+    .select('razao_social, cnpj, logo_url')
     .eq('singleton', true)
     .maybeSingle()
 
@@ -28,7 +28,7 @@ export default async function PropostaPage() {
   if (convite.tipo_proposta === 'campo') {
     return (
       <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">
-        <PropostaCampoConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} cidades={convite.cidades || []} />
+        <PropostaCampoConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} cidades={convite.cidades || []} empresa={empresa} />
         <p className="mt-10 text-center text-xs text-white/30">
           SPIN Solar · Proposta válida para discussão — sujeita a formalização em contrato.
         </p>
