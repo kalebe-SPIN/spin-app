@@ -1,10 +1,13 @@
 import { MapaSantaCatarina } from '@/components/vaga/MapaSantaCatarina'
+import { SimuladorCampo } from '@/components/vaga/SimuladorCampo'
+import { OS_BASE, OS_POR_PLACA, OS_POR_KM, valorOS } from '@/lib/proposta-campo'
+
+const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 /**
- * Proposta do PROFISSIONAL DE CAMPO (prestador PJ com equipe própria).
- * Estrutura espelha PropostaConteudo (comercial): mesmas seções 01-09.
- * Copy adaptado ao perfil de execução em campo.
- * Valores comerciais entram como <PlaceholderValor> até Kalebe passar o modelo.
+ * Proposta do PROFISSIONAL DE CAMPO — empreitada por ordem de serviço (OS).
+ * Estrutura espelha a comercial; condições são as reais do modelo empreitada:
+ *   cada OS = R$ 150 + R$ 2/placa + R$ 1/km (ida e volta); NF por serviço.
  */
 export function PropostaCampoConteudo({
   nomeCandidato,
@@ -27,12 +30,7 @@ export function PropostaCampoConteudo({
       <header className="mb-16">
         {empresa?.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={empresa.logo_url}
-            alt={empresa.razao_social || 'Spin Solar'}
-            className="h-12 w-auto object-contain mb-6"
-            style={{ filter: 'brightness(0) invert(1)' }}
-          />
+          <img src={empresa.logo_url} alt={empresa.razao_social || 'Spin Solar'} className="h-12 w-auto object-contain mb-6" style={{ filter: 'brightness(0) invert(1)' }} />
         ) : (
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-sol/10 border border-sol/25 rounded-full mb-6">
             <span className="text-sol text-xs font-bold uppercase tracking-wider">SPIN Solar</span>
@@ -47,8 +45,8 @@ export function PropostaCampoConteudo({
         </h1>
         <p className="text-white/60 text-lg leading-relaxed max-w-2xl">
           {primeiroNome ? <><strong className="text-white">{primeiroNome}</strong>, e</> : 'E'}sta é a
-          sua proposta para <strong className="text-white">executar</strong> a limpeza e a manutenção
-          de sistemas fotovoltaicos em campo — atendendo os contratos que a SPIN fecha.
+          sua proposta para <strong className="text-white">executar</strong> a limpeza e a revisão de sistemas
+          fotovoltaicos em campo — por empreitada, atendendo as ordens de serviço que a SPIN distribui.
         </p>
         {zona && (
           <p className="mt-3 text-sm text-white/40">
@@ -81,31 +79,28 @@ export function PropostaCampoConteudo({
       <Secao titulo="A oportunidade" numero="01">
         <p className="text-white/70 leading-relaxed mb-4">
           Existem hoje, em Santa Catarina, milhares de sistemas solares instalados há três, quatro anos que{' '}
-          <Destaque>nunca foram limpos</Destaque>. A SPIN já está fechando os contratos — o que falta é uma
-          equipe de campo profissional pra <strong className="text-white">executar</strong>.
+          <Destaque>nunca foram limpos nem revisados</Destaque>. A SPIN já está fechando os contratos — o que falta
+          é uma equipe de campo profissional pra <strong className="text-white">executar</strong>.
         </p>
         <p className="text-white/70 leading-relaxed">
-          Você não precisa vender, não precisa prospectar, não precisa correr atrás.{' '}
-          <span className="text-white font-semibold">
-            A SPIN te entrega as OS já fechadas, com endereço, contato e escopo definidos.
-          </span>{' '}
-          Você foca no que sabe fazer: entregar o serviço com qualidade.
+          Você não precisa vender, prospectar ou cobrar.{' '}
+          <span className="text-white font-semibold">A SPIN te entrega as OS já fechadas</span>, com endereço,
+          contato e escopo definidos. Você foca no que sabe: entregar o serviço com qualidade.
         </p>
       </Secao>
 
       {/* ===== 02 · O QUE VOCÊ VAI FAZER ===== */}
       <Secao titulo="O que você vai fazer" numero="02">
         <p className="text-white/70 leading-relaxed mb-6">
-          Executar as ordens de serviço (OS) que a SPIN distribui pela sua zona —{' '}
-          <Destaque>limpeza técnica</Destaque> e <Destaque>manutenção preventiva/corretiva</Destaque> em
-          sistemas fotovoltaicos, do residencial ao industrial. O ciclo de cada OS é seu:
+          Executar as ordens de serviço (OS) que a SPIN distribui pela sua zona — <Destaque>limpeza técnica</Destaque> e{' '}
+          <Destaque>revisão com testes elétricos e mecânicos</Destaque> (aperto das placas). O ciclo de cada OS é seu:
         </p>
         <div className="grid gap-4">
           {[
-            ['Receber a OS', 'A SPIN te entrega a OS com cliente, endereço, potência do sistema, quantidade de placas e escopo definido antes da visita.'],
+            ['Receber a OS', 'A SPIN te entrega a OS com cliente, endereço, potência do sistema e quantidade de placas antes da visita.'],
             ['Agendar', 'Você combina com o cliente o melhor dia e horário dentro do prazo do contrato.'],
-            ['Executar', 'Faz o serviço com o protocolo SPIN — limpeza técnica, checklist de manutenção, fotos antes e depois.'],
-            ['Registrar e fechar', 'Envia o laudo com fotos pelo app; o pagamento é liberado após conferência.'],
+            ['Executar', 'Limpeza técnica + revisão: testes elétricos e mecânicos, aperto das placas, checklist e fotos antes/depois.'],
+            ['Registrar e faturar', 'Envia o laudo pelo app; aprovado, você emite a NF do serviço e recebe.'],
           ].map(([t, d], i) => (
             <div key={i} className="flex gap-4 p-4 bg-white/[0.03] border border-white/10 rounded-xl">
               <span className="shrink-0 w-8 h-8 rounded-lg bg-sol/15 text-sol font-black flex items-center justify-center">{i + 1}</span>
@@ -122,14 +117,14 @@ export function PropostaCampoConteudo({
       <Secao titulo="O que a SPIN entrega" numero="03">
         <div className="grid sm:grid-cols-2 gap-3">
           {[
-            ['OS já fechadas', 'Contratos que a SPIN vendeu — você recebe a lista mensal pela sua zona'],
+            ['OS já fechadas', 'Contratos que a SPIN vendeu — você recebe a demanda pela sua zona'],
             ['Roteirização', 'App agrupa OS próximas no mesmo dia — menos deslocamento, mais serviços/dia'],
-            ['Protocolo técnico', 'Checklist padronizado de limpeza e manutenção — método testado'],
+            ['Protocolo técnico', 'Checklist padronizado de limpeza e revisão — método testado'],
             ['App SPIN no celular', 'Recebe OS, tira fotos, envia laudo, marca conclusão — tudo por lá'],
             ['Suporte técnico', 'Dúvida em campo? Consulta rápida com o engenheiro pelo WhatsApp'],
-            ['Painel de controle', 'Suas OS executadas, ganhos do mês e agenda — em tempo real, no seu login'],
-            ['Marca SPIN', 'Você atende pelo nome da SPIN — uniforme, veículo identificado, credencial'],
-            ['Base recorrente', 'Contratos anuais garantem OS repetidas — mesmo cliente, ganho recorrente'],
+            ['Painel de controle', 'Suas OS executadas, ganhos e agenda — em tempo real, no seu login'],
+            ['Marca SPIN', 'Você atende pelo nome da SPIN — credibilidade com o cliente'],
+            ['Demanda recorrente', 'Contratos anuais geram OS repetidas do mesmo cliente — ganho que volta'],
           ].map(([t, d], i) => (
             <div key={i} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
               <p className="text-white font-bold text-sm mb-1">{t}</p>
@@ -140,227 +135,154 @@ export function PropostaCampoConteudo({
         <div className="mt-4 flex items-center gap-3 p-4 bg-sol/[0.06] border border-sol/25 rounded-xl">
           <span className="text-2xl">🚐</span>
           <p className="text-white/75 text-sm leading-relaxed">
-            <strong className="text-white">Você precisa ter:</strong> CNPJ, veículo próprio, EPI de altura
-            (NR-35) e elétrica (NR-10), equipamento de limpeza técnica (mangueira desmineralizada, escova macia,
-            rodo apropriado) e disponibilidade de agenda. A SPIN entrega o resto.
+            <strong className="text-white">Você precisa ter:</strong> CNPJ, veículo próprio, EPI de altura (NR-35) e
+            elétrica (NR-10), equipamento de limpeza técnica e ferramenta para os testes/aperto. A SPIN entrega a demanda.
           </p>
         </div>
       </Secao>
 
-      {/* ===== 04 · REMUNERAÇÃO ===== */}
+      {/* ===== 04 · REMUNERAÇÃO (EMPREITADA) ===== */}
       <Secao titulo="Remuneração" numero="04">
-        <div className="grid sm:grid-cols-2 gap-4 mb-6">
-          <Card destaque titulo="Fixo mensal" valor={<PlaceholderValor rotulo="R$/mês" />} sub="base pela disponibilidade e cumprimento da meta de OS/mês" />
-          <Card destaque titulo="Seguro mínimo" valor="3 meses" sub="rede de segurança escalonada no período de experiência" />
-        </div>
+        <p className="text-white/70 leading-relaxed mb-6">
+          Contratação por <Destaque>empreitada</Destaque>: você é pago <strong className="text-white">por ordem de
+          serviço executada</strong>. Cada OS vale:
+        </p>
 
-        {/* Seguro mínimo (escalonada) */}
+        {/* Fórmula */}
         <div className="p-5 md:p-6 bg-sol/[0.08] border border-sol/30 rounded-2xl mb-6">
-          <p className="text-sol font-bold mb-1">🛡 Seguro mínimo nos 3 primeiros meses</p>
-          <p className="text-white/60 text-sm mb-4">Você nunca recebe menos que isto no período de experiência:</p>
-          <div className="grid grid-cols-3 gap-3 mb-5">
-            {[1, 2, 3].map((mes) => (
-              <div key={mes} className="text-center p-3 bg-white/[0.04] border border-white/10 rounded-xl">
-                <p className="text-[11px] text-white/50 uppercase tracking-wider mb-1">Mês {mes}</p>
-                <p className="text-xl md:text-2xl font-black text-white"><PlaceholderValor rotulo="R$" /></p>
-              </div>
-            ))}
+          <div className="grid sm:grid-cols-3 gap-3 mb-4">
+            <div className="text-center p-4 bg-white/[0.04] border border-white/10 rounded-xl">
+              <p className="text-2xl md:text-3xl font-black text-white">{brl(OS_BASE)}</p>
+              <p className="text-white/50 text-xs mt-1">de largada por OS</p>
+            </div>
+            <div className="text-center p-4 bg-white/[0.04] border border-white/10 rounded-xl">
+              <p className="text-2xl md:text-3xl font-black text-white">+ {brl(OS_POR_PLACA)}</p>
+              <p className="text-white/50 text-xs mt-1">por placa limpa e revisada</p>
+            </div>
+            <div className="text-center p-4 bg-white/[0.04] border border-white/10 rounded-xl">
+              <p className="text-2xl md:text-3xl font-black text-white">+ {brl(OS_POR_KM)}</p>
+              <p className="text-white/50 text-xs mt-1">por km rodado (ida e volta)</p>
+            </div>
           </div>
           <p className="text-white/80 text-sm md:text-base leading-relaxed">
-            O garantido funciona como um <strong className="text-white">seguro</strong>, não uma soma: se{' '}
-            <strong className="text-white">base + variável por OS</strong> do mês{' '}
-            <strong className="text-white">não alcançar</strong> esse valor, você recebe o garantido. Se{' '}
-            <strong className="text-white">ultrapassar</strong>, recebe base + variável normalmente — sempre o que
-            for maior. É uma rede de segurança enquanto você entra no ritmo do protocolo SPIN.
+            A <strong className="text-white">revisão</strong> inclui testes <strong className="text-white">elétricos e
+            mecânicos</strong> e o <strong className="text-white">aperto das placas</strong> — não é só limpeza.
+            Quanto maior o sistema e a distância, maior o valor da OS.
           </p>
         </div>
 
-        <p className="text-sm text-white/55 leading-relaxed mb-8">
-          Os 3 primeiros meses são o seu <strong className="text-white/80">período de experiência</strong>: a
-          escadinha cresce a cada mês entregue e a continuidade depende de meta cumprida <em>com</em> resultado de
-          qualidade (veja "O que esperamos"). Entrar no ritmo do protocolo leva de 30 a 60 dias, e a SPIN banca esse
-          período.
-        </p>
-
-        <h4 className="text-white font-bold mb-3">Variável por OS executada</h4>
-        <p className="text-sm text-white/50 mb-4">
-          Sobre as OS <strong className="text-white/80">concluídas e aprovadas</strong> no mês. O valor varia por
-          porte do sistema — quanto maior a usina, maior o pagamento por OS.
-        </p>
-        <div className="overflow-hidden rounded-xl border border-white/10 mb-8">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-white/[0.04] text-white/50 text-left">
-                <th className="px-4 py-3 font-semibold">Porte do sistema (nº placas)</th>
-                <th className="px-4 py-3 font-semibold text-right">Valor por OS</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {[
-                'Residencial pequeno (até 20 placas)',
-                'Residencial grande / comercial pequeno (21-70)',
-                'Comercial médio (71-200)',
-                'Industrial / usina (201-500)',
-                'Grande usina (500+)',
-              ].map((faixa, i) => (
-                <tr key={i} className="text-white/75">
-                  <td className="px-4 py-3">{faixa}</td>
-                  <td className="px-4 py-3 text-right font-bold text-sol"><PlaceholderValor rotulo="R$" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="p-5 bg-sol/[0.06] border border-sol/25 rounded-xl mb-8">
-          <p className="text-sol font-bold mb-1">Bônus de produtividade · <PlaceholderValor rotulo="+X%" /></p>
-          <p className="text-white/65 text-sm leading-relaxed">
-            Bateu a meta de OS/mês e continuou executando? As OS extras (acima da meta) recebem{' '}
-            <strong className="text-sol">bônus percentual sobre o valor da faixa</strong>. Estrutura ainda a ser
-            definida — não é um teto, é um incentivo pra quem sobra energia.
+        {/* Exemplo */}
+        <div className="p-5 bg-verde/[0.06] border border-verde/25 rounded-2xl mb-8">
+          <p className="text-verde font-bold mb-2">Exemplo prático</p>
+          <p className="text-white/75 text-sm leading-relaxed">
+            Um sistema de <strong className="text-white">24 placas</strong> a <strong className="text-white">40 km</strong>{' '}
+            (ida e volta): {brl(OS_BASE)} + {brl(OS_POR_PLACA * 24)} (24 placas) + {brl(OS_POR_KM * 40)} (40 km) ={' '}
+            <strong className="text-sol">{brl(valorOS(24, 40))}</strong> nessa OS.
           </p>
-        </div>
-
-        <h4 className="text-white font-bold mb-3">Extras</h4>
-        <div className="grid gap-2 mb-8">
-          {[
-            ['Deslocamento fora de zona', <PlaceholderValor key="1" rotulo="R$/km" />],
-            ['Serviço fim de semana / feriado', <PlaceholderValor key="2" rotulo="+X%" />],
-            ['Serviço urgente (SLA reduzido)', <PlaceholderValor key="3" rotulo="+X%" />],
-            ['OS de altura ≥ 3 pavimentos', <PlaceholderValor key="4" rotulo="R$" />],
-          ].map((e, i) => (
-            <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-4 py-3 bg-white/[0.03] border border-white/10 rounded-lg">
-              <span className="text-white/70 text-sm">{e[0]}</span>
-              <span className="text-white font-semibold text-sm">{e[1]}</span>
-            </div>
-          ))}
         </div>
 
         <div className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
-          <p className="text-white font-bold mb-1">Vínculo por zona · exclusividade</p>
+          <p className="text-white font-bold mb-1">NF por serviço · recebe a cada OS</p>
           <p className="text-white/65 text-sm leading-relaxed">
-            Todas as OS da sua zona são suas por padrão. Se o volume ultrapassar sua capacidade, a SPIN oferece a
-            você primeiro (ampliar equipe) antes de contratar outro parceiro. Cliente que você atendeu segue sendo
-            seu nas próximas visitas do contrato.
+            Você emite a nota fiscal por serviço executado e <strong className="text-white">recebe a cada OS</strong>{' '}
+            aprovada — não é salário mensal. Fez, entregou com qualidade, faturou.
           </p>
         </div>
       </Secao>
 
       {/* ===== 05 · SIMULADOR ===== */}
       <Secao titulo="Simule o seu ganho" numero="05">
-        <div className="p-6 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl">
-          <p className="text-white font-bold mb-2">🧮 Simulador em preparação</p>
-          <p className="text-white/70 text-sm leading-relaxed">
-            Assim que os valores da variável por OS estiverem confirmados, o simulador aparece aqui — você escolhe
-            quantas OS de cada porte quer executar no mês e vê o cálculo ao vivo (base + variável + bônus).
-          </p>
-        </div>
+        <p className="text-white/60 leading-relaxed mb-6">
+          Ajuste o tamanho do sistema, a distância e quantas OS você faz no mês — o cálculo aparece ao vivo.
+        </p>
+        <SimuladorCampo />
       </Secao>
 
       {/* ===== 06 · O QUE DÁ PRA GANHAR ===== */}
       <Secao titulo="O que dá para ganhar" numero="06">
+        <p className="text-white/60 leading-relaxed mb-4">
+          O valor de cada OS depende do porte e da distância. Alguns exemplos:
+        </p>
         <div className="overflow-hidden rounded-xl border border-white/10">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-white/[0.04] text-white/50 text-left">
-                <th className="px-4 py-3 font-semibold">Fase</th>
-                <th className="px-4 py-3 font-semibold">OS/mês</th>
-                <th className="px-4 py-3 font-semibold text-right">Sua remuneração</th>
+                <th className="px-4 py-3 font-semibold">Perfil do sistema</th>
+                <th className="px-4 py-3 font-semibold text-center">Placas</th>
+                <th className="px-4 py-3 font-semibold text-center">Km (ida+volta)</th>
+                <th className="px-4 py-3 font-semibold text-right">Valor da OS</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {[
-                { fase: 'Mês 1 (rampa)', os: '~40% da meta' },
-                { fase: 'Mês 2', os: '~70% da meta' },
-                { fase: 'Mês 3 em diante', os: '100% da meta' },
-                { fase: 'Regime consolidado', os: 'meta + bônus de produtividade' },
-              ].map((p, i) => (
+                ['Residencial', 12, 20],
+                ['Comercial pequeno', 70, 40],
+                ['Comercial médio', 200, 60],
+                ['Industrial / usina', 500, 100],
+              ].map(([perfil, p, k], i) => (
                 <tr key={i} className="text-white/75">
-                  <td className="px-4 py-3 font-semibold text-white">{p.fase}</td>
-                  <td className="px-4 py-3">{p.os}</td>
-                  <td className="px-4 py-3 text-right font-bold text-sol"><PlaceholderValor rotulo="R$/mês" /></td>
+                  <td className="px-4 py-3 font-semibold text-white">{perfil}</td>
+                  <td className="px-4 py-3 text-center">{p}</td>
+                  <td className="px-4 py-3 text-center">{k}</td>
+                  <td className="px-4 py-3 text-right font-bold text-sol">{brl(valorOS(Number(p), Number(k)))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <p className="mt-3 text-sm text-white/45">
-          Não é teto — quem entrega mais OS com qualidade e produtividade ganha mais. A projeção é o mínimo do
-          modelo com desempenho consistente.
+          Não é teto: quanto mais OS por dia você executa com qualidade, mais você ganha. Otimizando o roteiro
+          (OS próximas no mesmo dia), o ganho por dia sobe.
         </p>
       </Secao>
 
       {/* ===== 07 · O QUE ESPERAMOS ===== */}
       <Secao titulo="O que esperamos" numero="07">
         <p className="text-white/70 leading-relaxed mb-6">
-          Meta de <Destaque>execução com qualidade</Destaque>, não de sorte. O que você controla:
+          Empreitada é liberdade com responsabilidade. Pra continuar recebendo OS, o que importa:
         </p>
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="grid sm:grid-cols-3 gap-3 mb-4">
           {[
-            [<PlaceholderValor key="1" rotulo="N" />, 'OS concluídas / mês'],
-            [<PlaceholderValor key="2" rotulo="%" />, 'Índice de qualidade (checklist + fotos)'],
-            [<PlaceholderValor key="3" rotulo="dias" />, 'Prazo médio de atendimento'],
-          ].map(([n, l], i) => (
-            <div key={i} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl text-center">
-              <p className="text-2xl md:text-3xl font-black text-sol">{n}</p>
-              <p className="text-white/50 text-xs mt-1 leading-tight">{l}</p>
+            ['Qualidade', 'Checklist completo, fotos válidas e laudo dos testes elétricos e mecânicos'],
+            ['Prazo', 'Atender a OS dentro do prazo combinado com o cliente'],
+            ['Segurança', 'Trabalho em altura e elétrica dentro das normas (NR-35 / NR-10)'],
+          ].map(([t, d], i) => (
+            <div key={i} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+              <p className="text-sol font-bold text-sm mb-1">{t}</p>
+              <p className="text-white/60 text-sm leading-snug">{d}</p>
             </div>
           ))}
         </div>
-        <p className="text-sm text-white/45 mb-6">Rampa: 40% da meta no mês 1, 70% no mês 2, 100% a partir do mês 3.</p>
-
-        <div className="p-5 md:p-6 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl">
-          <p className="text-white font-bold text-base md:text-lg mb-2">Como funciona a renovação da experiência</p>
-          <p className="text-white/80 text-sm md:text-base leading-relaxed mb-3">
-            O período de experiência renova (e vira contratação efetiva) quando <strong className="text-white">duas
-            coisas andam juntas</strong>:
-          </p>
-          <div className="grid sm:grid-cols-2 gap-3 mb-3">
-            <div className="p-4 bg-white/[0.04] border border-white/10 rounded-xl">
-              <p className="text-sol font-bold text-sm mb-1">1 · Meta de OS</p>
-              <p className="text-white/65 text-sm leading-snug">Cumprir a atividade acima (OS/mês, prazo).</p>
-            </div>
-            <div className="p-4 bg-white/[0.04] border border-white/10 rounded-xl">
-              <p className="text-sol font-bold text-sm mb-1">2 · Qualidade de execução</p>
-              <p className="text-white/65 text-sm leading-snug">Checklist completo, fotos válidas e zero retrabalho do cliente.</p>
-            </div>
-          </div>
-          <p className="text-white/70 text-sm leading-relaxed">
-            <strong className="text-white">Não basta bater OS.</strong> Se a qualidade cai (reclamação, retrabalho,
-            checklist incompleto), a renovação trava. Entregando os dois, seguimos juntos com contrato consolidado.
-          </p>
-        </div>
+        <p className="text-white/60 text-sm leading-relaxed">
+          Entregando com qualidade e no prazo, a SPIN te prioriza na distribuição das próximas OS da sua zona —
+          é o que constrói volume e ganho recorrente pra você.
+        </p>
       </Secao>
 
       {/* ===== 08 · FORMATO DE CONTRATAÇÃO ===== */}
       <Secao titulo="Formato de contratação" numero="08">
         <div className="p-5 md:p-6 bg-weg-azul/10 border border-weg-azul/40 rounded-2xl mb-6">
-          <p className="text-white font-bold text-base md:text-lg mb-2">
-            📋 Contratação PJ — prestação de serviço
-          </p>
+          <p className="text-white font-bold text-base md:text-lg mb-2">📋 Contratação PJ — empreitada por OS</p>
           <p className="text-white/80 text-sm md:text-base leading-relaxed">
-            Esta é uma <strong className="text-white">contratação como pessoa jurídica (PJ)</strong>: você atua como{' '}
-            <strong className="text-white">prestador de serviços de operação e manutenção</strong>, com{' '}
-            <strong className="text-white">CNPJ próprio</strong>, zona definida e contrato formal registrado.{' '}
-            <strong className="text-sol">Não há vínculo empregatício</strong> — não é CLT, não há subordinação,
-            FGTS, 13º nem férias remuneradas.
+            Você atua como <strong className="text-white">pessoa jurídica (PJ)</strong>, prestador de serviços de O&amp;M
+            por <strong className="text-white">empreitada</strong> (por ordem de serviço), com <strong className="text-white">CNPJ próprio</strong>.{' '}
+            <strong className="text-sol">Não há vínculo empregatício</strong> — não é CLT, não há subordinação, FGTS,
+            13º nem férias remuneradas.
           </p>
         </div>
-        <p className="text-white/70 leading-relaxed mb-6">
-          Sendo transparente sobre o que isso significa na prática:
-        </p>
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="p-5 bg-verde/[0.06] border border-verde/25 rounded-xl">
             <p className="text-verde font-bold mb-2">A favor</p>
             <p className="text-white/65 text-sm leading-relaxed">
-              Autonomia de agenda e método, remuneração por produtividade, zona própria com base recorrente
-              garantida por contrato, sem desconto de INSS sobre variável.
+              Autonomia de agenda e ritmo, ganho por produção (fez, faturou), demanda pronta da SPIN e recorrência
+              por contrato — sem precisar vender.
             </p>
           </div>
           <div className="p-5 bg-coral/[0.06] border border-coral/25 rounded-xl">
             <p className="text-coral font-bold mb-2">Contra</p>
             <p className="text-white/65 text-sm leading-relaxed">
-              Não há FGTS, 13º nem férias remuneradas. É necessário CNPJ, veículo e EPI próprios.
+              Não há FGTS, 13º nem férias. É necessário CNPJ, veículo e EPI próprios, e a renda varia com o volume
+              de OS executadas.
             </p>
           </div>
         </div>
@@ -368,12 +290,11 @@ export function PropostaCampoConteudo({
 
       {/* ===== 09 · COMO E QUANDO RECEBE ===== */}
       <Secao titulo="Como e quando você recebe" numero="09">
-        <div className="grid sm:grid-cols-4 gap-3 mb-6">
+        <div className="grid sm:grid-cols-3 gap-3 mb-6">
           {[
-            ['Último dia do mês', 'Fecha o ciclo: apuramos suas OS concluídas + aprovadas.'],
-            ['Consolidação', 'O sistema consolida base + variável por OS + bônus do período.'],
-            ['Você emite a NF', 'Como PJ, você emite a nota fiscal do valor apurado.'],
-            ['Até o dia 05', 'O pagamento cai no seu PIX até o dia 05 do mês seguinte.'],
+            ['Executou a OS', 'Serviço feito, laudo com fotos e testes enviado pelo app.'],
+            ['Aprovação', 'A SPIN confere o laudo; aprovado, o valor da OS é liberado.'],
+            ['NF + pagamento', 'Você emite a NF do serviço e recebe a cada OS — não espera o fim do mês.'],
           ].map(([t, d], i) => (
             <div key={i} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
               <div className="w-7 h-7 rounded-lg bg-sol/15 text-sol font-black flex items-center justify-center mb-2 text-sm">{i + 1}</div>
@@ -385,10 +306,9 @@ export function PropostaCampoConteudo({
         <div className="p-5 bg-verde/[0.06] border border-verde/25 rounded-2xl">
           <p className="text-verde font-bold mb-2">Exemplo prático</p>
           <p className="text-white/75 text-sm leading-relaxed">
-            Em março você bateu a meta de OS e executou <strong className="text-white">todos os serviços com
-            qualidade aprovada</strong>. No dia <strong className="text-white">31/03</strong> o ciclo fecha: base +
-            variável por OS + bônus consolidados. Você emite a NF e, até{' '}
-            <strong className="text-white">05/04</strong>, o valor cai no seu PIX.
+            Você executou uma OS de <strong className="text-white">24 placas</strong> a 40 km. Enviou o laudo com
+            fotos e os testes aprovados. Emite a NF de <strong className="text-sol">{brl(valorOS(24, 40))}</strong> e
+            recebe por aquele serviço — sem esperar fechar o mês.
           </p>
         </div>
       </Secao>
@@ -398,7 +318,7 @@ export function PropostaCampoConteudo({
         <h3 className="text-xl md:text-2xl font-black text-white mb-3">Por que agora</h3>
         <p className="text-white/70 leading-relaxed">
           O boom de instalações de 2021 e 2022 está completando quatro anos — é uma safra inteira de sistemas
-          sujos, com fungos, sem manutenção. A SPIN está fechando contratos em ritmo alto e{' '}
+          sujos, sem manutenção. A SPIN está fechando contratos em ritmo alto e{' '}
           <span className="text-white font-semibold">
             precisa de equipe de campo profissional pra dar conta da demanda que já entra.
           </span>
@@ -425,29 +345,4 @@ function Secao({ titulo, numero, children }: { titulo: string; numero: string; c
 
 function Destaque({ children }: { children: React.ReactNode }) {
   return <strong className="text-sol font-semibold">{children}</strong>
-}
-
-function Card({ titulo, valor, sub, destaque }: { titulo: string; valor: React.ReactNode; sub: string; destaque?: boolean }) {
-  return (
-    <div className={`p-5 rounded-xl border ${destaque ? 'bg-sol/[0.06] border-sol/25' : 'bg-white/[0.03] border-white/10'}`}>
-      <p className="text-white/50 text-xs uppercase tracking-wider font-semibold mb-1">{titulo}</p>
-      <div className="text-2xl md:text-3xl font-black text-white">{valor}</div>
-      <p className="text-white/50 text-sm mt-1">{sub}</p>
-    </div>
-  )
-}
-
-/**
- * Marcador visível pros valores comerciais que Kalebe ainda vai definir.
- * Impossível de confundir com um número real — aparece em coral com aviso.
- */
-function PlaceholderValor({ rotulo }: { rotulo: string }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono bg-coral/15 border border-coral/30 text-coral align-middle"
-      title="Valor a definir com Kalebe"
-    >
-      ⚠ {rotulo}
-    </span>
-  )
 }
