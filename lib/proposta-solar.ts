@@ -20,29 +20,30 @@ export const COMISSAO_SOLAR_FAIXAS: { faixa: string; pct: string }[] = [
   { faixa: 'acima de R$ 140.000', pct: '6%' },
 ]
 
-// Faixas numéricas para o simulador (marginal por faixa)
-export const COMISSAO_SOLAR_CALC: { min: number; max: number; pct: number }[] = [
-  { min: 0, max: 60000, pct: 0.03 },
-  { min: 60000, max: 100000, pct: 0.04 },
-  { min: 100000, max: 140000, pct: 0.05 },
-  { min: 140000, max: Infinity, pct: 0.06 },
+// Faixas por faturamento do mês. O % da faixa ATINGIDA incide sobre o TOTAL
+// (não é marginal): `ate` é o teto de cada faixa.
+export const COMISSAO_SOLAR_CALC: { ate: number; pct: number }[] = [
+  { ate: 60000, pct: 0.03 },
+  { ate: 100000, pct: 0.04 },
+  { ate: 140000, pct: 0.05 },
+  { ate: Infinity, pct: 0.06 },
 ]
 
-/** Comissão marginal sobre o valor total de vendas no mês. */
+/**
+ * Comissão do solar: encontra a faixa que o faturamento do mês atinge e aplica
+ * o % dela sobre o VALOR TOTAL vendido (comissão "sobre o todo", não marginal).
+ */
 export function calcularComissaoSolar(faturamento: number): {
   total: number
-  faixas: { label: string; pct: number; base: number; valor: number }[]
+  pct: number
+  faixaLabel: string
 } {
-  let total = 0
-  const faixas: { label: string; pct: number; base: number; valor: number }[] = []
-  for (const f of COMISSAO_SOLAR_CALC) {
-    if (faturamento <= f.min) break
-    const base = Math.min(faturamento, f.max) - f.min
-    if (base <= 0) continue
-    const valor = base * f.pct
-    total += valor
-    const topo = f.max === Infinity ? '+' : `R$ ${f.max.toLocaleString('pt-BR')}`
-    faixas.push({ label: `R$ ${f.min.toLocaleString('pt-BR')} – ${topo}`, pct: f.pct, base, valor })
+  if (faturamento <= 0) return { total: 0, pct: 0, faixaLabel: '—' }
+  const faixa = COMISSAO_SOLAR_CALC.find((f) => faturamento <= f.ate) || COMISSAO_SOLAR_CALC[COMISSAO_SOLAR_CALC.length - 1]
+  const disp = COMISSAO_SOLAR_FAIXAS.find((_, i) => COMISSAO_SOLAR_CALC[i] === faixa)
+  return {
+    total: faturamento * faixa.pct,
+    pct: faixa.pct,
+    faixaLabel: disp?.faixa || '',
   }
-  return { total, faixas }
 }

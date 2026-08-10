@@ -138,8 +138,9 @@ export function PropostaSolarConteudo({
       <Secao titulo="Remuneração" numero="04">
         <p className="text-white/70 leading-relaxed mb-6">
           Você é <Destaque>100% comissionado</Destaque>: ganha sobre o <strong className="text-white">valor total
-          de cada sistema vendido</strong>. A comissão é escalonada pelo seu faturamento de vendas no mês — quanto
-          mais você vende, maior o percentual sobre a parte que avança de faixa.
+          das vendas</strong>. A comissão é escalonada — <strong className="text-white">o percentual da faixa que
+          você atingir no mês incide sobre TODO o faturamento</strong> (não é por parte, é sobre o total). Bateu a
+          faixa de cima? O percentual maior vale pra tudo que você vendeu no mês.
         </p>
         <div className="overflow-hidden rounded-xl border border-white/10 mb-8">
           <table className="w-full text-sm">

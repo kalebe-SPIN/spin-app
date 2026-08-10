@@ -85,22 +85,15 @@ export function SimuladorSolar() {
         <div className="rounded-xl bg-noite-0/60 border border-white/10 p-5 flex flex-col">
           <p className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3">Seu rendimento no mês</p>
 
+          <div className="flex items-center justify-between text-sm mb-1">
+            <span className="text-white/70">Faixa atingida</span>
+            <span className="text-white font-semibold">{Math.round(com.pct * 100)}%</span>
+          </div>
           <div className="flex items-center justify-between text-sm mb-2">
-            <span className="text-white/70">Comissão sobre as vendas</span>
+            <span className="text-white/70">Comissão ({Math.round(com.pct * 100)}% × {brl(vendas)})</span>
             <span className="text-white font-semibold">{brl(com.total)}</span>
           </div>
-          {com.faixas.length > 0 ? (
-            <div className="pl-3 border-l border-white/10 flex flex-col gap-0.5 mb-2">
-              {com.faixas.map((f, i) => (
-                <div key={i} className="flex items-center justify-between text-[11px] text-white/45">
-                  <span>{f.label} · {Math.round(f.pct * 100)}%</span>
-                  <span>{brl(f.valor)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-[11px] text-white/40 mb-2">Sem vendas no mês.</p>
-          )}
+          <p className="text-[11px] text-white/40 mb-2">O % da faixa incide sobre o total vendido no mês.</p>
 
           {isExp && (
             <div className="flex items-center justify-between text-sm">
