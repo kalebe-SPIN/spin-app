@@ -39,7 +39,7 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
   const [telefone, setTelefone] = useState('')
   const [zona, setZona] = useState('')
   const [cidades, setCidades] = useState('')
-  const [tipoProposta, setTipoProposta] = useState<'comercial' | 'campo'>('comercial')
+  const [tipoProposta, setTipoProposta] = useState<'comercial' | 'campo' | 'solar'>('comercial')
   const [erro, setErro] = useState<string | null>(null)
   const [cred, setCred] = useState<{ email: string; senha: string; link: string } | null>(null)
 
@@ -78,8 +78,8 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
         <form onSubmit={criar} className="grid sm:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <label className="text-sm font-semibold text-white/80">Tipo de proposta</label>
-            <div className="grid grid-cols-2 gap-2">
-              {([['comercial', '💼 Parceiro Comercial'], ['campo', '🔧 Profissional de Campo']] as const).map(([v, l]) => (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {([['solar', '☀️ Vendas Solar'], ['comercial', '💼 Comercial O&M'], ['campo', '🔧 Prof. de Campo']] as const).map(([v, l]) => (
                 <button
                   key={v}
                   type="button"
