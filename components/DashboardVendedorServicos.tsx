@@ -188,7 +188,7 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
         <section>
           <p className="text-xs uppercase tracking-wider font-bold text-sol mb-3">🎯 Meu trabalho</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <ModuloCard href="/crm/pipeline" icone="🎯" titulo="CRM" desc="Meus clientes e propostas" />
+            <ModuloCard href="/crm/servicos" icone="🎯" titulo="CRM · Prospecção" desc="Telhados avistados → fechados" />
             <ModuloCard href="/execucoes"    icone="🔨" titulo="Operações" desc="Serviços contratados" />
             <ModuloCard href="/pos-venda"    icone="🛠️" titulo="Pós-venda" desc="OS e garantias" />
             <ModuloCard href="/agenda"       icone="📅" titulo="Agenda" desc="Compromissos do dia" />
