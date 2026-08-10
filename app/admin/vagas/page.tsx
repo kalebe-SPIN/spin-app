@@ -25,7 +25,7 @@ export default async function AdminVagasPage() {
 
   const { data: convites } = await supabase
     .from('convites_trabalho')
-    .select('id, nome_candidato, email_candidato, telefone, zona, cargo, status, entradas_usadas, max_entradas, bloqueado, created_at')
+    .select('id, nome_candidato, email_candidato, telefone, zona, cargo, status, entradas_usadas, max_entradas, bloqueado, tipo_proposta, created_at')
     .order('created_at', { ascending: false })
 
   return (

@@ -6,7 +6,11 @@ import {
   criarConviteAction,
   liberarAcessoAction,
   redefinirSenhaCandidatoAction,
+  alterarTipoPropostaAction,
+  excluirConviteAction,
 } from '@/app/admin/vagas/actions'
+
+type TipoProposta = 'comercial' | 'campo' | 'solar'
 
 type Convite = {
   id: string
@@ -19,7 +23,14 @@ type Convite = {
   entradas_usadas: number
   max_entradas: number
   bloqueado: boolean
+  tipo_proposta: TipoProposta | null
   created_at: string
+}
+
+const TIPO_INFO: Record<TipoProposta, { label: string; emoji: string; cor: string }> = {
+  solar:     { label: 'Vendas Solar',   emoji: '☀️', cor: 'text-sol bg-sol/10 border-sol/25' },
+  comercial: { label: 'Comercial O&M', emoji: '💼', cor: 'text-verde bg-verde/10 border-verde/25' },
+  campo:     { label: 'Prof. de Campo', emoji: '🔧', cor: 'text-weg-azul bg-weg-azul/10 border-weg-azul/25' },
 }
 
 const STATUS_LABEL: Record<string, { txt: string; cor: string }> = {
@@ -66,6 +77,26 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
       const res = await redefinirSenhaCandidatoAction(id)
       if ('sucesso' in res) alert(`Nova senha: ${res.senha}\n\nEnvie ao candidato. Os 2 acessos foram renovados.`)
       else alert(res.erro)
+      router.refresh()
+    })
+  }
+
+  function trocarTipo(id: string, novo: TipoProposta) {
+    startTransition(async () => {
+      const res = await alterarTipoPropostaAction(id, novo)
+      if ('erro' in res) alert(res.erro)
+      router.refresh()
+    })
+  }
+
+  function excluir(c: Convite) {
+    if (!confirm(`Excluir o convite de ${c.nome_candidato}? Esta ação remove também a conta do candidato se ele ainda não foi promovido.`)) return
+    startTransition(async () => {
+      const res = await excluirConviteAction(c.id)
+      if ('erro' in res) { alert(res.erro); return }
+      if (!res.usuarioRemovido) {
+        alert('Convite excluído. A conta do usuário permaneceu (já foi promovido ou pertence a outro role).')
+      }
       router.refresh()
     })
   }
@@ -160,6 +191,8 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
             {convites.map((c) => {
               const st = STATUS_LABEL[c.status] || STATUS_LABEL.enviado
               const expirado = c.bloqueado || c.entradas_usadas >= c.max_entradas
+              const tipoAtual: TipoProposta = (c.tipo_proposta as TipoProposta) || 'comercial'
+              const tInfo = TIPO_INFO[tipoAtual]
               return (
                 <div key={c.id} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
                   <a href={`/admin/vagas/${c.id}`} className="flex-1 min-w-0 hover:opacity-80 transition-opacity">
@@ -167,6 +200,23 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
                     <p className="text-white/50 text-sm truncate">{c.email_candidato}{c.zona ? ` · ${c.zona}` : ''}</p>
                   </a>
                   <div className="flex items-center gap-2 flex-wrap">
+                    {/* Tipo de proposta (editável inline via <select>) */}
+                    <label className="relative">
+                      <select
+                        value={tipoAtual}
+                        onChange={(e) => trocarTipo(c.id, e.target.value as TipoProposta)}
+                        disabled={pending}
+                        title="Trocar o tipo de proposta que o candidato vê"
+                        className={`appearance-none text-xs font-bold pl-2.5 pr-6 py-1 rounded-full border cursor-pointer ${tInfo.cor} disabled:opacity-50`}
+                      >
+                        {(Object.keys(TIPO_INFO) as TipoProposta[]).map((k) => (
+                          <option key={k} value={k} className="bg-noite text-white">
+                            {TIPO_INFO[k].emoji} {TIPO_INFO[k].label}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] opacity-60">▾</span>
+                    </label>
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${st.cor}`}>{st.txt}</span>
                     <span className={`text-xs px-2.5 py-1 rounded-full border ${expirado ? 'text-coral bg-coral/10 border-coral/25' : 'text-white/50 bg-white/5 border-white/10'}`}>
                       {c.entradas_usadas}/{c.max_entradas} acessos{expirado ? ' · expirado' : ''}
@@ -182,6 +232,14 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
                     <a href={`/admin/vagas/${c.id}`} className="text-xs px-3 py-1.5 bg-sol/15 border border-sol/40 text-sol rounded-lg hover:bg-sol/25 transition-colors">
                       Detalhes →
                     </a>
+                    <button
+                      onClick={() => excluir(c)}
+                      disabled={pending}
+                      title="Excluir convite e conta do candidato"
+                      className="text-xs px-3 py-1.5 bg-coral/10 border border-coral/25 rounded-lg text-coral hover:bg-coral/20 transition-colors disabled:opacity-50"
+                    >
+                      🗑
+                    </button>
                   </div>
                 </div>
               )

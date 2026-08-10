@@ -170,3 +170,74 @@ export async function redefinirSenhaCandidatoAction(
   revalidatePath('/admin/vagas')
   return { sucesso: true, senha }
 }
+
+/** Alterna o tipo de proposta que o candidato vai ver ao acessar. */
+export async function alterarTipoPropostaAction(
+  conviteId: string,
+  novoTipo: 'comercial' | 'campo' | 'solar',
+): Promise<{ sucesso: true } | { erro: string }> {
+  const check = await verificarAdmin()
+  if (!check.ok) return { erro: check.erro }
+
+  if (!['comercial', 'campo', 'solar'].includes(novoTipo)) {
+    return { erro: 'Tipo de proposta inválido.' }
+  }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('convites_trabalho')
+    .update({ tipo_proposta: novoTipo })
+    .eq('id', conviteId)
+  if (error) return { erro: error.message }
+
+  revalidatePath('/admin/vagas')
+  return { sucesso: true }
+}
+
+/**
+ * Exclui o convite e — se o usuário associado ainda é `candidato` — remove
+ * também a conta do auth.users pra não deixar candidato órfão.
+ * Se a conta já foi promovida a outro role (virou vendedor, campo, etc.),
+ * preservamos: só o convite some.
+ */
+export async function excluirConviteAction(
+  conviteId: string,
+): Promise<{ sucesso: true; usuarioRemovido: boolean } | { erro: string }> {
+  const check = await verificarAdmin()
+  if (!check.ok) return { erro: check.erro }
+
+  const admin = createAdminClient()
+
+  const { data: convite } = await admin
+    .from('convites_trabalho')
+    .select('id, user_id')
+    .eq('id', conviteId)
+    .maybeSingle()
+  if (!convite) return { erro: 'Convite não encontrado.' }
+
+  // Descobre se o usuário ainda é candidato antes de deletar
+  let removerUsuario = false
+  if (convite.user_id) {
+    const { data: perfil } = await admin
+      .from('profiles')
+      .select('role')
+      .eq('id', convite.user_id)
+      .maybeSingle()
+    removerUsuario = perfil?.role === 'candidato'
+  }
+
+  const { error: erroDel } = await admin.from('convites_trabalho').delete().eq('id', conviteId)
+  if (erroDel) return { erro: erroDel.message }
+
+  if (removerUsuario && convite.user_id) {
+    // Delete cascata em profiles é resolvido pelo trigger/FK ON DELETE CASCADE (mig 001).
+    const { error: erroUsu } = await admin.auth.admin.deleteUser(convite.user_id)
+    if (erroUsu) {
+      // Convite já removido, mas conta permaneceu — não bloqueia, só avisa
+      return { sucesso: true, usuarioRemovido: false }
+    }
+  }
+
+  revalidatePath('/admin/vagas')
+  return { sucesso: true, usuarioRemovido: removerUsuario }
+}
