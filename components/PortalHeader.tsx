@@ -55,6 +55,7 @@ export async function PortalHeader() {
                 src={logoUrl}
                 alt="Spin Solar"
                 className="h-8 w-auto object-contain"
+                style={{ filter: 'brightness(0) invert(1)' }}
               />
             ) : (
               <span className="text-sol font-black text-lg">SPIN</span>
