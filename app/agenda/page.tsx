@@ -3,23 +3,107 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { BiancaChat } from '@/components/BiancaChat'
 import { BomDiaBotao } from '@/components/BomDiaBotao'
-import { StatusTarefaBtn, StatusEventoBtn, LinkDetalhes } from '@/components/AgendaControles'
+import { CalendarioSemanal } from '@/components/agenda/CalendarioSemanal'
+import { OcupacaoBadges, calcularHorasOcupadas } from '@/components/agenda/OcupacaoBadges'
+import { SeletorPar, type Par } from '@/components/agenda/SeletorPar'
+import { ChatParEmpresa } from '@/components/agenda/ChatParEmpresa'
+import type { EventoResumo } from '@/components/agenda/EventoPopover'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function AgendaPage() {
+export default async function AgendaPage({
+  searchParams,
+}: {
+  searchParams?: { agenda?: string }
+}) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: perfil } = await supabase
+  const { data: meuPerfil } = await supabase
     .from('profiles')
-    .select('nome_completo')
+    .select('id, nome_completo, role, zona, limite_horas_agenda')
     .eq('id', user.id)
     .single()
-  const primeiroNome = (perfil?.nome_completo || 'Kalebe').split(' ')[0]
 
+  const meuNome = meuPerfil?.nome_completo || 'Usuário'
+  const limite = Number(meuPerfil?.limite_horas_agenda ?? 6)
+  const minhaZona = meuPerfil?.zona || null
+  const meuRole = meuPerfil?.role || 'colaborador'
+
+  // Pares vinculados: mesma zona, role complementar (vendedor ↔ campo)
+  const roleComplementar =
+    meuRole === 'vendedor_servicos' ? 'profissional_campo'
+    : meuRole === 'profissional_campo' ? 'vendedor_servicos'
+    : null
+
+  let pares: Par[] = []
+  if (minhaZona && roleComplementar) {
+    const { data: paresRaw } = await supabase
+      .from('profiles')
+      .select('id, nome_completo, role')
+      .eq('zona', minhaZona)
+      .eq('role', roleComplementar)
+      .eq('ativo', true)
+    pares = (paresRaw || []).map((p) => ({ id: p.id, nome: p.nome_completo || '(sem nome)', role: p.role }))
+  }
+
+  // Agenda que estou visualizando: minha ou de um par
+  const donoIdSolicitado = searchParams?.agenda
+  const paresById = new Map(pares.map((p) => [p.id, p]))
+  const parEscolhido = donoIdSolicitado ? paresById.get(donoIdSolicitado) : null
+  const donoAtualId = parEscolhido?.id || user.id
+  const donoAtualNome = parEscolhido?.nome || meuNome
+
+  // Range: semana atual + próxima semana (2 semanas visíveis)
+  const inicioSemana = new Date()
+  inicioSemana.setHours(0, 0, 0, 0)
+  inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay())
+  const fimJanela = new Date(inicioSemana)
+  fimJanela.setDate(fimJanela.getDate() + 14)
+
+  const { data: eventosRaw } = await supabase
+    .from('agenda_eventos')
+    .select('id, titulo, data_hora_inicio, data_hora_fim, tipo, status, local, cor, usuario_id')
+    .eq('usuario_id', donoAtualId)
+    .gte('data_hora_inicio', inicioSemana.toISOString())
+    .lt('data_hora_inicio', fimJanela.toISOString())
+    .order('data_hora_inicio', { ascending: true })
+
+  const eventos: EventoResumo[] = (eventosRaw || []).map((e) => ({
+    id: e.id,
+    titulo: e.titulo,
+    data_hora_inicio: e.data_hora_inicio,
+    data_hora_fim: e.data_hora_fim,
+    tipo: e.tipo,
+    status: e.status || 'agendado',
+    local: e.local,
+    cor: e.cor,
+    usuario_id: e.usuario_id,
+    dono_nome: donoAtualNome,
+  }))
+
+  // Ocupação — dia (hoje) e média do mês (últimos 30 dias)
+  const inicioHoje = new Date(); inicioHoje.setHours(0, 0, 0, 0)
+  const fimHoje = new Date(inicioHoje); fimHoje.setDate(fimHoje.getDate() + 1)
+  const iniMes = new Date(); iniMes.setDate(iniMes.getDate() - 30); iniMes.setHours(0, 0, 0, 0)
+
+  const { data: evsMes } = await supabase
+    .from('agenda_eventos')
+    .select('data_hora_inicio, data_hora_fim')
+    .eq('usuario_id', donoAtualId)
+    .gte('data_hora_inicio', iniMes.toISOString())
+    .lt('data_hora_inicio', fimHoje.toISOString())
+
+  const horasHoje = calcularHorasOcupadas(
+    (evsMes || []).filter((e) => new Date(e.data_hora_inicio) >= inicioHoje),
+    inicioHoje, fimHoje,
+  )
+  const horasMesTotal = calcularHorasOcupadas(evsMes || [], iniMes, fimHoje)
+  const mediaHorasMes = horasMesTotal / 30
+
+  // Bianca — histórico do chat (do usuário logado, não do par)
   const { data: conversasRaw } = await supabase
     .from('bianca_conversas')
     .select('papel, conteudo, created_at')
@@ -29,152 +113,79 @@ export default async function AgendaPage() {
     .order('created_at', { ascending: false })
     .limit(20)
 
-  const historicoChat = (conversasRaw || [])
-    .slice()
-    .reverse()
-    .map((c) => ({
-      papel: c.papel as 'usuario' | 'bianca',
-      conteudo: c.conteudo,
-      timestamp: c.created_at,
-    }))
+  const historicoChat = (conversasRaw || []).slice().reverse().map((c) => ({
+    papel: c.papel as 'usuario' | 'bianca',
+    conteudo: c.conteudo,
+    timestamp: c.created_at,
+  }))
 
-  const inicioHoje = new Date()
-  inicioHoje.setHours(0, 0, 0, 0)
-  const fimHoje = new Date(inicioHoje)
-  fimHoje.setDate(fimHoje.getDate() + 1)
-
-  const { data: eventosHoje } = await supabase
-    .from('agenda_eventos')
-    .select('id, titulo, data_hora_inicio, local, tipo, status, criado_por_bianca')
-    .eq('usuario_id', user.id)
-    .gte('data_hora_inicio', inicioHoje.toISOString())
-    .lt('data_hora_inicio', fimHoje.toISOString())
-    .order('data_hora_inicio', { ascending: true })
-
-  const { data: tarefasPendentes } = await supabase
-    .from('agenda_tarefas')
-    .select('id, titulo, data_prazo, prioridade, status, criada_por_bianca')
-    .eq('usuario_id', user.id)
-    .in('status', ['pendente', 'em_andamento'])
-    .order('data_prazo', { ascending: true, nullsFirst: false })
-    .limit(10)
+  const primeiroNome = meuNome.split(' ')[0]
+  const vendoDoOutro = donoAtualId !== user.id
 
   return (
-    <main className="min-h-screen p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
-        <header className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-black text-white">
-              Agenda com <span className="text-sol">Bianca</span>
-            </h1>
-            <p className="text-white/60 mt-1 text-xs">
-              Olá {primeiroNome}, sua secretária executiva IA
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-2 mt-2">
-            <BomDiaBotao />
-            <div className="flex gap-2">
-              <Link
-                href="/agenda/calendario"
-                className="text-xs px-3 py-1.5 bg-sol/10 border border-sol/30 rounded-lg text-sol hover:bg-sol/20"
-              >
-                📅 Ver calendário
-              </Link>
-              <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/60 pt-1">
-                ← Voltar
-              </Link>
+    <main className="min-h-screen p-4 md:p-6">
+      <div className="max-w-[1400px] mx-auto">
+        {/* Header */}
+        <header className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div>
+              <h1 className="text-xl md:text-2xl font-black text-white">
+                Agenda com <span className="text-sol">Bianca</span>
+              </h1>
+              <p className="text-white/50 text-xs">{primeiroNome} · secretária IA</p>
             </div>
+            <OcupacaoBadges horasHoje={horasHoje} mediaHorasMes={mediaHorasMes} limite={limite} />
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <SeletorPar
+              meuId={user.id}
+              meuNome={meuNome}
+              pares={pares}
+              donoAtualId={donoAtualId}
+            />
+            <BomDiaBotao />
+            <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/70">← Dashboard</Link>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <BiancaChat historicoInicial={historicoChat} />
+        {vendoDoOutro && (
+          <div className="mb-3 px-4 py-2 bg-weg-azul/10 border border-weg-azul/30 rounded-lg text-sm text-weg-azul">
+            👥 Você está vendo a agenda de <strong>{donoAtualNome}</strong>. Eventos e tarefas que criar aqui vão pra agenda dele — a Bianca avisa automaticamente.
+          </div>
+        )}
+
+        {/* Grid: calendário à esquerda, painel de conversas à direita */}
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4">
+          <div className="min-w-0">
+            <CalendarioSemanal
+              eventos={eventos}
+              usuarioLogadoId={user.id}
+              donoAtualId={donoAtualId}
+              donoAtualNome={donoAtualNome}
+            />
           </div>
 
-          <aside className="space-y-4">
-            <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-              <h3 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
-                📅 Hoje ({eventosHoje?.length || 0})
-              </h3>
-              {!eventosHoje || eventosHoje.length === 0 ? (
-                <p className="text-xs text-white/40">Nada agendado hoje.</p>
-              ) : (
-                <div className="space-y-2">
-                  {eventosHoje.map((e: any) => (
-                    <div key={e.id} className="bg-noite/40 border border-white/5 rounded p-2 space-y-1">
-                      <p className="text-sm font-bold text-white flex items-center gap-1">
-                        {e.titulo}
-                        {e.criado_por_bianca && (
-                          <span className="text-[9px] text-sol" title="Criado pela Bianca">🤖</span>
-                        )}
-                      </p>
-                      <p className="text-[10px] text-white/50">
-                        {new Date(e.data_hora_inicio).toLocaleTimeString('pt-BR', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          timeZone: 'America/Sao_Paulo',
-                        })}
-                        {e.local && ` · ${e.local}`}
-                      </p>
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        <StatusEventoBtn eventoId={e.id} statusAtual={e.status || 'agendado'} />
-                        <LinkDetalhes tipo="evento" id={e.id} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          <aside className="flex flex-col gap-4 min-w-0">
+            {/* Bianca em cima */}
+            <div className="min-h-[420px]">
+              <BiancaChat historicoInicial={historicoChat} />
             </div>
 
-            <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-              <h3 className="text-xs uppercase tracking-wider font-bold text-verde mb-3">
-                ✓ Tarefas ({tarefasPendentes?.length || 0})
-              </h3>
-              {!tarefasPendentes || tarefasPendentes.length === 0 ? (
-                <p className="text-xs text-white/40">Nenhuma pendência.</p>
-              ) : (
-                <div className="space-y-2">
-                  {tarefasPendentes.map((t: any) => (
-                    <div key={t.id} className="bg-noite/40 border border-white/5 rounded p-2 space-y-1">
-                      <p className="text-sm text-white flex items-center gap-1">
-                        {t.titulo}
-                        {t.criada_por_bianca && (
-                          <span className="text-[9px] text-verde" title="Criada pela Bianca">🤖</span>
-                        )}
-                      </p>
-                      <p className="text-[10px] text-white/50 flex gap-2">
-                        {t.prioridade && (
-                          <span className={`uppercase font-bold ${
-                            t.prioridade === 'urgente' ? 'text-coral' :
-                            t.prioridade === 'alta' ? 'text-sol' : 'text-white/50'
-                          }`}>
-                            {t.prioridade}
-                          </span>
-                        )}
-                        {t.data_prazo && (
-                          <span>até {new Date(t.data_prazo + 'T12:00:00-03:00').toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span>
-                        )}
-                      </p>
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        <StatusTarefaBtn tarefaId={t.id} statusAtual={t.status || 'pendente'} />
-                        <LinkDetalhes tipo="tarefa" id={t.id} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-sol/5 border border-sol/20 rounded-xl p-3 text-xs text-white/70">
-              <p className="font-bold text-sol mb-2">💡 Fala com a Bianca em português:</p>
-              <ul className="space-y-1 text-white/60">
-                <li>• "Marca reunião com Vanildo amanhã 14h"</li>
-                <li>• "Cria tarefa: revisar proposta até sexta"</li>
-                <li>• "O que tem pra hoje?"</li>
-                <li>• "Lista minhas pendências"</li>
-              </ul>
-            </div>
+            {/* Chat par-a-par embaixo (só se tem par) */}
+            {pares.length > 0 && (
+              <ChatParEmpresa
+                meuId={user.id}
+                peerId={pares[0].id}
+                peerNome={pares[0].nome}
+              />
+            )}
+            {pares.length === 0 && (meuRole === 'vendedor_servicos' || meuRole === 'profissional_campo') && (
+              <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl text-xs text-white/50 leading-relaxed">
+                <p className="font-bold text-white/70 mb-1">Sem par vinculado ainda</p>
+                Peça pro admin cadastrar sua <strong>zona</strong> em /admin/usuarios. O chat par-a-par aparece quando houver{' '}
+                {meuRole === 'vendedor_servicos' ? 'um profissional de campo' : 'um vendedor de serviços'} na mesma zona.
+              </div>
+            )}
           </aside>
         </div>
       </div>

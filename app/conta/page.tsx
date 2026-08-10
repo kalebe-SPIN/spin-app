@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { PerfilForm } from '@/components/PerfilForm'
+import { PreferenciasAgendaForm } from '@/components/PreferenciasAgendaForm'
 
 /**
  * Página de perfil do usuário logado — /conta
@@ -61,6 +62,19 @@ export default async function ContaPage() {
               email: user.email,
               role: profile?.role,
             }}
+          />
+        </div>
+
+        {/* Preferências da agenda */}
+        <div className="bg-white/5 border border-white/10 rounded-xl p-6 md:p-8 mb-6">
+          <h2 className="text-lg font-bold text-white mb-1">Preferências da agenda</h2>
+          <p className="text-white/50 text-xs mb-6">
+            Como a /agenda decide se o seu dia está "cheio" e quem enxerga sua agenda como par.
+          </p>
+          <PreferenciasAgendaForm
+            limiteInicial={Number(profile?.limite_horas_agenda ?? 6)}
+            zonaInicial={profile?.zona ?? null}
+            podeEditarZona={profile?.role === 'vendedor_servicos' || profile?.role === 'profissional_campo'}
           />
         </div>
 
