@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { AceitarPropostaBtn } from '@/components/vaga/AceitarPropostaBtn'
 import { PropostaConteudo } from '@/components/vaga/PropostaConteudo'
+import { PropostaCampoConteudo } from '@/components/vaga/PropostaCampoConteudo'
 
 /**
  * Apresentação da proposta de trabalho — /vaga/proposta
@@ -22,6 +23,18 @@ export default async function PropostaPage() {
     .select('razao_social, cnpj')
     .eq('singleton', true)
     .maybeSingle()
+
+  // Proposta do profissional de campo (em preparação)
+  if (convite.tipo_proposta === 'campo') {
+    return (
+      <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">
+        <PropostaCampoConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} cidades={convite.cidades || []} />
+        <p className="mt-10 text-center text-xs text-white/30">
+          SPIN Solar · Proposta válida para discussão — sujeita a formalização em contrato.
+        </p>
+      </main>
+    )
+  }
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">

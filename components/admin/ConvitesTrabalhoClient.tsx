@@ -39,6 +39,7 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
   const [telefone, setTelefone] = useState('')
   const [zona, setZona] = useState('')
   const [cidades, setCidades] = useState('')
+  const [tipoProposta, setTipoProposta] = useState<'comercial' | 'campo'>('comercial')
   const [erro, setErro] = useState<string | null>(null)
   const [cred, setCred] = useState<{ email: string; senha: string; link: string } | null>(null)
 
@@ -48,10 +49,10 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
     setCred(null)
     startTransition(async () => {
       const listaCidades = cidades.split(',').map((c) => c.trim()).filter(Boolean)
-      const res = await criarConviteAction({ nome, email, telefone, zona, cidades: listaCidades })
+      const res = await criarConviteAction({ nome, email, telefone, zona, cidades: listaCidades, tipo_proposta: tipoProposta })
       if ('erro' in res) { setErro(res.erro); return }
       setCred({ email: res.email, senha: res.senha, link: res.link })
-      setNome(''); setEmail(''); setTelefone(''); setZona(''); setCidades('')
+      setNome(''); setEmail(''); setTelefone(''); setZona(''); setCidades(''); setTipoProposta('comercial')
       router.refresh()
     })
   }
@@ -75,6 +76,23 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
       <section className="bg-white/[0.03] border border-white/10 rounded-2xl p-6">
         <h2 className="text-lg font-bold text-white mb-4">Novo convite</h2>
         <form onSubmit={criar} className="grid sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <label className="text-sm font-semibold text-white/80">Tipo de proposta</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([['comercial', '💼 Parceiro Comercial'], ['campo', '🔧 Profissional de Campo']] as const).map(([v, l]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setTipoProposta(v)}
+                  className={`py-2.5 rounded-lg text-sm font-bold border transition-colors ${
+                    tipoProposta === v ? 'bg-sol text-noite-0 border-sol' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-semibold text-white/80">Nome do candidato</label>
             <input value={nome} onChange={(e) => setNome(e.target.value)} required placeholder="Nome completo" className="input-spin" />

@@ -42,12 +42,20 @@ export default async function AdminVagasPage() {
               lê a proposta, assina o contrato e envia os documentos. O login funciona só 2 vezes e depois expira.
             </p>
           </div>
-          <Link
-            href="/admin/vagas/previa"
-            className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 bg-sol/15 border border-sol/40 text-sol font-semibold rounded-lg hover:bg-sol/25 transition-colors whitespace-nowrap"
-          >
-            👁 Ver a página do candidato
-          </Link>
+          <div className="shrink-0 flex flex-col gap-2">
+            <Link
+              href="/admin/vagas/previa?tipo=comercial"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-sol/15 border border-sol/40 text-sol font-semibold rounded-lg hover:bg-sol/25 transition-colors whitespace-nowrap text-sm"
+            >
+              👁 Prévia — Parceiro Comercial
+            </Link>
+            <Link
+              href="/admin/vagas/previa?tipo=campo"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-weg-azul/15 border border-weg-azul/40 text-white font-semibold rounded-lg hover:bg-weg-azul/25 transition-colors whitespace-nowrap text-sm"
+            >
+              👁 Prévia — Profissional de Campo
+            </Link>
+          </div>
         </header>
 
         <ConvitesTrabalhoClient convites={convites || []} />

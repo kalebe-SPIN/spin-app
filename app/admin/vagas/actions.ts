@@ -33,6 +33,7 @@ export async function criarConviteAction(input: {
   zona?: string
   cargo?: string
   cidades?: string[]
+  tipo_proposta?: 'comercial' | 'campo'
 }): Promise<
   | { sucesso: true; email: string; senha: string; link: string }
   | { erro: string }
@@ -78,7 +79,10 @@ export async function criarConviteAction(input: {
     telefone: input.telefone?.trim() || null,
     zona: input.zona?.trim() || null,
     cidades: (input.cidades || []).map((c) => c.trim()).filter(Boolean),
-    cargo: input.cargo?.trim() || 'Parceiro Comercial — Serviços de O&M',
+    tipo_proposta: input.tipo_proposta === 'campo' ? 'campo' : 'comercial',
+    cargo: input.cargo?.trim() || (input.tipo_proposta === 'campo'
+      ? 'Profissional de Campo — Serviços de O&M'
+      : 'Parceiro Comercial — Serviços de O&M'),
     created_by: check.userId,
   })
   if (erroConvite) {
