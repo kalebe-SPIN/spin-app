@@ -132,12 +132,25 @@ export function PropostaCampoConteudo({
             </div>
           ))}
         </div>
-        <div className="mt-4 flex items-center gap-3 p-4 bg-sol/[0.06] border border-sol/25 rounded-xl">
-          <span className="text-2xl">🚐</span>
-          <p className="text-white/75 text-sm leading-relaxed">
-            <strong className="text-white">Você precisa ter:</strong> CNPJ, veículo próprio, EPI de altura (NR-35) e
-            elétrica (NR-10), equipamento de limpeza técnica e ferramenta para os testes/aperto. A SPIN entrega a demanda.
-          </p>
+        <div className="mt-4 p-5 bg-sol/[0.06] border border-sol/25 rounded-xl">
+          <p className="text-white font-bold mb-3">🚐 O que você precisa ter</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {[
+              ['CNPJ ativo', 'Contratação é PJ (MEI ou empresa)'],
+              ['Carro próprio', 'Deslocamento até os telhados da sua zona'],
+              ['EPIs completos', 'Equipamentos de proteção individual em dia'],
+              ['Certificação NR-35 e NR-10', 'Trabalho em altura e em instalações elétricas'],
+              ['Material de limpeza', 'Escova apropriada e detergente para módulos FV'],
+              ['Multímetro', 'Para os testes elétricos da revisão'],
+              ['Ferramentas elétricas', 'Para aperto das placas e manutenção'],
+            ].map(([t, d], i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="text-sol mt-0.5">✓</span>
+                <p className="text-white/75 text-sm leading-snug"><strong className="text-white">{t}</strong> — {d}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-white/50 text-xs mt-3">A SPIN entrega a demanda, o roteiro e o protocolo. A estrutura de execução é sua.</p>
         </div>
       </Secao>
 
