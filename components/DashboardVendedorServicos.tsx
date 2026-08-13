@@ -3,8 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 
 /**
  * Dashboard exclusivo do vendedor_servicos.
- * Foco: desempenho de trabalho + resultado do mês + gap pra meta.
- * NÃO mostra Orçamento Rápido, Projetos ou Homologação (não são dele).
+ *
+ * Duas metas independentes lado a lado:
+ *   • Meta de TRABALHO (fixa global) — 3 sub-metas: telhados, contatos, propostas.
+ *     Realizado calculado das tabelas telhados + interacoes_cliente.
+ *   • Meta COMERCIAL (por vendedor) — R$ realizado / meta / falta / projeção.
+ *     Valor da tabela metas + soma de execucoes_servicos concluídas.
+ *
+ * NÃO mostra Orçamento Rápido, Projetos ou Homologação.
  */
 export async function DashboardVendedorServicos({ userId, nome }: { userId: string; nome: string }) {
   const supabase = createClient()
@@ -16,8 +22,9 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
   const diasNoMes = fimMes.getDate()
   const diaAtual = hoje.getDate()
   const diasRestantes = Math.max(0, diasNoMes - diaAtual)
+  const fatorProjecao = diasNoMes / Math.max(1, diaAtual)
 
-  // Meta do mês (se existir)
+  // ─── Meta COMERCIAL (por vendedor) ────────────────────────────────────
   const { data: metaRow } = await supabase
     .from('metas')
     .select('meta_vendas_valor, atingido_vendas_valor')
@@ -26,63 +33,103 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
     .eq('mes', mes)
     .maybeSingle()
 
-  const meta = Number(metaRow?.meta_vendas_valor) || 0
+  const metaR = Number(metaRow?.meta_vendas_valor) || 0
   const realizadoRegistrado = Number(metaRow?.atingido_vendas_valor) || 0
 
-  // Interações do usuário nos últimos 30 dias (pro gráfico de desempenho)
-  const inicio30 = new Date(hoje.getTime() - 30 * 24 * 60 * 60 * 1000)
-  const { data: interacoes } = await supabase
-    .from('interacoes_cliente')
-    .select('tipo, data_hora')
-    .eq('usuario_id', userId)
-    .gte('data_hora', inicio30.toISOString())
-    .order('data_hora', { ascending: true })
-
-  // Execuções fechadas do vendedor no mês (pro realizado on-the-fly)
   const { data: execFechadas } = await supabase
     .from('execucoes_servicos')
-    .select('valor_final, data_conclusao, responsavel_id')
+    .select('valor_final, data_conclusao')
     .eq('responsavel_id', userId)
     .not('data_conclusao', 'is', null)
     .gte('data_conclusao', inicioMes.toISOString())
 
-  const realizadoCalc = (execFechadas || []).reduce((s, e) => s + (Number(e.valor_final) || 0), 0)
-  const realizado = Math.max(realizadoRegistrado, realizadoCalc)
-  const gap = Math.max(0, meta - realizado)
-  const perc = meta > 0 ? Math.min(100, Math.round((realizado / meta) * 100)) : 0
-  const ritmoDiario = realizado / Math.max(1, diaAtual)
-  const projecaoFimMes = ritmoDiario * diasNoMes
-  const noRitmo = meta > 0 ? projecaoFimMes >= meta : null
+  const realizadoR = Math.max(
+    realizadoRegistrado,
+    (execFechadas || []).reduce((s, e) => s + (Number(e.valor_final) || 0), 0),
+  )
+  const gapR = Math.max(0, metaR - realizadoR)
+  const percR = metaR > 0 ? Math.min(100, Math.round((realizadoR / metaR) * 100)) : 0
+  const projecaoR = realizadoR * fatorProjecao
 
-  // Agrupa interações por dia (últimos 30) — desempenho de trabalho
+  // Fechamentos por semana (gráfico da meta comercial)
+  const porSemana: { semana: string; valor: number }[] = []
+  for (let s = 0; s < Math.ceil(diasNoMes / 7); s++) porSemana.push({ semana: `S${s + 1}`, valor: 0 })
+  for (const e of execFechadas || []) {
+    if (!e.data_conclusao) continue
+    const d = new Date(e.data_conclusao)
+    const idx = Math.floor((d.getDate() - 1) / 7)
+    if (porSemana[idx]) porSemana[idx].valor += Number(e.valor_final) || 0
+  }
+
+  // ─── Meta de TRABALHO (fixa global) ───────────────────────────────────
+  const { data: cfg } = await supabase
+    .from('configuracoes_empresa')
+    .select('meta_telhados_mes, meta_contatos_mes, meta_propostas_mes')
+    .eq('singleton', true)
+    .maybeSingle()
+
+  const metaTelhados = Number(cfg?.meta_telhados_mes ?? 30)
+  const metaContatos = Number(cfg?.meta_contatos_mes ?? 60)
+  const metaPropostas = Number(cfg?.meta_propostas_mes ?? 15)
+
+  // Telhados cadastrados no mês
+  const { count: countTelhados } = await supabase
+    .from('telhados')
+    .select('*', { count: 'exact', head: true })
+    .eq('vendedor_id', userId)
+    .gte('criado_em', inicioMes.toISOString())
+
+  const feitoTelhados = countTelhados || 0
+
+  // Interações registradas no mês (contato = ligação/WhatsApp/visita)
+  const { count: countContatos } = await supabase
+    .from('interacoes_cliente')
+    .select('*', { count: 'exact', head: true })
+    .eq('usuario_id', userId)
+    .gte('data_hora', inicioMes.toISOString())
+
+  const feitoContatos = countContatos || 0
+
+  // Telhados que chegaram na fase proposta ou fechado no mês
+  const { count: countPropostas } = await supabase
+    .from('telhados')
+    .select('*', { count: 'exact', head: true })
+    .eq('vendedor_id', userId)
+    .in('fase', ['proposta', 'fechado'])
+    .gte('criado_em', inicioMes.toISOString())
+
+  const feitoPropostas = countPropostas || 0
+
+  // Interações por dia (últimos 30) — gráfico da meta de trabalho
+  const inicio30 = new Date(hoje.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const { data: interacoes30 } = await supabase
+    .from('interacoes_cliente')
+    .select('data_hora')
+    .eq('usuario_id', userId)
+    .gte('data_hora', inicio30.toISOString())
+    .order('data_hora', { ascending: true })
+
   const porDia = new Map<string, number>()
   for (let i = 29; i >= 0; i--) {
     const d = new Date(hoje.getTime() - i * 24 * 60 * 60 * 1000)
     porDia.set(chaveDia(d), 0)
   }
-  for (const it of interacoes || []) {
+  for (const it of interacoes30 || []) {
     const k = chaveDia(new Date(it.data_hora))
     if (porDia.has(k)) porDia.set(k, (porDia.get(k) || 0) + 1)
   }
   const dadosDesempenho = Array.from(porDia.entries()).map(([data, qtd]) => ({ data, qtd }))
-  const totalAtividades30d = dadosDesempenho.reduce((s, d) => s + d.qtd, 0)
-  const mediaAtividadesDia = totalAtividades30d / 30
 
-  // Agrupa fechamentos por semana do mês — resultado comercial
-  const porSemana: { semana: string; valor: number }[] = []
-  for (let s = 0; s < Math.ceil(diasNoMes / 7); s++) {
-    porSemana.push({ semana: `S${s + 1}`, valor: 0 })
-  }
-  for (const e of execFechadas || []) {
-    if (!e.data_conclusao) continue
-    const d = new Date(e.data_conclusao)
-    const semana = Math.floor((d.getDate() - 1) / 7)
-    if (porSemana[semana]) porSemana[semana].valor += Number(e.valor_final) || 0
-  }
+  // Score consolidado da meta de trabalho (média das 3 barras) pro status agregado
+  const percTrabalho = Math.round((
+    (metaTelhados > 0 ? Math.min(1, feitoTelhados / metaTelhados) : 0) +
+    (metaContatos > 0 ? Math.min(1, feitoContatos / metaContatos) : 0) +
+    (metaPropostas > 0 ? Math.min(1, feitoPropostas / metaPropostas) : 0)
+  ) / 3 * 100)
 
   return (
     <main className="min-h-screen p-6 md:p-10">
-      <div className="max-w-6xl mx-auto space-y-8">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
@@ -90,7 +137,7 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
               Olá, <span className="text-coral">{nome.split(' ')[0]}</span>
             </h1>
             <p className="text-white/60 text-sm mt-1">
-              Vendedor de serviços · {mesNome(mes)} de {ano}
+              Vendedor de serviços · {mesNome(mes)} de {ano} · {diaAtual}/{diasNoMes} dias · {diasRestantes} restantes
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -103,83 +150,93 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
           </div>
         </header>
 
-        {/* KPIs — resultado + gap */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Kpi label="Realizado no mês" valor={fmtBRL(realizado)} cor="text-verde" hint={`${diaAtual} de ${diasNoMes} dias`} />
-          <Kpi
-            label="Meta do mês"
-            valor={meta > 0 ? fmtBRL(meta) : 'Sem meta'}
-            cor={meta > 0 ? 'text-sol' : 'text-white/40'}
-            hint={meta === 0 ? 'Peça ao admin pra definir' : `${perc}% atingido`}
-          />
-          <Kpi
-            label="Falta"
-            valor={meta > 0 ? fmtBRL(gap) : '—'}
-            cor={gap === 0 && meta > 0 ? 'text-verde' : 'text-coral'}
-            hint={meta > 0 ? (gap === 0 ? '🎉 meta batida' : `${diasRestantes} dias restantes`) : ''}
-          />
-          <Kpi
-            label="Projeção fim do mês"
-            valor={meta > 0 ? fmtBRL(projecaoFimMes) : '—'}
-            cor={noRitmo === true ? 'text-verde' : noRitmo === false ? 'text-coral' : 'text-white/40'}
-            hint={noRitmo === true ? '✓ no ritmo' : noRitmo === false ? '⚠ abaixo do ritmo' : ''}
-          />
-        </section>
+        {/* 2 BLOCOS DE META lado a lado */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* ═══════════════ META DE TRABALHO ═══════════════ */}
+          <div className="bg-gradient-to-br from-sol/[0.06] to-transparent border border-sol/25 rounded-2xl p-5 md:p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-bold text-sol">🏃 Meta de trabalho</p>
+                <p className="text-white/50 text-xs mt-0.5">Esforço do mês · fixa pra todos os vendedores</p>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl md:text-4xl font-black text-sol tabular-nums">{percTrabalho}%</p>
+                <p className="text-[10px] text-white/40 uppercase tracking-wider">consolidado</p>
+              </div>
+            </div>
 
-        {/* Barra de progresso da meta */}
-        {meta > 0 && (
-          <section className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-            <div className="flex items-baseline justify-between mb-2">
-              <p className="text-xs uppercase tracking-wider font-bold text-sol">Progresso da meta</p>
-              <p className="text-xs text-white/60">
-                <span className="text-verde font-bold">{fmtBRL(realizado)}</span> de {fmtBRL(meta)}
-              </p>
+            <div className="space-y-3">
+              <SubMeta rotulo="🏠 Telhados cadastrados" feito={feitoTelhados} meta={metaTelhados} unidade="" cor="sol" />
+              <SubMeta rotulo="📞 Contatos / interações"  feito={feitoContatos}  meta={metaContatos}  unidade="" cor="weg-azul" />
+              <SubMeta rotulo="📄 Chegaram em proposta"   feito={feitoPropostas} meta={metaPropostas} unidade="" cor="verde" />
             </div>
-            <div className="h-3 bg-white/5 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all ${perc >= 100 ? 'bg-verde' : perc >= 75 ? 'bg-sol' : perc >= 40 ? 'bg-weg-azul' : 'bg-coral'}`}
-                style={{ width: `${perc}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-white/40 mt-1.5 text-right">{perc}%</p>
-          </section>
-        )}
 
-        {/* 2 GRÁFICOS lado a lado */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Desempenho de trabalho */}
-          <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-            <div className="mb-3">
-              <p className="text-xs uppercase tracking-wider font-bold text-sol">📞 Desempenho de trabalho</p>
-              <p className="text-[10px] text-white/50 mt-0.5">
-                Atividades por dia · últimos 30 dias · média {mediaAtividadesDia.toFixed(1)}/dia
-              </p>
-            </div>
-            <GraficoBarras dados={dadosDesempenho} altura={140} corBarra="#f4d000" />
-            <div className="mt-3 pt-3 border-t border-white/10 text-[10px] text-white/50 flex justify-between">
-              <span>Total 30d: <strong className="text-white/80">{totalAtividades30d}</strong></span>
-              <span>Ontem: <strong className="text-white/80">{dadosDesempenho[dadosDesempenho.length - 2]?.qtd || 0}</strong></span>
-              <span>Hoje: <strong className="text-sol">{dadosDesempenho[dadosDesempenho.length - 1]?.qtd || 0}</strong></span>
+            {/* Gráfico interações 30d */}
+            <div className="mt-5 pt-4 border-t border-white/10">
+              <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold mb-2">Ritmo de interações · últimos 30 dias</p>
+              <GraficoBarras dados={dadosDesempenho} altura={90} corBarra="#f4d000" />
             </div>
           </div>
 
-          {/* Resultado comercial */}
-          <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-            <div className="mb-3">
-              <p className="text-xs uppercase tracking-wider font-bold text-sol">💰 Resultado comercial</p>
-              <p className="text-[10px] text-white/50 mt-0.5">
-                R$ fechado por semana · {mesNome(mes)}/{ano}
-              </p>
+          {/* ═══════════════ META COMERCIAL ═══════════════ */}
+          <div className="bg-gradient-to-br from-verde/[0.06] to-transparent border border-verde/25 rounded-2xl p-5 md:p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-bold text-verde">💰 Meta comercial</p>
+                <p className="text-white/50 text-xs mt-0.5">R$ fechado · personalizada por vendedor</p>
+              </div>
+              <div className="text-right">
+                {metaR > 0 ? (
+                  <>
+                    <p className="text-3xl md:text-4xl font-black text-verde tabular-nums">{percR}%</p>
+                    <p className="text-[10px] text-white/40 uppercase tracking-wider">atingido</p>
+                  </>
+                ) : (
+                  <p className="text-xs text-white/40">Sem meta</p>
+                )}
+              </div>
             </div>
-            <GraficoBarras
-              dados={porSemana.map(s => ({ data: s.semana, qtd: s.valor }))}
-              altura={140}
-              corBarra="#0f766e"
-              formatValor={(v) => 'R$ ' + (v / 1000).toFixed(1) + 'k'}
-            />
-            <div className="mt-3 pt-3 border-t border-white/10 text-[10px] text-white/50 flex justify-between">
-              <span>Ritmo diário: <strong className="text-verde">{fmtBRL(ritmoDiario)}</strong></span>
-              <span>Projeção: <strong className="text-white/80">{fmtBRL(projecaoFimMes)}</strong></span>
+
+            {/* Mini KPIs comerciais */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <MiniStat label="Realizado" valor={fmtBRL(realizadoR)} cor="text-verde" />
+              <MiniStat label="Meta" valor={metaR > 0 ? fmtBRL(metaR) : '—'} cor="text-white" />
+              <MiniStat
+                label="Falta"
+                valor={metaR > 0 ? fmtBRL(Math.max(0, gapR)) : '—'}
+                cor={gapR === 0 && metaR > 0 ? 'text-verde' : 'text-coral'}
+              />
+              <MiniStat
+                label="Projeção fim do mês"
+                valor={fmtBRL(projecaoR)}
+                cor={metaR > 0 && projecaoR >= metaR ? 'text-verde' : 'text-coral'}
+              />
+            </div>
+
+            {/* Barra progresso R$ */}
+            {metaR > 0 && (
+              <div className="mb-4">
+                <div className="h-3 bg-white/5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${percR >= 100 ? 'bg-verde' : percR >= 75 ? 'bg-sol' : percR >= 40 ? 'bg-weg-azul' : 'bg-coral'}`}
+                    style={{ width: `${percR}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-white/40 mt-1 text-right">
+                  {fmtBRL(realizadoR)} de {fmtBRL(metaR)} · {gapR > 0 ? `faltam ${fmtBRL(gapR)}` : '🎉 meta batida'}
+                </p>
+              </div>
+            )}
+
+            {/* Gráfico R$ por semana */}
+            <div className="mt-5 pt-4 border-t border-white/10">
+              <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold mb-2">R$ fechado por semana</p>
+              <GraficoBarras
+                dados={porSemana.map(s => ({ data: s.semana, qtd: s.valor }))}
+                altura={90}
+                corBarra="#0f766e"
+                formatValor={(v) => 'R$ ' + (v / 1000).toFixed(1) + 'k'}
+              />
             </div>
           </div>
         </section>
@@ -203,12 +260,45 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
 // COMPONENTES AUXILIARES
 // ═════════════════════════════════════════════════════════════════════
 
-function Kpi({ label, valor, cor, hint }: { label: string; valor: string; cor: string; hint?: string }) {
+function SubMeta({
+  rotulo, feito, meta, unidade, cor,
+}: {
+  rotulo: string
+  feito: number
+  meta: number
+  unidade: string
+  cor: 'sol' | 'weg-azul' | 'verde' | 'coral'
+}) {
+  const perc = meta > 0 ? Math.min(100, Math.round((feito / meta) * 100)) : 0
+  const cores: Record<typeof cor, { texto: string; barra: string }> = {
+    sol: { texto: 'text-sol', barra: 'bg-sol' },
+    'weg-azul': { texto: 'text-weg-azul', barra: 'bg-weg-azul' },
+    verde: { texto: 'text-verde', barra: 'bg-verde' },
+    coral: { texto: 'text-coral', barra: 'bg-coral' },
+  }
+  const c = cores[cor]
   return (
-    <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-      <p className="text-[10px] uppercase tracking-wider text-white/50 font-semibold">{label}</p>
-      <p className={`text-2xl md:text-3xl font-black mt-1 ${cor}`}>{valor}</p>
-      {hint && <p className="text-[10px] text-white/40 mt-0.5">{hint}</p>}
+    <div>
+      <div className="flex items-baseline justify-between mb-1">
+        <p className="text-sm text-white/80 font-semibold">{rotulo}</p>
+        <p className="text-sm tabular-nums">
+          <span className={`font-black ${c.texto}`}>{feito}</span>
+          <span className="text-white/40"> / {meta}{unidade}</span>
+          <span className="text-white/40 text-[10px] ml-2">({perc}%)</span>
+        </p>
+      </div>
+      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+        <div className={`h-full transition-all ${c.barra}`} style={{ width: `${perc}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function MiniStat({ label, valor, cor }: { label: string; valor: string; cor: string }) {
+  return (
+    <div className="bg-white/[0.03] border border-white/10 rounded-lg p-2.5">
+      <p className="text-[9px] uppercase tracking-wider text-white/50 font-semibold leading-tight">{label}</p>
+      <p className={`text-lg font-black mt-0.5 leading-tight ${cor}`}>{valor}</p>
     </div>
   )
 }
@@ -236,19 +326,19 @@ function GraficoBarras({
   formatValor?: (v: number) => string
 }) {
   if (dados.length === 0) {
-    return <div className="text-center py-8 text-xs text-white/40">Sem dados</div>
+    return <div className="text-center py-6 text-xs text-white/40">Sem dados</div>
   }
   const max = Math.max(1, ...dados.map(d => d.qtd))
   const larguraBarra = 100 / dados.length
   return (
     <svg viewBox={`0 0 100 ${altura}`} preserveAspectRatio="none" className="w-full" style={{ height: altura }}>
       {dados.map((d, i) => {
-        const h = (d.qtd / max) * (altura - 20)
+        const h = (d.qtd / max) * (altura - 14)
         return (
           <g key={i}>
             <rect
               x={i * larguraBarra + 0.3}
-              y={altura - h - 12}
+              y={altura - h - 8}
               width={larguraBarra - 0.6}
               height={h}
               fill={corBarra}
@@ -260,9 +350,8 @@ function GraficoBarras({
           </g>
         )
       })}
-      {/* Labels do primeiro/último dia */}
-      <text x="0.5" y={altura - 2} fontSize="4" fill="rgba(255,255,255,0.4)">{dados[0]?.data.slice(-5)}</text>
-      <text x="99.5" y={altura - 2} fontSize="4" fill="rgba(255,255,255,0.4)" textAnchor="end">{dados[dados.length - 1]?.data.slice(-5)}</text>
+      <text x="0.5" y={altura - 1} fontSize="3.5" fill="rgba(255,255,255,0.4)">{dados[0]?.data.slice(-5)}</text>
+      <text x="99.5" y={altura - 1} fontSize="3.5" fill="rgba(255,255,255,0.4)" textAnchor="end">{dados[dados.length - 1]?.data.slice(-5)}</text>
     </svg>
   )
 }
