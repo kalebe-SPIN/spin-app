@@ -65,6 +65,11 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
         cliente_telefone: clienteTel || null,
         cliente_email: clienteEmail || null,
         observacoes: obs || null,
+        // Dados da Google Solar API (opcionais — null se fora da cobertura)
+        google_max_placas: ponto.solar?.maxPlacas ?? null,
+        area_util_m2: ponto.solar?.areaUtilM2 ?? null,
+        geracao_anual_kwh: ponto.solar?.geracaoAnualKwh ?? null,
+        imagery_quality: ponto.solar?.qualidade ?? null,
       })
       if (r?.erro) { setErro(r.erro); return }
       router.refresh()
@@ -75,7 +80,12 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
   if (passo === 'mapa') {
     return (
       <MapaSelecionarTelhado
-        onSelecionar={(p) => { setPonto(p); setPasso('imovel') }}
+        onSelecionar={(p) => {
+          setPonto(p)
+          // Pré-preenche qtd_placas com o valor do Google Solar (se disponível)
+          if (p.solar?.maxPlacas && !qtdPlacas) setQtdPlacas(p.solar.maxPlacas)
+          setPasso('imovel')
+        }}
         onFechar={onFechar}
       />
     )
@@ -148,6 +158,13 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
                 placeholder="Ex: 12"
                 className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white"
               />
+              {ponto?.solar && (
+                <p className="text-[11px] text-sol mt-1">
+                  ☀️ Google Solar diz que cabem <strong>{ponto.solar.maxPlacas}</strong> placas
+                  ({ponto.solar.potenciaMaxKwp} kWp máx, {ponto.solar.geracaoAnualKwh.toLocaleString('pt-BR')} kWh/ano estimado).
+                  Ajuste se contar diferente na foto.
+                </p>
+              )}
               {qtdPlacas > 0 && (
                 <p className="text-[11px] text-white/40 mt-1">
                   ~{(qtdPlacas * 0.55).toFixed(1)} kWp (0,55 kWp/placa média SPIN)

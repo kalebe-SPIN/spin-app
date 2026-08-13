@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Loader } from '@googlemaps/js-api-loader'
+import { buscarSolarInsights, type SolarInsights } from '@/lib/googleSolar'
 
 export type PontoTelhado = {
   latitude: number
@@ -14,6 +15,7 @@ export type PontoTelhado = {
   cidade: string | null
   uf: string | null
   cep: string | null
+  solar: SolarInsights | null  // null = fora da cobertura da Solar API
 }
 
 /**
@@ -35,6 +37,7 @@ export function MapaSelecionarTelhado({
   const [busca, setBusca] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
+  const [buscandoSolar, setBuscandoSolar] = useState(false)
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
   const geocoderRef = useRef<any>(null)
@@ -73,8 +76,14 @@ export function MapaSelecionarTelhado({
           animation: google.maps.Animation.DROP,
         })
 
-        const p = await reverseGeocode(geocoderRef.current, lat, lng)
-        setPonto(p)
+        // Dispara reverse-geocoding e Solar API em paralelo
+        setBuscandoSolar(true)
+        const [enderecoParcial, solar] = await Promise.all([
+          reverseGeocode(geocoderRef.current, lat, lng),
+          buscarSolarInsights(lat, lng),
+        ])
+        setPonto({ ...enderecoParcial, solar })
+        setBuscandoSolar(false)
       })
 
       setCarregando(false)
@@ -144,29 +153,69 @@ export function MapaSelecionarTelhado({
 
       {/* Rodapé — preview do ponto + confirmação */}
       {ponto && (
-        <div className="p-4 border-t border-white/10 bg-white/[0.03] flex items-center gap-4">
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-bold text-sm truncate">{ponto.endereco || 'Endereço não localizado'}</p>
-            <p className="text-white/50 text-xs">
-              {ponto.bairro && `${ponto.bairro} · `}
-              {ponto.cidade && `${ponto.cidade}${ponto.uf ? '/' + ponto.uf : ''}`}
-              {' · '}
-              <span className="font-mono">{ponto.latitude.toFixed(5)}, {ponto.longitude.toFixed(5)}</span>
-            </p>
+        <div className="border-t border-white/10 bg-white/[0.03]">
+          <div className="p-4 flex items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-bold text-sm truncate">{ponto.endereco || 'Endereço não localizado'}</p>
+              <p className="text-white/50 text-xs">
+                {ponto.bairro && `${ponto.bairro} · `}
+                {ponto.cidade && `${ponto.cidade}${ponto.uf ? '/' + ponto.uf : ''}`}
+                {' · '}
+                <span className="font-mono">{ponto.latitude.toFixed(5)}, {ponto.longitude.toFixed(5)}</span>
+              </p>
+            </div>
+            <button
+              onClick={() => onSelecionar(ponto)}
+              className="shrink-0 px-4 py-2 bg-sol text-noite-0 font-bold rounded-lg hover:bg-sol-claro"
+            >
+              Usar este ponto →
+            </button>
           </div>
-          <button
-            onClick={() => onSelecionar(ponto)}
-            className="shrink-0 px-4 py-2 bg-sol text-noite-0 font-bold rounded-lg hover:bg-sol-claro"
-          >
-            Usar este ponto →
-          </button>
+
+          {/* Preview Solar API */}
+          <div className="px-4 pb-3">
+            {buscandoSolar ? (
+              <p className="text-xs text-white/40 italic">☀️ consultando Google Solar API...</p>
+            ) : ponto.solar ? (
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <span className="px-2 py-1 bg-sol/15 border border-sol/30 text-sol font-bold rounded">
+                  ☀️ Google Solar
+                </span>
+                <span className="text-white">
+                  <strong className="text-sol">{ponto.solar.maxPlacas}</strong> placas cabem
+                </span>
+                <span className="text-white/60">·</span>
+                <span className="text-white">
+                  <strong className="text-sol">{ponto.solar.potenciaMaxKwp}</strong> kWp máx
+                </span>
+                <span className="text-white/60">·</span>
+                <span className="text-white">
+                  <strong className="text-sol">{ponto.solar.geracaoAnualKwh.toLocaleString('pt-BR')}</strong> kWh/ano
+                </span>
+                <span className="text-white/60">·</span>
+                <span className="text-white/60">área útil {ponto.solar.areaUtilM2} m²</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                  ponto.solar.qualidade === 'HIGH' ? 'bg-verde/15 text-verde' :
+                  ponto.solar.qualidade === 'MEDIUM' ? 'bg-sol/15 text-sol' : 'bg-coral/15 text-coral'
+                }`}>
+                  imagem {ponto.solar.qualidade}
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs text-white/40 italic">
+                ☀️ Solar API sem cobertura aqui — estimativa manual no próximo passo.
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-async function reverseGeocode(geocoder: any, lat: number, lng: number): Promise<PontoTelhado> {
+type PontoEndereco = Omit<PontoTelhado, 'solar'>
+
+async function reverseGeocode(geocoder: any, lat: number, lng: number): Promise<PontoEndereco> {
   return new Promise((resolve) => {
     geocoder.geocode({ location: { lat, lng } }, (results: any[], status: string) => {
       if (status !== 'OK' || !results?.[0]) {

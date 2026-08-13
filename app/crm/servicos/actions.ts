@@ -37,6 +37,11 @@ export async function criarTelhadoAction(input: {
   cliente_telefone?: string | null
   cliente_email?: string | null
   observacoes?: string | null
+  // Google Solar API — opcionais (null quando fora da cobertura)
+  google_max_placas?: number | null
+  area_util_m2?: number | null
+  geracao_anual_kwh?: number | null
+  imagery_quality?: 'HIGH' | 'MEDIUM' | 'LOW' | null
 }) {
   const check = await verificarPermissao()
   if ('erro' in check) return { erro: check.erro }
@@ -46,6 +51,8 @@ export async function criarTelhadoAction(input: {
   if (!input.qtd_placas_estimada || input.qtd_placas_estimada < 1) {
     return { erro: 'Quantidade estimada de placas é obrigatória (mínimo 1)' }
   }
+
+  const solarCapturado = input.google_max_placas != null
 
   const supabase = createClient()
   const { data, error } = await supabase.from('telhados').insert({
@@ -66,6 +73,11 @@ export async function criarTelhadoAction(input: {
     cliente_telefone: input.cliente_telefone?.replace(/\D/g, '') || null,
     cliente_email: input.cliente_email?.trim() || null,
     observacoes: input.observacoes?.trim() || null,
+    google_max_placas: input.google_max_placas ?? null,
+    area_util_m2: input.area_util_m2 ?? null,
+    geracao_anual_kwh: input.geracao_anual_kwh ?? null,
+    imagery_quality: input.imagery_quality ?? null,
+    solar_capturado_em: solarCapturado ? new Date().toISOString() : null,
     ultima_interacao_em: new Date().toISOString(),
   }).select('id').single()
 
