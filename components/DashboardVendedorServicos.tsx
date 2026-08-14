@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { METAS, MODULOS_MIN } from '@/lib/proposta-om'
 
 /**
  * Dashboard exclusivo do vendedor_servicos.
@@ -61,27 +62,26 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
     if (porSemana[idx]) porSemana[idx].valor += Number(e.valor_final) || 0
   }
 
-  // ─── Meta de TRABALHO (fixa global) ───────────────────────────────────
-  const { data: cfg } = await supabase
-    .from('configuracoes_empresa')
-    .select('meta_telhados_mes, meta_contatos_mes, meta_propostas_mes')
-    .eq('singleton', true)
-    .maybeSingle()
+  // ─── Meta de TRABALHO (alinhada com METAS da proposta comercial) ─────
+  // Fonte única de verdade em lib/proposta-om.ts — se Kalebe editar lá, o
+  // dashboard segue automático. As colunas em configuracoes_empresa (mig
+  // 068) ficam sem uso; podem ser dropadas depois.
+  const metaTelhados = METAS.telhados
+  const metaContatos = METAS.conversas
+  const metaPropostas = METAS.propostas
 
-  const metaTelhados = Number(cfg?.meta_telhados_mes ?? 30)
-  const metaContatos = Number(cfg?.meta_contatos_mes ?? 60)
-  const metaPropostas = Number(cfg?.meta_propostas_mes ?? 15)
-
-  // Telhados cadastrados no mês
+  // Telhados cadastrados no mês — só conta os com ≥ MODULOS_MIN placas
+  // (conforme regra da proposta: "telhados ≥ 50 módulos / mês")
   const { count: countTelhados } = await supabase
     .from('telhados')
     .select('*', { count: 'exact', head: true })
     .eq('vendedor_id', userId)
+    .gte('qtd_placas_estimada', MODULOS_MIN)
     .gte('criado_em', inicioMes.toISOString())
 
   const feitoTelhados = countTelhados || 0
 
-  // Interações registradas no mês (contato = ligação/WhatsApp/visita)
+  // Interações registradas no mês (proxy pra "conversas com decisor")
   const { count: countContatos } = await supabase
     .from('interacoes_cliente')
     .select('*', { count: 'exact', head: true })
@@ -90,11 +90,12 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
 
   const feitoContatos = countContatos || 0
 
-  // Telhados que chegaram na fase proposta ou fechado no mês
+  // "Propostas enviadas" — telhados ≥ MODULOS_MIN que chegaram em proposta ou fechado
   const { count: countPropostas } = await supabase
     .from('telhados')
     .select('*', { count: 'exact', head: true })
     .eq('vendedor_id', userId)
+    .gte('qtd_placas_estimada', MODULOS_MIN)
     .in('fase', ['proposta', 'fechado'])
     .gte('criado_em', inicioMes.toISOString())
 
@@ -157,7 +158,7 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
             <div className="flex items-start justify-between mb-4">
               <div>
                 <p className="text-[10px] uppercase tracking-wider font-bold text-sol">🏃 Meta de trabalho</p>
-                <p className="text-white/50 text-xs mt-0.5">Esforço do mês · fixa pra todos os vendedores</p>
+                <p className="text-white/50 text-xs mt-0.5">Mesmas metas descritas na proposta comercial</p>
               </div>
               <div className="text-right">
                 <p className="text-3xl md:text-4xl font-black text-sol tabular-nums">{percTrabalho}%</p>
@@ -166,9 +167,9 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
             </div>
 
             <div className="space-y-3">
-              <SubMeta rotulo="🏠 Telhados cadastrados" feito={feitoTelhados} meta={metaTelhados} unidade="" cor="sol" />
-              <SubMeta rotulo="📞 Contatos / interações"  feito={feitoContatos}  meta={metaContatos}  unidade="" cor="weg-azul" />
-              <SubMeta rotulo="📄 Chegaram em proposta"   feito={feitoPropostas} meta={metaPropostas} unidade="" cor="verde" />
+              <SubMeta rotulo={`🏠 Telhados ≥ ${MODULOS_MIN} módulos`} feito={feitoTelhados} meta={metaTelhados} unidade="" cor="sol" />
+              <SubMeta rotulo="💬 Conversas com decisor" feito={feitoContatos}  meta={metaContatos}  unidade="" cor="weg-azul" />
+              <SubMeta rotulo="📄 Propostas enviadas"    feito={feitoPropostas} meta={metaPropostas} unidade="" cor="verde" />
             </div>
 
             {/* Gráfico interações 30d */}
