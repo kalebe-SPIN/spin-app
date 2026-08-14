@@ -26,7 +26,10 @@ export async function buscarSolarInsights(
   latitude: number,
   longitude: number,
 ): Promise<SolarInsights | null> {
+  // FALLBACK EMERGENCIAL — ver comentário em MapaSelecionarTelhado.tsx.
+  // Remover quando NEXT_PUBLIC_GOOGLE_MAPS_API_KEY estiver setada no Vercel.
   const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    || 'AIzaSyDAHavsflEo_Ju2JdT_hHG0u663vOJMzts'
   if (!key) return null
 
   const url =

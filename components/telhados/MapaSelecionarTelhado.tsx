@@ -43,7 +43,13 @@ export function MapaSelecionarTelhado({
   const geocoderRef = useRef<any>(null)
 
   useEffect(() => {
+    // FALLBACK EMERGENCIAL: chave hardcoded usada quando NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    // não está no ambiente. Kalebe está travado no 2FA do Vercel e não consegue
+    // configurar a env — a chave está restrita por HTTP referrer no Google Cloud
+    // (só funciona em app.spinsolar.com.br + *.vercel.app), então o dano de vazar
+    // é controlado. Remover depois que o Vercel voltar e a env estiver setada.
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+      || 'AIzaSyDAHavsflEo_Ju2JdT_hHG0u663vOJMzts'
     if (!key) {
       setErro('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY não configurada.')
       setCarregando(false)
