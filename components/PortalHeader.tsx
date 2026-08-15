@@ -48,7 +48,7 @@ export async function PortalHeader() {
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
         {/* Logo + nome */}
         <div className="flex items-center gap-4">
-          <Link href="/projetos" className="flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-2">
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -73,7 +73,11 @@ export async function PortalHeader() {
               <NavLink href="/projetos" label="📋 Projetos" />
             )}
             <NavLink
-              href={modoAtivo === 'vendedor_servicos' ? '/crm/servicos' : '/crm/pipeline'}
+              href={
+                modoAtivo === 'vendedor_servicos' ? '/crm/servicos'
+                : modoAtivo === 'admin' ? '/crm/pipeline'
+                : '/crm'  // consultor cai no hub (admin-friendly, sem gate quebrado)
+              }
               label="🎯 CRM"
             />
             <NavLink href="/agenda" label="📅 Agenda" />

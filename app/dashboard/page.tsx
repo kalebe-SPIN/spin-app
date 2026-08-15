@@ -46,6 +46,10 @@ export default async function DashboardPage() {
     return <DashboardVendedorServicos userId={user.id} nome={profile?.nome_completo || 'Vendedor'} />
   }
 
+  // Profissional de campo ainda não tem dashboard próprio — o fluxo dele é
+  // executar OS na agenda. Manda direto pra /agenda até criarmos DashboardCampo.
+  if (modo === 'profissional_campo') redirect('/agenda')
+
   return (
     <main className="min-h-screen p-8 md:p-12">
       <div className="max-w-6xl mx-auto">
@@ -103,7 +107,7 @@ export default async function DashboardPage() {
               {mostraAdmin && <span className="text-weg-azul ml-1">(visão administrador · inclui homologação CELESC)</span>}
             </p>
           </div>
-          <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${mostraAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${mostraAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-4'}`}>
             <DashboardCard
               etapa={1}
               titulo="⚡ Orçamento Rápido"
@@ -126,7 +130,7 @@ export default async function DashboardPage() {
               titulo="🎯 CRM"
               desc="Proposta oficial vira negociação — funil de fechamento até o contrato assinado."
               disponivel={true}
-              href="/crm/pipeline"
+              href={mostraAdmin ? '/crm/pipeline' : '/crm'}
             >
               <StatsCRM />
             </DashboardCard>
@@ -151,15 +155,18 @@ export default async function DashboardPage() {
             >
               <StatsOperacoes />
             </DashboardCard>
-            <DashboardCard
-              etapa={mostraAdmin ? 6 : 5}
-              titulo="🛠️ Pós-venda"
-              desc="OS, garantias, monitoramento O&M — depois da entrega."
-              disponivel={true}
-              href="/pos-venda"
-            >
-              <StatsPosVenda />
-            </DashboardCard>
+            {mostraAdmin && (
+              <DashboardCard
+                etapa={6}
+                titulo="🛠️ Pós-venda"
+                desc="OS, garantias, monitoramento O&M — depois da entrega."
+                disponivel={true}
+                adminOnly
+                href="/pos-venda"
+              >
+                <StatsPosVenda />
+              </DashboardCard>
+            )}
           </div>
         </section>
 

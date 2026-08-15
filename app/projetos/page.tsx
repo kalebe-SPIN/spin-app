@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
 
 /**
@@ -8,6 +9,7 @@ import { TimelineProjeto } from '@/components/TimelineProjeto'
  *
  * Mostra todos projetos do consultor logado.
  * Admin vê tudo (filtro por consultor disponível).
+ * Vendedor de serviços e profissional de campo NÃO têm projetos — redirect.
  */
 export default async function ProjetosPage() {
   const supabase = createClient()
@@ -16,6 +18,10 @@ export default async function ProjetosPage() {
   if (!user) {
     redirect('/login')
   }
+
+  const { modo } = await getModoVisualizacao()
+  if (modo === 'vendedor_servicos') redirect('/crm/servicos')
+  if (modo === 'profissional_campo') redirect('/agenda')
 
   const { data: projetos } = await supabase
     .from('projetos')

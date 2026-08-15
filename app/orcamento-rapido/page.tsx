@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { OrcamentoRapidoForm } from '@/components/OrcamentoRapidoForm'
 
 /**
@@ -19,6 +20,10 @@ export default async function OrcamentoRapidoPage({
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  const { modo } = await getModoVisualizacao()
+  if (modo === 'vendedor_servicos') redirect('/crm/servicos')
+  if (modo === 'profissional_campo') redirect('/agenda')
 
   const { data: profile } = await supabase
     .from('profiles')
