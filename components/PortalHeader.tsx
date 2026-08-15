@@ -68,8 +68,14 @@ export async function PortalHeader() {
           {/* Nav links — dependem do modo */}
           <nav className="hidden md:flex items-center gap-1 ml-6">
             <NavLink href="/dashboard" label="📊 Dashboard" />
-            <NavLink href="/projetos" label="📋 Projetos" />
-            <NavLink href="/crm/pipeline" label="🎯 CRM" />
+            {/* Projetos é fluxo solar — só faz sentido pra admin e consultor */}
+            {modoAtivo !== 'vendedor_servicos' && modoAtivo !== 'profissional_campo' && (
+              <NavLink href="/projetos" label="📋 Projetos" />
+            )}
+            <NavLink
+              href={modoAtivo === 'vendedor_servicos' ? '/crm/servicos' : '/crm/pipeline'}
+              label="🎯 CRM"
+            />
             <NavLink href="/agenda" label="📅 Agenda" />
             {modoAtivo === 'admin' && ehAdminReal && (
               <NavLink href="/admin" label="⚙️ Admin" />
