@@ -23,14 +23,18 @@ async function verificarPermissao() {
 }
 
 export async function criarTelhadoAction(input: {
-  latitude: number
-  longitude: number
+  // Coordenadas opcionais — só vêm no modo mapa. No modo manual (Google Earth
+  // externo) ficam NULL. Migration 069 permite NULL nessas colunas.
+  latitude?: number | null
+  longitude?: number | null
   endereco: string
   bairro?: string | null
   cidade?: string | null
   uf?: string | null
   cep?: string | null
-  qtd_placas_estimada: number
+  // Qtd de placas também opcional — vendedor pode não ter contado no primeiro
+  // cadastro (ex: prospecção rápida de rua). Preenche depois.
+  qtd_placas_estimada?: number | null
   foto_url: string  // caminho no bucket telhados-fotos (client já fez upload)
   foto_satelite_url?: string | null
   cliente_nome?: string | null
@@ -48,25 +52,26 @@ export async function criarTelhadoAction(input: {
 
   if (!input.endereco?.trim()) return { erro: 'Endereço obrigatório' }
   if (!input.foto_url?.trim()) return { erro: 'Foto do telhado obrigatória' }
-  if (!input.qtd_placas_estimada || input.qtd_placas_estimada < 1) {
-    return { erro: 'Quantidade estimada de placas é obrigatória (mínimo 1)' }
-  }
 
   const solarCapturado = input.google_max_placas != null
+  const qtdPlacas = input.qtd_placas_estimada && input.qtd_placas_estimada > 0
+    ? input.qtd_placas_estimada
+    : null
+  const potenciaKwp = qtdPlacas ? Number((qtdPlacas * POTENCIA_MEDIA_PLACA_KWP).toFixed(2)) : null
 
   const supabase = createClient()
   const { data, error } = await supabase.from('telhados').insert({
     vendedor_id: check.userId,
     fase: 'prospeccao',
-    latitude: input.latitude,
-    longitude: input.longitude,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
     endereco: input.endereco.trim(),
     bairro: input.bairro,
     cidade: input.cidade,
     uf: input.uf,
     cep: input.cep,
-    qtd_placas_estimada: input.qtd_placas_estimada,
-    potencia_kwp_estimada: Number((input.qtd_placas_estimada * POTENCIA_MEDIA_PLACA_KWP).toFixed(2)),
+    qtd_placas_estimada: qtdPlacas,
+    potencia_kwp_estimada: potenciaKwp,
     foto_url: input.foto_url,
     foto_satelite_url: input.foto_satelite_url,
     cliente_nome: input.cliente_nome?.trim() || null,
