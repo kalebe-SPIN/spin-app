@@ -35,7 +35,7 @@ export default async function CrmServicosPage() {
   // Traz todos os telhados exceto os "perdidos" (esses viram histórico)
   const { data: telhadosRaw } = await supabase
     .from('telhados')
-    .select('id, fase, endereco, bairro, cidade, qtd_placas_estimada, potencia_kwp_estimada, foto_url, cliente_nome, cliente_telefone, ultima_interacao_em, criado_em')
+    .select('id, fase, apelido, endereco, bairro, cidade, qtd_placas_estimada, potencia_kwp_estimada, foto_url, cliente_nome, cliente_telefone, ultima_interacao_em, criado_em')
     .neq('fase', 'perdido')
     .order('criado_em', { ascending: false })
 

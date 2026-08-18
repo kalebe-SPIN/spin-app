@@ -37,6 +37,7 @@ export async function criarTelhadoAction(input: {
   qtd_placas_estimada?: number | null
   foto_url: string  // caminho no bucket telhados-fotos (client já fez upload)
   foto_satelite_url?: string | null
+  apelido?: string | null
   cliente_nome?: string | null
   cliente_telefone?: string | null
   cliente_email?: string | null
@@ -74,6 +75,7 @@ export async function criarTelhadoAction(input: {
     potencia_kwp_estimada: potenciaKwp,
     foto_url: input.foto_url,
     foto_satelite_url: input.foto_satelite_url,
+    apelido: input.apelido?.trim() || null,
     cliente_nome: input.cliente_nome?.trim() || null,
     cliente_telefone: input.cliente_telefone?.replace(/\D/g, '') || null,
     cliente_email: input.cliente_email?.trim() || null,

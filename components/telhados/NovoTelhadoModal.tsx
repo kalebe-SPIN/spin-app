@@ -25,6 +25,7 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
   const [ponto, setPonto] = useState<PontoTelhado | null>(null)
 
   // Dados comuns
+  const [apelido, setApelido] = useState('')
   const [foto, setFoto] = useState<File | null>(null)
   const [fotoExtra, setFotoExtra] = useState<File | null>(null)
   const [qtdPlacas, setQtdPlacas] = useState<number>(0)
@@ -78,6 +79,7 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
         qtd_placas_estimada: qtdPlacas > 0 ? qtdPlacas : null,
         foto_url: fotoPath,
         foto_satelite_url: fotoExtraPath,
+        apelido: apelido || null,
         cliente_nome: clienteNome || null,
         cliente_telefone: clienteTel || null,
         cliente_email: clienteEmail || null,
@@ -112,6 +114,7 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
         qtd_placas_estimada: qtdPlacas > 0 ? qtdPlacas : null,
         foto_url: fotoPath,
         foto_satelite_url: fotoExtraPath,
+        apelido: apelido.trim() || null,
         cliente_nome: clienteNome.trim(),
         cliente_telefone: clienteTel || null,
         cliente_email: clienteEmail || null,
@@ -255,6 +258,12 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
             <p className="text-xs text-white/50 leading-relaxed">
               Se você já tem contato do dono, preenche agora. Se não, pula — dá pra completar depois no card.
             </p>
+            <Field label="Apelido do card (opcional)">
+              <input value={apelido} onChange={(e) => setApelido(e.target.value)}
+                placeholder='Ex: "Padaria da esquina", "Prédio amarelo"...'
+                className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white" />
+              <p className="text-[11px] text-white/40 mt-1">Vira o título do card — te ajuda a lembrar quem é.</p>
+            </Field>
             <Field label="Nome do cliente">
               <input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)}
                 className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white" />
@@ -295,6 +304,13 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
               <strong className="text-weg-azul">💡 Como usar:</strong> abra o Google Earth, ache o telhado do cliente, mede a área,
               salva um print (ou 2) e anexa aqui. Só nome + localização + foto são obrigatórios — o resto preenche se souber.
             </div>
+
+            <Field label="Apelido do card (opcional)">
+              <input value={apelido} onChange={(e) => setApelido(e.target.value)}
+                placeholder='Ex: "Marmoraria Tijucas", "Padaria da esquina"...'
+                className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white" />
+              <p className="text-[11px] text-white/40 mt-1">Vira o título do card — te ajuda a lembrar quem é. Se em branco, usa o endereço.</p>
+            </Field>
 
             <Field label="Nome do cliente" obrigatorio>
               <input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)}

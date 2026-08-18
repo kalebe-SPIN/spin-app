@@ -13,6 +13,7 @@ import { NovoTelhadoModal } from './NovoTelhadoModal'
 export type TelhadoCard = {
   id: string
   fase: TelhadoFase
+  apelido: string | null
   endereco: string
   bairro: string | null
   cidade: string | null
@@ -136,8 +137,14 @@ function CardTelhado({ telhado, bucketPublicUrl }: { telhado: TelhadoCard; bucke
 
       {/* Info */}
       <div className="p-2">
-        <p className="text-white text-xs font-bold leading-tight truncate">{telhado.endereco}</p>
-        {telhado.cidade && (
+        {/* Título: apelido se preenchido, senão endereço */}
+        <p className="text-white text-xs font-bold leading-tight truncate">
+          {telhado.apelido || telhado.endereco}
+        </p>
+        {/* Se tem apelido, endereço vira subtítulo. Se não, mostra bairro/cidade. */}
+        {telhado.apelido ? (
+          <p className="text-[10px] text-white/50 truncate">📍 {telhado.endereco}</p>
+        ) : telhado.cidade && (
           <p className="text-[10px] text-white/40 truncate">{telhado.bairro && `${telhado.bairro} · `}{telhado.cidade}</p>
         )}
         {telhado.cliente_nome && (
