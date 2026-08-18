@@ -6,6 +6,7 @@ import { editarTelhadoAction, excluirTelhadoAction } from '@/app/crm/servicos/ac
 import type { TelhadoCard } from './KanbanTelhados'
 import { SimuladorPropostaEmbutido, type CidadeOpcao } from './SimuladorPropostaEmbutido'
 import type { ParametrosLimpeza } from '@/lib/precificacao/servico-limpeza'
+import { EscolherCriativoModal } from '@/components/criativos/EscolherCriativoModal'
 
 /**
  * Modal de edição do card de telhado — abre ao clicar em cima da foto/título.
@@ -25,6 +26,8 @@ export function EditarTelhadoModal({
   const mostrarSimulador = (telhado.fase === 'proposta' || telhado.fase === 'fechado')
     && parametrosLimpeza != null
     && cidades != null
+  const mostrarCriativos = telhado.fase === 'prospeccao' || telhado.fase === 'contato'
+  const [criativosAberto, setCriativosAberto] = useState(false)
   const router = useRouter()
   const [apelido, setApelido] = useState(telhado.apelido || '')
   const [endereco, setEndereco] = useState(telhado.endereco)
@@ -93,6 +96,21 @@ export function EditarTelhadoModal({
             </div>
           )}
         </div>
+
+        {/* BOTÃO CRIATIVOS — só nas 2 primeiras fases */}
+        {mostrarCriativos && (
+          <div className="p-5 border-b border-white/10">
+            <button
+              onClick={() => setCriativosAberto(true)}
+              className="w-full px-4 py-3 bg-weg-azul/15 border border-weg-azul/40 text-weg-azul font-bold text-sm rounded-lg hover:bg-weg-azul/25 flex items-center justify-center gap-2"
+            >
+              📚 Enviar criativo pelo WhatsApp
+            </button>
+            <p className="text-[11px] text-white/40 text-center mt-1">
+              Escolhe da biblioteca de vendas e o WhatsApp abre com mensagem pronta.
+            </p>
+          </div>
+        )}
 
         {/* SIMULADOR EMBUTIDO — só nas fases Proposta e Fechado */}
         {mostrarSimulador && (
@@ -180,6 +198,14 @@ export function EditarTelhadoModal({
           </div>
 
           {erro && <p className="text-sm text-coral">{erro}</p>}
+
+          {criativosAberto && (
+            <EscolherCriativoModal
+              clienteNome={clienteNome}
+              clienteTelefone={clienteTel}
+              onFechar={() => setCriativosAberto(false)}
+            />
+          )}
 
           <div className="flex items-center justify-between pt-2 gap-2">
             <button
