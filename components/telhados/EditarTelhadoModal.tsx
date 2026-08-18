@@ -4,6 +4,8 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { editarTelhadoAction, excluirTelhadoAction } from '@/app/crm/servicos/actions'
 import type { TelhadoCard } from './KanbanTelhados'
+import { SimuladorPropostaEmbutido, type CidadeOpcao } from './SimuladorPropostaEmbutido'
+import type { ParametrosLimpeza } from '@/lib/precificacao/servico-limpeza'
 
 /**
  * Modal de edição do card de telhado — abre ao clicar em cima da foto/título.
@@ -11,12 +13,18 @@ import type { TelhadoCard } from './KanbanTelhados'
  * Coordenadas (lat/lng) não são editadas aqui — só via re-cadastro.
  */
 export function EditarTelhadoModal({
-  telhado, bucketPublicUrl, onFechar,
+  telhado, bucketPublicUrl, onFechar, parametrosLimpeza, cidades, propostaAnterior,
 }: {
   telhado: TelhadoCard
   bucketPublicUrl: string
   onFechar: () => void
+  parametrosLimpeza?: ParametrosLimpeza | null
+  cidades?: CidadeOpcao[]
+  propostaAnterior?: { entradas: any; resultado: { subtotal: number }; valor_final: number } | null
 }) {
+  const mostrarSimulador = (telhado.fase === 'proposta' || telhado.fase === 'fechado')
+    && parametrosLimpeza != null
+    && cidades != null
   const router = useRouter()
   const [apelido, setApelido] = useState(telhado.apelido || '')
   const [endereco, setEndereco] = useState(telhado.endereco)
@@ -85,6 +93,31 @@ export function EditarTelhadoModal({
             </div>
           )}
         </div>
+
+        {/* SIMULADOR EMBUTIDO — só nas fases Proposta e Fechado */}
+        {mostrarSimulador && (
+          <div className="p-5 bg-gradient-to-br from-sol/[0.06] to-transparent border-b border-sol/25">
+            <div className="mb-3">
+              <p className="text-sol font-bold text-sm">🧾 Proposta ao vivo</p>
+              <p className="text-white/50 text-[11px] mt-0.5">
+                Mexe nos campos enquanto fala com o cliente — o valor recalcula na hora.
+              </p>
+            </div>
+            {telhado.qtd_placas_estimada && telhado.qtd_placas_estimada > 0 ? (
+              <SimuladorPropostaEmbutido
+                telhadoId={telhado.id}
+                qtdPlacasInicial={telhado.qtd_placas_estimada}
+                parametros={parametrosLimpeza!}
+                cidades={cidades!}
+                propostaAnterior={propostaAnterior || null}
+              />
+            ) : (
+              <div className="p-3 bg-coral/10 border border-coral/30 rounded-lg text-xs text-coral">
+                Preencha a <strong>quantidade estimada de placas</strong> abaixo pra habilitar o simulador.
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="p-5 space-y-4">
           <Field label="Apelido do card">

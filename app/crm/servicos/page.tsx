@@ -33,13 +33,31 @@ export default async function CrmServicosPage() {
   }
 
   // Traz todos os telhados exceto os "perdidos" (esses viram histórico)
+  // Telhados + snapshot da proposta (pra abrir o simulador com dados anteriores)
   const { data: telhadosRaw } = await supabase
     .from('telhados')
-    .select('id, fase, apelido, endereco, bairro, cidade, qtd_placas_estimada, potencia_kwp_estimada, foto_url, cliente_nome, cliente_telefone, ultima_interacao_em, criado_em')
+    .select('id, fase, apelido, endereco, bairro, cidade, qtd_placas_estimada, potencia_kwp_estimada, foto_url, cliente_nome, cliente_telefone, ultima_interacao_em, criado_em, proposta_dados, proposta_valor')
     .neq('fase', 'perdido')
     .order('criado_em', { ascending: false })
 
   const telhados: TelhadoCard[] = (telhadosRaw || []) as TelhadoCard[]
+
+  // Parâmetros da fórmula de limpeza + lista de cidades atendidas (pro simulador)
+  const [{ data: paramsRow }, { data: cidadesRaw }] = await Promise.all([
+    supabase
+      .from('parametros_precificacao_servicos')
+      .select('parametros')
+      .eq('chave', 'limpeza_fotovoltaica')
+      .maybeSingle(),
+    supabase
+      .from('cidades_distancia')
+      .select('id, cidade, uf, km')
+      .eq('ativo', true)
+      .order('km', { ascending: true }),
+  ])
+
+  const parametrosLimpeza = (paramsRow?.parametros || null) as any
+  const cidades = (cidadesRaw || []) as Array<{ id: string; cidade: string; uf: string; km: number }>
 
   const bucketPublicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/telhados-fotos`
 
@@ -49,7 +67,12 @@ export default async function CrmServicosPage() {
         <nav className="mb-4">
           <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/70">← Dashboard</Link>
         </nav>
-        <KanbanTelhados telhados={telhados} bucketPublicUrl={bucketPublicUrl} />
+        <KanbanTelhados
+          telhados={telhados}
+          bucketPublicUrl={bucketPublicUrl}
+          parametrosLimpeza={parametrosLimpeza}
+          cidades={cidades}
+        />
       </div>
     </main>
   )

@@ -14,6 +14,8 @@
 
 import type { TipoTelhado, Pavimento, Programacao } from './servico-retirada-recolocacao'
 
+export type Sujidade = 'leve' | 'medio' | 'pesado'
+
 export type ParametrosLimpeza = {
   mao_obra_limpeza_por_modulo: number
   fator_telhado: Record<TipoTelhado, number>
@@ -28,6 +30,16 @@ export type ParametrosLimpeza = {
   valor_epi_e_ferramentas_por_dia: number
   valor_gerador_diaria: number
   valor_minimo_visita: number
+  // ── Novos parâmetros da fórmula automática (mig 071) ─────────────────────
+  min_por_placa_base?: number         // default 1 min/placa (sujidade leve)
+  min_por_km?: number                 // default 1 min/km deslocamento
+  min_setup_org_recolh?: number       // default 30 min setup + recolhimento
+  horas_dia_trabalho?: number         // default 8h/dia
+  fator_sujidade_leve?: number        // default 1.0
+  fator_sujidade_medio?: number       // default 1.5
+  fator_sujidade_pesado?: number      // default 2.0
+  limite_placas_1_tecnico?: number    // default 200 (acima → 2 técnicos)
+  pe_direito_max_1_tecnico?: number   // default 6m (acima → 2 técnicos)
 }
 
 export type EntradasLimpeza = {
@@ -42,6 +54,11 @@ export type EntradasLimpeza = {
   tem_ponto_agua: boolean       // se false, adiciona custo de caminhao pipa
   tem_ponto_energia: boolean    // se false, adiciona custo gerador (pra bomba)
   observacoes?: string
+  // ── Modo automático (opcional; quando sujidade setada, ativa auto-cálculo) ─
+  sujidade?: Sujidade                       // nível de sujeira do sistema
+  cliente_disponibiliza_ajudante?: boolean  // se true, força 1 técnico mesmo quando seria 2
+  pe_direito_m?: number                     // altura do pé direito (se >6m → 2 técnicos)
+  cidade_id?: string                        // id em cidades_distancia (fill km automático)
 }
 
 export type ResultadoLimpeza = {
@@ -156,4 +173,110 @@ export function calcularLimpeza(
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MODO AUTOMÁTICO (mig 071) — decide qtd técnicos e dias sem input manual
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Decide quantos técnicos são necessários pra o serviço.
+ *
+ * Regras (Kalebe):
+ *  • 1 técnico: qtd_placas ≤ limite E pavimento térreo E pé_direito ≤ limite_pe
+ *  • 2 técnicos: acima de qualquer um desses limites
+ *  • Se cliente_disponibiliza_ajudante = true, força 1 técnico (custo menor).
+ */
+export function decidirQtdTecnicos(entradas: EntradasLimpeza, p: ParametrosLimpeza): number {
+  const limitePlacas = p.limite_placas_1_tecnico ?? 200
+  const limitePeDireito = p.pe_direito_max_1_tecnico ?? 6
+
+  const precisa2Tecnicos =
+    entradas.qtd_modulos > limitePlacas
+    || entradas.pavimento !== 'terreo'
+    || (entradas.pe_direito_m != null && entradas.pe_direito_m > limitePeDireito)
+
+  if (!precisa2Tecnicos) return 1
+  if (entradas.cliente_disponibiliza_ajudante) return 1
+  return 2
+}
+
+function fatorSujidade(s: Sujidade | undefined, p: ParametrosLimpeza): number {
+  const leve = p.fator_sujidade_leve ?? 1.0
+  const medio = p.fator_sujidade_medio ?? 1.5
+  const pesado = p.fator_sujidade_pesado ?? 2.0
+  if (s === 'pesado') return pesado
+  if (s === 'medio') return medio
+  return leve
+}
+
+/**
+ * Calcula o número de dias estimados pra executar o serviço.
+ *
+ * Fórmula (Kalebe):
+ *   tempo_min = (qtd_placas × min_por_placa × fator_sujidade)   ← limpeza
+ *             + (km × 2 × min_por_km)                            ← desloc. ida+volta
+ *             + min_setup                                        ← organizar + recolher
+ *
+ *   dias = ceil( tempo_min / (horas_dia × 60 × qtd_tecnicos) )
+ *
+ * Mínimo 1 dia sempre.
+ */
+export function calcularDiasEstimados(entradas: EntradasLimpeza, p: ParametrosLimpeza, qtdTecnicos: number): {
+  dias: number
+  tempo_min: number
+  detalhe: string
+} {
+  const minPlaca = p.min_por_placa_base ?? 1
+  const minKm = p.min_por_km ?? 1
+  const minSetup = p.min_setup_org_recolh ?? 30
+  const horasDia = p.horas_dia_trabalho ?? 8
+  const fator = fatorSujidade(entradas.sujidade, p)
+
+  const tempoLimpeza = entradas.qtd_modulos * minPlaca * fator
+  const tempoDesloc = entradas.km_deslocamento * 2 * minKm
+  const tempoSetup = minSetup
+  const tempoTotal = tempoLimpeza + tempoDesloc + tempoSetup
+
+  const dias = Math.max(1, Math.ceil(tempoTotal / (horasDia * 60 * qtdTecnicos)))
+
+  const detalhe =
+    `Tempo estimado = ${entradas.qtd_modulos} placas × ${minPlaca} min × ${fator} (sujidade ${entradas.sujidade || 'leve'}) `
+    + `+ ${entradas.km_deslocamento} km × 2 × ${minKm} min + ${minSetup} min setup `
+    + `= ${tempoTotal.toFixed(0)} min ÷ (${horasDia}h × ${qtdTecnicos} téc) = ${dias} dia${dias > 1 ? 's' : ''}`
+
+  return { dias, tempo_min: tempoTotal, detalhe }
+}
+
+/**
+ * Wrapper: dado o input do vendedor no modo automático (sujidade + cidade),
+ * decide qtd técnicos e dias, injeta no `entradas` e chama `calcularLimpeza`.
+ *
+ * Se `entradas.sujidade` está undefined, retorna calcularLimpeza tradicional
+ * (modo antigo — compat com /projetos/[id]/servico-limpeza legacy).
+ */
+export function calcularLimpezaAutomatico(
+  entradas: EntradasLimpeza,
+  params: ParametrosLimpeza,
+): ResultadoLimpeza & { qtd_tecnicos_calculado?: number; dias_calculado?: number; detalhe_tempo?: string } {
+  if (!entradas.sujidade) {
+    return calcularLimpeza(entradas, params)
+  }
+
+  const qtdTecnicos = decidirQtdTecnicos(entradas, params)
+  const { dias, detalhe } = calcularDiasEstimados(entradas, params, qtdTecnicos)
+
+  const entradasFinais: EntradasLimpeza = {
+    ...entradas,
+    qtd_instaladores: qtdTecnicos,
+    dias_estimados: dias,
+  }
+
+  const resultado = calcularLimpeza(entradasFinais, params)
+  return {
+    ...resultado,
+    qtd_tecnicos_calculado: qtdTecnicos,
+    dias_calculado: dias,
+    detalhe_tempo: detalhe,
+  }
 }

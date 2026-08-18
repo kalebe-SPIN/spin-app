@@ -169,3 +169,41 @@ export async function excluirTelhadoAction(telhadoId: string) {
   revalidatePath('/crm/servicos')
   return { sucesso: true }
 }
+
+/**
+ * Salva o snapshot da proposta gerada pelo simulador embutido no card.
+ * Guarda entradas + resultado em telhados.proposta_dados (JSONB), o valor
+ * final em telhados.proposta_valor (cache pra ordenação/filtros), e o
+ * timestamp em proposta_atualizada_em.
+ */
+export async function salvarPropostaTelhadoAction(
+  telhadoId: string,
+  proposta: {
+    entradas: Record<string, unknown>
+    resultado: Record<string, unknown>
+    valor_final: number
+  },
+) {
+  const check = await verificarPermissao()
+  if ('erro' in check) return { erro: check.erro }
+
+  if (!proposta.valor_final || proposta.valor_final <= 0) {
+    return { erro: 'Valor final da proposta inválido' }
+  }
+
+  const supabase = createClient()
+  const agora = new Date().toISOString()
+  const { error } = await supabase
+    .from('telhados')
+    .update({
+      proposta_dados: proposta,
+      proposta_valor: proposta.valor_final,
+      proposta_atualizada_em: agora,
+      ultima_interacao_em: agora,
+    })
+    .eq('id', telhadoId)
+
+  if (error) return { erro: error.message }
+  revalidatePath('/crm/servicos')
+  return { sucesso: true }
+}

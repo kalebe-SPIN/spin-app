@@ -23,6 +23,9 @@ export type TelhadoCard = {
   cliente_telefone: string | null
   ultima_interacao_em: string | null
   criado_em: string
+  // Proposta gerada pelo simulador embutido (fases proposta/fechado)
+  proposta_dados?: { entradas: any; resultado: any } | null
+  proposta_valor?: number | null
 }
 
 const COLUNAS: { fase: TelhadoFase; titulo: string; sub: string; cor: string; hover: string }[] = [
@@ -37,9 +40,13 @@ const DRAG_MIME = 'application/x-telhado-id'
 export function KanbanTelhados({
   telhados,
   bucketPublicUrl,
+  parametrosLimpeza,
+  cidades,
 }: {
   telhados: TelhadoCard[]
   bucketPublicUrl: string
+  parametrosLimpeza?: any
+  cidades?: Array<{ id: string; cidade: string; uf: string; km: number }>
 }) {
   const router = useRouter()
   const [novoAberto, setNovoAberto] = useState(false)
@@ -134,6 +141,16 @@ export function KanbanTelhados({
         <EditarTelhadoModal
           telhado={editando}
           bucketPublicUrl={bucketPublicUrl}
+          parametrosLimpeza={parametrosLimpeza}
+          cidades={cidades}
+          propostaAnterior={editando.proposta_dados && editando.proposta_valor
+            ? {
+                entradas: editando.proposta_dados.entradas,
+                resultado: editando.proposta_dados.resultado,
+                valor_final: editando.proposta_valor,
+              }
+            : null
+          }
           onFechar={() => setEditando(null)}
         />
       )}
@@ -195,6 +212,13 @@ function CardTelhado({
         )}
         {telhado.cliente_nome && (
           <p className="text-[10px] text-verde mt-1 truncate">👤 {telhado.cliente_nome}</p>
+        )}
+
+        {/* Valor da proposta (se gerada) */}
+        {telhado.proposta_valor && telhado.proposta_valor > 0 && (
+          <p className="text-[11px] text-sol font-bold mt-1">
+            🧾 {telhado.proposta_valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+          </p>
         )}
 
         {/* Ações rápidas — não abrem o editor (stopPropagation) */}
