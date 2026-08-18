@@ -87,7 +87,9 @@ export function EnviarPropostaWhatsApp({
 
       const pdfUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/propostas-servicos/${nomeArquivo}`
 
-      // Monta mensagem WA
+      // Monta mensagem WA — sem emojis de 4 bytes (WA Web quebra alguns),
+      // link no final pra o preview automático ficar limpo (sem repetição
+      // do URL no texto acima do card).
       const primeiroNome = dados.clienteNome?.trim().split(' ')[0] || 'cliente'
       const valor = dados.valorFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
       const linhas = [
@@ -95,11 +97,11 @@ export function EnviarPropostaWhatsApp({
         '',
         `Segue a proposta da SPIN Solar pra limpeza e revisão do seu sistema (${dados.qtdPlacas} placas · ${dados.potenciaKwp} kWp):`,
         '',
-        `💰 *Valor: ${valor}*`,
-        '',
-        `📄 Proposta em PDF: ${pdfUrl}`,
+        `*Valor: ${valor}*`,
         '',
         'Podemos agendar? Qualquer dúvida é só me chamar.',
+        '',
+        pdfUrl,
       ]
       const mensagem = encodeURIComponent(linhas.join('\n'))
       const telLimpo = dados.clienteTelefone?.replace(/\D/g, '') || ''
