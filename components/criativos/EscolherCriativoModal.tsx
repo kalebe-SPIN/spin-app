@@ -85,12 +85,17 @@ export function EscolherCriativoModal({
                   <div key={c.id} className="bg-white/[0.03] border border-white/10 rounded-lg overflow-hidden">
                     {c.tipo === 'imagem' && url && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={url} alt="" className="w-full h-28 object-cover bg-black/40" />
+                      <img src={url} alt="" className="w-full h-36 object-cover bg-black/40" />
                     )}
-                    {c.tipo === 'video' && url && <video src={url} className="w-full h-28 object-cover bg-black/40" />}
-                    {c.tipo === 'pdf' && <div className="h-28 bg-white/5 flex items-center justify-center text-4xl">📄</div>}
+                    {c.tipo === 'video' && url && <video src={url} className="w-full h-36 object-cover bg-black/40" controls />}
+                    {c.tipo === 'pdf' && url && (
+                      <div className="h-36 bg-white/5 relative">
+                        <embed src={`${url}#page=1&view=Fit&toolbar=0&navpanes=0`} type="application/pdf" className="w-full h-full pointer-events-none" />
+                        <span className="absolute bottom-1 right-1 text-[9px] bg-noite/80 text-sol px-1.5 py-0.5 rounded">📄 PDF</span>
+                      </div>
+                    )}
                     {c.tipo === 'texto' && (
-                      <div className="h-28 p-2 bg-white/[0.03] overflow-y-auto text-[11px] text-white/70 whitespace-pre-wrap">
+                      <div className="h-36 p-3 bg-white/[0.03] overflow-y-auto text-sm text-white/80 whitespace-pre-wrap leading-relaxed">
                         {c.texto}
                       </div>
                     )}

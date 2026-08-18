@@ -132,13 +132,20 @@ function CardBiblioteca({
       {criativo.tipo === 'video' && url && (
         <video src={url} controls className="w-full h-40 object-cover bg-black/40" />
       )}
-      {criativo.tipo === 'pdf' && (
-        <a href={url || '#'} target="_blank" rel="noopener" className="block h-40 bg-white/5 flex items-center justify-center text-5xl hover:bg-white/10">
-          📄
-        </a>
+      {criativo.tipo === 'pdf' && url && (
+        <div className="relative h-56 bg-white/5">
+          {/* Preview inline da 1ª página via <embed> — funciona em quase todos os browsers */}
+          <embed src={`${url}#page=1&view=Fit&toolbar=0&navpanes=0`} type="application/pdf" className="w-full h-full pointer-events-none" />
+          <a href={url} target="_blank" rel="noopener"
+            className="absolute inset-0 flex items-end justify-center pb-2 bg-gradient-to-t from-noite/60 to-transparent opacity-0 hover:opacity-100 transition"
+            title="Abrir PDF em nova aba"
+          >
+            <span className="px-2 py-1 bg-sol/90 text-noite-0 text-xs font-bold rounded">📄 Abrir PDF</span>
+          </a>
+        </div>
       )}
       {criativo.tipo === 'texto' && (
-        <div className="h-40 p-3 bg-white/[0.03] overflow-y-auto text-sm text-white/70 whitespace-pre-wrap">
+        <div className="h-56 p-4 bg-white/[0.03] overflow-y-auto text-base text-white/85 whitespace-pre-wrap leading-relaxed">
           {criativo.texto}
         </div>
       )}

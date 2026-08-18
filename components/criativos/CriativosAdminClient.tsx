@@ -263,18 +263,21 @@ function CardCriativo({ criativo, bucketPublicUrl }: { criativo: CriativoRow; bu
       {/* Preview */}
       {criativo.tipo === 'imagem' && url && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={criativo.titulo} className="w-full h-32 object-cover bg-black/40" />
+        <img src={url} alt={criativo.titulo} className="w-full h-40 object-cover bg-black/40" />
       )}
       {criativo.tipo === 'video' && url && (
-        <video src={url} controls className="w-full h-32 object-cover bg-black/40" />
+        <video src={url} controls className="w-full h-40 object-cover bg-black/40" />
       )}
-      {criativo.tipo === 'pdf' && (
-        <a href={url || '#'} target="_blank" rel="noopener" className="block h-32 bg-white/5 flex items-center justify-center text-4xl hover:bg-white/10">
-          📄
-        </a>
+      {criativo.tipo === 'pdf' && url && (
+        <div className="h-40 bg-white/5 relative">
+          <embed src={`${url}#page=1&view=Fit&toolbar=0&navpanes=0`} type="application/pdf" className="w-full h-full pointer-events-none" />
+          <a href={url} target="_blank" rel="noopener" className="absolute inset-0 opacity-0 hover:opacity-100 bg-noite/60 flex items-center justify-center text-xs text-sol font-bold transition">
+            🔗 Abrir em nova aba
+          </a>
+        </div>
       )}
       {criativo.tipo === 'texto' && (
-        <div className="h-32 p-3 bg-white/[0.03] overflow-y-auto text-xs text-white/70 whitespace-pre-wrap">
+        <div className="h-40 p-3 bg-white/[0.03] overflow-y-auto text-sm text-white/80 whitespace-pre-wrap leading-relaxed">
           {criativo.texto}
         </div>
       )}
