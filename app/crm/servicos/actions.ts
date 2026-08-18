@@ -110,7 +110,13 @@ export async function moverTelhadoFaseAction(telhadoId: string, novaFase: Telhad
 }
 
 export async function editarTelhadoAction(telhadoId: string, patch: {
-  qtd_placas_estimada?: number
+  apelido?: string | null
+  endereco?: string
+  bairro?: string | null
+  cidade?: string | null
+  uf?: string | null
+  cep?: string | null
+  qtd_placas_estimada?: number | null
   cliente_nome?: string | null
   cliente_telefone?: string | null
   cliente_email?: string | null
@@ -121,11 +127,27 @@ export async function editarTelhadoAction(telhadoId: string, patch: {
 
   const supabase = createClient()
   const update: Record<string, unknown> = { ultima_interacao_em: new Date().toISOString() }
-  if (patch.qtd_placas_estimada !== undefined) {
-    if (patch.qtd_placas_estimada < 1) return { erro: 'Qtd de placas deve ser ≥ 1' }
-    update.qtd_placas_estimada = patch.qtd_placas_estimada
-    update.potencia_kwp_estimada = Number((patch.qtd_placas_estimada * POTENCIA_MEDIA_PLACA_KWP).toFixed(2))
+
+  if (patch.apelido !== undefined) update.apelido = patch.apelido?.trim() || null
+  if (patch.endereco !== undefined) {
+    if (!patch.endereco.trim()) return { erro: 'Endereço não pode ficar vazio' }
+    update.endereco = patch.endereco.trim()
   }
+  if (patch.bairro !== undefined) update.bairro = patch.bairro?.trim() || null
+  if (patch.cidade !== undefined) update.cidade = patch.cidade?.trim() || null
+  if (patch.uf !== undefined) update.uf = patch.uf?.trim() || null
+  if (patch.cep !== undefined) update.cep = patch.cep?.trim() || null
+
+  if (patch.qtd_placas_estimada !== undefined) {
+    if (patch.qtd_placas_estimada && patch.qtd_placas_estimada > 0) {
+      update.qtd_placas_estimada = patch.qtd_placas_estimada
+      update.potencia_kwp_estimada = Number((patch.qtd_placas_estimada * POTENCIA_MEDIA_PLACA_KWP).toFixed(2))
+    } else {
+      update.qtd_placas_estimada = null
+      update.potencia_kwp_estimada = null
+    }
+  }
+
   if (patch.cliente_nome !== undefined) update.cliente_nome = patch.cliente_nome?.trim() || null
   if (patch.cliente_telefone !== undefined) update.cliente_telefone = patch.cliente_telefone?.replace(/\D/g, '') || null
   if (patch.cliente_email !== undefined) update.cliente_email = patch.cliente_email?.trim() || null
