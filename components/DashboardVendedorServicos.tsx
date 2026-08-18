@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { METAS, MODULOS_MIN } from '@/lib/proposta-om'
+import { METAS, MODULOS_MIN, FIXO_MENSAL, calcularComissao, MULTIPLICADOR_PCT } from '@/lib/proposta-om'
 
 /**
  * Dashboard exclusivo do vendedor_servicos.
@@ -121,6 +121,16 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
   }
   const dadosDesempenho = Array.from(porDia.entries()).map(([data, qtd]) => ({ data, qtd }))
 
+  // ─── Ganhos acumulados do mês (fonte: lib/proposta-om.ts) ────────────────
+  // Fixo mensal + comissão escalonada sobre o realizado + bônus prospecção
+  // (30% extra sobre vendas acima da meta, se meta_comercial foi cumprida).
+  const comissao = calcularComissao(realizadoR)
+  const bateuMeta = metaR > 0 && realizadoR >= metaR
+  const vendasAcimaMeta = bateuMeta ? realizadoR - metaR : 0
+  const comissaoAcimaMeta = bateuMeta ? calcularComissao(realizadoR).total - calcularComissao(metaR).total : 0
+  const bonusProspeccao = bateuMeta ? comissaoAcimaMeta * MULTIPLICADOR_PCT : 0
+  const totalGanhosMes = FIXO_MENSAL + comissao.total + bonusProspeccao
+
   // Score consolidado da meta de trabalho (média das 3 barras) pro status agregado
   const percTrabalho = Math.round((
     (metaTelhados > 0 ? Math.min(1, feitoTelhados / metaTelhados) : 0) +
@@ -152,7 +162,7 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
         </header>
 
         {/* 2 BLOCOS DE META lado a lado */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <section className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {/* ═══════════════ META DE TRABALHO ═══════════════ */}
           <div className="bg-gradient-to-br from-sol/[0.06] to-transparent border border-sol/25 rounded-2xl p-5 md:p-6">
             <div className="flex items-start justify-between mb-4">
@@ -240,6 +250,72 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
               />
             </div>
           </div>
+
+          {/* ═══════════════ GANHOS ACUMULADOS DO MÊS ═══════════════ */}
+          <div className="bg-gradient-to-br from-coral/[0.08] to-transparent border border-coral/30 rounded-2xl p-5 md:p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-bold text-coral">💰 Ganhos acumulados</p>
+                <p className="text-white/50 text-xs mt-0.5">Fixo + comissão + bônus · {mesNome(mes)}/{ano}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl md:text-4xl font-black text-coral tabular-nums leading-none">{fmtBRL(totalGanhosMes)}</p>
+                <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">no mês</p>
+              </div>
+            </div>
+
+            {/* Breakdown dos ganhos */}
+            <div className="space-y-2">
+              <LinhaGanho
+                emoji="🧱"
+                label="Fixo mensal"
+                valor={FIXO_MENSAL}
+                hint="base pelo trabalho do mês"
+              />
+              <LinhaGanho
+                emoji="📈"
+                label="Comissão sobre vendas"
+                valor={comissao.total}
+                hint={realizadoR > 0 ? `sobre ${fmtBRL(realizadoR)} fechados` : 'sem vendas ainda'}
+              />
+              {bateuMeta ? (
+                <LinhaGanho
+                  emoji="🎁"
+                  label="Bônus prospecção"
+                  valor={bonusProspeccao}
+                  hint={vendasAcimaMeta > 0
+                    ? `+30% sobre ${fmtBRL(vendasAcimaMeta)} acima da meta`
+                    : 'bateu a meta, sem vendas extras ainda'}
+                  destaque
+                />
+              ) : metaR > 0 ? (
+                <div className="p-2.5 bg-white/[0.02] border border-white/10 rounded-lg text-[11px] text-white/50 leading-snug">
+                  🎯 Bata a meta comercial ({fmtBRL(metaR)}) pra desbloquear o <strong className="text-coral">bônus prospecção de +30%</strong> sobre vendas acima da meta.
+                </div>
+              ) : null}
+            </div>
+
+            {/* Detalhamento das faixas de comissão (se houve venda) */}
+            {comissao.faixas.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-white/10">
+                <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold mb-2">Faixas de comissão aplicadas</p>
+                <div className="space-y-1">
+                  {comissao.faixas.map((f, i) => (
+                    <div key={i} className="flex items-center justify-between text-[11px]">
+                      <span className="text-white/60">{f.label} <span className="text-sol">({(f.pct * 100).toFixed(0)}%)</span></span>
+                      <span className="text-white tabular-nums">{fmtBRL(f.valor)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Total consolidado */}
+            <div className="mt-4 pt-3 border-t border-coral/30 flex items-baseline justify-between">
+              <span className="text-xs uppercase tracking-wider font-bold text-white/70">Total a receber</span>
+              <span className="text-2xl font-black text-coral tabular-nums">{fmtBRL(totalGanhosMes)}</span>
+            </div>
+          </div>
         </section>
 
         {/* Módulos operacionais (só os que fazem sentido pro vendedor) */}
@@ -291,6 +367,25 @@ function SubMeta({
       <div className="h-2 bg-white/5 rounded-full overflow-hidden">
         <div className={`h-full transition-all ${c.barra}`} style={{ width: `${perc}%` }} />
       </div>
+    </div>
+  )
+}
+
+function LinhaGanho({ emoji, label, valor, hint, destaque }: {
+  emoji: string; label: string; valor: number; hint?: string; destaque?: boolean
+}) {
+  return (
+    <div className={`flex items-start gap-3 p-2.5 rounded-lg border ${
+      destaque ? 'bg-coral/[0.06] border-coral/25' : 'bg-white/[0.03] border-white/10'
+    }`}>
+      <span className="text-lg">{emoji}</span>
+      <div className="flex-1 min-w-0">
+        <p className={`text-xs font-bold ${destaque ? 'text-coral' : 'text-white/80'}`}>{label}</p>
+        {hint && <p className="text-[10px] text-white/40 mt-0.5 leading-tight">{hint}</p>}
+      </div>
+      <span className={`text-sm font-black tabular-nums shrink-0 ${destaque ? 'text-coral' : 'text-white'}`}>
+        {valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+      </span>
     </div>
   )
 }
