@@ -136,16 +136,20 @@ export function SimuladorPropostaEmbutido({
     if (!qtdPlacas || qtdPlacas < 1) { setErro('Informe a quantidade de placas'); return }
     setMsg(null); setErro(null)
     startTransition(async () => {
-      // Salva a proposta E atualiza a qtd de placas cadastrada no telhado
-      // (o vendedor pode ter ajustado durante a montagem da proposta).
+      // Salva a proposta E atualiza qtd_placas + cidade cadastradas no telhado
+      // (assim próxima abertura já vem preenchida com o que o vendedor escolheu).
+      const patchTelhado: Record<string, unknown> = {}
+      if (qtdPlacas !== qtdPlacasInicial) patchTelhado.qtd_placas_estimada = qtdPlacas
+      if (cidadeAtual && cidadeAtual.cidade !== cidadeTelhado) patchTelhado.cidade = cidadeAtual.cidade
+
       const [r1, r2] = await Promise.all([
         salvarPropostaTelhadoAction(telhadoId, {
           entradas: entradas as unknown as Record<string, unknown>,
           resultado: { ...resultado, ajuste_manual: ajusteManual, valor_final: valorFinal } as unknown as Record<string, unknown>,
           valor_final: valorFinal,
         }),
-        qtdPlacas !== qtdPlacasInicial
-          ? editarTelhadoAction(telhadoId, { qtd_placas_estimada: qtdPlacas })
+        Object.keys(patchTelhado).length > 0
+          ? editarTelhadoAction(telhadoId, patchTelhado)
           : Promise.resolve({ sucesso: true } as const),
       ])
       if (r1?.erro) { setErro(r1.erro); return }
