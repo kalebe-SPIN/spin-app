@@ -152,8 +152,23 @@ export function EditarTelhadoModal({
           </Field>
 
           <Field label="Cidade">
-            <input value={cidade} onChange={(e) => setCidade(e.target.value)}
-              className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white" />
+            {cidades && cidades.length > 0 ? (
+              <select value={cidade} onChange={(e) => setCidade(e.target.value)}
+                className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white">
+                <option value="" style={{ backgroundColor: '#050B16' }}>— sem cidade —</option>
+                {cidades.map((c) => (
+                  <option key={c.id} value={c.cidade} style={{ backgroundColor: '#050B16' }}>
+                    {c.cidade}/{c.uf} · {c.km}km
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input value={cidade} onChange={(e) => setCidade(e.target.value)}
+                className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white" />
+            )}
+            <p className="text-[11px] text-white/40 mt-1">
+              Escolhe da lista pra o simulador saber a distância. Se falta cidade, admin cadastra em <code className="text-sol">/admin/precificacao/cidades</code>.
+            </p>
           </Field>
 
           <Field label="Quantidade estimada de placas">

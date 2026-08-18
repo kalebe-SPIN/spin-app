@@ -9,6 +9,7 @@ import {
 import { NovoTelhadoModal } from './NovoTelhadoModal'
 import { EditarTelhadoModal } from './EditarTelhadoModal'
 import { EscolherCriativoModal } from '@/components/criativos/EscolherCriativoModal'
+import { EnviarPropostaWhatsApp, type DadosEmpresa } from './EnviarPropostaWhatsApp'
 
 export type TelhadoCard = {
   id: string
@@ -43,11 +44,13 @@ export function KanbanTelhados({
   bucketPublicUrl,
   parametrosLimpeza,
   cidades,
+  empresa,
 }: {
   telhados: TelhadoCard[]
   bucketPublicUrl: string
   parametrosLimpeza?: any
   cidades?: Array<{ id: string; cidade: string; uf: string; km: number }>
+  empresa?: DadosEmpresa | null
 }) {
   const router = useRouter()
   const [novoAberto, setNovoAberto] = useState(false)
@@ -127,6 +130,7 @@ export function KanbanTelhados({
                       key={t.id}
                       telhado={t}
                       bucketPublicUrl={bucketPublicUrl}
+                      empresa={empresa}
                       onAbrirEditor={() => setEditando(t)}
                     />
                   ))
@@ -160,36 +164,18 @@ export function KanbanTelhados({
 }
 
 function CardTelhado({
-  telhado, bucketPublicUrl, onAbrirEditor,
+  telhado, bucketPublicUrl, onAbrirEditor, empresa,
 }: {
   telhado: TelhadoCard
   bucketPublicUrl: string
   onAbrirEditor: () => void
+  empresa?: DadosEmpresa | null
 }) {
   const [arrastando, setArrastando] = useState(false)
   const [criativosAberto, setCriativosAberto] = useState(false)
 
   const fasesCriativos = telhado.fase === 'prospeccao' || telhado.fase === 'contato'
   const fasesProposta = telhado.fase === 'proposta' || telhado.fase === 'fechado'
-  const telLimpo = telhado.cliente_telefone?.replace(/\D/g, '') || ''
-
-  function linkWaProposta(): string {
-    const primeiroNome = telhado.cliente_nome?.trim().split(' ')[0] || 'cliente'
-    const valor = telhado.proposta_valor
-      ? telhado.proposta_valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
-      : 'valor a confirmar'
-    const linhas = [
-      `Oi ${primeiroNome}, tudo bem?`,
-      '',
-      `Segue a proposta da SPIN Solar pra limpeza e revisão do seu sistema fotovoltaico${telhado.qtd_placas_estimada ? ` (${telhado.qtd_placas_estimada} placas)` : ''}:`,
-      '',
-      `💰 *Valor: ${valor}*`,
-      '',
-      'Podemos agendar? Qualquer dúvida é só me chamar.',
-    ]
-    const msg = encodeURIComponent(linhas.join('\n'))
-    return telLimpo ? `https://wa.me/55${telLimpo}?text=${msg}` : `https://wa.me/?text=${msg}`
-  }
 
   const fotoSrc = telhado.foto_url.startsWith('http')
     ? telhado.foto_url
@@ -257,15 +243,28 @@ function CardTelhado({
               </button>
             )}
             {fasesProposta && (
-              telhado.proposta_valor ? (
-                <a
-                  href={linkWaProposta()}
-                  target="_blank" rel="noopener"
-                  onClick={(e) => e.stopPropagation()}
-                  className="block w-full text-center px-2 py-1.5 bg-verde/20 border border-verde/40 text-verde text-[11px] font-bold rounded hover:bg-verde/30"
-                >
-                  🧾 Enviar proposta WhatsApp
-                </a>
+              telhado.proposta_valor && telhado.proposta_dados?.entradas ? (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <EnviarPropostaWhatsApp
+                    telhadoId={telhado.id}
+                    empresa={empresa}
+                    dados={{
+                      clienteNome: telhado.cliente_nome,
+                      clienteTelefone: telhado.cliente_telefone,
+                      endereco: telhado.endereco,
+                      cidade: telhado.cidade,
+                      apelido: telhado.apelido,
+                      qtdPlacas: telhado.proposta_dados.entradas.qtd_modulos || telhado.qtd_placas_estimada || 0,
+                      potenciaKwp: Number(((telhado.proposta_dados.entradas.qtd_modulos || telhado.qtd_placas_estimada || 0) * 0.55).toFixed(2)),
+                      valorFinal: telhado.proposta_valor,
+                      numTecnicos: telhado.proposta_dados.resultado?.qtd_tecnicos_calculado || telhado.proposta_dados.entradas.qtd_instaladores || 1,
+                      numDias: telhado.proposta_dados.resultado?.dias_calculado || telhado.proposta_dados.entradas.dias_estimados || 1,
+                      temPontoAgua: telhado.proposta_dados.entradas.tem_ponto_agua ?? true,
+                      temPontoEnergia: telhado.proposta_dados.entradas.tem_ponto_energia ?? true,
+                      sujidade: telhado.proposta_dados.entradas.sujidade || 'medio',
+                    }}
+                  />
+                </div>
               ) : (
                 <button
                   onClick={(e) => { e.stopPropagation(); onAbrirEditor() }}

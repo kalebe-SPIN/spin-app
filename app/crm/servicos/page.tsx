@@ -61,8 +61,8 @@ export default async function CrmServicosPage() {
 
   const telhados: TelhadoCard[] = (telhadosRaw || []) as TelhadoCard[]
 
-  // Parâmetros da fórmula de limpeza + lista de cidades atendidas (pro simulador)
-  const [{ data: paramsRow }, { data: cidadesRaw }] = await Promise.all([
+  // Parâmetros da fórmula de limpeza + cidades + dados da empresa (pro PDF da proposta)
+  const [{ data: paramsRow }, { data: cidadesRaw }, { data: empresaRow }] = await Promise.all([
     supabase
       .from('parametros_precificacao_servicos')
       .select('parametros')
@@ -73,10 +73,16 @@ export default async function CrmServicosPage() {
       .select('id, cidade, uf, km')
       .eq('ativo', true)
       .order('km', { ascending: true }),
+    supabase
+      .from('configuracoes_empresa')
+      .select('razao_social, cnpj, telefone, email, logo_url')
+      .eq('singleton', true)
+      .maybeSingle(),
   ])
 
   const parametrosLimpeza = (paramsRow?.parametros || null) as any
   const cidades = (cidadesRaw || []) as Array<{ id: string; cidade: string; uf: string; km: number }>
+  const empresa = empresaRow || null
 
   const bucketPublicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/telhados-fotos`
 
@@ -91,6 +97,7 @@ export default async function CrmServicosPage() {
           bucketPublicUrl={bucketPublicUrl}
           parametrosLimpeza={parametrosLimpeza}
           cidades={cidades}
+          empresa={empresa}
         />
       </div>
     </main>

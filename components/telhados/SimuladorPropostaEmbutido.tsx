@@ -15,7 +15,7 @@ import {
   type TipoTelhado,
   type Pavimento,
 } from '@/lib/precificacao/servico-retirada-recolocacao'
-import { salvarPropostaTelhadoAction } from '@/app/crm/servicos/actions'
+import { salvarPropostaTelhadoAction, editarTelhadoAction } from '@/app/crm/servicos/actions'
 
 export type CidadeOpcao = { id: string; cidade: string; uf: string; km: number }
 
@@ -62,6 +62,13 @@ export function SimuladorPropostaEmbutido({
 
   const inicial = propostaAnterior?.entradas || {}
 
+  // Qtd placas — pode ser ajustada pelo vendedor durante a montagem da proposta.
+  // Se a proposta anterior tinha um valor, usa esse; senão o valor cadastrado do telhado.
+  const [qtdPlacas, setQtdPlacas] = useState<number>(
+    (inicial.qtd_modulos as number) || qtdPlacasInicial || 0,
+  )
+  const potenciaKwpAtual = Number((qtdPlacas * 0.55).toFixed(2))
+
   // Cidade: prefere a que veio da proposta salva; senão faz matching com a cidade do card;
   // senão pega a primeira da lista.
   const cidadeMatch = acharCidadeMatch(cidadeTelhado, cidades)
@@ -94,7 +101,7 @@ export function SimuladorPropostaEmbutido({
   const kmDeslocamento = cidadeAtual?.km ?? 0
 
   const entradas: EntradasLimpeza = {
-    qtd_modulos: qtdPlacasInicial,
+    qtd_modulos: qtdPlacas,
     tipo_telhado: tipoTelhado,
     altura_telhado_m: null,
     pavimento,
@@ -114,26 +121,35 @@ export function SimuladorPropostaEmbutido({
   const tecnicosNaturais = useMemo(
     () => decidirQtdTecnicos({ ...entradas, cliente_disponibiliza_ajudante: false }, parametros),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [qtdPlacasInicial, pavimento, peDireitoM, parametros],
+    [qtdPlacas, pavimento, peDireitoM, parametros],
   )
 
   const resultado = useMemo(
     () => calcularLimpezaAutomatico(entradas, parametros),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cidadeId, tipoTelhado, pavimento, peDireitoM, sujidade, temPontoAgua, temPontoEnergia, clienteAjudante, qtdPlacasInicial, parametros],
+    [cidadeId, tipoTelhado, pavimento, peDireitoM, sujidade, temPontoAgua, temPontoEnergia, clienteAjudante, qtdPlacas, parametros],
   )
 
   const valorFinal = Math.max(0, resultado.subtotal + ajusteManual)
 
   function salvar() {
+    if (!qtdPlacas || qtdPlacas < 1) { setErro('Informe a quantidade de placas'); return }
     setMsg(null); setErro(null)
     startTransition(async () => {
-      const r = await salvarPropostaTelhadoAction(telhadoId, {
-        entradas: entradas as unknown as Record<string, unknown>,
-        resultado: { ...resultado, ajuste_manual: ajusteManual, valor_final: valorFinal } as unknown as Record<string, unknown>,
-        valor_final: valorFinal,
-      })
-      if (r?.erro) { setErro(r.erro); return }
+      // Salva a proposta E atualiza a qtd de placas cadastrada no telhado
+      // (o vendedor pode ter ajustado durante a montagem da proposta).
+      const [r1, r2] = await Promise.all([
+        salvarPropostaTelhadoAction(telhadoId, {
+          entradas: entradas as unknown as Record<string, unknown>,
+          resultado: { ...resultado, ajuste_manual: ajusteManual, valor_final: valorFinal } as unknown as Record<string, unknown>,
+          valor_final: valorFinal,
+        }),
+        qtdPlacas !== qtdPlacasInicial
+          ? editarTelhadoAction(telhadoId, { qtd_placas_estimada: qtdPlacas })
+          : Promise.resolve({ sucesso: true } as const),
+      ])
+      if (r1?.erro) { setErro(r1.erro); return }
+      if ('erro' in r2 && r2.erro) { setErro(r2.erro); return }
       setMsg('✓ Proposta salva')
       router.refresh()
     })
@@ -149,14 +165,19 @@ export function SimuladorPropostaEmbutido({
 
   return (
     <div className="space-y-3">
-      {/* Header do sistema — sempre visível */}
-      <div className="flex items-center justify-between p-2.5 bg-white/[0.04] border border-white/10 rounded-lg">
+      {/* Header do sistema — placas editáveis + cidade automática */}
+      <div className="grid grid-cols-2 gap-2 p-2.5 bg-white/[0.04] border border-white/10 rounded-lg">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold">Sistema</p>
-          <p className="text-sm text-white font-bold">
-            {qtdPlacasInicial} placas
-            {potenciaKwpInicial ? <span className="text-sol"> · {potenciaKwpInicial} kWp</span> : null}
-          </p>
+          <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold mb-1">Placas do sistema</p>
+          <div className="flex items-baseline gap-1.5">
+            <input
+              type="number" min={1} max={10000} value={qtdPlacas || ''}
+              onChange={(e) => setQtdPlacas(Number(e.target.value))}
+              className="w-16 px-1.5 py-0.5 bg-white/5 border border-white/15 rounded text-sm text-white font-bold text-right tabular-nums"
+            />
+            <span className="text-[11px] text-white/50">placas</span>
+            <span className="text-[11px] text-sol tabular-nums">· {potenciaKwpAtual} kWp</span>
+          </div>
         </div>
         <div className="text-right">
           <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold">Cidade / km</p>
