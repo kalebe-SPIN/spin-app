@@ -33,12 +33,31 @@ export default async function CrmServicosPage() {
   }
 
   // Traz todos os telhados exceto os "perdidos" (esses viram histórico)
-  // Telhados + snapshot da proposta (pra abrir o simulador com dados anteriores)
-  const { data: telhadosRaw } = await supabase
+  // Telhados + snapshot da proposta. Tenta com as colunas novas primeiro;
+  // se falhar (migration 072 não rodada), cai pro SELECT básico pra o Kanban
+  // não sumir enquanto o admin roda a migration.
+  const CAMPOS_BASE = 'id, fase, apelido, endereco, bairro, cidade, qtd_placas_estimada, potencia_kwp_estimada, foto_url, cliente_nome, cliente_telefone, ultima_interacao_em, criado_em'
+  const CAMPOS_COM_PROPOSTA = `${CAMPOS_BASE}, proposta_dados, proposta_valor`
+
+  let telhadosRaw: any[] | null = null
+  const tentativa1 = await supabase
     .from('telhados')
-    .select('id, fase, apelido, endereco, bairro, cidade, qtd_placas_estimada, potencia_kwp_estimada, foto_url, cliente_nome, cliente_telefone, ultima_interacao_em, criado_em, proposta_dados, proposta_valor')
+    .select(CAMPOS_COM_PROPOSTA)
     .neq('fase', 'perdido')
     .order('criado_em', { ascending: false })
+
+  if (tentativa1.error) {
+    // Fallback — migration 072 provavelmente não rodada
+    console.warn('[/crm/servicos] SELECT com proposta_dados falhou:', tentativa1.error.message, '— caindo pro select básico')
+    const fallback = await supabase
+      .from('telhados')
+      .select(CAMPOS_BASE)
+      .neq('fase', 'perdido')
+      .order('criado_em', { ascending: false })
+    telhadosRaw = fallback.data
+  } else {
+    telhadosRaw = tentativa1.data
+  }
 
   const telhados: TelhadoCard[] = (telhadosRaw || []) as TelhadoCard[]
 
