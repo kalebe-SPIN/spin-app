@@ -8,6 +8,8 @@ import { StatsAgenda } from '@/components/stats/StatsAgenda'
 import { StatsCRM } from '@/components/stats/StatsCRM'
 import { StatsOperacoes } from '@/components/stats/StatsOperacoes'
 import { StatsPosVenda } from '@/components/stats/StatsPosVenda'
+import { PainelEquipeAdmin } from '@/components/admin/PainelEquipeAdmin'
+import { buscarPainelEquipeAction } from '@/app/admin/equipe/actions'
 
 /**
  * Dashboard — OPERAÇÃO em tempo real.
@@ -49,6 +51,10 @@ export default async function DashboardPage() {
   // Profissional de campo ainda não tem dashboard próprio — o fluxo dele é
   // executar OS na agenda. Manda direto pra /agenda até criarmos DashboardCampo.
   if (modo === 'profissional_campo') redirect('/agenda')
+
+  // Painel de equipe (só admin) — fetch inicial. Depois o client subscribe
+  // em postgres_changes e atualiza em tempo real.
+  const dadosEquipe = mostraAdmin ? await buscarPainelEquipeAction() : null
 
   return (
     <main className="min-h-screen p-8 md:p-12">
@@ -94,6 +100,14 @@ export default async function DashboardPage() {
             </form>
           </div>
         </header>
+
+        {/* Sec. 0: PAINEL DE EQUIPE — só admin. Fica em cima porque é o que
+            o admin quer ver primeiro ao logar (o que a equipe fez hoje). */}
+        {mostraAdmin && dadosEquipe && !('erro' in dadosEquipe) && (
+          <section className="mb-10">
+            <PainelEquipeAdmin dadosIniciais={dadosEquipe} />
+          </section>
+        )}
 
         {/* Sec. 1: JORNADA DO CLIENTE — linha do tempo (LEAD → PÓS-VENDA)
             Admin vê 6 etapas (com Homologações CELESC ④); demais veem 5. */}
