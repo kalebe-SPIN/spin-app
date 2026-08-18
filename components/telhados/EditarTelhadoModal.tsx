@@ -125,6 +125,8 @@ export function EditarTelhadoModal({
               <SimuladorPropostaEmbutido
                 telhadoId={telhado.id}
                 qtdPlacasInicial={telhado.qtd_placas_estimada}
+                potenciaKwpInicial={telhado.potencia_kwp_estimada}
+                cidadeTelhado={cidade || telhado.cidade}
                 parametros={parametrosLimpeza!}
                 cidades={cidades!}
                 propostaAnterior={propostaAnterior || null}

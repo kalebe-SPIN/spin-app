@@ -22,6 +22,8 @@ export type CidadeOpcao = { id: string; cidade: string; uf: string; km: number }
 type Props = {
   telhadoId: string
   qtdPlacasInicial: number
+  potenciaKwpInicial?: number | null
+  cidadeTelhado?: string | null  // cidade cadastrada no card — casada com cidades_distancia automaticamente
   parametros: ParametrosLimpeza
   cidades: CidadeOpcao[]
   propostaAnterior?: {
@@ -38,8 +40,20 @@ const OPT_STYLE: React.CSSProperties = { backgroundColor: '#050B16', color: '#ff
  * Cálculo ao vivo (useMemo) conforme o vendedor mexe. Grava snapshot em
  * telhados.proposta_dados quando clica em Salvar.
  */
+// Tenta bater a cidade cadastrada no telhado com a lista cadastrada pelo admin.
+// Faz matching case-insensitive ignorando acentos, prefere match exato.
+function acharCidadeMatch(cidadeTelhado: string | null | undefined, cidades: CidadeOpcao[]): string | null {
+  if (!cidadeTelhado?.trim() || cidades.length === 0) return null
+  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+  const alvo = norm(cidadeTelhado)
+  const exato = cidades.find((c) => norm(c.cidade) === alvo)
+  if (exato) return exato.id
+  const parcial = cidades.find((c) => norm(c.cidade).includes(alvo) || alvo.includes(norm(c.cidade)))
+  return parcial?.id || null
+}
+
 export function SimuladorPropostaEmbutido({
-  telhadoId, qtdPlacasInicial, parametros, cidades, propostaAnterior,
+  telhadoId, qtdPlacasInicial, potenciaKwpInicial, cidadeTelhado, parametros, cidades, propostaAnterior,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -48,9 +62,15 @@ export function SimuladorPropostaEmbutido({
 
   const inicial = propostaAnterior?.entradas || {}
 
+  // Cidade: prefere a que veio da proposta salva; senão faz matching com a cidade do card;
+  // senão pega a primeira da lista.
+  const cidadeMatch = acharCidadeMatch(cidadeTelhado, cidades)
   const [cidadeId, setCidadeId] = useState<string>(
-    (inicial.cidade_id as string) || cidades[0]?.id || '',
+    (inicial.cidade_id as string) || cidadeMatch || cidades[0]?.id || '',
   )
+  const cidadeFoiMatchada = !!cidadeMatch && cidadeId === cidadeMatch && !inicial.cidade_id
+  const cidadeDoTelhadoNaoAchou = !!cidadeTelhado?.trim() && !cidadeMatch
+
   const [tipoTelhado, setTipoTelhado] = useState<TipoTelhado>(
     (inicial.tipo_telhado as TipoTelhado) || 'fibrocimento',
   )
@@ -129,25 +149,63 @@ export function SimuladorPropostaEmbutido({
 
   return (
     <div className="space-y-3">
-      {/* Cidade + telhado + pavimento */}
-      <div className="grid grid-cols-2 gap-2">
-        <Campo label="Cidade da obra">
+      {/* Header do sistema — sempre visível */}
+      <div className="flex items-center justify-between p-2.5 bg-white/[0.04] border border-white/10 rounded-lg">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold">Sistema</p>
+          <p className="text-sm text-white font-bold">
+            {qtdPlacasInicial} placas
+            {potenciaKwpInicial ? <span className="text-sol"> · {potenciaKwpInicial} kWp</span> : null}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold">Cidade / km</p>
+          <p className="text-sm text-white font-bold">
+            {cidadeAtual ? (
+              <>
+                {cidadeAtual.cidade}
+                <span className="text-sol"> · {cidadeAtual.km}km</span>
+              </>
+            ) : '—'}
+          </p>
+        </div>
+      </div>
+
+      {/* Fallback: cidade do telhado não bateu com a lista → precisa escolher manual */}
+      {cidadeDoTelhadoNaoAchou && (
+        <div className="p-2.5 bg-coral/10 border border-coral/25 rounded-lg space-y-2">
+          <p className="text-[11px] text-coral leading-snug">
+            ⚠ A cidade cadastrada no telhado (<strong>{cidadeTelhado}</strong>) não está na lista de cidades atendidas.
+            Escolhe abaixo ou pede pro admin cadastrar em <code className="text-sol">/admin/precificacao/cidades</code>.
+          </p>
           <select value={cidadeId} onChange={(e) => setCidadeId(e.target.value)} className="input">
             {cidades.map((c) => (
-              <option key={c.id} value={c.id} style={OPT_STYLE}>
-                {c.cidade}/{c.uf} · {c.km}km
-              </option>
+              <option key={c.id} value={c.id} style={OPT_STYLE}>{c.cidade}/{c.uf} · {c.km}km</option>
             ))}
           </select>
-        </Campo>
-        <Campo label="Tipo de telhado">
-          <select value={tipoTelhado} onChange={(e) => setTipoTelhado(e.target.value as TipoTelhado)} className="input">
-            {OPCOES_TELHADO.map((t) => (
-              <option key={t.id} value={t.id} style={OPT_STYLE}>{t.label}</option>
+        </div>
+      )}
+
+      {/* Caso cidade veio da proposta salva antiga (diferente da atual do telhado): permite trocar */}
+      {!cidadeDoTelhadoNaoAchou && !cidadeFoiMatchada && cidades.length > 0 && (
+        <details className="p-2.5 bg-white/[0.02] border border-white/10 rounded-lg text-xs">
+          <summary className="text-white/50 cursor-pointer">Trocar cidade (opcional)</summary>
+          <select value={cidadeId} onChange={(e) => setCidadeId(e.target.value)} className="input mt-2">
+            {cidades.map((c) => (
+              <option key={c.id} value={c.id} style={OPT_STYLE}>{c.cidade}/{c.uf} · {c.km}km</option>
             ))}
           </select>
-        </Campo>
-      </div>
+        </details>
+      )}
+
+      {/* Tipo de telhado */}
+      <Campo label="Tipo de telhado">
+        <select value={tipoTelhado} onChange={(e) => setTipoTelhado(e.target.value as TipoTelhado)} className="input">
+          {OPCOES_TELHADO.map((t) => (
+            <option key={t.id} value={t.id} style={OPT_STYLE}>{t.label}</option>
+          ))}
+        </select>
+      </Campo>
 
       <div className="grid grid-cols-2 gap-2">
         <Campo label="Pavimento">
@@ -208,10 +266,9 @@ export function SimuladorPropostaEmbutido({
 
       {/* Resumo do cálculo */}
       <div className="mt-3 p-3 bg-sol/[0.06] border border-sol/25 rounded-lg space-y-2">
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="grid grid-cols-2 gap-2 text-center">
           <ResumoItem label="Técnicos" valor={String(resultado.qtd_tecnicos_calculado ?? '—')} />
           <ResumoItem label="Dias" valor={String(resultado.dias_calculado ?? '—')} />
-          <ResumoItem label="Km ida+volta" valor={`${kmDeslocamento * 2}`} />
         </div>
 
         <div className="pt-2 border-t border-white/10 space-y-0.5 text-[11px] text-white/60">
