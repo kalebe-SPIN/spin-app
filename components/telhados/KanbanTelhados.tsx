@@ -8,6 +8,7 @@ import {
 } from '@/app/crm/servicos/actions'
 import { NovoTelhadoModal } from './NovoTelhadoModal'
 import { EditarTelhadoModal } from './EditarTelhadoModal'
+import { EscolherCriativoModal } from '@/components/criativos/EscolherCriativoModal'
 
 export type TelhadoCard = {
   id: string
@@ -166,6 +167,29 @@ function CardTelhado({
   onAbrirEditor: () => void
 }) {
   const [arrastando, setArrastando] = useState(false)
+  const [criativosAberto, setCriativosAberto] = useState(false)
+
+  const fasesCriativos = telhado.fase === 'prospeccao' || telhado.fase === 'contato'
+  const fasesProposta = telhado.fase === 'proposta' || telhado.fase === 'fechado'
+  const telLimpo = telhado.cliente_telefone?.replace(/\D/g, '') || ''
+
+  function linkWaProposta(): string {
+    const primeiroNome = telhado.cliente_nome?.trim().split(' ')[0] || 'cliente'
+    const valor = telhado.proposta_valor
+      ? telhado.proposta_valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+      : 'valor a confirmar'
+    const linhas = [
+      `Oi ${primeiroNome}, tudo bem?`,
+      '',
+      `Segue a proposta da SPIN Solar pra limpeza e revisão do seu sistema fotovoltaico${telhado.qtd_placas_estimada ? ` (${telhado.qtd_placas_estimada} placas)` : ''}:`,
+      '',
+      `💰 *Valor: ${valor}*`,
+      '',
+      'Podemos agendar? Qualquer dúvida é só me chamar.',
+    ]
+    const msg = encodeURIComponent(linhas.join('\n'))
+    return telLimpo ? `https://wa.me/55${telLimpo}?text=${msg}` : `https://wa.me/?text=${msg}`
+  }
 
   const fotoSrc = telhado.foto_url.startsWith('http')
     ? telhado.foto_url
@@ -221,20 +245,50 @@ function CardTelhado({
           </p>
         )}
 
-        {/* Ações rápidas — não abrem o editor (stopPropagation) */}
-        {telhado.cliente_telefone && (
+        {/* Ação contextual por fase (não abre o editor — stopPropagation) */}
+        {(fasesCriativos || fasesProposta) && (
           <div className="mt-2 pt-2 border-t border-white/10">
-            <a
-              href={`https://wa.me/55${telhado.cliente_telefone}`}
-              target="_blank" rel="noopener"
-              onClick={(e) => e.stopPropagation()}
-              className="text-[10px] text-verde hover:underline inline-flex items-center gap-1"
-            >
-              📱 abrir WhatsApp
-            </a>
+            {fasesCriativos && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setCriativosAberto(true) }}
+                className="w-full px-2 py-1.5 bg-weg-azul/15 border border-weg-azul/40 text-weg-azul text-[11px] font-bold rounded hover:bg-weg-azul/25"
+              >
+                📚 Enviar criativos WhatsApp
+              </button>
+            )}
+            {fasesProposta && (
+              telhado.proposta_valor ? (
+                <a
+                  href={linkWaProposta()}
+                  target="_blank" rel="noopener"
+                  onClick={(e) => e.stopPropagation()}
+                  className="block w-full text-center px-2 py-1.5 bg-verde/20 border border-verde/40 text-verde text-[11px] font-bold rounded hover:bg-verde/30"
+                >
+                  🧾 Enviar proposta WhatsApp
+                </a>
+              ) : (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onAbrirEditor() }}
+                  className="w-full px-2 py-1.5 bg-white/5 border border-white/10 text-white/50 text-[11px] font-bold rounded hover:bg-white/10"
+                  title="Salva uma proposta primeiro no card"
+                >
+                  ⚠ Sem proposta salva — clica pra gerar
+                </button>
+              )
+            )}
           </div>
         )}
       </div>
+
+      {criativosAberto && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <EscolherCriativoModal
+            clienteNome={telhado.cliente_nome}
+            clienteTelefone={telhado.cliente_telefone}
+            onFechar={() => setCriativosAberto(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }
