@@ -24,7 +24,7 @@ type Diagrama = {
   eh_previa?: boolean
 }
 
-type TipoDiagrama = 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada'
+type TipoDiagrama = 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao'
 type OpcaoTipo = { id: TipoDiagrama; label: string; desc: string }
 
 type Props = {

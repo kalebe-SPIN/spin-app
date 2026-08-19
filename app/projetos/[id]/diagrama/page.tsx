@@ -131,9 +131,9 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
   const temFvOngrid = tiposItem.has('fv_ongrid') || tiposItem.has('fv_zero_grid') || tiposItem.has('fv_offgrid') || tiposItem.has('srv_instalacao_placas')
   const temFvHibrido = tiposItem.has('fv_hibrido') || tiposItem.has('bess')
 
-  // Monta lista de tipos disponiveis — sempre inclui padrao_entrada
+  // Monta lista de tipos disponiveis — sempre inclui padrao_entrada e layout
   const tiposDisponiveis: Array<{
-    id: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada'
+    id: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao'
     label: string
     desc: string
   }> = []
@@ -157,6 +157,12 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
     id: 'padrao_entrada',
     label: 'Padrão de entrada CELESC',
     desc: 'Prancha do padrão de entrada (Grupo A MT ou Grupo B BT) pra homologação.',
+  })
+  // Layout de instalação — SEMPRE disponível (se tem telhado_secoes, agente usa)
+  tiposDisponiveis.push({
+    id: 'layout_instalacao',
+    label: 'Layout de instalação',
+    desc: 'Vista aérea + elevação do telhado com posicionamento das placas e strings.',
   })
 
   return (

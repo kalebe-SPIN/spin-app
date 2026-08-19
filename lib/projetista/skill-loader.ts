@@ -11,14 +11,15 @@ import path from 'node:path'
 const SKILL_DIR = path.join(process.cwd(), 'skills', 'projetista-spin')
 
 type SkillContent = {
-  instrucaoMestre: string           // SKILL.md
-  regras: string                    // references/regras-spin.md
-  simbolos: string                  // references/simbolos.md
-  estilo: string                    // references/estilo-casa.md
-  normas: string                    // references/normas-celesc.md
-  calculos: string                  // references/calculos.md
-  templates: Record<string, string> // templates/*.svg (chave = nome do arquivo sem .svg)
-  exemplos: Record<string, string>  // exemplos/*.md
+  instrucaoMestre: string             // SKILL.md
+  regras: string                      // references/regras-spin.md
+  simbolos: string                    // references/simbolos.md
+  estilo: string                      // references/estilo-casa.md
+  normas: string                      // references/normas-celesc.md
+  calculos: string                    // references/calculos.md
+  templates: Record<string, string>   // templates/*.svg
+  exemplos: Record<string, string>    // exemplos/*.md
+  quadrantes: Record<string, string>  // quadrantes/*.svg — 9 quadrantes CELESC oficiais
 }
 
 let cache: SkillContent | null = null
@@ -62,6 +63,7 @@ export function carregarSkillProjetista(): SkillContent {
     calculos: lerArq('references/calculos.md'),
     templates: lerDir('templates', '.svg'),
     exemplos: lerDir('exemplos', '.md'),
+    quadrantes: lerDir('quadrantes', '.svg'),
   }
 
   return cache
@@ -72,7 +74,7 @@ export function carregarSkillProjetista(): SkillContent {
  * Se o específico não existir, cai em ongrid-mono como fallback.
  */
 export function escolherTemplate(dados: {
-  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada'
+  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao'
   fase?: 'mono' | 'bi' | 'tri'
   grupo?: 'A' | 'B'
 }): { chave: string; svg: string } {
@@ -84,6 +86,8 @@ export function escolherTemplate(dados: {
   } else if (dados.tipoDesenho === 'padrao_entrada') {
     if (dados.grupo === 'A') preferencias.push('padrao-entrada-grupo-a')
     else preferencias.push('padrao-entrada-grupo-b')
+  } else if (dados.tipoDesenho === 'layout_instalacao') {
+    preferencias.push('layout-instalacao')
   } else {
     // on-grid
     if (dados.fase === 'tri') preferencias.push('unifilar-ongrid-tri')

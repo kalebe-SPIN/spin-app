@@ -17,7 +17,7 @@ import { carregarSkillProjetista, escolherTemplate } from './skill-loader'
 export type EntradasProjetista = {
   projeto: any
   configEmpresa: any
-  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada'
+  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao'
   hibridoDimensionamento?: any
   hibridoAnalise?: any
   instrucaoAjuste?: string   // se refinamento de versão anterior
@@ -223,7 +223,7 @@ function construirPromptUsuario(
     `Se o config vier vazio, use esses valores como default. Nunca deixe o carimbo com RT em branco.`,
   )
 
-  // Template escolhido (se disponível)
+  // Template escolhido (se disponível) — SEM truncar, é a referência principal
   if (template.svg) {
     partes.push(
       ``,
@@ -233,7 +233,7 @@ function construirPromptUsuario(
       `Você pode adaptar posições e adicionar detalhes específicos deste projeto, MAS mantenha o padrão gráfico (layout, cores, tipografia, legenda, notas, carimbo).`,
       ``,
       '```xml',
-      template.svg.slice(0, 8000),  // limita pra não estourar contexto
+      template.svg,
       '```',
     )
   }
@@ -245,6 +245,42 @@ function construirPromptUsuario(
     ``,
     skill.simbolos,
   )
+
+  // Quadrantes CELESC oficiais como blocos plug-and-play
+  // Cada quadrante é um SVG independente que o agente pode reaproveitar/copiar
+  // no output. Reduz reinvenção de carimbo/legenda/placa/QPCA a cada geração.
+  const quadranteNomes = Object.keys(skill.quadrantes || {})
+  if (quadranteNomes.length > 0) {
+    partes.push(
+      ``,
+      `## QUADRANTES CELESC OFICIAIS (blocos plug-and-play)`,
+      ``,
+      `Você tem à disposição ${quadranteNomes.length} quadrantes já aprovados pela CELESC. Cada um é um SVG independente que pode ser reaproveitado no seu output — copia o bloco correspondente e ajusta só as variáveis do projeto. Preferir isto a reinventar do zero garante conformidade CELESC.`,
+    )
+    for (const nome of quadranteNomes) {
+      partes.push(
+        ``,
+        `### Quadrante: ${nome}`,
+        '```xml',
+        skill.quadrantes[nome],
+        '```',
+      )
+    }
+  }
+
+  // Exemplos aprovados (few-shot)
+  const exemploNomes = Object.keys(skill.exemplos || {})
+  if (exemploNomes.length > 0) {
+    partes.push(
+      ``,
+      `## EXEMPLOS APROVADOS (referência de qualidade)`,
+      ``,
+      `${exemploNomes.length} projetos anteriores validados pelo Kalebe. Use-os como referência do NÍVEL de detalhe, organização e conformidade esperados no seu output.`,
+    )
+    for (const nome of exemploNomes) {
+      partes.push(``, `### Exemplo: ${nome}`, skill.exemplos[nome])
+    }
+  }
 
   // Se refinamento
   if (instrucaoAjuste) {

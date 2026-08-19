@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
         {
           projeto,
           configEmpresa,
-          tipoDesenho: tipo_desenho as 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada',
+          tipoDesenho: tipo_desenho as 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao',
           hibridoDimensionamento,
           hibridoAnalise,
           instrucaoAjuste,

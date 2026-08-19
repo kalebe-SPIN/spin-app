@@ -28,7 +28,7 @@ const STATUS_PODE_GERAR = [
 
 export async function gerarDiagramaAction(
   projetoId: string,
-  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada',
+  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao',
   opcoes: { modoPrevia?: boolean } = {},
 ) {
   const supabase = createClient()
