@@ -36,6 +36,10 @@ export type DadosEmpresa = {
   telefone?: string | null
   email?: string | null
   logo_url?: string | null
+  rt_nome?: string | null
+  rt_email?: string | null
+  rt_telefone?: string | null
+  rt_assinatura_url?: string | null
 }
 
 export function EnviarPropostaWhatsApp({
@@ -217,6 +221,28 @@ export function EnviarPropostaWhatsApp({
           <strong>Condições:</strong> Validade da proposta 15 dias · Pagamento à vista PIX ou em até 3× no cartão sem juros ·
           Serviço agendado após confirmação · Emissão de NF pela SPIN Solar após conclusão.
           {dados.observacoesVendedor ? ` · Observações: ${dados.observacoesVendedor}` : ''}
+        </div>
+
+        {/* Assinatura Spin */}
+        <div style={{ marginTop: 40, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          {empresa?.rt_assinatura_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={empresa.rt_assinatura_url}
+              alt="Assinatura"
+              style={{ height: 64, objectFit: 'contain', marginBottom: -6 }}
+              crossOrigin="anonymous"
+            />
+          )}
+          <div style={{ borderTop: '1px solid #111', width: 260, paddingTop: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#0B0F1A' }}>
+              {empresa?.rt_nome || 'Spin Solar Energias Renováveis Ltda'}
+            </div>
+            <div style={{ fontSize: 10, color: '#666' }}>
+              Diretor comercial · Spin Solar
+              {empresa?.rt_email ? ` · ${empresa.rt_email}` : ''}
+            </div>
+          </div>
         </div>
 
         {/* Rodapé */}

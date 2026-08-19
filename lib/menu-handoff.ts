@@ -63,6 +63,15 @@ export type ConsultorSessao = {
   role: string
   telefone: string | null
   expiraEm: string
+  /**
+   * Dados fixos da SPIN pra estampar no PDF de proposta gerado pelo menu.
+   * Sempre a assinatura do responsável cadastrado em /admin/empresa
+   * (rt_assinatura_url), qualquer que seja o consultor logado.
+   */
+  spin: {
+    nomeResponsavel: string | null
+    assinaturaUrl: string | null
+  }
 }
 
 /**
@@ -99,6 +108,12 @@ export async function validarToken(token: string): Promise<ConsultorSessao | nul
     .update({ ultimo_uso_em: new Date().toISOString(), usos: (sessao.usos || 0) + 1 })
     .eq('id', sessao.id)
 
+  const { data: config } = await supabase
+    .from('configuracoes_empresa')
+    .select('rt_nome, rt_assinatura_url')
+    .eq('singleton', true)
+    .maybeSingle()
+
   return {
     sessaoId: sessao.id,
     consultorId: perfil.id,
@@ -106,5 +121,9 @@ export async function validarToken(token: string): Promise<ConsultorSessao | nul
     role: perfil.role,
     telefone: perfil.telefone,
     expiraEm: sessao.expira_em,
+    spin: {
+      nomeResponsavel: config?.rt_nome || null,
+      assinaturaUrl: config?.rt_assinatura_url || null,
+    },
   }
 }

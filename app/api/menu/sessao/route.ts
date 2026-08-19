@@ -43,6 +43,10 @@ export async function POST(req: NextRequest) {
         role: sessao.role,
         telefone: sessao.telefone,
       },
+      spin: {
+        nome_responsavel: sessao.spin.nomeResponsavel,
+        assinatura_url: sessao.spin.assinaturaUrl,
+      },
       expiraEm: sessao.expiraEm,
     },
     origin

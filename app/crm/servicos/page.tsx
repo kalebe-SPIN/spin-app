@@ -75,7 +75,7 @@ export default async function CrmServicosPage() {
       .order('km', { ascending: true }),
     supabase
       .from('configuracoes_empresa')
-      .select('razao_social, cnpj, telefone, email, logo_url')
+      .select('razao_social, cnpj, telefone, email, logo_url, rt_nome, rt_email, rt_telefone, rt_assinatura_url')
       .eq('singleton', true)
       .maybeSingle(),
   ])
