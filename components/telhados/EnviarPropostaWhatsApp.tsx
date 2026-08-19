@@ -163,13 +163,10 @@ export function EnviarPropostaWhatsApp({
           Limpeza técnica e revisão de sistema fotovoltaico
         </div>
 
-        {/* Cliente */}
+        {/* Cliente — endereço/cidade/telefone ficam só no cadastro interno */}
         <Bloco titulo="Cliente">
           <Linha rotulo="Nome" valor={dados.clienteNome || '—'} />
           {dados.apelido && <Linha rotulo="Referência" valor={dados.apelido} />}
-          <Linha rotulo="Endereço" valor={dados.endereco} />
-          {dados.cidade && <Linha rotulo="Cidade" valor={dados.cidade} />}
-          {dados.clienteTelefone && <Linha rotulo="Contato" valor={dados.clienteTelefone} />}
         </Bloco>
 
         {/* Sistema */}
