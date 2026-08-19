@@ -84,6 +84,17 @@ export default async function DashboardPage() {
                 ⚙️ Administração
               </Link>
             )}
+            {(profile?.role === 'admin' || profile?.role === 'representante') && (
+              <a
+                href="/api/menu/abrir"
+                target="_blank"
+                rel="noopener"
+                className="px-4 py-2 bg-sol/10 border border-sol/30 text-sol text-sm font-semibold rounded-lg hover:bg-sol/20 transition"
+                title="Abre o catálogo já autenticado — dá pra emitir proposta em PDF e o projeto cai no seu CRM"
+              >
+                ☀️ Catálogo
+              </a>
+            )}
             <Link
               href="/conta"
               className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-semibold text-white hover:bg-white/10 transition"
