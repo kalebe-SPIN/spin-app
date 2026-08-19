@@ -83,7 +83,7 @@ export default async function HubPrecificacaoPage() {
           </p>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
           <Link
             href="/admin/precificacao/fotovoltaico"
             className="bg-gradient-to-br from-sol/10 to-verde/5 border border-sol/40 hover:border-sol/70 rounded-xl p-5 transition relative"
@@ -118,6 +118,17 @@ export default async function HubPrecificacaoPage() {
             <p className="text-xs text-white/60">
               Por qtd de placas, potência kWp, horas, m², metros, dias.
               Aparece como referência rápida no orçamento.
+            </p>
+          </Link>
+          <Link
+            href="/admin/precificacao/cidades"
+            className="bg-white/[0.03] border border-white/10 hover:border-sol/40 rounded-xl p-5 transition"
+          >
+            <p className="text-2xl mb-2">🗺</p>
+            <p className="text-lg font-bold text-white mb-1">Cidades atendidas</p>
+            <p className="text-xs text-white/60">
+              Distância de cada cidade até a sede (Tijucas/SC). Usado pelo
+              simulador de proposta pra calcular deslocamento automático.
             </p>
           </Link>
         </div>
