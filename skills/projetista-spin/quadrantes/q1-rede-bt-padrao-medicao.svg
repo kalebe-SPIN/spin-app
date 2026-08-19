@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  QUADRANTE 1 — REDE DE BAIXA TENSÃO + PADRÃO DE MEDIÇÃO
+  Referência: imagem enviada por Kalebe em 2026-07-28
+  Estilo: linhas finas pretas, cabos paralelos, bitolas anotadas, aterramento em verde
+  Divisão ACESSADA/ACESSANTE (padrão CELESC)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 300" width="520" height="300">
+  <rect x="0" y="0" width="520" height="300" fill="#FFFFFF"/>
+
+  <!-- ═══ TÍTULO SUPERIOR ═══ -->
+  <text x="260" y="20" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">REDE DE BAIXA TENSÃO</text>
+
+  <!-- ═══ LINHA HORIZONTAL DA REDE ═══ -->
+  <line x1="60" y1="45" x2="460" y2="45" stroke="#111827" stroke-width="1.2"/>
+
+  <!-- Ponto de entrega (círculo pequeno preto) -->
+  <circle cx="130" cy="45" r="3.5" fill="#111827"/>
+  <text x="60" y="35" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">Ponto de entrega</text>
+  <text x="60" y="60" font-family="Helvetica, Arial, sans-serif" font-size="7" fill="#111827">Ramal de ligação 3x10+1x10mm²</text>
+
+  <!-- Divisão ACESSADA / ACESSANTE (à direita) -->
+  <line x1="370" y1="45" x2="370" y2="80" stroke="#111827" stroke-width="0.6" stroke-dasharray="2,2"/>
+  <text x="410" y="42" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">ACESSADA</text>
+  <line x1="380" y1="52" x2="500" y2="52" stroke="#111827" stroke-width="0.4"/>
+  <text x="410" y="68" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">ACESSANTE</text>
+
+  <!-- ═══ DESCIDA DOS CABOS 3 FASES + NEUTRO ═══ -->
+  <!-- Cruz separadora N+F (símbolo padrão CELESC) -->
+  <g transform="translate(220, 45)">
+    <!-- Cruzeta horizontal (3 fases + neutro) -->
+    <line x1="0" y1="15" x2="0" y2="70" stroke="#111827" stroke-width="1.2"/>
+    <!-- 3 traços perpendiculares indicando 3 fases -->
+    <line x1="-6" y1="20" x2="6" y2="20" stroke="#111827" stroke-width="1"/>
+    <line x1="-5" y1="25" x2="5" y2="25" stroke="#111827" stroke-width="1"/>
+    <line x1="-4" y1="30" x2="4" y2="30" stroke="#111827" stroke-width="1"/>
+    <!-- Neutro (mais fino, diagonal) -->
+    <line x1="-8" y1="38" x2="8" y2="42" stroke="#111827" stroke-width="0.8"/>
+  </g>
+
+  <!-- Etiqueta bitola descendente -->
+  <text x="145" y="90" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">3#10(10)mm²</text>
+
+  <!-- Linha vertical (cabo até o medidor) -->
+  <line x1="220" y1="115" x2="220" y2="150" stroke="#111827" stroke-width="1.2"/>
+
+  <!-- ═══ PADRÃO DE MEDIÇÃO (caixa tracejada) ═══ -->
+  <rect x="150" y="100" width="270" height="180" fill="none" stroke="#111827" stroke-width="0.6" stroke-dasharray="4,3"/>
+  <text x="435" y="140" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#111827">PADRÃO DE</text>
+  <text x="435" y="153" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#111827">MEDIÇÃO</text>
+
+  <!-- MEDIDOR KWH -->
+  <g transform="translate(220, 170)">
+    <rect x="-22" y="-15" width="44" height="30" fill="#FFFFFF" stroke="#111827" stroke-width="1.2"/>
+    <text x="0" y="4" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">KWH</text>
+  </g>
+
+  <!-- Descida pro disjuntor -->
+  <line x1="220" y1="185" x2="220" y2="205" stroke="#111827" stroke-width="1.2"/>
+
+  <!-- Marca de conexão (dois traços pretos horizontais pequenos) -->
+  <line x1="215" y1="200" x2="225" y2="200" stroke="#111827" stroke-width="1"/>
+  <line x1="213" y1="205" x2="227" y2="205" stroke="#111827" stroke-width="1"/>
+
+  <!-- ═══ DISJUNTOR TRIPOLAR 50A ═══ -->
+  <g transform="translate(220, 220)">
+    <!-- Traço vertical superior -->
+    <line x1="0" y1="0" x2="0" y2="5" stroke="#111827" stroke-width="1.2"/>
+    <!-- Corpo do disjuntor: 3 chaves tripolar -->
+    <line x1="0" y1="5" x2="10" y2="18" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="0" cy="5" r="1.5" fill="#111827"/>
+    <circle cx="0" cy="22" r="1.5" fill="#111827"/>
+    <line x1="0" y1="22" x2="0" y2="27" stroke="#111827" stroke-width="1.2"/>
+  </g>
+
+  <!-- Labels ao lado do disjuntor -->
+  <text x="245" y="223" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">Tripolar</text>
+  <text x="245" y="235" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">50A</text>
+  <text x="245" y="247" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">380/220V</text>
+
+  <!-- Traço → descida ao QGBT -->
+  <line x1="220" y1="247" x2="220" y2="272" stroke="#111827" stroke-width="1.2"/>
+
+  <!-- Bitola de saída -->
+  <text x="145" y="292" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#111827">3#10(10)+T10mm²</text>
+
+  <!-- ═══ ATERRAMENTO (VERDE) ═══ -->
+  <line x1="220" y1="205" x2="400" y2="205" stroke="#1e8449" stroke-width="1.2"/>
+  <line x1="400" y1="205" x2="400" y2="260" stroke="#1e8449" stroke-width="1.2"/>
+  <g transform="translate(400, 260)">
+    <line x1="-8" y1="0" x2="8" y2="0" stroke="#1e8449" stroke-width="1.6"/>
+    <line x1="-5" y1="3" x2="5" y2="3" stroke="#1e8449" stroke-width="1.6"/>
+    <line x1="-3" y1="6" x2="3" y2="6" stroke="#1e8449" stroke-width="1.6"/>
+  </g>
+</svg>

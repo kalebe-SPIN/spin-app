@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  QUADRANTE 8 v7 — correção técnica CELESC (esquema TN-C-S):
+    - Da REDE vêm apenas 4 condutores: R + S + T + N (SEM terra)
+    - Terra é GERADO NO BARRAMENTO DE ATERRAMENTO (nó verde) dentro do padrão
+    - Neutro conecta no barramento (origem do PE)
+    - Do barramento saem: cabo verde pra hastes + cabo verde de PE pra QGBT
+    - Só as 3 fases atravessam o disjuntor tripolar
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 460" width="330" height="460">
+  <rect x="0" y="0" width="330" height="460" fill="#FFFFFF"/>
+
+  <!-- ═══ MOLDURA EXTERNA TRACEJADA ═══ -->
+  <rect x="15" y="15" width="300" height="430" fill="none" stroke="#111827" stroke-width="0.7" stroke-dasharray="5,4"/>
+
+  <!-- ═══ TÍTULO ═══ -->
+  <text x="165" y="42" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">PADRÃO DE ENTRADA</text>
+  <text x="165" y="58" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">REPRESENTATIVO</text>
+
+  <!-- ═══ CAIXA GRANDE PRINCIPAL ═══ -->
+  <rect x="70" y="80" width="200" height="340" fill="#FFFFFF" stroke="#111827" stroke-width="1.3"/>
+
+  <!-- ─── MEDIDOR kWh (dentro da caixa, no topo) ─── -->
+  <rect x="110" y="100" width="120" height="70" fill="#FFFFFF" stroke="#111827" stroke-width="1"/>
+  <rect x="135" y="112" width="70" height="15" fill="#FFFFFF" stroke="#111827" stroke-width="0.7"/>
+  <rect x="150" y="150" width="40" height="10" fill="#FFFFFF" stroke="#111827" stroke-width="0.7"/>
+
+  <!-- ═══ APENAS 4 CABOS DA REDE (R + S + T + N — SEM terra) ═══ -->
+  <line x1="20" y1="195" x2="60" y2="195" stroke="#c0392b" stroke-width="1.4"/>
+  <line x1="20" y1="205" x2="60" y2="205" stroke="#d97706" stroke-width="1.4"/>
+  <line x1="20" y1="215" x2="60" y2="215" stroke="#111827" stroke-width="1.4"/>
+  <line x1="20" y1="225" x2="60" y2="225" stroke="#2980b9" stroke-width="1.4"/>
+
+  <!-- ═══ SUBIDA AO MEDIDOR (4 condutores) ═══ -->
+  <path d="M 60 195 L 82 195 L 82 130 L 122 130 L 122 100" fill="none" stroke="#c0392b" stroke-width="1.4"/>
+  <path d="M 60 205 L 87 205 L 87 126 L 142 126 L 142 100" fill="none" stroke="#d97706" stroke-width="1.4"/>
+  <path d="M 60 215 L 92 215 L 92 122 L 162 122 L 162 100" fill="none" stroke="#111827" stroke-width="1.4"/>
+  <path d="M 60 225 L 97 225 L 97 118 L 182 118 L 182 100" fill="none" stroke="#2980b9" stroke-width="1.4"/>
+
+  <!-- ═══ DESCIDA DO MEDIDOR (4 condutores — 3 fases pra disjuntor + neutro pra bypass) ═══ -->
+  <!-- 3 fases descem até os bornes superiores do disjuntor -->
+  <line x1="118" y1="170" x2="118" y2="290" stroke="#c0392b" stroke-width="1.4"/>
+  <line x1="138" y1="170" x2="138" y2="290" stroke="#d97706" stroke-width="1.4"/>
+  <line x1="158" y1="170" x2="158" y2="290" stroke="#111827" stroke-width="1.4"/>
+
+  <!-- Neutro faz curva pra DIREITA (bypass do disjuntor) e desce até o BARRAMENTO DE ATERRAMENTO -->
+  <path d="M 182 170 L 182 260 L 205 260 L 205 375" fill="none" stroke="#2980b9" stroke-width="1.4"/>
+
+  <!-- ═══ DISJUNTOR TRIPOLAR (bornes coloridos por fase) ═══ -->
+
+  <!-- Bornes superiores -->
+  <rect x="108" y="290" width="20" height="12" fill="#c0392b" stroke="#111827" stroke-width="0.8"/>
+  <circle cx="118" cy="296" r="2.5" fill="#111827"/>
+  <rect x="128" y="290" width="20" height="12" fill="#d97706" stroke="#111827" stroke-width="0.8"/>
+  <circle cx="138" cy="296" r="2.5" fill="#111827"/>
+  <rect x="148" y="290" width="20" height="12" fill="#374151" stroke="#111827" stroke-width="0.8"/>
+  <circle cx="158" cy="296" r="2.5" fill="#f4d000"/>
+
+  <!-- Corpo do disjuntor -->
+  <rect x="100" y="302" width="76" height="45" fill="#FFFFFF" stroke="#111827" stroke-width="1.4"/>
+
+  <!-- 3 polos internos -->
+  <line x1="118" y1="302" x2="118" y2="347" stroke="#111827" stroke-width="2.5"/>
+  <line x1="138" y1="302" x2="138" y2="347" stroke="#111827" stroke-width="2.5"/>
+  <line x1="158" y1="302" x2="158" y2="347" stroke="#111827" stroke-width="2.5"/>
+  <line x1="105" y1="324" x2="171" y2="324" stroke="#111827" stroke-width="0.5" stroke-dasharray="3,2"/>
+
+  <!-- Bornes inferiores -->
+  <rect x="108" y="347" width="20" height="12" fill="#c0392b" stroke="#111827" stroke-width="0.8"/>
+  <circle cx="118" cy="353" r="2.5" fill="#111827"/>
+  <rect x="128" y="347" width="20" height="12" fill="#d97706" stroke="#111827" stroke-width="0.8"/>
+  <circle cx="138" cy="353" r="2.5" fill="#111827"/>
+  <rect x="148" y="347" width="20" height="12" fill="#374151" stroke="#111827" stroke-width="0.8"/>
+  <circle cx="158" cy="353" r="2.5" fill="#f4d000"/>
+
+  <!-- ═══ BARRAMENTO DE ATERRAMENTO (nó verde grande) ═══ -->
+  <!-- Nó destacado onde o neutro entra e derivam terra (PE) + haste -->
+  <circle cx="205" cy="375" r="7" fill="#1e8449" stroke="#111827" stroke-width="1.2"/>
+
+  <!-- ═══ ATERRAMENTO FÍSICO (verde saindo do barramento pra baixo — haste) ═══ -->
+  <line x1="205" y1="382" x2="205" y2="410" stroke="#1e8449" stroke-width="1.5"/>
+  <g transform="translate(205, 413)">
+    <line x1="-7" y1="0" x2="7" y2="0" stroke="#1e8449" stroke-width="1.8"/>
+    <line x1="-5" y1="3" x2="5" y2="3" stroke="#1e8449" stroke-width="1.8"/>
+    <line x1="-2.5" y1="6" x2="2.5" y2="6" stroke="#1e8449" stroke-width="1.8"/>
+  </g>
+
+  <!-- ═══ PE derivado do barramento — sai pra baixo em direção ao QGBT ═══ -->
+  <path d="M 212 375 L 250 375 L 250 445" fill="none" stroke="#1e8449" stroke-width="1.5"/>
+
+  <!-- ═══ CABOS SAINDO POR BAIXO — pro QGBT ═══ -->
+  <!-- 3 fases saem do disjuntor -->
+  <line x1="118" y1="359" x2="118" y2="445" stroke="#c0392b" stroke-width="1.4"/>
+  <line x1="138" y1="359" x2="138" y2="445" stroke="#d97706" stroke-width="1.4"/>
+  <line x1="158" y1="359" x2="158" y2="445" stroke="#111827" stroke-width="1.4"/>
+  <!-- Neutro sai (do próprio nó) -->
+  <line x1="205" y1="382" x2="205" y2="445" stroke="#2980b9" stroke-width="1.4" transform="translate(15, 0)"/>
+</svg>

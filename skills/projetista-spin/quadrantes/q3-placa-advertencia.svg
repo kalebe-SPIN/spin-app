@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  QUADRANTE 3 — DETALHE DA PLACA DE ADVERTÊNCIA
+  Referência: imagem enviada por Kalebe em 2026-07-28
+  Elementos:
+    - Moldura externa tracejada
+    - Título "DETALHE DA PLACA DE ADVERTÊNCIA" em 2 linhas centralizadas
+    - Placa horizontal 25×18cm com faixa preta CUIDADO no topo
+    - Corpo amarelo com 3 linhas de texto
+    - Cotas laterais mostrando 18cm (altura) e 25cm (largura)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 320" width="460" height="320">
+  <rect x="0" y="0" width="460" height="320" fill="#FFFFFF"/>
+
+  <!-- ═══ MOLDURA EXTERNA TRACEJADA ═══ -->
+  <rect x="15" y="15" width="430" height="290" fill="none" stroke="#111827" stroke-width="0.7" stroke-dasharray="5,4"/>
+
+  <!-- ═══ TÍTULO (2 linhas, centralizado) ═══ -->
+  <text x="230" y="45" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">DETALHE DA PLACA</text>
+  <text x="230" y="63" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">DE ADVERTÊNCIA</text>
+
+  <!-- ═══ COTA VERTICAL "18 cm" (à esquerda) ═══ -->
+  <line x1="105" y1="100" x2="105" y2="245" stroke="#111827" stroke-width="0.8"/>
+  <!-- Setas duplas -->
+  <path d="M 105 100 l -4 6 l 8 0 z" fill="#111827"/>
+  <path d="M 105 245 l -4 -6 l 8 0 z" fill="#111827"/>
+  <!-- Marcadores das extremidades (traços perpendiculares) -->
+  <line x1="97" y1="100" x2="113" y2="100" stroke="#111827" stroke-width="0.8"/>
+  <line x1="97" y1="245" x2="113" y2="245" stroke="#111827" stroke-width="0.8"/>
+  <!-- Valor "18cm" com fundo branco -->
+  <rect x="82" y="163" width="30" height="18" fill="#FFFFFF"/>
+  <text x="97" y="176" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#111827">18cm</text>
+
+  <!-- ═══ PLACA CUIDADO (horizontal, 25×18 proporção, pontas arredondadas) ═══ -->
+  <!-- Retângulo externo (borda grossa preta + pontas arredondadas + amarelo vibrante) -->
+  <rect x="125" y="100" width="230" height="145" fill="#FFEA00" stroke="#111827" stroke-width="2.5" rx="14" ry="14"/>
+
+  <!-- Faixa preta superior "CUIDADO" (também arredondada no topo) -->
+  <rect x="140" y="110" width="200" height="35" fill="#111827" rx="4" ry="4"/>
+  <text x="240" y="135" font-family="Helvetica, Arial, sans-serif" font-size="21" font-weight="900" text-anchor="middle" fill="#FFEA00">CUIDADO</text>
+
+  <!-- Texto no corpo amarelo -->
+  <text x="240" y="180" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">RISCO DE CHOQUE</text>
+  <text x="240" y="200" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">ELÉTRICO</text>
+  <text x="240" y="228" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">GERAÇÃO PRÓPRIA</text>
+
+  <!-- ═══ COTA HORIZONTAL "25 cm" (embaixo) ═══ -->
+  <line x1="125" y1="270" x2="355" y2="270" stroke="#111827" stroke-width="0.8"/>
+  <!-- Setas duplas -->
+  <path d="M 125 270 l 6 -4 l 0 8 z" fill="#111827"/>
+  <path d="M 355 270 l -6 -4 l 0 8 z" fill="#111827"/>
+  <!-- Marcadores das extremidades (traços perpendiculares) -->
+  <line x1="125" y1="262" x2="125" y2="278" stroke="#111827" stroke-width="0.8"/>
+  <line x1="355" y1="262" x2="355" y2="278" stroke="#111827" stroke-width="0.8"/>
+  <!-- Valor "25cm" com fundo branco -->
+  <rect x="222" y="261" width="36" height="18" fill="#FFFFFF"/>
+  <text x="240" y="275" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#111827">25cm</text>
+</svg>

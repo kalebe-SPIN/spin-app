@@ -1,0 +1,544 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEMPLATE FINAL v10 — UNIFILAR SPIN COMPLETO
+  Layout definido por Kalebe 2026-07-28:
+    - 2 colunas verticais topo à base (66% esquerda / 33% direita)
+    - Sem divisões internas nos elementos (só molduras externas)
+    - COLUNA ESQUERDA: cadeia elétrica + arranjo FV (7 MIs em 2 linhas) + microinversores 01-07 na base
+    - COLUNA DIREITA:
+        * Topo: LEGENDA (esquerda) + PLACA (topo direito) + PADRÃO ENTRADA (embaixo da placa)
+        * Meio: NOTAS
+        * Base: CARIMBO SPIN
+
+  RT: SEMPRE Kalebe Grün — Eletrotécnico Reg. 94312176000
+  Regra: SEM stringbox CC
+  Integrador: Spin Solar
+-->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 2100 1400" width="2100" height="1400">
+  <rect x="0" y="0" width="2100" height="1400" fill="#FFFFFF"/>
+
+  <!-- MOLDURA EXTERNA -->
+  <rect x="20" y="20" width="2060" height="1360" fill="none" stroke="#111827" stroke-width="1.4"/>
+
+  <!-- Sem divisor vertical entre esquerda e direita — elementos apenas dispostos nas áreas -->
+  <!-- (moldura externa é a única linha estrutural) -->
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- COLUNA ESQUERDA — x=20 a x=1380 — Cadeia elétrica + Arranjo FV          -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- ▬▬▬ REDE BT + PADRÃO MEDIÇÃO ▬▬▬ -->
+  <text x="380" y="50" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#111827">REDE DE BAIXA TENSÃO</text>
+
+  <line x1="150" y1="75" x2="600" y2="75" stroke="#111827" stroke-width="1.4"/>
+  <circle cx="240" cy="75" r="4" fill="#111827"/>
+  <text x="150" y="65" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Ponto de entrega</text>
+  <text x="150" y="93" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Ramal de ligação 3x10+1x10mm²</text>
+
+  <line x1="560" y1="75" x2="560" y2="110" stroke="#111827" stroke-width="0.6" stroke-dasharray="3,2"/>
+  <text x="610" y="71" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">ACESSADA</text>
+  <line x1="590" y1="82" x2="700" y2="82" stroke="#111827" stroke-width="0.5"/>
+  <text x="610" y="97" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">ACESSANTE</text>
+
+  <line x1="380" y1="75" x2="380" y2="120" stroke="#111827" stroke-width="1.4"/>
+  <line x1="370" y1="95" x2="390" y2="95" stroke="#111827" stroke-width="1"/>
+  <line x1="375" y1="102" x2="385" y2="102" stroke="#111827" stroke-width="1"/>
+
+  <rect x="240" y="120" width="360" height="185" fill="none" stroke="#111827" stroke-width="0.6" stroke-dasharray="4,3"/>
+  <text x="620" y="165" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#111827">PADRÃO DE</text>
+  <text x="620" y="180" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#111827">MEDIÇÃO</text>
+
+  <text x="215" y="150" font-family="Helvetica, Arial, sans-serif" font-size="9" text-anchor="end" fill="#111827">3#10(10)mm²</text>
+
+  <g transform="translate(380, 175)">
+    <rect x="-28" y="-15" width="56" height="30" fill="#FFFFFF" stroke="#111827" stroke-width="1.1"/>
+    <line x1="-14" y1="-6" x2="14" y2="-6" stroke="#111827" stroke-width="0.7"/>
+    <path d="M -14 -6 l 2.5 -2 M -14 -6 l 2.5 2 M 14 -6 l -2.5 -2 M 14 -6 l -2.5 2" fill="none" stroke="#111827" stroke-width="0.6"/>
+    <text x="0" y="9" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">KWH</text>
+  </g>
+
+  <line x1="380" y1="190" x2="380" y2="220" stroke="#111827" stroke-width="1.4"/>
+  <line x1="375" y1="215" x2="385" y2="215" stroke="#111827" stroke-width="1"/>
+  <line x1="373" y1="220" x2="387" y2="220" stroke="#111827" stroke-width="1"/>
+
+  <g transform="translate(380, 240)">
+    <line x1="0" y1="-12" x2="0" y2="-5" stroke="#111827" stroke-width="1.3"/>
+    <line x1="0" y1="-5" x2="13" y2="8" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="0" cy="-5" r="2" fill="#111827"/>
+    <circle cx="0" cy="12" r="2" fill="#111827"/>
+    <line x1="0" y1="12" x2="0" y2="22" stroke="#111827" stroke-width="1.3"/>
+  </g>
+
+  <text x="420" y="238" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Tripolar</text>
+  <text x="420" y="252" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">50A</text>
+  <text x="420" y="266" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">380/220V</text>
+
+  <line x1="380" y1="252" x2="500" y2="252" stroke="#1e8449" stroke-width="1.3"/>
+  <line x1="500" y1="252" x2="500" y2="275" stroke="#1e8449" stroke-width="1.3"/>
+  <g transform="translate(500, 277)">
+    <line x1="-6" y1="0" x2="6" y2="0" stroke="#1e8449" stroke-width="1.6"/>
+    <line x1="-4" y1="3" x2="4" y2="3" stroke="#1e8449" stroke-width="1.6"/>
+    <line x1="-2" y1="6" x2="2" y2="6" stroke="#1e8449" stroke-width="1.6"/>
+  </g>
+
+  <line x1="380" y1="262" x2="380" y2="330" stroke="#111827" stroke-width="1.4"/>
+  <text x="215" y="305" font-family="Helvetica, Arial, sans-serif" font-size="9" text-anchor="end" fill="#111827">3#10(10)+T10mm²</text>
+
+
+  <!-- ▬▬▬ QDC ▬▬▬ -->
+  <rect x="120" y="315" width="700" height="140" fill="none" stroke="#111827" stroke-width="0.6" stroke-dasharray="4,3"/>
+  <text x="815" y="340" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="end" fill="#111827">QUADRO DE</text>
+  <text x="815" y="354" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="end" fill="#111827">DISTRIBUIÇÃO</text>
+
+  <text x="330" y="340" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="end" fill="#111827">Tripolar 50A</text>
+  <g transform="translate(380, 350)">
+    <line x1="0" y1="-15" x2="0" y2="-5" stroke="#111827" stroke-width="1.3"/>
+    <line x1="0" y1="-5" x2="13" y2="8" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="0" cy="-5" r="2" fill="#111827"/>
+    <circle cx="0" cy="12" r="2" fill="#111827"/>
+    <line x1="0" y1="12" x2="0" y2="22" stroke="#111827" stroke-width="1.3"/>
+  </g>
+
+  <text x="200" y="378" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="end" fill="#111827">DPS CA</text>
+  <text x="200" y="390" font-family="Helvetica, Arial, sans-serif" font-size="9" text-anchor="end" fill="#111827">Cl.II · In:10kA</text>
+  <text x="200" y="402" font-family="Helvetica, Arial, sans-serif" font-size="9" text-anchor="end" fill="#111827">Imax:20kA · 275V</text>
+
+  <g transform="translate(220, 395)">
+    <line x1="0" y1="0" x2="18" y2="0" stroke="#1e8449" stroke-width="1.3"/>
+    <line x1="-6" y1="0" x2="6" y2="0" stroke="#1e8449" stroke-width="1.6"/>
+    <line x1="-4" y1="3" x2="4" y2="3" stroke="#1e8449" stroke-width="1.6"/>
+    <line x1="-2" y1="6" x2="2" y2="6" stroke="#1e8449" stroke-width="1.6"/>
+  </g>
+
+  <g transform="translate(245, 395)">
+    <rect x="-8" y="-9" width="16" height="18" fill="#FFFFFF" stroke="#111827" stroke-width="1"/>
+    <line x1="-8" y1="9" x2="8" y2="-9" stroke="#111827" stroke-width="1"/>
+  </g>
+  <line x1="253" y1="395" x2="380" y2="395" stroke="#111827" stroke-width="1"/>
+
+  <line x1="180" y1="395" x2="800" y2="395" stroke="#111827" stroke-width="2.5"/>
+
+  <g transform="translate(280, 395)">
+    <line x1="-12" y1="0" x2="-12" y2="45" stroke="#111827" stroke-width="1"/>
+    <line x1="0" y1="0" x2="0" y2="45" stroke="#111827" stroke-width="1"/>
+    <line x1="12" y1="0" x2="12" y2="45" stroke="#111827" stroke-width="1"/>
+    <path d="M -12 45 l -3 -5 l 6 0 z" fill="#111827"/>
+    <path d="M 0 45 l -3 -5 l 6 0 z" fill="#111827"/>
+    <path d="M 12 45 l -3 -5 l 6 0 z" fill="#111827"/>
+  </g>
+  <text x="140" y="445" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#111827">Cargas</text>
+
+  <line x1="800" y1="395" x2="800" y2="425" stroke="#1e8449" stroke-width="1.4"/>
+  <g transform="translate(800, 430)">
+    <line x1="-7" y1="0" x2="7" y2="0" stroke="#1e8449" stroke-width="1.7"/>
+    <line x1="-5" y1="3" x2="5" y2="3" stroke="#1e8449" stroke-width="1.7"/>
+    <line x1="-3" y1="6" x2="3" y2="6" stroke="#1e8449" stroke-width="1.7"/>
+  </g>
+
+  <text x="460" y="418" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">1#4(4)+T4mm²</text>
+  <line x1="490" y1="395" x2="490" y2="510" stroke="#111827" stroke-width="1"/>
+  <text x="620" y="418" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">1#4(4)+T4mm²</text>
+  <line x1="650" y1="395" x2="650" y2="510" stroke="#111827" stroke-width="1"/>
+
+
+  <!-- ▬▬▬ QPCA ▬▬▬ -->
+  <rect x="360" y="475" width="500" height="120" fill="none" stroke="#111827" stroke-width="0.6" stroke-dasharray="4,3"/>
+  <text x="855" y="498" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="end" fill="#111827">QUADRO DE</text>
+  <text x="855" y="512" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="end" fill="#111827">PROTEÇÃO CA</text>
+
+  <line x1="420" y1="512" x2="490" y2="512" stroke="#111827" stroke-width="1"/>
+  <g transform="translate(390, 512)">
+    <rect x="-8" y="-9" width="16" height="18" fill="#FFFFFF" stroke="#111827" stroke-width="1"/>
+    <line x1="-8" y1="9" x2="8" y2="-9" stroke="#111827" stroke-width="1"/>
+    <line x1="-8" y1="0" x2="-25" y2="0" stroke="#1e8449" stroke-width="1.3"/>
+    <line x1="-31" y1="0" x2="-19" y2="0" stroke="#1e8449" stroke-width="1.6"/>
+    <line x1="-29" y1="3" x2="-21" y2="3" stroke="#1e8449" stroke-width="1.6"/>
+  </g>
+  <text x="380" y="545" font-family="Helvetica, Arial, sans-serif" font-size="9" text-anchor="middle" fill="#111827">DPS CA Cl.II 10/20kA 275V</text>
+
+  <g transform="translate(490, 540)">
+    <line x1="0" y1="-28" x2="0" y2="-5" stroke="#111827" stroke-width="1"/>
+    <line x1="0" y1="-5" x2="9" y2="7" stroke="#111827" stroke-width="1.2"/>
+    <circle cx="0" cy="-5" r="1.5" fill="#111827"/>
+    <circle cx="0" cy="9" r="1.5" fill="#111827"/>
+    <line x1="0" y1="9" x2="0" y2="18" stroke="#111827" stroke-width="1"/>
+  </g>
+  <text x="510" y="538" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Monopolar 20A</text>
+
+  <line x1="580" y1="512" x2="650" y2="512" stroke="#111827" stroke-width="1"/>
+  <g transform="translate(550, 512)">
+    <rect x="-8" y="-9" width="16" height="18" fill="#FFFFFF" stroke="#111827" stroke-width="1"/>
+    <line x1="-8" y1="9" x2="8" y2="-9" stroke="#111827" stroke-width="1"/>
+    <line x1="-8" y1="0" x2="-25" y2="0" stroke="#1e8449" stroke-width="1.3"/>
+    <line x1="-31" y1="0" x2="-19" y2="0" stroke="#1e8449" stroke-width="1.6"/>
+  </g>
+  <g transform="translate(650, 540)">
+    <line x1="0" y1="-28" x2="0" y2="-5" stroke="#111827" stroke-width="1"/>
+    <line x1="0" y1="-5" x2="9" y2="7" stroke="#111827" stroke-width="1.2"/>
+    <circle cx="0" cy="-5" r="1.5" fill="#111827"/>
+    <circle cx="0" cy="9" r="1.5" fill="#111827"/>
+    <line x1="0" y1="9" x2="0" y2="18" stroke="#111827" stroke-width="1"/>
+  </g>
+  <text x="670" y="538" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Monopolar 20A</text>
+
+  <line x1="490" y1="565" x2="490" y2="625" stroke="#111827" stroke-width="1"/>
+  <line x1="650" y1="565" x2="650" y2="625" stroke="#111827" stroke-width="1"/>
+
+
+  <!-- ▬▬▬ ARRANJO FV — LINHA 1 (4 MIs) ▬▬▬ -->
+  <line x1="150" y1="625" x2="1300" y2="625" stroke="#111827" stroke-width="1.2"/>
+
+  <g id="mi-block">
+    <line x1="200" y1="625" x2="200" y2="650" stroke="#111827" stroke-width="1"/>
+    <g transform="translate(200, 670)">
+      <rect x="-22" y="-18" width="44" height="36" fill="#FFFFFF" stroke="#111827" stroke-width="1"/>
+      <line x1="-22" y1="18" x2="22" y2="-18" stroke="#111827" stroke-width="0.7"/>
+      <path d="M -16 -8 q 3 -6 6 0 t 6 0" fill="none" stroke="#111827" stroke-width="0.9"/>
+      <line x1="4" y1="6" x2="18" y2="6" stroke="#111827" stroke-width="0.8"/>
+      <line x1="4" y1="10" x2="18" y2="10" stroke="#111827" stroke-width="0.8"/>
+    </g>
+    <text x="230" y="655" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Marca: WEG</text>
+    <text x="230" y="666" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Mod: SIW 100 M010 W00</text>
+    <text x="230" y="677" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Tensão CA: 220V</text>
+    <text x="230" y="688" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Corrente CA: 4,54A</text>
+
+    <line x1="188" y1="690" x2="212" y2="690" stroke="#111827" stroke-width="1"/>
+    <line x1="188" y1="690" x2="188" y2="762" stroke="#111827" stroke-width="1"/>
+    <line x1="212" y1="690" x2="212" y2="762" stroke="#111827" stroke-width="1"/>
+    <text x="178" y="726" font-family="Helvetica, Arial, sans-serif" font-size="9" text-anchor="middle" fill="#111827" transform="rotate(-90 178 726)">MPPT 1</text>
+    <text x="222" y="726" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827" transform="rotate(-90 222 726)">MPPT 2</text>
+    <text x="230" y="705" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">4mm² Positivo</text>
+    <text x="230" y="716" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">4mm² Negativo</text>
+    <text x="230" y="727" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">4mm² Proteção</text>
+
+    <g transform="translate(188, 772)">
+      <rect x="-11" y="-8" width="22" height="16" fill="#FFFFFF" stroke="#111827" stroke-width="1"/>
+      <polygon points="-6,4 4,4 -6,-4" fill="#111827"/>
+    </g>
+    <g transform="translate(212, 772)">
+      <rect x="-11" y="-8" width="22" height="16" fill="#FFFFFF" stroke="#111827" stroke-width="1"/>
+      <polygon points="-6,4 4,4 -6,-4" fill="#111827"/>
+    </g>
+    <line x1="177" y1="781" x2="223" y2="781" stroke="#111827" stroke-width="0.8"/>
+    <text x="230" y="746" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Módulos fotovoltaicos</text>
+    <text x="230" y="757" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Marca: WEG</text>
+    <text x="230" y="768" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Mod: WPV550-555HMM3-550W</text>
+    <text x="230" y="779" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Tensão CC (Vmp): 41,96V</text>
+    <text x="230" y="790" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">Corrente CC (Imp): 13,11A</text>
+    <g transform="translate(160, 784)">
+      <line x1="0" y1="0" x2="10" y2="0" stroke="#1e8449" stroke-width="1.2"/>
+      <line x1="-5" y1="0" x2="5" y2="0" stroke="#1e8449" stroke-width="1.4"/>
+      <line x1="-3" y1="2.5" x2="3" y2="2.5" stroke="#1e8449" stroke-width="1.4"/>
+      <line x1="-1.5" y1="5" x2="1.5" y2="5" stroke="#1e8449" stroke-width="1.4"/>
+    </g>
+    <text x="200" y="810" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" fill="#111827">Pot: 2 × 550Wp = 1.100Wp</text>
+  </g>
+
+  <use xlink:href="#mi-block" transform="translate(280, 0)"/>
+  <use xlink:href="#mi-block" transform="translate(560, 0)"/>
+  <use xlink:href="#mi-block" transform="translate(840, 0)"/>
+
+
+  <!-- ▬▬▬ ARRANJO FV — LINHA 2 (3 MIs) ▬▬▬ -->
+  <line x1="150" y1="855" x2="1030" y2="855" stroke="#111827" stroke-width="1.2"/>
+
+  <use xlink:href="#mi-block" transform="translate(0, 230)"/>
+  <use xlink:href="#mi-block" transform="translate(280, 230)"/>
+  <use xlink:href="#mi-block" transform="translate(560, 230)"/>
+
+
+  <!-- ▬▬▬ MICROINVERSORES 01 A 07 (bloco base COMPACTO — sem caixa envolvendo) ▬▬▬ -->
+  <text x="40" y="1130" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#111827">MICROINVERSORES DE 01 A 07</text>
+
+  <!-- MPPT 01 (compacto) -->
+  <text x="40" y="1155" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#1a4f8b">MPPT 01</text>
+  <circle cx="55" cy="1177" r="3" fill="#c0392b"/>
+  <text x="65" y="1181" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#c0392b">STRING 01</text>
+  <text x="130" y="1181" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Quant.: 01 · Vmp: 41,96V · Imp: 13,11A · Pot: 550Wp × 1 = 550Wp</text>
+
+  <!-- MPPT 02 (compacto) -->
+  <text x="40" y="1210" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#1a4f8b">MPPT 02</text>
+  <circle cx="55" cy="1232" r="3" fill="#c0392b"/>
+  <text x="65" y="1236" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" fill="#c0392b">STRING 01</text>
+  <text x="130" y="1236" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#111827">Quant.: 01 · Vmp: 41,96V · Imp: 13,11A · Pot: 550Wp × 1 = 550Wp</text>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- COLUNA DIREITA — x=1380 a x=2080                                        -->
+  <!-- Topo: LEGENDA (esq) + PLACA (dir/topo) + PADRÃO ENTRADA (dir/baixo)     -->
+  <!-- Meio: NOTAS · Base: CARIMBO                                             -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Sem divisores internos na coluna direita — elementos apenas dispostos na área -->
+  <!-- (removidos: divisor vertical LEGENDA|PLACA/PADRÃO, divisores horizontais PLACA/PADRÃO/NOTAS/CARIMBO) -->
+
+
+  <!-- ▬▬▬ LEGENDA (x=1400-1730) — em formato de TABELA ▬▬▬ -->
+  <!-- Moldura externa + cabeçalho + grid 8 linhas × 2 colunas -->
+  <rect x="1400" y="35" width="330" height="40" fill="#f0f4fa" stroke="#111827" stroke-width="1"/>
+  <text x="1565" y="60" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#111827">LEGENDA</text>
+
+  <!-- Tabela: 8 linhas × 2 colunas (símbolo | nome) -->
+  <rect x="1400" y="75" width="330" height="610" fill="none" stroke="#111827" stroke-width="1"/>
+  <line x1="1450" y1="75" x2="1450" y2="685" stroke="#111827" stroke-width="0.7"/>
+  <line x1="1400" y1="151" x2="1730" y2="151" stroke="#111827" stroke-width="0.7"/>
+  <line x1="1400" y1="227" x2="1730" y2="227" stroke="#111827" stroke-width="0.7"/>
+  <line x1="1400" y1="303" x2="1730" y2="303" stroke="#111827" stroke-width="0.7"/>
+  <line x1="1400" y1="379" x2="1730" y2="379" stroke="#111827" stroke-width="0.7"/>
+  <line x1="1400" y1="455" x2="1730" y2="455" stroke="#111827" stroke-width="0.7"/>
+  <line x1="1400" y1="531" x2="1730" y2="531" stroke="#111827" stroke-width="0.7"/>
+  <line x1="1400" y1="607" x2="1730" y2="607" stroke="#111827" stroke-width="0.7"/>
+
+  <!-- Símbolos centralizados em cada célula (centros y: 113, 189, 265, 341, 417, 493, 569, 645) -->
+  <g transform="translate(1425, 113)">
+    <line x1="-10" y1="-6" x2="0" y2="4" stroke="#111827" stroke-width="1.3"/>
+    <line x1="0" y1="-6" x2="10" y2="4" stroke="#111827" stroke-width="1.3"/>
+    <circle cx="-10" cy="-6" r="1.5" fill="#111827"/>
+    <circle cx="0" cy="-6" r="1.5" fill="#111827"/>
+  </g>
+  <text x="1465" y="117" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Disjuntor termomagnético</text>
+
+  <g transform="translate(1425, 189)">
+    <rect x="-14" y="-10" width="28" height="20" fill="none" stroke="#111827" stroke-width="1.2"/>
+    <text x="0" y="4" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold" text-anchor="middle" fill="#111827">KWH</text>
+  </g>
+  <text x="1465" y="193" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Medidor de energia kWh</text>
+
+  <g transform="translate(1425, 265)">
+    <rect x="-9" y="-8" width="18" height="16" fill="none" stroke="#111827" stroke-width="1.2"/>
+    <line x1="-9" y1="8" x2="9" y2="-8" stroke="#111827" stroke-width="1"/>
+  </g>
+  <text x="1465" y="269" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">DPS CC / CA</text>
+
+  <g transform="translate(1425, 341)">
+    <rect x="-4" y="-10" width="8" height="20" fill="none" stroke="#111827" stroke-width="1.2"/>
+    <line x1="0" y1="-10" x2="0" y2="10" stroke="#111827" stroke-width="0.8"/>
+  </g>
+  <text x="1465" y="345" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Fusível CC</text>
+
+  <line x1="1405" y1="417" x2="1445" y2="417" stroke="#111827" stroke-width="2.5"/>
+  <text x="1465" y="421" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Barramento</text>
+
+  <g transform="translate(1425, 493)">
+    <circle cx="-7" cy="0" r="9" fill="none" stroke="#111827" stroke-width="1.2"/>
+    <circle cx="7" cy="0" r="9" fill="none" stroke="#111827" stroke-width="1.2"/>
+  </g>
+  <text x="1465" y="489" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Transformador /</text>
+  <text x="1465" y="502" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Autotransformador</text>
+
+  <g transform="translate(1425, 569)">
+    <rect x="-18" y="-10" width="36" height="20" fill="none" stroke="#111827" stroke-width="1.2"/>
+    <line x1="-18" y1="10" x2="18" y2="-10" stroke="#111827" stroke-width="1"/>
+    <path d="M -14 -3 q 3 -6 6 0 t 6 0" fill="none" stroke="#111827" stroke-width="1"/>
+    <line x1="4" y1="4" x2="14" y2="4" stroke="#111827" stroke-width="0.9"/>
+    <line x1="4" y1="7" x2="14" y2="7" stroke="#111827" stroke-width="0.9"/>
+  </g>
+  <text x="1465" y="565" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Inversor /</text>
+  <text x="1465" y="578" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Microinversor</text>
+
+  <g transform="translate(1425, 645)">
+    <rect x="-18" y="-10" width="36" height="20" fill="none" stroke="#111827" stroke-width="1"/>
+    <polygon points="-11,4 6,4 -11,-6" fill="#111827"/>
+  </g>
+  <text x="1465" y="649" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Módulo fotovoltaico</text>
+
+
+  <!-- ▬▬▬ PLACA CUIDADO (x=1730-2080, y=30-280) ▬▬▬ -->
+  <text x="1905" y="55" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">DETALHE DA PLACA</text>
+  <text x="1905" y="70" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">DE ADVERTÊNCIA</text>
+
+  <!-- Cota 25cm -->
+  <line x1="1785" y1="95" x2="2025" y2="95" stroke="#111827" stroke-width="0.7"/>
+  <path d="M 1785 95 l 4 -2 l 0 4 z" fill="#111827"/>
+  <path d="M 2025 95 l -4 -2 l 0 4 z" fill="#111827"/>
+  <rect x="1885" y="88" width="40" height="12" fill="#FFFFFF"/>
+  <text x="1905" y="97" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">25cm</text>
+
+  <!-- Placa horizontal -->
+  <rect x="1785" y="105" width="240" height="110" fill="#FFEA00" stroke="#111827" stroke-width="2" rx="10"/>
+  <rect x="1795" y="113" width="220" height="28" fill="#111827" rx="3"/>
+  <text x="1905" y="133" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="900" text-anchor="middle" fill="#FFEA00">CUIDADO</text>
+  <text x="1905" y="165" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#111827">RISCO DE CHOQUE</text>
+  <text x="1905" y="180" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#111827">ELÉTRICO</text>
+  <text x="1905" y="205" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="900" text-anchor="middle" fill="#111827">GERAÇÃO PRÓPRIA</text>
+
+  <!-- Cota 18cm -->
+  <line x1="1755" y1="105" x2="1755" y2="215" stroke="#111827" stroke-width="0.7"/>
+  <path d="M 1755 105 l -2 4 l 4 0 z" fill="#111827"/>
+  <path d="M 1755 215 l -2 -4 l 4 0 z" fill="#111827"/>
+  <rect x="1738" y="153" width="34" height="12" fill="#FFFFFF"/>
+  <text x="1755" y="162" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">18cm</text>
+
+
+  <!-- ▬▬▬ PADRÃO DE ENTRADA REPRESENTATIVO (x=1730-2080, y=280-690) ▬▬▬ -->
+  <text x="1905" y="305" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">PADRÃO DE ENTRADA</text>
+  <text x="1905" y="320" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#111827">REPRESENTATIVO</text>
+
+  <rect x="1795" y="340" width="220" height="330" fill="#FFFFFF" stroke="#111827" stroke-width="1.3"/>
+  <rect x="1830" y="355" width="150" height="55" fill="#FFFFFF" stroke="#111827" stroke-width="1"/>
+  <rect x="1860" y="370" width="90" height="14" fill="#FFFFFF" stroke="#111827" stroke-width="0.7"/>
+
+  <line x1="1755" y1="450" x2="1795" y2="450" stroke="#c0392b" stroke-width="1.4"/>
+  <line x1="1755" y1="460" x2="1795" y2="460" stroke="#d97706" stroke-width="1.4"/>
+  <line x1="1755" y1="470" x2="1795" y2="470" stroke="#111827" stroke-width="1.4"/>
+  <line x1="1755" y1="480" x2="1795" y2="480" stroke="#2980b9" stroke-width="1.4"/>
+
+  <path d="M 1795 450 L 1815 450 L 1815 400 L 1845 400 L 1845 355" fill="none" stroke="#c0392b" stroke-width="1.3"/>
+  <path d="M 1795 460 L 1820 460 L 1820 395 L 1870 395 L 1870 355" fill="none" stroke="#d97706" stroke-width="1.3"/>
+  <path d="M 1795 470 L 1825 470 L 1825 390 L 1895 390 L 1895 355" fill="none" stroke="#111827" stroke-width="1.3"/>
+  <path d="M 1795 480 L 1830 480 L 1830 385 L 1920 385 L 1920 355" fill="none" stroke="#2980b9" stroke-width="1.3"/>
+
+  <line x1="1845" y1="410" x2="1845" y2="555" stroke="#c0392b" stroke-width="1.3"/>
+  <line x1="1870" y1="410" x2="1870" y2="555" stroke="#d97706" stroke-width="1.3"/>
+  <line x1="1895" y1="410" x2="1895" y2="555" stroke="#111827" stroke-width="1.3"/>
+  <path d="M 1920 410 L 1920 530 L 1955 530 L 1955 620" fill="none" stroke="#2980b9" stroke-width="1.3"/>
+
+  <!-- Disjuntor tripolar -->
+  <rect x="1838" y="555" width="14" height="8" fill="#c0392b" stroke="#111827" stroke-width="0.6"/>
+  <circle cx="1845" cy="559" r="1.6" fill="#111827"/>
+  <rect x="1863" y="555" width="14" height="8" fill="#d97706" stroke="#111827" stroke-width="0.6"/>
+  <circle cx="1870" cy="559" r="1.6" fill="#111827"/>
+  <rect x="1888" y="555" width="14" height="8" fill="#374151" stroke="#111827" stroke-width="0.6"/>
+  <circle cx="1895" cy="559" r="1.6" fill="#f4d000"/>
+
+  <rect x="1830" y="563" width="80" height="30" fill="#FFFFFF" stroke="#111827" stroke-width="1.2"/>
+  <line x1="1845" y1="563" x2="1845" y2="593" stroke="#111827" stroke-width="2.2"/>
+  <line x1="1870" y1="563" x2="1870" y2="593" stroke="#111827" stroke-width="2.2"/>
+  <line x1="1895" y1="563" x2="1895" y2="593" stroke="#111827" stroke-width="2.2"/>
+
+  <rect x="1838" y="593" width="14" height="8" fill="#c0392b" stroke="#111827" stroke-width="0.6"/>
+  <circle cx="1845" cy="597" r="1.6" fill="#111827"/>
+  <rect x="1863" y="593" width="14" height="8" fill="#d97706" stroke="#111827" stroke-width="0.6"/>
+  <circle cx="1870" cy="597" r="1.6" fill="#111827"/>
+  <rect x="1888" y="593" width="14" height="8" fill="#374151" stroke="#111827" stroke-width="0.6"/>
+  <circle cx="1895" cy="597" r="1.6" fill="#f4d000"/>
+
+  <circle cx="1955" cy="620" r="5" fill="#1e8449" stroke="#111827" stroke-width="1"/>
+  <line x1="1955" y1="625" x2="1955" y2="645" stroke="#1e8449" stroke-width="1.4"/>
+  <g transform="translate(1955, 648)">
+    <line x1="-5" y1="0" x2="5" y2="0" stroke="#1e8449" stroke-width="1.6"/>
+    <line x1="-3" y1="2.5" x2="3" y2="2.5" stroke="#1e8449" stroke-width="1.6"/>
+    <line x1="-1.5" y1="5" x2="1.5" y2="5" stroke="#1e8449" stroke-width="1.6"/>
+  </g>
+  <path d="M 1960 620 L 1985 620 L 1985 650" fill="none" stroke="#1e8449" stroke-width="1.4"/>
+
+  <line x1="1845" y1="601" x2="1845" y2="650" stroke="#c0392b" stroke-width="1.3"/>
+  <line x1="1870" y1="601" x2="1870" y2="650" stroke="#d97706" stroke-width="1.3"/>
+  <line x1="1895" y1="601" x2="1895" y2="650" stroke="#111827" stroke-width="1.3"/>
+
+
+  <!-- ▬▬▬ NOTAS (x=1380-2080, y=690-965) — sem divisões internas ▬▬▬ -->
+  <text x="1400" y="715" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#111827">NOTAS:</text>
+
+  <text x="1400" y="738" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">1. A seção transversal dos condutores foram dimensionadas em função da corrente máxima</text>
+  <text x="1400" y="750" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">    de saída e capacidade de condução de corrente, permitindo-se utilizar até uma faixa acima</text>
+  <text x="1400" y="762" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">    da descrita em cada trecho dessa planta (exceto no padrão de medição);</text>
+
+  <text x="1400" y="784" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">2. Cabos em corrente contínua, na tensão elétrica máxima de 1,8kV, isolação em XLPE e</text>
+  <text x="1400" y="796" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">    cobertura em XLPE (termofixo) com proteção UV;</text>
+
+  <text x="1400" y="818" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">3. Cabos em corrente alternada, na tensão máxima de 1kV, isolação e cobertura em PVC;</text>
+
+  <text x="1400" y="840" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">4. Cada string será protegida individualmente, através das proteções internas do inversor.</text>
+  <text x="1400" y="852" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">    SPIN não utiliza stringbox / quadro de proteção CC;</text>
+
+  <text x="1400" y="874" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">5. Aterramento conforme NBR 5410 e E-321.0031 (CELESC). O terra é derivado do neutro</text>
+  <text x="1400" y="886" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">    no padrão de entrada (esquema TN-C-S);</text>
+
+  <text x="1400" y="908" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">6. Cada MPPT possui apenas uma entrada;</text>
+
+  <text x="1400" y="930" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">7. Fornecedor dos inversores garante a desconexão da central geradora durante manutenção</text>
+  <text x="1400" y="942" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">    da Concessionária;</text>
+
+  <text x="1400" y="960" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#111827">8. Dispositivo de seccionamento visível conforme NR-10.</text>
+
+
+  <!-- ▬▬▬ CARIMBO — em formato de TABELA ▬▬▬ -->
+  <!-- Moldura externa envolvendo todo o carimbo -->
+  <rect x="1390" y="975" width="675" height="395" fill="none" stroke="#111827" stroke-width="1.2"/>
+
+  <!-- Divisórias horizontais (4 linhas) -->
+  <line x1="1390" y1="1085" x2="2065" y2="1085" stroke="#111827" stroke-width="0.8"/>
+  <line x1="1390" y1="1150" x2="2065" y2="1150" stroke="#111827" stroke-width="0.8"/>
+  <line x1="1390" y1="1215" x2="2065" y2="1215" stroke="#111827" stroke-width="0.8"/>
+  <line x1="1390" y1="1275" x2="2065" y2="1275" stroke="#111827" stroke-width="0.8"/>
+
+  <!-- Divisórias verticais LINHA 1 (Logo | Assinatura) -->
+  <line x1="1745" y1="975" x2="1745" y2="1085" stroke="#111827" stroke-width="0.8"/>
+
+  <!-- Divisórias verticais LINHA 2 (PROJETO | PROPRIETÁRIO | ID) -->
+  <line x1="1660" y1="1085" x2="1660" y2="1150" stroke="#111827" stroke-width="0.8"/>
+  <line x1="1960" y1="1085" x2="1960" y2="1150" stroke="#111827" stroke-width="0.8"/>
+
+  <!-- Divisórias verticais LINHA 3 (TÍTULO | ENDEREÇO) -->
+  <line x1="1660" y1="1150" x2="1660" y2="1215" stroke="#111827" stroke-width="0.8"/>
+
+  <!-- Divisórias verticais LINHA 4 upper (PROJETISTA | REVISADO POR | CONTA CONTRATO | INTEGRADOR) -->
+  <line x1="1590" y1="1215" x2="1590" y2="1275" stroke="#111827" stroke-width="0.8"/>
+  <line x1="1790" y1="1215" x2="1790" y2="1275" stroke="#111827" stroke-width="0.8"/>
+  <line x1="1960" y1="1215" x2="1960" y2="1275" stroke="#111827" stroke-width="0.8"/>
+
+  <!-- Divisórias verticais LINHA 4 lower (DATA | REVISÃO | INTEGRADOR/2 | FOLHA) -->
+  <line x1="1590" y1="1275" x2="1590" y2="1370" stroke="#111827" stroke-width="0.8"/>
+  <line x1="1790" y1="1275" x2="1790" y2="1370" stroke="#111827" stroke-width="0.8"/>
+  <line x1="1960" y1="1275" x2="1960" y2="1370" stroke="#111827" stroke-width="0.8"/>
+
+  <!-- LOGO SPIN (canto superior esquerdo do carimbo) -->
+  <g transform="translate(1400, 985)">
+    <rect x="0" y="0" width="10" height="52" fill="#1a4f8b"/>
+    <rect x="14" y="0" width="10" height="52" fill="#0e7490"/>
+    <rect x="28" y="0" width="10" height="52" fill="#f4d000"/>
+    <rect x="42" y="0" width="10" height="52" fill="#0f766e"/>
+    <text x="66" y="40" font-family="Helvetica, Arial, sans-serif" font-size="36" font-weight="900" fill="#1a4f8b">SPIN</text>
+    <text x="180" y="18" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#6b7280">®</text>
+    <text x="66" y="55" font-family="Helvetica, Arial, sans-serif" font-size="11" letter-spacing="4" fill="#0f766e">SOLAR</text>
+  </g>
+
+  <!-- Assinatura RT (canto superior direito) -->
+  <line x1="1750" y1="1035" x2="2060" y2="1035" stroke="#111827" stroke-width="0.9"/>
+  <path d="M 1830 1015 c 12 -6, 24 6, 36 -2 c 12 -7, 24 5, 36 -2 c 12 -5, 24 8, 36 -1" fill="none" stroke="#1a4f8b" stroke-width="1.3"/>
+  <text x="2060" y="1050" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="end" fill="#111827">Assinatura do responsável técnico</text>
+  <text x="2060" y="1064" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="end" fill="#111827">Kalebe Grün</text>
+  <text x="2060" y="1078" font-family="Helvetica, Arial, sans-serif" font-size="10" text-anchor="end" fill="#111827">Eletrotécnico · Reg. 94312176000</text>
+
+  <!-- LINHA 2 (bem espaçada): PROJETO | PROPRIETÁRIO | ID -->
+  <text x="1395" y="1105" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">PROJETO:</text>
+  <text x="1395" y="1128" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" fill="#111827">{TIPO_SISTEMA}</text>
+
+  <text x="1670" y="1105" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">PROPRIETÁRIO:</text>
+  <text x="1670" y="1122" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">Nome: {CLIENTE_NOME}</text>
+  <text x="1670" y="1138" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">CNPJ/CPF: {CLIENTE_CPF_CNPJ}</text>
+
+  <text x="1970" y="1105" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">ID do pedido:</text>
+  <text x="2020" y="1140" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="900" text-anchor="middle" fill="#111827">{ID_PEDIDO}</text>
+
+  <!-- LINHA 3: TÍTULO | ENDEREÇO -->
+  <text x="1395" y="1165" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">TÍTULO:</text>
+  <text x="1395" y="1188" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" fill="#111827">DIAGRAMA UNIFILAR</text>
+
+  <text x="1670" y="1165" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">ENDEREÇO DA OBRA:</text>
+  <text x="1670" y="1182" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">{ENDERECO_OBRA}</text>
+  <text x="1670" y="1198" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">CEP: {CEP}</text>
+
+  <!-- LINHA 4 (bem espaçada): PROJETISTA · DATA · REVISADO POR · REVISÃO · CONTA CONTRATO · INTEGRADOR · FOLHA -->
+  <text x="1395" y="1235" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">PROJETISTA:</text>
+  <text x="1395" y="1258" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">{PROJETISTA_NOME}</text>
+
+  <text x="1395" y="1290" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">DATA:</text>
+  <text x="1395" y="1313" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">{DATA_EMISSAO}</text>
+
+  <text x="1600" y="1235" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">REVISADO POR:</text>
+  <text x="1600" y="1258" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">{REVISOR_NOME}</text>
+
+  <text x="1600" y="1290" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">REVISÃO:</text>
+  <text x="1600" y="1315" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="900" fill="#111827">{REVISAO_NUM}</text>
+
+  <text x="1800" y="1235" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">CONTA CONTRATO:</text>
+  <text x="1800" y="1258" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">{CONTA_CONTRATO}</text>
+
+  <text x="1800" y="1290" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">INTEGRADOR:</text>
+  <text x="1800" y="1313" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="bold" fill="#111827">Spin Solar</text>
+
+  <text x="1970" y="1290" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6b7280">FOLHA:</text>
+  <text x="2020" y="1325" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="900" text-anchor="middle" fill="#111827">01</text>
+</svg>

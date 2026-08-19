@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  QUADRANTE 9 — CARIMBO SPIN (adaptado do padrão Ideal Tech)
+  Adaptações:
+    - Logo Spin Solar (4 barras coloridas + SPIN em azul + SOLAR em verde)
+    - RT: SEMPRE Kalebe Grün — Eletrotécnico Reg. 94312176000
+    - Integrador: Spin Solar
+    - Estrutura 4 linhas idêntica ao Ideal Tech
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 340" width="1320" height="340">
+  <rect x="0" y="0" width="1320" height="340" fill="#FFFFFF"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- LINHA 1: LOGO SPIN (esquerda) + ASSINATURA RT (direita)             -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="10" y="10" width="1300" height="115" fill="none" stroke="#111827" stroke-width="1.2"/>
+
+  <!-- Logo SPIN à esquerda -->
+  <g transform="translate(80, 30)">
+    <!-- 4 barras coloridas -->
+    <rect x="0" y="0" width="16" height="65" fill="#1a4f8b"/>
+    <rect x="24" y="0" width="16" height="65" fill="#0e7490"/>
+    <rect x="48" y="0" width="16" height="65" fill="#f4d000"/>
+    <rect x="72" y="0" width="16" height="65" fill="#0f766e"/>
+    <!-- Texto SPIN + SOLAR -->
+    <text x="105" y="52" font-family="Helvetica, Arial, sans-serif" font-size="52" font-weight="900" fill="#1a4f8b">SPIN</text>
+    <text x="270" y="26" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#6b7280">®</text>
+    <text x="105" y="78" font-family="Helvetica, Arial, sans-serif" font-size="13" letter-spacing="6" fill="#0f766e">SOLAR</text>
+    <!-- Tagline embaixo (opcional, em faixa amarela como Ideal Tech) -->
+    <rect x="0" y="88" width="290" height="16" fill="#f4d000"/>
+    <text x="145" y="100" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#111827">ENERGIA SOLAR FOTOVOLTAICA</text>
+  </g>
+
+  <!-- Assinatura RT (direita) -->
+  <g transform="translate(1290, 75)">
+    <!-- Linha da assinatura (com "rabisco" simplificado) -->
+    <line x1="-300" y1="0" x2="0" y2="0" stroke="#111827" stroke-width="1"/>
+    <!-- Rabisco de assinatura (path decorativo) -->
+    <path d="M -180 -20 c 15 -8, 25 5, 40 -5 c 15 -10, 25 8, 40 -3 c 15 -8, 30 12, 40 -5"
+          fill="none" stroke="#1a4f8b" stroke-width="1.5"/>
+  </g>
+  <text x="1310" y="90" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="end" fill="#111827">Assinatura do responsável técnico</text>
+  <text x="1310" y="106" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="end" fill="#111827">Kalebe Grün</text>
+  <text x="1310" y="120" font-family="Helvetica, Arial, sans-serif" font-size="11" text-anchor="end" fill="#111827">Eletrotécnico · Reg. 94312176000</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- LINHA 2: PROJETO | PROPRIETÁRIO | ID do pedido                      -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="10" y="125" width="1300" height="60" fill="none" stroke="#111827" stroke-width="1.2"/>
+  <!-- Colunas -->
+  <line x1="580" y1="125" x2="580" y2="185" stroke="#111827" stroke-width="1"/>
+  <line x1="1160" y1="125" x2="1160" y2="185" stroke="#111827" stroke-width="1"/>
+
+  <!-- PROJETO -->
+  <text x="20" y="140" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">PROJETO:</text>
+  <text x="295" y="170" font-family="Helvetica, Arial, sans-serif" font-size="18" text-anchor="middle" fill="#111827">{TIPO_SISTEMA}</text>
+
+  <!-- PROPRIETÁRIO -->
+  <text x="590" y="140" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">PROPRIETÁRIO:</text>
+  <text x="590" y="160" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">Nome do cliente: {CLIENTE_NOME}</text>
+  <text x="590" y="177" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">CNPJ/CPF: {CLIENTE_CPF_CNPJ}</text>
+
+  <!-- ID do pedido -->
+  <text x="1170" y="140" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">ID do pedido:</text>
+  <text x="1235" y="175" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="900" text-anchor="middle" fill="#111827">{ID_PEDIDO}</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- LINHA 3: TÍTULO | ENDEREÇO DA OBRA                                  -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="10" y="185" width="1300" height="60" fill="none" stroke="#111827" stroke-width="1.2"/>
+  <line x1="580" y1="185" x2="580" y2="245" stroke="#111827" stroke-width="1"/>
+
+  <!-- TÍTULO -->
+  <text x="20" y="200" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">TÍTULO:</text>
+  <text x="295" y="228" font-family="Helvetica, Arial, sans-serif" font-size="18" text-anchor="middle" fill="#111827">DIAGRAMA UNIFILAR</text>
+
+  <!-- ENDEREÇO DA OBRA -->
+  <text x="590" y="200" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">ENDEREÇO DA OBRA:</text>
+  <text x="590" y="218" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">Endereço: {ENDERECO_OBRA}</text>
+  <text x="590" y="235" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#111827">CEP: {CEP}</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- LINHA 4: PROJETISTA | DATA | REVISADO POR | REVISÃO | CONTA | INT | FOLHA -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <rect x="10" y="245" width="1300" height="80" fill="none" stroke="#111827" stroke-width="1.2"/>
+  <!-- Divisórias verticais -->
+  <line x1="270" y1="245" x2="270" y2="325" stroke="#111827" stroke-width="1"/>
+  <line x1="425" y1="245" x2="425" y2="325" stroke="#111827" stroke-width="1"/>
+  <line x1="620" y1="245" x2="620" y2="325" stroke="#111827" stroke-width="1"/>
+  <line x1="740" y1="245" x2="740" y2="325" stroke="#111827" stroke-width="1"/>
+  <line x1="960" y1="245" x2="960" y2="325" stroke="#111827" stroke-width="1"/>
+  <line x1="1180" y1="245" x2="1180" y2="325" stroke="#111827" stroke-width="1"/>
+
+  <!-- PROJETISTA -->
+  <text x="20" y="260" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">PROJETISTA:</text>
+  <text x="140" y="298" font-family="Helvetica, Arial, sans-serif" font-size="14" text-anchor="middle" fill="#111827">{PROJETISTA_NOME}</text>
+
+  <!-- DATA -->
+  <text x="280" y="260" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">DATA:</text>
+  <text x="347" y="298" font-family="Helvetica, Arial, sans-serif" font-size="14" text-anchor="middle" fill="#111827">{DATA_EMISSAO}</text>
+
+  <!-- REVISADO POR -->
+  <text x="435" y="260" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">REVISADO POR:</text>
+  <text x="522" y="298" font-family="Helvetica, Arial, sans-serif" font-size="14" text-anchor="middle" fill="#111827">{REVISOR_NOME}</text>
+
+  <!-- REVISÃO -->
+  <text x="630" y="260" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">REVISÃO:</text>
+  <text x="680" y="303" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="900" text-anchor="middle" fill="#111827">{REVISAO_NUM}</text>
+
+  <!-- CONTA CONTRATO -->
+  <text x="750" y="260" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">CONTA CONTRATO:</text>
+  <text x="850" y="298" font-family="Helvetica, Arial, sans-serif" font-size="14" text-anchor="middle" fill="#111827">{CONTA_CONTRATO}</text>
+
+  <!-- INTEGRADOR -->
+  <text x="970" y="260" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">INTEGRADOR:</text>
+  <text x="1070" y="298" font-family="Helvetica, Arial, sans-serif" font-size="14" text-anchor="middle" fill="#111827">Spin Solar</text>
+
+  <!-- FOLHA -->
+  <text x="1190" y="260" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#111827">FOLHA:</text>
+  <text x="1245" y="303" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="900" text-anchor="middle" fill="#111827">01</text>
+</svg>
