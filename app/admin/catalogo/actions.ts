@@ -243,3 +243,89 @@ export async function criarProdutoViaDatasheetAction(input: {
   revalidatePath('/admin/catalogo')
   return { sucesso: true, produto_id: criado.id }
 }
+
+
+// ============================================================================
+// EDITAR PRODUTO — atualiza campos e specs (usa mesmo shape que o parser WEG)
+// ============================================================================
+
+export async function editarProdutoAction(
+  produtoId: string,
+  patch: Partial<Omit<NovoProdutoInput, 'categoria'>> & { categoria?: CategoriaProduto },
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autorizado' }
+
+  const { data: perfil } = await supabase
+    .from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (perfil?.role !== 'admin') return { erro: 'Apenas admin pode editar produtos' }
+
+  // Busca produto atual pra saber a categoria vigente (define quais specs válidas)
+  const { data: atual, error: erroAtual } = await supabase
+    .from('produtos')
+    .select('categoria, specs')
+    .eq('id', produtoId)
+    .maybeSingle()
+  if (erroAtual || !atual) return { erro: 'Produto não encontrado' }
+
+  const categoria = patch.categoria || (atual.categoria as CategoriaProduto)
+  const specsAtuais = (atual.specs || {}) as Record<string, unknown>
+  const specsNovas: Record<string, unknown> = { ...specsAtuais }
+
+  // Aplica specs por categoria (não sobrescreve o que não veio no patch)
+  if (categoria === 'placa') {
+    if (patch.potencia_wp != null) specsNovas.potencia_wp = patch.potencia_wp
+    if (patch.area_m2 != null) specsNovas.area_m2 = patch.area_m2
+    if (patch.largura_mm != null) specsNovas.largura_mm = patch.largura_mm
+    if (patch.tipo_celula?.trim()) specsNovas.tipo_celula = patch.tipo_celula.trim()
+  } else if (categoria === 'inversor') {
+    if (patch.potencia_kw != null) specsNovas.potencia_kw = patch.potencia_kw
+    if (patch.tensao_desc?.trim()) specsNovas.tensao_desc = patch.tensao_desc.trim()
+    if (patch.disjuntor_equivalente?.trim()) specsNovas.disjuntor_equivalente = patch.disjuntor_equivalente.trim()
+    if (patch.entradas_mppt != null) specsNovas.entradas_mppt = patch.entradas_mppt
+  } else if (categoria === 'bateria') {
+    if (patch.capacidade_kwh != null) specsNovas.capacidade_kwh = patch.capacidade_kwh
+    if (patch.potencia_kw != null) specsNovas.potencia_kw = patch.potencia_kw
+    if (patch.tensao_desc?.trim()) specsNovas.tensao_desc = patch.tensao_desc.trim()
+  } else {
+    if (patch.descricao_tecnica?.trim()) specsNovas.descricao = patch.descricao_tecnica.trim()
+  }
+
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString(), specs: specsNovas }
+  if (patch.modelo?.trim()) update.modelo = patch.modelo.trim()
+  if (patch.fabricante?.trim()) update.fabricante = patch.fabricante.trim()
+  if (patch.categoria) update.categoria = patch.categoria
+  if (patch.subcategoria !== undefined) update.subcategoria = patch.subcategoria?.trim() || null
+  if (patch.descricao_curta?.trim()) update.descricao_curta = patch.descricao_curta.trim()
+  if (patch.descricao_tecnica !== undefined) update.descricao_tecnica = patch.descricao_tecnica?.trim() || null
+  if (patch.codigo_weg !== undefined) update.codigo_weg = patch.codigo_weg?.trim() || null
+  if (patch.codigo_interno_spin !== undefined) update.codigo_interno_spin = patch.codigo_interno_spin?.trim() || null
+  if (patch.ativo !== undefined) update.ativo = patch.ativo
+  if (patch.disponivel_estoque !== undefined) update.disponivel_estoque = patch.disponivel_estoque
+
+  const { error } = await supabase.from('produtos').update(update).eq('id', produtoId)
+  if (error) {
+    if (error.code === '23505') return { erro: 'Código já cadastrado em outro produto' }
+    return { erro: error.message }
+  }
+
+  // Preço novo — cria linha nova em precos_produtos (SCD tipo 2: preserva histórico)
+  if (patch.preco_venda != null && patch.preco_venda > 0) {
+    // Fecha preço vigente
+    await supabase.from('precos_produtos')
+      .update({ vigente_ate: new Date().toISOString().slice(0, 10) })
+      .eq('produto_id', produtoId)
+      .is('vigente_ate', null)
+    // Cria novo vigente
+    await supabase.from('precos_produtos').insert({
+      produto_id: produtoId,
+      preco_venda: patch.preco_venda,
+      preco_custo: patch.preco_custo ?? patch.preco_venda,
+      vigente_de: new Date().toISOString().slice(0, 10),
+    })
+  }
+
+  revalidatePath('/admin/catalogo')
+  return { sucesso: true }
+}

@@ -4,6 +4,7 @@ import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { togglarAtivoProdutoAction, criarProdutoManualAction, type CategoriaProduto } from '@/app/admin/catalogo/actions'
+import { EditarProdutoModal, type ProdutoParaEdicao } from '@/components/EditarProdutoModal'
 import { CadastroDatasheetModal } from '@/components/CadastroDatasheetModal'
 
 type HistoricoItem = {
@@ -894,6 +895,7 @@ function ProdutoRow({
   const [enviandoImg, setEnviandoImg] = useState(false)
   const [ativoLocal, setAtivoLocal] = useState(produto.ativo)
   const [mostrarSpecs, setMostrarSpecs] = useState(false)
+  const [editando, setEditando] = useState(false)
   const [pending, startTransition] = useTransition()
 
   async function handlePdf(f: File) {
@@ -958,6 +960,15 @@ function ProdutoRow({
         <span className="text-[10px] font-mono text-white/40 w-20 shrink-0">{produto.codigo_weg}</span>
         <span className="text-white/60 w-24 text-[10px] uppercase shrink-0">{produto.categoria}</span>
         <span className="text-white flex-1 truncate">{produto.modelo}</span>
+
+        {/* Botão Editar */}
+        <button
+          onClick={() => setEditando(true)}
+          title="Editar dados deste produto"
+          className="shrink-0 text-[10px] px-2 py-1 rounded border bg-white/[0.02] border-white/10 text-white/60 hover:border-sol/30 hover:text-sol transition"
+        >
+          ✏ Editar
+        </button>
 
         {/* Botão Pontos Críticos */}
         <button
@@ -1042,6 +1053,28 @@ function ProdutoRow({
       {mostrarSpecs && (
         <PontosCriticosPainel produto={produto} onFechar={() => setMostrarSpecs(false)} />
       )}
+
+      {/* Modal de edição */}
+      {editando && (
+        <EditarProdutoModal
+          produto={{
+            id: produto.id,
+            categoria: produto.categoria as any,
+            modelo: produto.modelo,
+            fabricante: (produto as any).fabricante || '',
+            subcategoria: produto.subcategoria,
+            descricao_curta: (produto as any).descricao_curta || '',
+            descricao_tecnica: (produto as any).descricao_tecnica || null,
+            codigo_weg: produto.codigo_weg || null,
+            codigo_interno_spin: (produto as any).codigo_interno_spin || null,
+            ativo: produto.ativo,
+            disponivel_estoque: (produto as any).disponivel_estoque ?? true,
+            specs: produto.specs,
+            preco_venda_atual: (produto as any).preco_venda,
+          } as ProdutoParaEdicao}
+          onFechar={() => setEditando(false)}
+        />
+      )}
     </div>
   )
 }
@@ -1098,6 +1131,7 @@ function PontosCriticosPainel({ produto, onFechar }: { produto: Produto; onFecha
           ))}
         </div>
       )}
+
     </div>
   )
 }
