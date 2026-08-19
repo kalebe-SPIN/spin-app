@@ -2,7 +2,17 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
-import { buscarPainelEquipeAction, type PainelEquipe, type MetricasRepresentante, type MetricasVendedorServ, type MetricasProfissionalCampo } from '@/app/admin/equipe/actions'
+import {
+  buscarPainelEquipeAction,
+  type PainelEquipe,
+  type MetricasRepresentante,
+  type MetricasVendedorServ,
+  type MetricasProfissionalCampo,
+  type LinhaRank,
+  type EtapaFunil,
+  type ComparativoMes,
+} from '@/app/admin/equipe/actions'
+import { GraficoPizza } from '@/components/GraficoPizza'
 
 /**
  * Painel de desempenho da equipe comercial em tempo real.
@@ -77,6 +87,36 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
         <KpiTotal label="Contratos assinados" valor={t.contratos_assinados} cor="text-verde" hint={fmtBRL(t.vendas_valor)} />
         <KpiTotal label="Telhados no CRM" valor={t.telhados_prospectados} cor="text-weg-azul" hint={`${t.fechados_servicos} fechados`} />
         <KpiTotal label="OS executadas" valor={t.os_executadas} cor="text-coral" hint={fmtBRL(t.faturamento_execucao)} />
+      </div>
+
+      {/* ═══ Painel executivo ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        {/* Pizza — faturamento por linha */}
+        <BlocoExec titulo="💰 Faturamento por linha" hint="mês corrente" cor="sol">
+          <GraficoPizza
+            fatias={dados.faturamentoPorLinha.map((f) => ({ rotulo: f.linha, valor: f.valor, cor: f.cor }))}
+            tamanho={160}
+            donut
+            fmtValor={fmtBRL}
+          />
+        </BlocoExec>
+
+        {/* Comparativo mês vs mês passado */}
+        <BlocoExec titulo="📈 Mês corrente vs mês passado" hint="fechamentos + OS" cor="verde">
+          <ComparativoBloco c={dados.comparativo} />
+        </BlocoExec>
+
+        {/* Funil comercial */}
+        <BlocoExec titulo="🎯 Funil comercial consolidado" hint="kits solar + serviços" cor="weg-azul">
+          <FunilBlocos funil={dados.funil} />
+        </BlocoExec>
+      </div>
+
+      {/* Rank de vendedores */}
+      <div className="mb-6">
+        <BlocoExec titulo="🏆 Rank de vendedores no mês" hint={`top ${Math.min(dados.rankVendedores.length, 10)}`} cor="sol">
+          <RankVendedores rank={dados.rankVendedores.slice(0, 10)} />
+        </BlocoExec>
       </div>
 
       {/* 3 blocos por tipo de vendedor */}
@@ -276,4 +316,156 @@ function LinhaDetalhe({ rotulo, valor, destaque, cor }: { rotulo: string; valor:
 
 function fmtBRL(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Bloco executivo (contêiner das seções de faturamento/funil/rank)
+// ═══════════════════════════════════════════════════════════════
+function BlocoExec({ titulo, hint, cor, children }: {
+  titulo: string; hint: string; cor: 'sol' | 'verde' | 'weg-azul'; children: React.ReactNode
+}) {
+  const borderClass =
+    cor === 'sol' ? 'border-sol/30' : cor === 'weg-azul' ? 'border-weg-azul/30' : 'border-verde/30'
+  const textClass =
+    cor === 'sol' ? 'text-sol' : cor === 'weg-azul' ? 'text-weg-azul' : 'text-verde'
+  return (
+    <div className={`bg-white/[0.02] border ${borderClass} rounded-xl p-4`}>
+      <div className="mb-3 pb-2 border-b border-white/10 flex items-baseline justify-between">
+        <p className={`text-xs font-bold ${textClass}`}>{titulo}</p>
+        <p className="text-[10px] text-white/40 uppercase tracking-wider">{hint}</p>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// ─── Comparativo mês vs mês passado ────────────────────────────
+function ComparativoBloco({ c }: { c: ComparativoMes }) {
+  return (
+    <div className="space-y-3">
+      <DeltaLinha
+        rotulo="Faturamento"
+        atual={c.faturamento_mes}
+        anterior={c.faturamento_mes_passado}
+        formatador={fmtBRL}
+      />
+      <DeltaLinha
+        rotulo="Contratos fechados"
+        atual={c.contratos_mes}
+        anterior={c.contratos_mes_passado}
+      />
+      <DeltaLinha
+        rotulo="OS executadas"
+        atual={c.os_mes}
+        anterior={c.os_mes_passado}
+      />
+    </div>
+  )
+}
+
+function DeltaLinha({ rotulo, atual, anterior, formatador }: {
+  rotulo: string; atual: number; anterior: number; formatador?: (v: number) => string
+}) {
+  const fmt = formatador || ((v: number) => v.toLocaleString('pt-BR'))
+  const delta = anterior === 0 ? (atual > 0 ? 100 : 0) : ((atual - anterior) / anterior) * 100
+  const sinal = delta > 0 ? '▲' : delta < 0 ? '▼' : '='
+  const cor = delta > 0 ? 'text-verde' : delta < 0 ? 'text-coral' : 'text-white/50'
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between text-xs">
+        <span className="text-white/60">{rotulo}</span>
+        <span className={`font-bold tabular-nums ${cor}`}>
+          {sinal} {Math.abs(delta).toFixed(0)}%
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between text-[11px] mt-0.5">
+        <span className="text-white/80 font-bold tabular-nums">{fmt(atual)}</span>
+        <span className="text-white/30 tabular-nums">antes: {fmt(anterior)}</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Funil comercial (barras horizontais escalonadas) ──────────
+function FunilBlocos({ funil }: { funil: EtapaFunil[] }) {
+  const maxQtd = Math.max(...funil.map((e) => e.quantidade), 1)
+  const cores: Record<EtapaFunil['chave'], string> = {
+    prospeccao: '#6B7280',
+    contato:    '#587FFF',
+    proposta:   '#F5B400',
+    fechado:    '#4EDC8A',
+  }
+  return (
+    <div className="space-y-2">
+      {funil.map((e) => {
+        const pct = (e.quantidade / maxQtd) * 100
+        return (
+          <div key={e.chave}>
+            <div className="flex items-baseline justify-between text-[11px] mb-1">
+              <span className="text-white/70">{e.rotulo}</span>
+              <span className="text-white font-bold tabular-nums">
+                {e.quantidade}
+                {e.valor > 0 && <span className="text-white/40 ml-1.5 font-normal">· {fmtBRL(e.valor)}</span>}
+              </span>
+            </div>
+            <div className="h-2 bg-white/[0.05] rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{ width: `${Math.max(pct, 2)}%`, background: cores[e.chave] }}
+              />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Rank consolidado de vendedores ────────────────────────────
+function RankVendedores({ rank }: { rank: LinhaRank[] }) {
+  if (rank.length === 0) {
+    return (
+      <p className="text-xs text-white/30 italic text-center py-6">
+        Nenhum vendedor com fechamento ainda neste mês.
+      </p>
+    )
+  }
+  const topValor = rank[0]?.vendido || 1
+  return (
+    <div className="space-y-1.5">
+      {rank.map((v, i) => {
+        const pct = topValor > 0 ? (v.vendido / topValor) * 100 : 0
+        const roleLabel = v.role === 'representante' ? '☀️ Solar' : '🧽 Serviços'
+        const roleCor = v.role === 'representante' ? 'text-sol' : 'text-weg-azul'
+        return (
+          <div key={v.id} className="flex items-center gap-3 p-2 bg-white/[0.03] border border-white/5 rounded-lg">
+            <span className="text-white/40 font-black text-sm tabular-nums w-6 text-center">
+              {i + 1}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline justify-between">
+                <p className="text-xs text-white font-semibold truncate">{v.nome}</p>
+                <p className="text-xs text-verde tabular-nums font-bold flex-shrink-0 ml-2">
+                  {fmtBRL(v.vendido)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`text-[10px] uppercase tracking-wider font-bold ${roleCor}`}>{roleLabel}</span>
+                <div className="flex-1 h-1 bg-white/[0.05] rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-verde rounded-full"
+                    style={{ width: `${Math.max(pct, 3)}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-white/40 tabular-nums flex-shrink-0">
+                  {v.em_proposta} em proposta
+                </span>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
 }

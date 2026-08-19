@@ -38,6 +38,41 @@ export type MetricasProfissionalCampo = {
   valor_faturado: number           // soma valor_final das concluídas
 }
 
+/** Uma linha do faturamento por linha de negócio (pra gráfico de pizza). */
+export type FatiaFaturamento = {
+  linha: 'Kits solar' | 'Serviços de limpeza' | 'Execução de OS'
+  valor: number
+  cor: string      // cor tailwind hex pra pintar a fatia
+}
+
+/** Etapa do funil comercial unificado (kits + serviços). */
+export type EtapaFunil = {
+  chave: 'prospeccao' | 'contato' | 'proposta' | 'fechado'
+  rotulo: string
+  quantidade: number
+  valor: number   // valor em R$ nessa etapa
+}
+
+/** Linha do rank consolidado de vendedores (kits + serviços). */
+export type LinhaRank = {
+  id: string
+  nome: string
+  role: 'representante' | 'vendedor_servicos'
+  vendido: number
+  em_proposta: number
+  meta: number       // meta mensal individual (a definir depois; 0 se não configurada)
+}
+
+/** Comparativo mês corrente vs mês passado. */
+export type ComparativoMes = {
+  faturamento_mes: number
+  faturamento_mes_passado: number
+  contratos_mes: number
+  contratos_mes_passado: number
+  os_mes: number
+  os_mes_passado: number
+}
+
 export type PainelEquipe = {
   representantes: MetricasRepresentante[]
   vendedoresServ: MetricasVendedorServ[]
@@ -53,21 +88,32 @@ export type PainelEquipe = {
     os_executadas: number
     faturamento_execucao: number
   }
+  faturamentoPorLinha: FatiaFaturamento[]
+  funil: EtapaFunil[]
+  rankVendedores: LinhaRank[]
+  comparativo: ComparativoMes
 }
 
 /**
- * Snapshot da equipe comercial no mês corrente. Chamado em fetch inicial
- * pelo painel admin e depois a cada evento Realtime nas tabelas relevantes.
- * Uma única viagem ao Supabase por chamada (paralelismo interno).
+ * Snapshot da equipe comercial no mês corrente + comparativo com o mês
+ * anterior. Chamado em fetch inicial pelo painel admin e depois a cada
+ * evento Realtime nas tabelas relevantes. Todas as queries em paralelo.
  */
 export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro: string }> {
   const check = await verificarAdmin()
   if ('erro' in check) return { erro: check.erro }
 
   const supabase = createClient()
+
+  // Janelas de tempo
   const inicioMes = new Date()
   inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0)
+  const inicioMesPassado = new Date(inicioMes)
+  inicioMesPassado.setMonth(inicioMesPassado.getMonth() - 1)
+  const fimMesPassado = new Date(inicioMes)  // exclusivo
   const inicioMesIso = inicioMes.toISOString()
+  const inicioMesPassadoIso = inicioMesPassado.toISOString()
+  const fimMesPassadoIso = fimMesPassado.toISOString()
 
   // Perfis com role comercial
   const { data: perfis } = await supabase
@@ -84,7 +130,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   const projetosPromise = representantes.length > 0
     ? supabase
         .from('projetos')
-        .select('consultor_id, status, pv_total, created_at')
+        .select('consultor_id, status, pv_total, created_at, updated_at')
         .in('consultor_id', representantes.map((p) => p.id))
     : Promise.resolve({ data: [] as any[] })
 
@@ -92,31 +138,34 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   const telhadosPromise = vendedoresServ.length > 0
     ? supabase
         .from('telhados')
-        .select('vendedor_id, fase, proposta_valor')
+        .select('vendedor_id, fase, proposta_valor, created_at, updated_at')
         .in('vendedor_id', vendedoresServ.map((p) => p.id))
     : Promise.resolve({ data: [] as any[] })
 
   // ─── Profissionais de campo — dados das EXECUÇÕES ─────────────────────────
+  // Puxa TUDO desde o início do mês passado pra montar comparativo.
   const execPromise = profissionaisCampo.length > 0
     ? supabase
         .from('execucoes_servicos')
         .select('responsavel_id, valor_final, data_conclusao')
         .in('responsavel_id', profissionaisCampo.map((p) => p.id))
         .not('data_conclusao', 'is', null)
-        .gte('data_conclusao', inicioMesIso)
+        .gte('data_conclusao', inicioMesPassadoIso)
     : Promise.resolve({ data: [] as any[] })
 
   const [{ data: projetosData }, { data: telhadosData }, { data: execData }] = await Promise.all([
     projetosPromise, telhadosPromise, execPromise,
   ])
 
-  // Agrega por consultor
+  const STATUS_FECHADOS = ['contrato_assinado', 'homologacao', 'instalado', 'ativo_pos_venda']
+
+  // ─── Agrega por consultor (mês corrente) ──────────────────────────────────
   const metricasRepres: MetricasRepresentante[] = representantes.map((r) => {
     const meus = (projetosData || []).filter((p: any) => p.consultor_id === r.id)
     const meusMes = meus.filter((p: any) => p.created_at >= inicioMesIso)
     const proposta_enviada = meus.filter((p: any) => p.status === 'proposta_enviada')
-    const fechados = meus.filter((p: any) =>
-      ['contrato_assinado', 'homologacao', 'instalado', 'ativo_pos_venda'].includes(p.status)
+    const fechadosMes = meus.filter((p: any) =>
+      STATUS_FECHADOS.includes(p.status) && p.updated_at >= inicioMesIso
     )
     return {
       id: r.id,
@@ -124,12 +173,12 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
       projetos_criados: meusMes.length,
       projetos_ativos: meus.filter((p: any) => p.status !== 'perdido' && p.status !== 'ativo_pos_venda').length,
       propostas_enviadas: proposta_enviada.length,
-      contratos_assinados: fechados.length,
-      vendas_valor: fechados.reduce((s: number, p: any) => s + (Number(p.pv_total) || 0), 0),
+      contratos_assinados: fechadosMes.length,
+      vendas_valor: fechadosMes.reduce((s: number, p: any) => s + (Number(p.pv_total) || 0), 0),
     }
   })
 
-  // Agrega por vendedor_servicos
+  // ─── Agrega por vendedor_servicos ─────────────────────────────────────────
   const metricasVend: MetricasVendedorServ[] = vendedoresServ.map((v) => {
     const meus = (telhadosData || []).filter((t: any) => t.vendedor_id === v.id)
     return {
@@ -145,9 +194,11 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     }
   })
 
-  // Agrega por profissional de campo
+  // ─── Agrega por profissional de campo (só mês corrente) ───────────────────
   const metricasCampo: MetricasProfissionalCampo[] = profissionaisCampo.map((c) => {
-    const meus = (execData || []).filter((e: any) => e.responsavel_id === c.id)
+    const meus = (execData || []).filter((e: any) =>
+      e.responsavel_id === c.id && e.data_conclusao >= inicioMesIso
+    )
     return {
       id: c.id,
       nome: c.nome_completo || 'Sem nome',
@@ -155,6 +206,125 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
       valor_faturado: meus.reduce((s: number, e: any) => s + (Number(e.valor_final) || 0), 0),
     }
   })
+
+  // ─── Faturamento por linha (pra pizza) ────────────────────────────────────
+  const totalKitsSolar = metricasRepres.reduce((s, r) => s + r.vendas_valor, 0)
+  const totalServicosLimpeza = metricasVend.reduce((s, v) => {
+    const fechadosVend = (telhadosData || []).filter(
+      (t: any) => t.vendedor_id === v.id && t.fase === 'fechado' && t.updated_at >= inicioMesIso
+    )
+    return s + fechadosVend.reduce((ss: number, t: any) => ss + (Number(t.proposta_valor) || 0), 0)
+  }, 0)
+  const totalExecucao = metricasCampo.reduce((s, c) => s + c.valor_faturado, 0)
+
+  const faturamentoPorLinha: FatiaFaturamento[] = (
+    [
+      { linha: 'Kits solar', valor: totalKitsSolar, cor: '#F5B400' },
+      { linha: 'Serviços de limpeza', valor: totalServicosLimpeza, cor: '#4EDC8A' },
+      { linha: 'Execução de OS', valor: totalExecucao, cor: '#0047BB' },
+    ] as FatiaFaturamento[]
+  ).filter((f) => f.valor > 0)  // pizza só mostra o que tem valor
+
+  // ─── Funil consolidado (kits + serviços somados) ──────────────────────────
+  // Prospecção = telhados fase prospeccao + projetos status inicial
+  // Contato    = telhados fase contato + projetos em_andamento/agendado
+  // Proposta   = telhados fase proposta + projetos proposta_enviada
+  // Fechado    = telhados fase fechado + projetos fechados
+  const projetosProspeccao = (projetosData || []).filter((p: any) =>
+    ['lead', 'em_avaliacao', 'aguardando_visita'].includes(p.status)
+  )
+  const projetosContato = (projetosData || []).filter((p: any) =>
+    ['visita_agendada', 'em_negociacao'].includes(p.status)
+  )
+  const projetosProposta = (projetosData || []).filter((p: any) => p.status === 'proposta_enviada')
+  const projetosFechados = (projetosData || []).filter((p: any) => STATUS_FECHADOS.includes(p.status))
+
+  const telhadosProspeccao = (telhadosData || []).filter((t: any) => t.fase === 'prospeccao')
+  const telhadosContato = (telhadosData || []).filter((t: any) => t.fase === 'contato')
+  const telhadosProposta = (telhadosData || []).filter((t: any) => t.fase === 'proposta')
+  const telhadosFechados = (telhadosData || []).filter((t: any) => t.fase === 'fechado')
+
+  const funil: EtapaFunil[] = [
+    {
+      chave: 'prospeccao',
+      rotulo: 'Prospecção',
+      quantidade: projetosProspeccao.length + telhadosProspeccao.length,
+      valor: 0,
+    },
+    {
+      chave: 'contato',
+      rotulo: 'Em contato',
+      quantidade: projetosContato.length + telhadosContato.length,
+      valor: 0,
+    },
+    {
+      chave: 'proposta',
+      rotulo: 'Proposta enviada',
+      quantidade: projetosProposta.length + telhadosProposta.length,
+      valor:
+        projetosProposta.reduce((s: number, p: any) => s + (Number(p.pv_total) || 0), 0) +
+        telhadosProposta.reduce((s: number, t: any) => s + (Number(t.proposta_valor) || 0), 0),
+    },
+    {
+      chave: 'fechado',
+      rotulo: 'Fechado',
+      quantidade: projetosFechados.length + telhadosFechados.length,
+      valor:
+        projetosFechados.reduce((s: number, p: any) => s + (Number(p.pv_total) || 0), 0) +
+        telhadosFechados.reduce((s: number, t: any) => s + (Number(t.proposta_valor) || 0), 0),
+    },
+  ]
+
+  // ─── Rank consolidado de vendedores (kits + serviços) ─────────────────────
+  const rankVendedores: LinhaRank[] = [
+    ...metricasRepres.map((r) => ({
+      id: r.id,
+      nome: r.nome,
+      role: 'representante' as const,
+      vendido: r.vendas_valor,
+      em_proposta: r.propostas_enviadas,
+      meta: 0,   // Meta individual será configurável em fase seguinte
+    })),
+    ...metricasVend.map((v) => ({
+      id: v.id,
+      nome: v.nome,
+      role: 'vendedor_servicos' as const,
+      vendido: (telhadosData || [])
+        .filter((t: any) => t.vendedor_id === v.id && t.fase === 'fechado' && t.updated_at >= inicioMesIso)
+        .reduce((s: number, t: any) => s + (Number(t.proposta_valor) || 0), 0),
+      em_proposta: v.em_proposta,
+      meta: 0,
+    })),
+  ].sort((a, b) => b.vendido - a.vendido)
+
+  // ─── Comparativo mês corrente vs mês passado ──────────────────────────────
+  const projetosFechadosPassado = (projetosData || []).filter((p: any) =>
+    STATUS_FECHADOS.includes(p.status) &&
+    p.updated_at >= inicioMesPassadoIso && p.updated_at < fimMesPassadoIso
+  )
+  const telhadosFechadosPassado = (telhadosData || []).filter((t: any) =>
+    t.fase === 'fechado' &&
+    t.updated_at >= inicioMesPassadoIso && t.updated_at < fimMesPassadoIso
+  )
+  const execPassado = (execData || []).filter((e: any) =>
+    e.data_conclusao >= inicioMesPassadoIso && e.data_conclusao < fimMesPassadoIso
+  )
+
+  const faturamentoMesPassado =
+    projetosFechadosPassado.reduce((s: number, p: any) => s + (Number(p.pv_total) || 0), 0) +
+    telhadosFechadosPassado.reduce((s: number, t: any) => s + (Number(t.proposta_valor) || 0), 0) +
+    execPassado.reduce((s: number, e: any) => s + (Number(e.valor_final) || 0), 0)
+
+  const faturamentoMes = totalKitsSolar + totalServicosLimpeza + totalExecucao
+
+  const comparativo: ComparativoMes = {
+    faturamento_mes: faturamentoMes,
+    faturamento_mes_passado: faturamentoMesPassado,
+    contratos_mes: metricasRepres.reduce((s, r) => s + r.contratos_assinados, 0),
+    contratos_mes_passado: projetosFechadosPassado.length,
+    os_mes: metricasCampo.reduce((s, c) => s + c.os_executadas, 0),
+    os_mes_passado: execPassado.length,
+  }
 
   return {
     representantes: metricasRepres,
@@ -171,5 +341,9 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
       os_executadas: metricasCampo.reduce((s, c) => s + c.os_executadas, 0),
       faturamento_execucao: metricasCampo.reduce((s, c) => s + c.valor_faturado, 0),
     },
+    faturamentoPorLinha,
+    funil,
+    rankVendedores,
+    comparativo,
   }
 }
