@@ -52,6 +52,33 @@ export type ItemKit = {
   url_datasheet?: string | null
 }
 
+/**
+ * Diagnóstico de por que kits foram descartados. Exposto pro cliente
+ * quando o gerador retorna zero — mostra a causa real em vez das
+ * três causas genéricas.
+ */
+export type DiagnosticoGerador = {
+  qtd_placas_calculada: number
+  pot_cc_real_kwp: number
+  pot_ca_limite_celesc_kw: number
+  pot_ca_limite_disjuntor_kw: number
+  pot_ca_max_kw: number
+  inversores_total: number
+  inversores_com_estoque: number         // apos filtro disponivel_estoque
+  inversores_apos_127v: number           // apos filtro tensao 127V
+  inversores_mono: number                // classificados como SIW200/300
+  inversores_tri: number                 // SIW400/500
+  inversores_micro: number               // SIW100
+  inversores_nao_classificados: number   // com estoque mas fora do padrão SIW1/2/3/4/5xx
+  amostra_nao_classificados: string[]    // até 5 modelos pra mostrar na UI
+  candidatos_gerados: number             // combinações tentadas
+  rejeitados_por_fci: number
+  rejeitados_por_celesc: number
+  rejeitados_por_desbalanceamento: number
+  rejeitados_por_micro_placas: number
+  kits_finais: number
+}
+
 export type KitSugerido = {
   id: string                    // chave única
   nome: string                  // "Kit A: 1 tri equilibrado"
@@ -128,7 +155,7 @@ export function sugerirKits(input: {
   potCcAlvoKwp: number
   inversores: InversorInput[]
   tipoTelhado?: string
-}): KitSugerido[] {
+}): { kits: KitSugerido[]; diagnostico: DiagnosticoGerador } {
   const { placa, padrao, potCcAlvoKwp, inversores, tipoTelhado } = input
 
   // 1. Calcular limites de potência CA
@@ -141,11 +168,40 @@ export function sugerirKits(input: {
   const potCcRealKwp = (qtdPlacas * placa.potencia_wp) / 1000
 
   // 3. Filtrar inversores válidos por fase E por tensão (excluir 127V)
-  const inversoresValidos = inversores
-    .filter(i => i.disponivel_estoque)
-    .filter(i => !isTensao127(i.tensao_desc))
+  const comEstoque = inversores.filter(i => i.disponivel_estoque)
+  const inversoresValidos = comEstoque.filter(i => !isTensao127(i.tensao_desc))
 
   const inversoresPorTipo = agruparPorTipo(inversoresValidos, padrao.tipo_ligacao)
+
+  // Descobre quais inversores COM ESTOQUE ficaram fora dos 3 baldes
+  // (modelo não bate SIW1xx / 2xx / 3xx / 4xx / 5xx). Isso é o motivo
+  // silencioso mais comum quando o cadastro manual traz nome comercial.
+  const naoClassificados = inversoresValidos.filter(i => {
+    const m = i.modelo || ''
+    return !LINHAS_ONGRID.micro.test(m) && !LINHAS_ONGRID.mono.test(m) && !LINHAS_ONGRID.tri.test(m)
+  })
+
+  const diagnostico: DiagnosticoGerador = {
+    qtd_placas_calculada: qtdPlacas,
+    pot_cc_real_kwp: potCcRealKwp,
+    pot_ca_limite_celesc_kw: potCaLimiteCelesc,
+    pot_ca_limite_disjuntor_kw: potCaLimiteDisjuntor,
+    pot_ca_max_kw: potCaMax,
+    inversores_total: inversores.length,
+    inversores_com_estoque: comEstoque.length,
+    inversores_apos_127v: inversoresValidos.length,
+    inversores_mono: inversoresPorTipo.mono.length,
+    inversores_tri: inversoresPorTipo.tri.length,
+    inversores_micro: inversoresPorTipo.micro.length,
+    inversores_nao_classificados: naoClassificados.length,
+    amostra_nao_classificados: naoClassificados.slice(0, 5).map(i => `${i.codigo_weg} · ${i.modelo}`),
+    candidatos_gerados: 0,
+    rejeitados_por_fci: 0,
+    rejeitados_por_celesc: 0,
+    rejeitados_por_desbalanceamento: 0,
+    rejeitados_por_micro_placas: 0,
+    kits_finais: 0,
+  }
 
   // 4. Gerar candidatos
   const candidatos: KitSugerido[] = []
@@ -164,6 +220,7 @@ export function sugerirKits(input: {
         categoria: 'string',
         idPrefix: `mono-${inv.codigo_weg}-x${qtd}`,
         tipoTelhado,
+        diagnostico,
       })
       if (kit) candidatos.push(kit)
     }
@@ -184,6 +241,7 @@ export function sugerirKits(input: {
           categoria: 'string',
           idPrefix: `tri-${inv.codigo_weg}-x${qtd}`,
           tipoTelhado,
+          diagnostico,
         })
         if (kit) candidatos.push(kit)
       }
@@ -209,6 +267,7 @@ export function sugerirKits(input: {
           idPrefix: `${qtd}mono-${inv.codigo_weg}`,
           tipoTelhado,
           distribuirEntreFases: true,
+          diagnostico,
         })
         if (kit) candidatos.push(kit)
       }
@@ -235,6 +294,7 @@ export function sugerirKits(input: {
         idPrefix: `micro-${inv.codigo_weg}-x${qtd}`,
         tipoTelhado,
         distribuirEntreFases: padrao.tipo_ligacao !== 'monofasico',
+        diagnostico,
       })
       if (kit) candidatos.push(kit)
     }
@@ -255,11 +315,15 @@ export function sugerirKits(input: {
   }
 
   // 7. Nomear com racional e retornar top 6
-  return unicos.slice(0, 6).map((k, idx) => ({
+  const kits = unicos.slice(0, 6).map((k, idx) => ({
     ...k,
     nome: gerarNomeKit(k, idx),
     racional: gerarRacional(k),
   }))
+
+  diagnostico.kits_finais = kits.length
+
+  return { kits, diagnostico }
 }
 
 // ==========================================================
@@ -278,24 +342,36 @@ function tentarComposicao(args: {
   idPrefix: string
   distribuirEntreFases?: boolean
   tipoTelhado?: string
+  diagnostico?: DiagnosticoGerador
 }): KitSugerido | null {
-  const { placa, qtdPlacas, potCcRealKwp, inversorPrincipal, qtdInversorPrincipal, padrao, potCaMax, categoria, idPrefix, tipoTelhado } = args
+  const { placa, qtdPlacas, potCcRealKwp, inversorPrincipal, qtdInversorPrincipal, padrao, potCaMax, categoria, idPrefix, tipoTelhado, diagnostico } = args
+
+  if (diagnostico) diagnostico.candidatos_gerados++
 
   const potCaTotal = inversorPrincipal.potencia_kw * qtdInversorPrincipal
   const fci = (potCcRealKwp / potCaTotal) * 100
 
   // FCI: aceita 80-145% (100-145 normal, 80-99 subdimensionado "kit de entrada")
-  if (fci < FCI_MIN_SUBDIMENSIONADO || fci > FCI_MAX_ACEITAVEL) return null
+  if (fci < FCI_MIN_SUBDIMENSIONADO || fci > FCI_MAX_ACEITAVEL) {
+    if (diagnostico) diagnostico.rejeitados_por_fci++
+    return null
+  }
   const isSubdimensionado = fci < FCI_MIN_ACEITAVEL
 
   // Limite CELESC pra rede monofásica: 8 kW CA total
-  if (padrao.tipo_ligacao === 'monofasico' && potCaTotal > CELESC_LIMITE_MONO_KW) return null
+  if (padrao.tipo_ligacao === 'monofasico' && potCaTotal > CELESC_LIMITE_MONO_KW) {
+    if (diagnostico) diagnostico.rejeitados_por_celesc++
+    return null
+  }
 
   // MICROINVERSOR — limite físico de placas por unidade
   // SIW100 series suporta até 4 módulos por microinversor
   if (categoria === 'microinversor') {
     const MICRO_MAX_PLACAS_POR_UN = 4
-    if (qtdPlacas > qtdInversorPrincipal * MICRO_MAX_PLACAS_POR_UN) return null
+    if (qtdPlacas > qtdInversorPrincipal * MICRO_MAX_PLACAS_POR_UN) {
+      if (diagnostico) diagnostico.rejeitados_por_micro_placas++
+      return null
+    }
   }
 
   // Desbalanceamento (só faz sentido se >1 inversor em bi/tri usando MONO)
@@ -310,12 +386,18 @@ function tentarComposicao(args: {
     const maxFase = Math.max(...porFase)
     const minFase = Math.min(...porFase) // sem filtro de zeros!
     desbalanceamento = maxFase - minFase
-    if (desbalanceamento > DESBALANCEAMENTO_MAX_KW) return null
+    if (desbalanceamento > DESBALANCEAMENTO_MAX_KW) {
+      if (diagnostico) diagnostico.rejeitados_por_desbalanceamento++
+      return null
+    }
   }
   // Se usa 1 único inversor mono numa rede bi/tri, o desbalanceamento é a própria pot dele
   if (usaMonoEmBiTri && qtdInversorPrincipal === 1) {
     desbalanceamento = inversorPrincipal.potencia_kw
-    if (desbalanceamento > DESBALANCEAMENTO_MAX_KW) return null
+    if (desbalanceamento > DESBALANCEAMENTO_MAX_KW) {
+      if (diagnostico) diagnostico.rejeitados_por_desbalanceamento++
+      return null
+    }
   }
 
   // Verificar necessidade de upgrade do disjuntor de entrada

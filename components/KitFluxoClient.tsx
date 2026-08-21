@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useTransition } from 'react'
 import { salvarKitAction } from '@/app/projetos/[id]/kit/actions'
-import { sugerirKits, type KitSugerido } from '@/lib/kit-auto/sugerir-kits'
+import { sugerirKits, type KitSugerido, type DiagnosticoGerador } from '@/lib/kit-auto/sugerir-kits'
 
 type ProdutoRow = {
   id: string
@@ -89,9 +89,12 @@ export function KitFluxoClient({
   const placasVisiveis = mostrarIndisponiveis ? placas : placas.filter(p => p.disponivel_estoque)
   const placaEscolhida = placas.find(p => p.id === placaId)
 
-  const kitsSugeridos = useMemo<KitSugerido[]>(() => {
-    if (!placaEscolhida) return []
-    return sugerirKits({
+  const { kitsSugeridos, diagnostico } = useMemo<{
+    kitsSugeridos: KitSugerido[]
+    diagnostico: DiagnosticoGerador | null
+  }>(() => {
+    if (!placaEscolhida) return { kitsSugeridos: [], diagnostico: null }
+    const r = sugerirKits({
       placa: {
         id: placaEscolhida.id,
         codigo_weg: placaEscolhida.codigo_weg,
@@ -121,7 +124,8 @@ export function KitFluxoClient({
         url_datasheet: i.url_datasheet,
       })),
     })
-  }, [placaEscolhida, potCcAlvo, padrao, inversores])
+    return { kitsSugeridos: r.kits, diagnostico: r.diagnostico }
+  }, [placaEscolhida, potCcAlvo, padrao, inversores, tipoTelhado])
 
   function handleConfirmar() {
     if (!kitEscolhidoId) {
@@ -269,17 +273,7 @@ export function KitFluxoClient({
           </h2>
 
           {kitsSugeridos.length === 0 ? (
-            <div className="p-6 bg-coral/10 border border-coral/30 rounded-lg text-sm text-coral">
-              ❌ Nenhum kit válido pra essa combinação. Motivos possíveis:
-              <ul className="mt-2 ml-4 list-disc text-xs text-white/80 space-y-1">
-                <li>Potência alvo excede limite CELESC monofásico (8 kW)</li>
-                <li>Disjuntor de entrada insuficiente pra suportar essa potência</li>
-                <li>Inversores compatíveis fora de estoque</li>
-              </ul>
-              <p className="mt-2 text-xs text-white/60">
-                Ajuste a potência CC alvo acima ou selecione outra placa.
-              </p>
-            </div>
+            <DiagnosticoNenhumKit diagnostico={diagnostico} tipoLigacao={padrao.tipo_ligacao} />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {kitsSugeridos.map(kit => (
@@ -517,4 +511,126 @@ function formatarLigacao(v?: string): string {
     trifasico: 'Trifásico',
   }
   return m[(v || '').toLowerCase()] || v || '—'
+}
+
+/**
+ * Bloco de diagnóstico exibido quando o gerador não conseguiu montar
+ * nenhum kit. Traduz os contadores por etapa em uma causa raiz específica.
+ */
+function DiagnosticoNenhumKit({ diagnostico, tipoLigacao }: {
+  diagnostico: DiagnosticoGerador | null
+  tipoLigacao: 'monofasico' | 'bifasico' | 'trifasico' | string
+}) {
+  if (!diagnostico) {
+    return (
+      <div className="p-6 bg-coral/10 border border-coral/30 rounded-lg text-sm text-coral">
+        Escolha uma placa acima pra o gerador começar a montar kits.
+      </div>
+    )
+  }
+  const d = diagnostico
+
+  // Identifica a causa raiz mais provável
+  let causaTitulo = 'Nenhum kit válido pra essa combinação.'
+  let causaMotivo = ''
+  const isMono = tipoLigacao === 'monofasico'
+  const isTri = tipoLigacao === 'trifasico'
+  const grupoRelevante = isTri ? d.inversores_tri + d.inversores_mono : isMono ? d.inversores_mono : d.inversores_mono
+
+  if (d.inversores_total === 0) {
+    causaMotivo = 'O catálogo não tem NENHUM inversor cadastrado. Cadastre inversores em /admin/catalogo antes de gerar kits.'
+  } else if (d.inversores_com_estoque === 0) {
+    causaMotivo = `Todos os ${d.inversores_total} inversores do catálogo estão marcados como fora de estoque. Atualize a disponibilidade em /admin/catalogo.`
+  } else if (d.inversores_apos_127v === 0) {
+    causaMotivo = `Todos os ${d.inversores_com_estoque} inversores em estoque são 127V — CELESC não atende essa tensão. Cadastre inversores 220V/380V.`
+  } else if (grupoRelevante === 0) {
+    causaMotivo = `Você tem ${d.inversores_apos_127v} inversores em estoque, mas nenhum é compatível com rede ${tipoLigacao}. Faltam inversores ${isMono ? 'monofásicos (SIW200/SIW300)' : isTri ? 'monofásicos (SIW200/SIW300) ou trifásicos (SIW400/SIW500)' : 'monofásicos (SIW200/SIW300)'} no cadastro.`
+  } else if (d.inversores_nao_classificados > 0 && d.candidatos_gerados === 0) {
+    causaMotivo = `Você tem ${d.inversores_nao_classificados} inversor(es) em estoque mas o campo "modelo" deles não bate com o padrão WEG (SIW100/SIW200/SIW300/SIW400/SIW500). O gerador classifica pelo modelo, não pelo código. Ajuste o modelo em /admin/catalogo.`
+  } else if (d.candidatos_gerados === 0) {
+    causaMotivo = 'O gerador não conseguiu montar nenhuma combinação candidata. Verifique se os inversores em estoque têm potência preenchida em specs.potencia_kw.'
+  } else if (d.rejeitados_por_celesc > 0 && d.rejeitados_por_celesc === d.candidatos_gerados) {
+    causaMotivo = `Todas as ${d.candidatos_gerados} combinações excederam o limite CELESC de ${d.pot_ca_limite_celesc_kw} kW pra rede ${tipoLigacao}. Reduza a potência CC alvo ou escolha uma placa de menor Wp.`
+  } else if (d.rejeitados_por_fci > 0 && d.rejeitados_por_fci === d.candidatos_gerados) {
+    causaMotivo = `Todas as ${d.candidatos_gerados} combinações ficaram fora do FCI aceitável (80% a 145%). A potência CC alvo (${d.pot_cc_real_kwp.toFixed(2)} kWp) não bate com as potências CA disponíveis. Ajuste a potência alvo ou cadastre inversor de outra faixa.`
+  } else if (d.rejeitados_por_desbalanceamento > 0) {
+    causaMotivo = `Todas as combinações rejeitaram por desbalanceamento entre fases > 5 kW. Cadastre mais opções de inversor ou reduza a potência CC alvo.`
+  } else {
+    causaMotivo = 'As combinações candidatas foram rejeitadas por múltiplas regras. Revise potência CC alvo e disponibilidade em estoque.'
+  }
+
+  return (
+    <div className="p-5 bg-coral/10 border border-coral/30 rounded-lg text-sm">
+      <p className="text-coral font-bold mb-2">❌ {causaTitulo}</p>
+      <p className="text-white/90 leading-relaxed mb-4">{causaMotivo}</p>
+
+      <details className="text-xs text-white/70">
+        <summary className="cursor-pointer text-white/80 font-semibold mb-2 hover:text-white">
+          🔍 Ver diagnóstico técnico completo
+        </summary>
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 pl-4 border-l border-white/10">
+          <span className="text-white/50">Qtd placas calculada:</span>
+          <span className="text-white tabular-nums">{d.qtd_placas_calculada}</span>
+
+          <span className="text-white/50">Pot. CC real:</span>
+          <span className="text-white tabular-nums">{d.pot_cc_real_kwp.toFixed(2)} kWp</span>
+
+          <span className="text-white/50">Limite CELESC ({tipoLigacao}):</span>
+          <span className="text-white tabular-nums">{d.pot_ca_limite_celesc_kw} kW</span>
+
+          <span className="text-white/50">Limite disjuntor entrada:</span>
+          <span className="text-white tabular-nums">{d.pot_ca_limite_disjuntor_kw.toFixed(1)} kW</span>
+
+          <span className="text-white/50 col-span-2 border-t border-white/10 pt-2 mt-2 font-semibold text-white/70">Filtros aplicados</span>
+
+          <span className="text-white/50">Inversores no catálogo:</span>
+          <span className="text-white tabular-nums">{d.inversores_total}</span>
+
+          <span className="text-white/50">→ com estoque:</span>
+          <span className={`tabular-nums ${d.inversores_com_estoque === 0 ? 'text-coral' : 'text-white'}`}>{d.inversores_com_estoque}</span>
+
+          <span className="text-white/50">→ após excluir 127V:</span>
+          <span className="text-white tabular-nums">{d.inversores_apos_127v}</span>
+
+          <span className="text-white/50">→ classificados mono (SIW2/3xx):</span>
+          <span className="text-white tabular-nums">{d.inversores_mono}</span>
+
+          <span className="text-white/50">→ classificados tri (SIW4/5xx):</span>
+          <span className="text-white tabular-nums">{d.inversores_tri}</span>
+
+          <span className="text-white/50">→ classificados micro (SIW1xx):</span>
+          <span className="text-white tabular-nums">{d.inversores_micro}</span>
+
+          {d.inversores_nao_classificados > 0 && (
+            <>
+              <span className="text-coral">⚠️ Não classificados:</span>
+              <span className="text-coral tabular-nums">{d.inversores_nao_classificados}</span>
+              <div className="col-span-2 text-[11px] text-white/50 pl-4 border-l border-coral/30 mt-1">
+                {d.amostra_nao_classificados.map((s, i) => (
+                  <div key={i}>· {s}</div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <span className="text-white/50 col-span-2 border-t border-white/10 pt-2 mt-2 font-semibold text-white/70">Composições testadas</span>
+
+          <span className="text-white/50">Combinações geradas:</span>
+          <span className="text-white tabular-nums">{d.candidatos_gerados}</span>
+
+          <span className="text-white/50">→ rejeitadas por FCI:</span>
+          <span className="text-white tabular-nums">{d.rejeitados_por_fci}</span>
+
+          <span className="text-white/50">→ rejeitadas por CELESC:</span>
+          <span className="text-white tabular-nums">{d.rejeitados_por_celesc}</span>
+
+          <span className="text-white/50">→ rejeitadas por desbalanceamento:</span>
+          <span className="text-white tabular-nums">{d.rejeitados_por_desbalanceamento}</span>
+
+          <span className="text-white/50">→ rejeitadas por micro/placas:</span>
+          <span className="text-white tabular-nums">{d.rejeitados_por_micro_placas}</span>
+        </div>
+      </details>
+    </div>
+  )
 }
