@@ -100,6 +100,11 @@ export function SimuladorPropostaEmbutido({
   const cidadeAtual = cidades.find((c) => c.id === cidadeId)
   const kmDeslocamento = cidadeAtual?.km ?? 0
 
+  // Todo dropdown do sistema é A→Z por padrão — regra fixa.
+  const cidadesOrdenadas = cidades
+    .slice()
+    .sort((a, b) => a.cidade.localeCompare(b.cidade, 'pt-BR'))
+
   const entradas: EntradasLimpeza = {
     qtd_modulos: qtdPlacas,
     tipo_telhado: tipoTelhado,
@@ -204,7 +209,7 @@ export function SimuladorPropostaEmbutido({
             Escolhe abaixo ou pede pro admin cadastrar em <code className="text-sol">/admin/precificacao/cidades</code>.
           </p>
           <select value={cidadeId} onChange={(e) => setCidadeId(e.target.value)} className="input">
-            {cidades.map((c) => (
+            {cidadesOrdenadas.map((c) => (
               <option key={c.id} value={c.id} style={OPT_STYLE}>{c.cidade}/{c.uf} · {c.km}km</option>
             ))}
           </select>
@@ -216,7 +221,7 @@ export function SimuladorPropostaEmbutido({
         <details className="p-2.5 bg-white/[0.02] border border-white/10 rounded-lg text-xs">
           <summary className="text-white/50 cursor-pointer">Trocar cidade (opcional)</summary>
           <select value={cidadeId} onChange={(e) => setCidadeId(e.target.value)} className="input mt-2">
-            {cidades.map((c) => (
+            {cidadesOrdenadas.map((c) => (
               <option key={c.id} value={c.id} style={OPT_STYLE}>{c.cidade}/{c.uf} · {c.km}km</option>
             ))}
           </select>

@@ -21,7 +21,7 @@ export function BibliotecaClient({
   const categorias = useMemo(() => {
     const set = new Set<string>()
     criativos.forEach((c) => c.categoria && set.add(c.categoria))
-    return Array.from(set).sort()
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }, [criativos])
 
   const filtrados = useMemo(() => {

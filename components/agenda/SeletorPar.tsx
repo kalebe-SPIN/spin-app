@@ -27,6 +27,8 @@ export function SeletorPar({
 
   if (pares.length === 0) return null
 
+  const paresOrdenados = pares.slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+
   return (
     <div className="flex items-center gap-2">
       <span className="text-[10px] uppercase tracking-wider text-white/40 font-bold">Vendo</span>
@@ -36,7 +38,7 @@ export function SeletorPar({
         className="bg-white/5 border border-white/15 text-white text-sm px-3 py-1.5 rounded-lg"
       >
         <option value={meuId} className="bg-noite">👤 Minha agenda — {meuNome.split(' ')[0]}</option>
-        {pares.map((p) => (
+        {paresOrdenados.map((p) => (
           <option key={p.id} value={p.id} className="bg-noite">
             {p.role === 'vendedor_servicos' ? '🧽' : '🚐'} {p.nome} ({rotuloRole(p.role)})
           </option>
