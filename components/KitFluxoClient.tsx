@@ -843,7 +843,7 @@ function DiagnosticoNenhumKit({ diagnostico, tipoLigacao }: {
   } else if (d.rejeitados_por_celesc > 0 && d.rejeitados_por_celesc === d.candidatos_gerados) {
     causaMotivo = `Todas as ${d.candidatos_gerados} combinações excederam o limite CELESC de ${d.pot_ca_limite_celesc_kw} kW pra rede ${tipoLigacao}. Reduza a potência CC alvo ou escolha uma placa de menor Wp.`
   } else if (d.rejeitados_por_fci > 0 && d.rejeitados_por_fci === d.candidatos_gerados) {
-    causaMotivo = `Todas as ${d.candidatos_gerados} combinações ficaram fora do FCI aceitável (80% a 145%). A potência CC alvo (${d.pot_cc_real_kwp.toFixed(2)} kWp) não bate com as potências CA disponíveis. Ajuste a potência alvo ou cadastre inversor de outra faixa.`
+    causaMotivo = `Todas as ${d.candidatos_gerados} combinações ficaram fora do FCI aceitável (50% a 200%). A potência CC alvo (${d.pot_cc_real_kwp.toFixed(2)} kWp) não bate com as potências CA disponíveis (nenhum inversor entre ~${(d.pot_cc_real_kwp / 2).toFixed(1)} e ~${(d.pot_cc_real_kwp / 0.5).toFixed(1)} kW cadastrado). Ajuste a potência alvo ou cadastre inversor SIW de outra faixa. Se você já tem SIW no catálogo, confira se a subcategoria está setada como "inversor_string" em /admin/catalogo.`
   } else if (d.rejeitados_por_desbalanceamento > 0) {
     causaMotivo = `Todas as combinações rejeitaram por desbalanceamento entre fases > 5 kW. Cadastre mais opções de inversor ou reduza a potência CC alvo.`
   } else {
