@@ -66,13 +66,16 @@ export default async function CatalogoAdminPage() {
       .order('created_at', { ascending: false })
       .limit(10))
 
-  // Traz todos produtos (ativos + inativos) — cliente decide filtro
+  // Traz todos produtos (ativos + inativos) — cliente decide filtro.
+  // Limit alto pra cobrir todo o catálogo (~500 hoje) — o filtro é
+  // feito 100% no cliente, se o limit corta antes categorias inteiras
+  // somem do dropdown "de X" mesmo aparecendo nos cards de contagem.
   const produtosSemDatasheet = await safeData(() =>
     supabase.from('produtos')
       .select('id, codigo_weg, modelo, categoria, subcategoria, url_datasheet, url_imagem, ativo, specs')
       .order('categoria')
       .order('modelo')
-      .limit(200))
+      .limit(2000))
 
   const migrationPendente = totalProdutos > 0 && produtosSemDatasheet.length === 0
 
