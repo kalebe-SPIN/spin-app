@@ -185,14 +185,27 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
   }
 
   const [filtroCategoria, setFiltroCategoria] = useState<string>('todos')
+  const [filtroSubcategoria, setFiltroSubcategoria] = useState<string>('todas')
   const [abrindoNovoProduto, setAbrindoNovoProduto] = useState(false)
   const [abrindoDatasheet, setAbrindoDatasheet] = useState(false)
   const [filtroDatasheet, setFiltroDatasheet] = useState<'todos' | 'com' | 'sem'>('todos')
   const [filtroAtivo, setFiltroAtivo] = useState<'todos' | 'ativos' | 'inativos'>('ativos')
   const [busca, setBusca] = useState('')
 
+  // Subcategorias disponíveis pra categoria filtrada, ordenadas A→Z
+  const subcategoriasDaCat = filtroCategoria === 'todos'
+    ? []
+    : Array.from(
+        new Set(
+          produtos
+            .filter(p => p.categoria === filtroCategoria && p.subcategoria)
+            .map(p => p.subcategoria as string)
+        )
+      ).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
   const produtosVisiveis = produtos.filter(p => {
     if (filtroCategoria !== 'todos' && p.categoria !== filtroCategoria) return false
+    if (filtroSubcategoria !== 'todas' && p.subcategoria !== filtroSubcategoria) return false
     if (filtroDatasheet === 'com' && !p.url_datasheet) return false
     if (filtroDatasheet === 'sem' && p.url_datasheet) return false
     if (filtroAtivo === 'ativos' && !p.ativo) return false
@@ -392,7 +405,10 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
         <div className="flex flex-wrap gap-3 mb-4">
           <select
             value={filtroCategoria}
-            onChange={e => setFiltroCategoria(e.target.value)}
+            onChange={e => {
+              setFiltroCategoria(e.target.value)
+              setFiltroSubcategoria('todas')
+            }}
             className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white"
           >
             <option style={OPT_STYLE} value="todos">Todas categorias</option>
@@ -423,6 +439,22 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
               <option style={OPT_STYLE} value="outro">Outro</option>
             </optgroup>
           </select>
+
+          {subcategoriasDaCat.length > 1 && (
+            <select
+              value={filtroSubcategoria}
+              onChange={e => setFiltroSubcategoria(e.target.value)}
+              className="px-3 py-2 bg-noite border border-sol/30 rounded text-sm text-white"
+              title="Filtrar por subcategoria"
+            >
+              <option style={OPT_STYLE} value="todas">Subcategoria: Todas</option>
+              {subcategoriasDaCat.map(s => (
+                <option key={s} style={OPT_STYLE} value={s}>
+                  {s.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          )}
 
           <select
             value={filtroDatasheet}
@@ -958,7 +990,19 @@ function ProdutoRow({
         )}
 
         <span className="text-[10px] font-mono text-white/40 w-20 shrink-0">{produto.codigo_weg}</span>
-        <span className="text-white/60 w-24 text-[10px] uppercase shrink-0">{produto.categoria}</span>
+        <div className="w-40 shrink-0 flex flex-col leading-tight">
+          <span className="text-white/70 text-[10px] uppercase tracking-wide">{produto.categoria}</span>
+          {produto.subcategoria && produto.subcategoria !== 'sem_categoria' && (
+            <span className={`text-[9px] uppercase tracking-wide ${
+              produto.subcategoria === 'inversor_bombeamento' ? 'text-coral/80'
+              : produto.subcategoria === 'inversor_string' ? 'text-sol/80'
+              : produto.subcategoria === 'microinversor' ? 'text-weg-azul/80'
+              : 'text-white/40'
+            }`}>
+              {produto.subcategoria.replace(/_/g, ' ')}
+            </span>
+          )}
+        </div>
         <span className="text-white flex-1 truncate">{produto.modelo}</span>
 
         {/* Botão Editar */}

@@ -101,17 +101,17 @@ WHERE p.id = t.id
 -- ─── 8. CABOS (CC solar vs CA) ────────────────────────────────────────────
 UPDATE public.produtos p SET
   subcategoria = 'cabo',
-  categoria = CASE
+  categoria = (CASE
     WHEN t.texto ~ 'cabo (solar|fotov|cc|dc|módulo|modulo)' THEN 'cabo_cc'
     ELSE 'cabo_ca'
-  END
+  END)::categoria_principal
 FROM public._produtos_texto t
 WHERE p.id = t.id
   AND public._sub_vazia(t.subcategoria)
   AND t.texto ~ '^cabo |cabo (elétr|eletr|solar|de energia|de força|de forca|flex)';
 
 -- ─── 9. CONECTOR (MC4 e outros) ───────────────────────────────────────────
-UPDATE public.produtos p SET subcategoria = 'conector', categoria = 'conector'
+UPDATE public.produtos p SET subcategoria = 'conector'::categoria_principal, categoria = 'conector'
 FROM public._produtos_texto t
 WHERE p.id = t.id
   AND public._sub_vazia(t.subcategoria)
@@ -138,7 +138,7 @@ WHERE p.id = t.id
   AND (t.modelo_lc ~ '^jbw' OR t.texto ~ 'caixa de junção|caixa de juncao');
 
 -- ─── 12. DPS (protetor contra surtos) ─────────────────────────────────────
-UPDATE public.produtos p SET subcategoria = 'dps', categoria = 'dps'
+UPDATE public.produtos p SET subcategoria = 'dps'::categoria_principal, categoria = 'dps'
 FROM public._produtos_texto t
 WHERE p.id = t.id
   AND public._sub_vazia(t.subcategoria)
@@ -194,7 +194,7 @@ WHERE p.id = t.id
   AND (t.modelo_lc ~ '^wemob' OR t.texto ~ 'wallbox|estação (de )?recarga|recarga (ve|veíc|veic|elétr|eletr)');
 
 -- ─── 20. FRETE ────────────────────────────────────────────────────────────
-UPDATE public.produtos p SET subcategoria = 'frete', categoria = 'frete'
+UPDATE public.produtos p SET subcategoria = 'frete'::categoria_principal, categoria = 'frete'
 FROM public._produtos_texto t
 WHERE p.id = t.id
   AND public._sub_vazia(t.subcategoria)
