@@ -30,7 +30,7 @@ export default async function ProjetosPage() {
       id, codigo, status, tipo_projeto,
       cliente_id, cliente_razao_social, cliente_cpf_cnpj,
       uc_geradora, data_inicio,
-      kit_selecionado, pv_total, consumo_medio_kwh,
+      kit_selecionado,
       created_at, updated_at, status_atualizado_em
     `)
     .order('created_at', { ascending: false })
@@ -114,7 +114,6 @@ function ClienteBloco({ grupo }: {
   const proj0 = grupo.projetos[0]
   const cpf = proj0?.cliente_cpf_cnpj
   const uc = grupo.projetos.find(p => p.uc_geradora)?.uc_geradora
-  const consumo = grupo.projetos.find(p => p.consumo_medio_kwh)?.consumo_medio_kwh
   const tipoProjeto = proj0?.tipo_projeto
 
   return (
@@ -148,7 +147,7 @@ function ClienteBloco({ grupo }: {
         </div>
 
         {/* Dados compartilhados — só aparecem se ao menos um preenchido */}
-        {(uc || consumo || tipoProjeto) && (
+        {(uc || tipoProjeto) && (
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] pt-2 border-t border-white/5">
             {tipoProjeto && (
               <span className="text-white/60">
@@ -159,11 +158,6 @@ function ClienteBloco({ grupo }: {
             {uc && (
               <span className="text-white/60">
                 <span className="text-white/40">UC:</span> {uc}
-              </span>
-            )}
-            {consumo && (
-              <span className="text-white/60">
-                <span className="text-white/40">Consumo médio:</span> {Math.round(consumo)} kWh/mês
               </span>
             )}
           </div>
@@ -192,7 +186,8 @@ function ProjetoLinha({ projeto }: { projeto: any }) {
   const modeloPlaca = kit.placa?.modelo
   const modeloInv = kit.inversor?.modelo
   const qtdPlacas = kit.qtd_placas
-  const valor = projeto.pv_total ? Number(projeto.pv_total) : null
+  // Valor da proposta pode estar no kit ou vir do orçamento futuro
+  const valor = kit.preco_total_kit_weg ? Number(kit.preco_total_kit_weg) : null
 
   return (
     <Link
