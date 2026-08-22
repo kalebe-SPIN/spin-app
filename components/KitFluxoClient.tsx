@@ -97,6 +97,9 @@ export function KitFluxoClient({
   const [manualInversorId, setManualInversorId] = useState<string | null>(null)
   const [manualQtdInv, setManualQtdInv] = useState<number>(1)
 
+  // Filtro tipo de inversor pra kits sugeridos
+  const [filtroTipoInversor, setFiltroTipoInversor] = useState<'todos' | 'micro' | 'string'>('todos')
+
   const placasVisiveis = mostrarIndisponiveis ? placas : placas.filter(p => p.disponivel_estoque)
   const placaEscolhida = placas.find(p => p.id === placaId)
 
@@ -337,20 +340,65 @@ export function KitFluxoClient({
             <span className="text-xs font-normal text-white/40">({kitsSugeridos.length} sugeridos)</span>
           </h2>
 
-          {kitsSugeridos.length === 0 ? (
-            <DiagnosticoNenhumKit diagnostico={diagnostico} tipoLigacao={padrao.tipo_ligacao} />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {kitsSugeridos.map(kit => (
-                <KitSugeridoCard
-                  key={kit.id}
-                  kit={kit}
-                  selecionado={kitEscolhidoId === kit.id}
-                  onSelect={() => setKitEscolhidoId(kit.id)}
-                />
-              ))}
-            </div>
-          )}
+          {kitsSugeridos.length > 0 && (() => {
+            const qtdMicro = kitsSugeridos.filter(k => k.categoria === 'microinversor').length
+            const qtdString = kitsSugeridos.filter(k => k.categoria === 'string').length
+            if (qtdMicro === 0 || qtdString === 0) return null
+            return (
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Tipo de inversor:</span>
+                {(['todos', 'micro', 'string'] as const).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => { setFiltroTipoInversor(t); setKitEscolhidoId(null) }}
+                    className={`text-xs font-bold px-3 py-1.5 rounded-full border transition ${
+                      filtroTipoInversor === t
+                        ? 'bg-sol text-noite border-sol'
+                        : 'bg-white/[0.03] text-white/70 border-white/15 hover:border-white/30'
+                    }`}
+                  >
+                    {t === 'todos' ? `Todos (${qtdMicro + qtdString})`
+                      : t === 'micro' ? `🔀 Microinversor (${qtdMicro})`
+                      : `⚡ String (${qtdString})`}
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
+
+          {(() => {
+            const kitsFiltrados = filtroTipoInversor === 'todos'
+              ? kitsSugeridos
+              : kitsSugeridos.filter(k =>
+                  filtroTipoInversor === 'micro'
+                    ? k.categoria === 'microinversor'
+                    : k.categoria === 'string'
+                )
+
+            if (kitsSugeridos.length === 0) {
+              return <DiagnosticoNenhumKit diagnostico={diagnostico} tipoLigacao={padrao.tipo_ligacao} />
+            }
+            if (kitsFiltrados.length === 0) {
+              return (
+                <p className="text-sm text-white/50 italic p-6 text-center bg-white/[0.02] border border-white/10 rounded-lg">
+                  Nenhum kit desse tipo. Clica em "Todos" pra ver as outras opções.
+                </p>
+              )
+            }
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {kitsFiltrados.map(kit => (
+                  <KitSugeridoCard
+                    key={kit.id}
+                    kit={kit}
+                    selecionado={kitEscolhidoId === kit.id}
+                    onSelect={() => setKitEscolhidoId(kit.id)}
+                  />
+                ))}
+              </div>
+            )
+          })()}
 
           {/* Modo manual — escolho eu mesmo placa + inversor */}
           <div className="mt-6 pt-4 border-t border-white/10">
