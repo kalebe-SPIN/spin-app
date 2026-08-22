@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { fmtNum } from '@/lib/formatters'
 import { createClient } from '@/lib/supabase/server'
 import { METAS, MODULOS_MIN, FIXO_MENSAL, calcularComissao, MULTIPLICADOR_PCT } from '@/lib/proposta-om'
 
@@ -246,7 +247,7 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
                 dados={porSemana.map(s => ({ data: s.semana, qtd: s.valor }))}
                 altura={90}
                 corBarra="#0f766e"
-                formatValor={(v) => 'R$ ' + (v / 1000).toFixed(1) + 'k'}
+                formatValor={(v) => 'R$ ' + fmtNum(v / 1000, 1) + 'k'}
               />
             </div>
           </div>
@@ -302,7 +303,7 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
                 <div className="space-y-1">
                   {comissao.faixas.map((f, i) => (
                     <div key={i} className="flex items-center justify-between text-[11px]">
-                      <span className="text-white/60">{f.label} <span className="text-sol">({(f.pct * 100).toFixed(0)}%)</span></span>
+                      <span className="text-white/60">{f.label} <span className="text-sol">({fmtNum(f.pct * 100, 0)}%)</span></span>
                       <span className="text-white tabular-nums">{fmtBRL(f.valor)}</span>
                     </div>
                   ))}

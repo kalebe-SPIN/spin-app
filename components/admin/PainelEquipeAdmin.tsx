@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import { fmtNum } from '@/lib/formatters'
 import { createBrowserClient } from '@supabase/ssr'
 import {
   buscarPainelEquipeAction,
@@ -376,7 +377,7 @@ function DeltaLinha({ rotulo, atual, anterior, formatador }: {
       <div className="flex items-baseline justify-between text-xs">
         <span className="text-white/60">{rotulo}</span>
         <span className={`font-bold tabular-nums ${cor}`}>
-          {sinal} {Math.abs(delta).toFixed(0)}%
+          {sinal} {fmtNum(Math.abs(delta), 0)}%
         </span>
       </div>
       <div className="flex items-baseline justify-between text-[11px] mt-0.5">

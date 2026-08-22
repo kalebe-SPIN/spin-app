@@ -3,6 +3,7 @@
 import { useState, useMemo, useTransition } from 'react'
 import { salvarKitAction } from '@/app/projetos/[id]/kit/actions'
 import { sugerirKits, type KitSugerido, type DiagnosticoGerador } from '@/lib/kit-auto/sugerir-kits'
+import { fmtNum } from '@/lib/formatters'
 
 type ProdutoRow = {
   id: string
@@ -237,10 +238,10 @@ export function KitFluxoClient({
     <div className="space-y-8">
       {/* Contexto — dados do projeto */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Metric label="Consumo médio" value={consumoMedio > 0 ? `${consumoMedio.toFixed(0)} kWh/mês` : '—'} />
+        <Metric label="Consumo médio" value={consumoMedio > 0 ? `${fmtNum(consumoMedio, 0)} kWh/mês` : '—'} />
         <Metric label="Rede CELESC" value={formatarLigacao(padrao.tipo_ligacao)} />
         <Metric label="Disjuntor entrada" value={padrao.amperagem_disjuntor_geral_a ? `${padrao.amperagem_disjuntor_geral_a} A` : '—'} />
-        <Metric label="Pot. CC alvo" value={`${potCcAlvo.toFixed(2)} kWp`} highlight editavel>
+        <Metric label="Pot. CC alvo" value={`${fmtNum(potCcAlvo, 2)} kWp`} highlight editavel>
           <input
             type="number"
             step="0.5"
@@ -454,7 +455,7 @@ function PlacaCard({
           </div>
         </div>
         <div className="flex items-center justify-between text-xs pt-2 border-t border-white/5">
-          <span className="text-white/50">Área: <strong className="text-white">{area.toFixed(2)} m²</strong></span>
+          <span className="text-white/50">Área: <strong className="text-white">{fmtNum(area, 2)} m²</strong></span>
           {!placa.disponivel_estoque && (
             <span className="text-[10px] text-coral font-bold uppercase">● Fora de estoque</span>
           )}
@@ -512,18 +513,18 @@ function KitSugeridoCard({
       <div className="grid grid-cols-3 gap-2 text-xs mb-3">
         <div>
           <p className="text-[9px] text-white/40 uppercase">CC</p>
-          <p className="text-sm font-bold text-sol">{kit.pot_cc_kwp.toFixed(2)} kWp</p>
+          <p className="text-sm font-bold text-sol">{fmtNum(kit.pot_cc_kwp, 2)} kWp</p>
         </div>
         <div>
           <p className="text-[9px] text-white/40 uppercase">CA</p>
-          <p className="text-sm font-bold text-weg-azul">{kit.pot_ca_kw.toFixed(2)} kW</p>
+          <p className="text-sm font-bold text-weg-azul">{fmtNum(kit.pot_ca_kw, 2)} kW</p>
         </div>
         <div>
           <p className="text-[9px] text-white/40 uppercase">Carregamento</p>
           <p className={`text-sm font-bold ${
             kit.validacoes.fci_ideal ? 'text-verde' : kit.fci_pct > 145 || kit.fci_pct < 100 ? 'text-coral' : 'text-sol'
           }`}>
-            {kit.fci_pct.toFixed(0)}%
+            {fmtNum(kit.fci_pct, 0)}%
           </p>
         </div>
       </div>
@@ -572,7 +573,7 @@ function KitSugeridoCard({
       <div className="flex flex-wrap gap-1">
         <BadgeValidacao ok={kit.validacoes.dentro_limite_celesc} texto="CELESC" />
         {kit.desbalanceamento_kw > 0 && (
-          <BadgeValidacao ok={kit.validacoes.desbalanceamento_ok} texto={`Δ ${kit.desbalanceamento_kw.toFixed(1)}kW`} />
+          <BadgeValidacao ok={kit.validacoes.desbalanceamento_ok} texto={`Δ ${fmtNum(kit.desbalanceamento_kw, 1)}kW`} />
         )}
         <BadgeValidacao ok={kit.validacoes.fci_ideal} texto="Carreg. ideal" />
       </div>
@@ -666,9 +667,9 @@ function ModoManual({
 
   // Warnings — informativos, não bloqueiam
   const warnings: string[] = []
-  if (fci > 0 && fci < 80) warnings.push(`FCI ${fci.toFixed(0)}% — inversor superdimensionado, geração vai desperdiçar potência CA.`)
-  if (fci > 145) warnings.push(`FCI ${fci.toFixed(0)}% — inversor subdimensionado demais, vai clipar bastante em pico de sol.`)
-  if (tipoLigacao === 'monofasico' && potCa > 8) warnings.push(`Potência CA ${potCa.toFixed(1)} kW ultrapassa o limite CELESC monofásico de 8 kW.`)
+  if (fci > 0 && fci < 80) warnings.push(`FCI ${fmtNum(fci, 0)}% — inversor superdimensionado, geração vai desperdiçar potência CA.`)
+  if (fci > 145) warnings.push(`FCI ${fmtNum(fci, 0)}% — inversor subdimensionado demais, vai clipar bastante em pico de sol.`)
+  if (tipoLigacao === 'monofasico' && potCa > 8) warnings.push(`Potência CA ${fmtNum(potCa, 1)} kW ultrapassa o limite CELESC monofásico de 8 kW.`)
   if (placaEfetiva && (placaEfetiva.specs?.potencia_wp || 0) === 0) warnings.push('Essa placa está com potência 0 Wp no cadastro. Confere o produto em /admin/catalogo.')
   if (inv && (inv.specs?.potencia_kw || 0) === 0) warnings.push('Esse inversor está com potência 0 kW no cadastro. Confere o produto em /admin/catalogo.')
 
@@ -764,17 +765,17 @@ function ModoManual({
         </label>
         <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
           <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Pot. CC</p>
-          <p className="text-lg font-black text-sol tabular-nums">{potCc.toFixed(2)}<span className="text-xs text-white/50 font-normal"> kWp</span></p>
+          <p className="text-lg font-black text-sol tabular-nums">{fmtNum(potCc, 2)}<span className="text-xs text-white/50 font-normal"> kWp</span></p>
         </div>
         <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
           <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Pot. CA</p>
-          <p className="text-lg font-black text-weg-azul tabular-nums">{potCa.toFixed(2)}<span className="text-xs text-white/50 font-normal"> kW</span></p>
+          <p className="text-lg font-black text-weg-azul tabular-nums">{fmtNum(potCa, 2)}<span className="text-xs text-white/50 font-normal"> kW</span></p>
         </div>
         <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
           <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">FCI</p>
           <p className={`text-lg font-black tabular-nums ${
             fci >= 100 && fci <= 145 ? 'text-verde' : fci >= 80 ? 'text-sol' : 'text-coral'
-          }`}>{fci > 0 ? fci.toFixed(0) : '—'}<span className="text-xs text-white/50 font-normal">%</span></p>
+          }`}>{fci > 0 ? fmtNum(fci, 0) : '—'}<span className="text-xs text-white/50 font-normal">%</span></p>
         </div>
         <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
           <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Preço WEG</p>
@@ -843,7 +844,7 @@ function DiagnosticoNenhumKit({ diagnostico, tipoLigacao }: {
   } else if (d.rejeitados_por_celesc > 0 && d.rejeitados_por_celesc === d.candidatos_gerados) {
     causaMotivo = `Todas as ${d.candidatos_gerados} combinações excederam o limite CELESC de ${d.pot_ca_limite_celesc_kw} kW pra rede ${tipoLigacao}. Reduza a potência CC alvo ou escolha uma placa de menor Wp.`
   } else if (d.rejeitados_por_fci > 0 && d.rejeitados_por_fci === d.candidatos_gerados) {
-    causaMotivo = `Todas as ${d.candidatos_gerados} combinações ficaram fora do FCI aceitável (50% a 200%). A potência CC alvo (${d.pot_cc_real_kwp.toFixed(2)} kWp) não bate com as potências CA disponíveis (nenhum inversor entre ~${(d.pot_cc_real_kwp / 2).toFixed(1)} e ~${(d.pot_cc_real_kwp / 0.5).toFixed(1)} kW cadastrado). Ajuste a potência alvo ou cadastre inversor SIW de outra faixa. Se você já tem SIW no catálogo, confira se a subcategoria está setada como "inversor_string" em /admin/catalogo.`
+    causaMotivo = `Todas as ${d.candidatos_gerados} combinações ficaram fora do FCI aceitável (50% a 200%). A potência CC alvo (${fmtNum(d.pot_cc_real_kwp, 2)} kWp) não bate com as potências CA disponíveis (nenhum inversor entre ~${fmtNum(d.pot_cc_real_kwp / 2, 1)} e ~${fmtNum(d.pot_cc_real_kwp / 0.5, 1)} kW cadastrado). Ajuste a potência alvo ou cadastre inversor SIW de outra faixa. Se você já tem SIW no catálogo, confira se a subcategoria está setada como "inversor_string" em /admin/catalogo.`
   } else if (d.rejeitados_por_desbalanceamento > 0) {
     causaMotivo = `Todas as combinações rejeitaram por desbalanceamento entre fases > 5 kW. Cadastre mais opções de inversor ou reduza a potência CC alvo.`
   } else {
@@ -864,13 +865,13 @@ function DiagnosticoNenhumKit({ diagnostico, tipoLigacao }: {
           <span className="text-white tabular-nums">{d.qtd_placas_calculada}</span>
 
           <span className="text-white/50">Pot. CC real:</span>
-          <span className="text-white tabular-nums">{d.pot_cc_real_kwp.toFixed(2)} kWp</span>
+          <span className="text-white tabular-nums">{fmtNum(d.pot_cc_real_kwp, 2)} kWp</span>
 
           <span className="text-white/50">Limite CELESC ({tipoLigacao}):</span>
           <span className="text-white tabular-nums">{d.pot_ca_limite_celesc_kw} kW</span>
 
           <span className="text-white/50">Limite disjuntor entrada:</span>
-          <span className="text-white tabular-nums">{d.pot_ca_limite_disjuntor_kw.toFixed(1)} kW</span>
+          <span className="text-white tabular-nums">{fmtNum(d.pot_ca_limite_disjuntor_kw, 1)} kW</span>
 
           <span className="text-white/50 col-span-2 border-t border-white/10 pt-2 mt-2 font-semibold text-white/70">Filtros aplicados</span>
 

@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
-import { formatarCpfCnpj } from '@/lib/formatters'
+import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
 
 /**
  * Listagem de projetos — /projetos
@@ -201,7 +201,7 @@ function ProjetoLinha({ projeto }: { projeto: any }) {
             <>
               <span className="text-white/20">·</span>
               <span className="text-xs font-bold text-sol tabular-nums">
-                {Number(potCc).toFixed(2).replace('.', ',')} kWp
+                {fmtNum(Number(potCc), 2).replace('.', ',')} kWp
               </span>
             </>
           )}

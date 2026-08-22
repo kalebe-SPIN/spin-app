@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import { fmtNum } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import {
   calcularLimpezaAutomatico,

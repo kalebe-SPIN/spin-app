@@ -56,6 +56,41 @@ export function formatarCep(valor: string): string {
   return `${n.slice(0, 5)}-${n.slice(5)}`
 }
 
+/**
+ * Formata número no padrão brasileiro: vírgula pra decimal, ponto pra milhar.
+ * Regra fixa Spin: TODO valor numérico exibido pro usuário passa por aqui.
+ *
+ * Ex: fmtNum(1234.5)          → "1.234,5"
+ *     fmtNum(1234.5, 2)       → "1.234,50"
+ *     fmtNum(0.243, 2)        → "0,24"
+ *     fmtNum(null)            → "—"
+ *     fmtNum(8.14, 2, ' kWp') → "8,14 kWp"
+ */
+export function fmtNum(
+  valor: number | string | null | undefined,
+  casas?: number,
+  sufixo?: string,
+): string {
+  if (valor === null || valor === undefined || valor === '') return '—'
+  const n = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor
+  if (!isFinite(n)) return '—'
+  const opts: Intl.NumberFormatOptions = {}
+  if (casas !== undefined) {
+    opts.minimumFractionDigits = casas
+    opts.maximumFractionDigits = casas
+  }
+  const s = n.toLocaleString('pt-BR', opts)
+  return sufixo ? `${s}${sufixo}` : s
+}
+
+/** Atalhos comuns (potência, dinheiro, percentual). */
+export const fmtKwp = (v: number | null | undefined) => fmtNum(v, 2, ' kWp')
+export const fmtKw  = (v: number | null | undefined) => fmtNum(v, 2, ' kW')
+export const fmtWp  = (v: number | null | undefined) => fmtNum(v, 0, ' Wp')
+export const fmtKwh = (v: number | null | undefined) => fmtNum(v, 0, ' kWh')
+export const fmtPct = (v: number | null | undefined) => fmtNum(v, 0, '%')
+export const fmtInt = (v: number | null | undefined) => fmtNum(v, 0)
+
 export function formatarMoedaBRL(valor: number | string | null | undefined): string {
   if (valor === null || valor === undefined || valor === '') return 'R$ 0,00'
   const n = typeof valor === 'string' ? parseFloat(valor) : valor

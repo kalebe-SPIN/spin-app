@@ -2,7 +2,7 @@
 
 import { forwardRef } from 'react'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
-import { formatarCpfCnpj } from '@/lib/formatters'
+import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
 
 type Props = {
   projeto: any
@@ -45,8 +45,8 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
     // Formato do investimento em milhões/mil pro headline da capa
     const invMil = proposta.pv_total / 1000
     const invHeadline = invMil >= 1000
-      ? `R$ ${(invMil / 1000).toFixed(2).replace('.', ',')} mi`
-      : `R$ ${invMil.toFixed(1).replace('.', ',')} mil`
+      ? `R$ ${fmtNum(invMil / 1000, 2)} mi`
+      : `R$ ${fmtNum(invMil, 1)} mil`
 
     return (
       <div ref={ref} style={{ background: '#050B16', color: '#F5F5F0', fontFamily: E.font.body }}>
@@ -122,9 +122,9 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
 
             {/* Métricas grandes com hairlines */}
             <div style={E.metricasGrid}>
-              <MetricManifesto label="Potência" valor={(kit.potencia_cc_kwp || 0).toFixed(2).replace('.', ',')} unidade="kWp" />
+              <MetricManifesto label="Potência" valor={fmtNum(kit.potencia_cc_kwp || 0, 2)} unidade="kWp" />
               <MetricManifesto label="Geração/mês" valor={fmtInt(geracaoMesKwh)} unidade="kWh" cor="#F5B400" borda />
-              <MetricManifesto label="Retorno" valor={roiAnos.toFixed(1).replace('.', ',')} unidade="anos" borda />
+              <MetricManifesto label="Retorno" valor={fmtNum(roiAnos, 1)} unidade="anos" borda />
               <MetricManifesto label="Investimento" valor={invHeadline.replace('R$ ', '')} unidade="chaves na mão" prefixo="R$" />
             </div>
 
@@ -173,11 +173,11 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
             {/* Geração estimada */}
             <h3 style={{ ...E.subtituloSecao, marginTop: 40 }}>Geração estimada</h3>
             <div style={E.gridDados}>
-              <DadoLinha rot="Potência CC total" val={`${(kit.potencia_cc_kwp || 0).toFixed(2)} kWp`} />
-              <DadoLinha rot="Potência CA total" val={`${(kit.potencia_ca_kw || 0).toFixed(2)} kW`} />
-              <DadoLinha rot="Fator de carregamento (FCI)" val={`${(kit.fci_pct || 0).toFixed(0)}%`} />
+              <DadoLinha rot="Potência CC total" val={`${fmtNum(kit.potencia_cc_kwp || 0, 2)} kWp`} />
+              <DadoLinha rot="Potência CA total" val={`${fmtNum(kit.potencia_ca_kw || 0, 2)} kW`} />
+              <DadoLinha rot="Fator de carregamento (FCI)" val={`${fmtNum(kit.fci_pct || 0, 0)}%`} />
               <DadoLinha rot="Horas de sol pleno/dia (SC)" val={`${HORAS_SOL} h`} />
-              <DadoLinha rot="Perdas assumidas" val={`${(PERDAS * 100).toFixed(0)}%`} />
+              <DadoLinha rot="Perdas assumidas" val={`${fmtNum(PERDAS * 100, 0)}%`} />
             </div>
 
             <div style={E.destaqueGeracao}>

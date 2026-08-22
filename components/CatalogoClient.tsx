@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useTransition } from 'react'
+import { fmtNum } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { togglarAtivoProdutoAction, criarProdutoManualAction, type CategoriaProduto } from '@/app/admin/catalogo/actions'
@@ -555,7 +556,7 @@ function ModalNovoProduto({ onFechar }: { onFechar: () => void }) {
     const venda = parseFloat(precoVenda.replace(',', '.'))
     if (isNaN(venda) || venda <= 0) { setErro('Preencha primeiro o Preço venda (tabela WEG)'); return }
     setErro(null)
-    setPrecoCusto((venda * 0.4182).toFixed(2).replace('.', ','))
+    setPrecoCusto(fmtNum(venda * 0.4182, 2))
   }
 
   function num(s: string): number | undefined {
