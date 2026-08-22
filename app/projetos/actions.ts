@@ -52,35 +52,61 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
     telefone: string | null
   } | null = null
 
-  // Caminho 1: cliente novo — cria antes
+  // Caminho 1: cliente novo — reusa cadastro existente com mesmo CPF/CNPJ.
+  // Regra fixa: um cliente = um cadastro. Novo projeto pro mesmo CPF só
+  // agrega ao card do cliente existente, não duplica.
   if (!clienteId && input.novo_cliente) {
     if (!input.novo_cliente.razao_social?.trim()) {
       return { erro: 'Nome/razão social é obrigatório' }
     }
 
-    const { data: cliCriado, error: erroCli } = await supabase
-      .from('clientes')
-      .insert({
-        tipo: input.novo_cliente.tipo || 'pf',
-        razao_social: input.novo_cliente.razao_social.trim(),
-        cpf_cnpj: input.novo_cliente.cpf_cnpj || null,
-        email: input.novo_cliente.email || null,
-        telefone: input.novo_cliente.telefone || null,
-        whatsapp: input.novo_cliente.whatsapp || input.novo_cliente.telefone || null,
-        proprietario_id: user.id,
-      })
-      .select('id, razao_social, cpf_cnpj, email, telefone')
-      .single()
+    const cpfCnpjLimpo = (input.novo_cliente.cpf_cnpj || '').replace(/\D/g, '') || null
 
-    if (erroCli || !cliCriado) {
-      return { erro: 'Erro ao criar cliente: ' + (erroCli?.message || '') }
+    // Se tem CPF/CNPJ, procura cadastro existente
+    if (cpfCnpjLimpo) {
+      const { data: cliExistente } = await supabase
+        .from('clientes')
+        .select('id, razao_social, cpf_cnpj, email, telefone')
+        .eq('cpf_cnpj', cpfCnpjLimpo)
+        .maybeSingle()
+
+      if (cliExistente) {
+        clienteId = cliExistente.id
+        dadosCliente = {
+          razao_social: cliExistente.razao_social,
+          cpf_cnpj: cliExistente.cpf_cnpj,
+          email: cliExistente.email,
+          telefone: cliExistente.telefone,
+        }
+      }
     }
-    clienteId = cliCriado.id
-    dadosCliente = {
-      razao_social: cliCriado.razao_social,
-      cpf_cnpj: cliCriado.cpf_cnpj,
-      email: cliCriado.email,
-      telefone: cliCriado.telefone,
+
+    // Não achou por CPF (ou não veio CPF) → cria novo
+    if (!clienteId) {
+      const { data: cliCriado, error: erroCli } = await supabase
+        .from('clientes')
+        .insert({
+          tipo: input.novo_cliente.tipo || 'pf',
+          razao_social: input.novo_cliente.razao_social.trim(),
+          cpf_cnpj: cpfCnpjLimpo,
+          email: input.novo_cliente.email || null,
+          telefone: input.novo_cliente.telefone || null,
+          whatsapp: input.novo_cliente.whatsapp || input.novo_cliente.telefone || null,
+          proprietario_id: user.id,
+        })
+        .select('id, razao_social, cpf_cnpj, email, telefone')
+        .single()
+
+      if (erroCli || !cliCriado) {
+        return { erro: 'Erro ao criar cliente: ' + (erroCli?.message || '') }
+      }
+      clienteId = cliCriado.id
+      dadosCliente = {
+        razao_social: cliCriado.razao_social,
+        cpf_cnpj: cliCriado.cpf_cnpj,
+        email: cliCriado.email,
+        telefone: cliCriado.telefone,
+      }
     }
   }
   // Caminho 2: cliente existente — busca os dados
