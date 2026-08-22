@@ -52,36 +52,79 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
     telefone: string | null
   } | null = null
 
-  // Caminho 1: cliente novo — reusa cadastro existente com mesmo CPF/CNPJ.
-  // Regra fixa: um cliente = um cadastro. Novo projeto pro mesmo CPF só
-  // agrega ao card do cliente existente, não duplica.
+  // Caminho 1: cliente novo — reusa cadastro existente com cadeia
+  // CPF/CNPJ → telefone → email → endereço → UC. Regra fixa da Spin:
+  // um cliente = um cadastro. Se qualquer chave forte bater, agrega o
+  // projeto ao card do cliente existente em vez de duplicar.
   if (!clienteId && input.novo_cliente) {
     if (!input.novo_cliente.razao_social?.trim()) {
       return { erro: 'Nome/razão social é obrigatório' }
     }
 
     const cpfCnpjLimpo = (input.novo_cliente.cpf_cnpj || '').replace(/\D/g, '') || null
+    const telLimpo = (input.novo_cliente.telefone || input.novo_cliente.whatsapp || '')
+      .replace(/\D/g, '') || null
+    const emailLower = (input.novo_cliente.email || '').trim().toLowerCase() || null
+    const ucRaw = (input as any).uc_geradora || null
 
-    // Se tem CPF/CNPJ, procura cadastro existente
-    if (cpfCnpjLimpo) {
-      const { data: cliExistente } = await supabase
+    function aplicar(cli: any) {
+      clienteId = cli.id
+      dadosCliente = {
+        razao_social: cli.razao_social,
+        cpf_cnpj: cli.cpf_cnpj,
+        email: cli.email,
+        telefone: cli.telefone,
+      }
+    }
+
+    // 1. CPF/CNPJ — chave mais forte
+    if (!clienteId && cpfCnpjLimpo) {
+      const { data: cli } = await supabase
         .from('clientes')
         .select('id, razao_social, cpf_cnpj, email, telefone')
         .eq('cpf_cnpj', cpfCnpjLimpo)
         .maybeSingle()
-
-      if (cliExistente) {
-        clienteId = cliExistente.id
-        dadosCliente = {
-          razao_social: cliExistente.razao_social,
-          cpf_cnpj: cliExistente.cpf_cnpj,
-          email: cliExistente.email,
-          telefone: cliExistente.telefone,
-        }
+      if (cli) aplicar(cli)
+    }
+    // 2. Telefone (só dígitos)
+    if (!clienteId && telLimpo && telLimpo.length >= 10) {
+      const { data: cli } = await supabase
+        .from('clientes')
+        .select('id, razao_social, cpf_cnpj, email, telefone')
+        .or(`telefone.eq.${telLimpo},whatsapp.eq.${telLimpo}`)
+        .limit(1)
+        .maybeSingle()
+      if (cli) aplicar(cli)
+    }
+    // 3. Email
+    if (!clienteId && emailLower) {
+      const { data: cli } = await supabase
+        .from('clientes')
+        .select('id, razao_social, cpf_cnpj, email, telefone')
+        .ilike('email', emailLower)
+        .maybeSingle()
+      if (cli) aplicar(cli)
+    }
+    // 4. UC geradora — se um projeto anterior tem essa UC, reusa o cliente dele
+    if (!clienteId && ucRaw) {
+      const { data: proj } = await supabase
+        .from('projetos')
+        .select('cliente_id')
+        .eq('uc_geradora', ucRaw)
+        .not('cliente_id', 'is', null)
+        .limit(1)
+        .maybeSingle()
+      if (proj?.cliente_id) {
+        const { data: cli } = await supabase
+          .from('clientes')
+          .select('id, razao_social, cpf_cnpj, email, telefone')
+          .eq('id', proj.cliente_id)
+          .maybeSingle()
+        if (cli) aplicar(cli)
       }
     }
 
-    // Não achou por CPF (ou não veio CPF) → cria novo
+    // Nada bateu → cria novo cadastro
     if (!clienteId) {
       const { data: cliCriado, error: erroCli } = await supabase
         .from('clientes')
@@ -89,9 +132,9 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
           tipo: input.novo_cliente.tipo || 'pf',
           razao_social: input.novo_cliente.razao_social.trim(),
           cpf_cnpj: cpfCnpjLimpo,
-          email: input.novo_cliente.email || null,
-          telefone: input.novo_cliente.telefone || null,
-          whatsapp: input.novo_cliente.whatsapp || input.novo_cliente.telefone || null,
+          email: emailLower,
+          telefone: telLimpo,
+          whatsapp: (input.novo_cliente.whatsapp || input.novo_cliente.telefone || '').replace(/\D/g, '') || null,
           proprietario_id: user.id,
         })
         .select('id, razao_social, cpf_cnpj, email, telefone')

@@ -7,17 +7,17 @@ import { TimelineProjeto } from '@/components/TimelineProjeto'
 /**
  * Listagem de projetos — /projetos
  *
- * Mostra todos projetos do consultor logado.
- * Admin vê tudo (filtro por consultor disponível).
- * Vendedor de serviços e profissional de campo NÃO têm projetos — redirect.
+ * AGRUPA por cliente: se um mesmo cliente tem N projetos, aparece 1 card
+ * com sub-lista dos projetos. Regra fixa da Spin: cliente é único, projetos
+ * ficam sob o cadastro dele.
+ *
+ * Admin vê tudo. Vendedor de serviços/campo NÃO têm projetos — redirect.
  */
 export default async function ProjetosPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) {
-    redirect('/login')
-  }
+  if (!user) redirect('/login')
 
   const { modo } = await getModoVisualizacao()
   if (modo === 'vendedor_servicos') redirect('/crm/servicos')
@@ -27,16 +27,41 @@ export default async function ProjetosPage() {
     .from('projetos')
     .select(`
       id, codigo, status, tipo_projeto,
-      cliente_razao_social, cliente_cpf_cnpj,
+      cliente_id, cliente_razao_social, cliente_cpf_cnpj,
       uc_geradora, data_inicio,
-      created_at
+      created_at, updated_at, status_atualizado_em
     `)
     .order('created_at', { ascending: false })
+
+  // Agrupa por cliente_id (preferido) ou razão social (fallback pros
+  // que ainda estão sem cliente_id no banco).
+  const grupos = new Map<string, { cliente_id: string | null; nome: string; projetos: any[] }>()
+  for (const p of projetos || []) {
+    const chave = p.cliente_id || `sn:${(p.cliente_razao_social || 'sem_nome').toLowerCase().trim()}`
+    const g = grupos.get(chave)
+    if (g) {
+      g.projetos.push(p)
+    } else {
+      grupos.set(chave, {
+        cliente_id: p.cliente_id,
+        nome: p.cliente_razao_social || 'Sem nome',
+        projetos: [p],
+      })
+    }
+  }
+
+  const gruposArray = Array.from(grupos.values()).sort((a, b) => {
+    const dataA = a.projetos[0]?.created_at || ''
+    const dataB = b.projetos[0]?.created_at || ''
+    return dataB.localeCompare(dataA)
+  })
+
+  const totalProjetos = projetos?.length || 0
+  const totalClientes = gruposArray.length
 
   return (
     <main className="min-h-screen p-8 md:p-12">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
@@ -46,7 +71,7 @@ export default async function ProjetosPage() {
               Projetos
             </h1>
             <p className="text-white/60 mt-1 text-sm">
-              {projetos?.length || 0} projetos no total
+              {totalProjetos} projeto{totalProjetos !== 1 ? 's' : ''} · {totalClientes} cliente{totalClientes !== 1 ? 's' : ''}
             </p>
           </div>
 
@@ -58,11 +83,10 @@ export default async function ProjetosPage() {
           </Link>
         </header>
 
-        {/* Lista de projetos */}
-        {projetos && projetos.length > 0 ? (
-          <div className="space-y-3">
-            {projetos.map((p) => (
-              <ProjetoCard key={p.id} projeto={p} />
+        {gruposArray.length > 0 ? (
+          <div className="space-y-4">
+            {gruposArray.map((g, i) => (
+              <ClienteBloco key={g.cliente_id || `sn-${i}`} grupo={g} />
             ))}
           </div>
         ) : (
@@ -73,29 +97,76 @@ export default async function ProjetosPage() {
   )
 }
 
-function ProjetoCard({ projeto }: { projeto: any }) {
+function ClienteBloco({ grupo }: {
+  grupo: { cliente_id: string | null; nome: string; projetos: any[] }
+}) {
+  const qtd = grupo.projetos.length
+  const dataMaisRecente = grupo.projetos[0]?.created_at
+    ? new Date(grupo.projetos[0].created_at).toLocaleDateString('pt-BR')
+    : '—'
+  const cpf = grupo.projetos[0]?.cliente_cpf_cnpj
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+      {/* Cabeçalho do cliente */}
+      <div className="p-5 pb-3 flex items-start justify-between gap-3 border-b border-white/5">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="text-lg">👤</span>
+            <h3 className="text-lg font-black text-white truncate">{grupo.nome}</h3>
+            <span className="text-[10px] uppercase tracking-wider font-bold bg-sol/15 text-sol px-2 py-0.5 rounded-full">
+              {qtd} projeto{qtd !== 1 ? 's' : ''}
+            </span>
+          </div>
+          {cpf && (
+            <p className="text-[11px] text-white/40">CPF/CNPJ {cpf}</p>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          {grupo.cliente_id && (
+            <Link
+              href={`/crm/clientes/${grupo.cliente_id}`}
+              className="text-[10px] text-sol hover:underline"
+            >
+              Ver cadastro →
+            </Link>
+          )}
+          <p className="text-[10px] text-white/30 mt-1">último: {dataMaisRecente}</p>
+        </div>
+      </div>
+
+      {/* Projetos do cliente */}
+      <div className="divide-y divide-white/5">
+        {grupo.projetos.map((p) => (
+          <ProjetoLinha key={p.id} projeto={p} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ProjetoLinha({ projeto }: { projeto: any }) {
   const dataFmt = new Date(projeto.created_at).toLocaleDateString('pt-BR')
+  const tipoLabel = TIPO_PROJETO_LABEL[projeto.tipo_projeto as keyof typeof TIPO_PROJETO_LABEL] || projeto.tipo_projeto || '—'
 
   return (
     <Link
       href={`/projetos/${projeto.id}`}
-      className="block p-5 bg-white/5 border border-white/10 rounded-xl hover:border-sol/40 hover:bg-white/[0.07] transition-all"
+      className="block p-4 hover:bg-white/[0.03] transition-colors"
     >
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
-          </div>
-          <h3 className="text-lg font-bold text-white">{projeto.cliente_razao_social}</h3>
-          <p className="text-sm text-white/60 mt-1">
-            UC {projeto.uc_geradora}
-            <span className="mx-2 text-white/20">•</span>
-            {TIPO_PROJETO_LABEL[projeto.tipo_projeto as keyof typeof TIPO_PROJETO_LABEL] || projeto.tipo_projeto}
-          </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
+          {projeto.uc_geradora && (
+            <>
+              <span className="text-white/20">·</span>
+              <span className="text-xs text-white/60">UC {projeto.uc_geradora}</span>
+            </>
+          )}
+          <span className="text-white/20">·</span>
+          <span className="text-xs text-white/60">{tipoLabel}</span>
         </div>
-        <div className="text-right text-xs text-white/40">
-          {dataFmt}
-        </div>
+        <span className="text-[10px] text-white/30">{dataFmt}</span>
       </div>
       <TimelineProjeto status={projeto.status} />
     </Link>
@@ -117,21 +188,6 @@ function EmptyState() {
       </Link>
     </div>
   )
-}
-
-const STATUS_INFO = {
-  rascunho:            { label: 'Rascunho',           classe: 'bg-white/10 text-white/60' },
-  fatura_analisada:    { label: 'Fatura analisada',   classe: 'bg-weg-azul/10 text-weg-azul' },
-  telhado_preenchido:  { label: 'Telhado OK',         classe: 'bg-weg-azul/10 text-weg-azul' },
-  dimensionado:        { label: 'Dimensionado',       classe: 'bg-weg-azul/10 text-weg-azul' },
-  kit_selecionado:     { label: 'Kit escolhido',      classe: 'bg-weg-azul/10 text-weg-azul' },
-  lista_ca_confirmada: { label: 'Lista CA OK',        classe: 'bg-weg-azul/10 text-weg-azul' },
-  orcamento_gerado:    { label: 'Orçamento pronto',   classe: 'bg-sol/10 text-sol' },
-  proposta_enviada:    { label: 'Proposta enviada',   classe: 'bg-sol/10 text-sol' },
-  aceito:              { label: 'Aceito ✓',           classe: 'bg-verde/10 text-verde' },
-  recusado:            { label: 'Recusado',           classe: 'bg-coral/10 text-coral' },
-  cancelado:           { label: 'Cancelado',          classe: 'bg-white/10 text-white/40' },
-  expirado:            { label: 'Expirado',           classe: 'bg-coral/10 text-coral' },
 }
 
 const TIPO_PROJETO_LABEL = {
