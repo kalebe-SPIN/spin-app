@@ -127,9 +127,13 @@ export type KitSugerido = {
 
 const CELESC_LIMITE_MONO_KW = 8              // Rede monofásica: máx 8 kW CA total
 const DESBALANCEAMENTO_MAX_KW = 5            // Diferença entre fases ≤ 5 kW (bi/tri)
-const FCI_MIN_SUBDIMENSIONADO = 80           // FCI mínimo aceito como "kit de entrada"
+// FCI: gerador ficava sem sugestão sempre que o catálogo não tinha
+// inversor solar (SIW) na faixa exata. Faixa ampliada pra "aceita se
+// bater com qualquer coisa plausível" — kits sub/superdimensionados
+// aparecem com aviso no card em vez de virarem null silencioso.
+const FCI_MIN_SUBDIMENSIONADO = 50           // aceita como "kit de entrada"
 const FCI_MIN_ACEITAVEL = 100                // FCI mínimo pra kit normal
-const FCI_MAX_ACEITAVEL = 145
+const FCI_MAX_ACEITAVEL = 200                // até aqui aparece com aviso
 const FCI_SWEET_MIN = 120
 const FCI_SWEET_MAX = 135
 const FATOR_SEGURANCA_DISJUNTOR = 0.8
