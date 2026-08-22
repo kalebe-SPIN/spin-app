@@ -30,6 +30,7 @@ export default async function ProjetosPage() {
       id, codigo, status, tipo_projeto,
       cliente_id, cliente_razao_social, cliente_cpf_cnpj,
       uc_geradora, data_inicio,
+      kit_selecionado, pv_total, consumo_medio_kwh,
       created_at, updated_at, status_atualizado_em
     `)
     .order('created_at', { ascending: false })
@@ -105,42 +106,80 @@ function ClienteBloco({ grupo }: {
   const dataMaisRecente = grupo.projetos[0]?.created_at
     ? new Date(grupo.projetos[0].created_at).toLocaleDateString('pt-BR')
     : '—'
-  const cpf = grupo.projetos[0]?.cliente_cpf_cnpj
+
+  // Dados compartilhados vêm do projeto MAIS COMPLETO (o mais recente
+  // ativo geralmente tem endereço/UC/consumo preenchidos). Cliente com
+  // várias tentativas de proposta compartilha esses dados estruturais —
+  // não faz sentido repetir em cada iteração.
+  const proj0 = grupo.projetos[0]
+  const cpf = proj0?.cliente_cpf_cnpj
+  const uc = grupo.projetos.find(p => p.uc_geradora)?.uc_geradora
+  const consumo = grupo.projetos.find(p => p.consumo_medio_kwh)?.consumo_medio_kwh
+  const tipoProjeto = proj0?.tipo_projeto
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-      {/* Cabeçalho do cliente */}
-      <div className="p-5 pb-3 flex items-start justify-between gap-3 border-b border-white/5">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="text-lg">👤</span>
-            <h3 className="text-lg font-black text-white truncate">{grupo.nome}</h3>
-            <span className="text-[10px] uppercase tracking-wider font-bold bg-sol/15 text-sol px-2 py-0.5 rounded-full">
-              {qtd} projeto{qtd !== 1 ? 's' : ''}
-            </span>
+      {/* Cabeçalho do cliente + dados estruturais compartilhados */}
+      <div className="p-5 pb-4 border-b border-white/5">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="text-lg">👤</span>
+              <h3 className="text-lg font-black text-white truncate">{grupo.nome}</h3>
+              <span className="text-[10px] uppercase tracking-wider font-bold bg-sol/15 text-sol px-2 py-0.5 rounded-full">
+                {qtd} {qtd === 1 ? 'proposta' : 'propostas'}
+              </span>
+            </div>
+            {cpf && (
+              <p className="text-[11px] text-white/40">CPF/CNPJ {formatarCpfCnpj(String(cpf))}</p>
+            )}
           </div>
-          {cpf && (
-            <p className="text-[11px] text-white/40">CPF/CNPJ {formatarCpfCnpj(String(cpf))}</p>
-          )}
+          <div className="text-right shrink-0">
+            {grupo.cliente_id && (
+              <Link
+                href={`/crm/clientes/${grupo.cliente_id}`}
+                className="text-[10px] text-sol hover:underline"
+              >
+                Ver cadastro →
+              </Link>
+            )}
+            <p className="text-[10px] text-white/30 mt-1">último: {dataMaisRecente}</p>
+          </div>
         </div>
-        <div className="text-right shrink-0">
-          {grupo.cliente_id && (
-            <Link
-              href={`/crm/clientes/${grupo.cliente_id}`}
-              className="text-[10px] text-sol hover:underline"
-            >
-              Ver cadastro →
-            </Link>
-          )}
-          <p className="text-[10px] text-white/30 mt-1">último: {dataMaisRecente}</p>
-        </div>
+
+        {/* Dados compartilhados — só aparecem se ao menos um preenchido */}
+        {(uc || consumo || tipoProjeto) && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] pt-2 border-t border-white/5">
+            {tipoProjeto && (
+              <span className="text-white/60">
+                <span className="text-white/40">Sistema:</span>{' '}
+                {TIPO_PROJETO_LABEL[tipoProjeto as keyof typeof TIPO_PROJETO_LABEL] || tipoProjeto}
+              </span>
+            )}
+            {uc && (
+              <span className="text-white/60">
+                <span className="text-white/40">UC:</span> {uc}
+              </span>
+            )}
+            {consumo && (
+              <span className="text-white/60">
+                <span className="text-white/40">Consumo médio:</span> {Math.round(consumo)} kWh/mês
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Projetos do cliente */}
-      <div className="divide-y divide-white/5">
-        {grupo.projetos.map((p) => (
-          <ProjetoLinha key={p.id} projeto={p} />
-        ))}
+      {/* Iterações — cada projeto vira uma linha com dimensionamento + kit + proposta */}
+      <div>
+        <div className="px-5 pt-3 pb-1 text-[10px] uppercase tracking-wider font-bold text-white/40">
+          Iterações de proposta
+        </div>
+        <div className="divide-y divide-white/5">
+          {grupo.projetos.map((p) => (
+            <ProjetoLinha key={p.id} projeto={p} />
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -148,26 +187,48 @@ function ClienteBloco({ grupo }: {
 
 function ProjetoLinha({ projeto }: { projeto: any }) {
   const dataFmt = new Date(projeto.created_at).toLocaleDateString('pt-BR')
-  const tipoLabel = TIPO_PROJETO_LABEL[projeto.tipo_projeto as keyof typeof TIPO_PROJETO_LABEL] || projeto.tipo_projeto || '—'
+  const kit = projeto.kit_selecionado || {}
+  const potCc = kit.potencia_cc_kwp
+  const modeloPlaca = kit.placa?.modelo
+  const modeloInv = kit.inversor?.modelo
+  const qtdPlacas = kit.qtd_placas
+  const valor = projeto.pv_total ? Number(projeto.pv_total) : null
 
   return (
     <Link
       href={`/projetos/${projeto.id}`}
-      className="block p-4 hover:bg-white/[0.03] transition-colors"
+      className="block px-5 py-3 hover:bg-white/[0.03] transition-colors"
     >
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
           <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
-          {projeto.uc_geradora && (
+          {potCc && (
             <>
               <span className="text-white/20">·</span>
-              <span className="text-xs text-white/60">UC {projeto.uc_geradora}</span>
+              <span className="text-xs font-bold text-sol tabular-nums">
+                {Number(potCc).toFixed(2).replace('.', ',')} kWp
+              </span>
             </>
           )}
-          <span className="text-white/20">·</span>
-          <span className="text-xs text-white/60">{tipoLabel}</span>
+          {(qtdPlacas || modeloPlaca) && (
+            <>
+              <span className="text-white/20">·</span>
+              <span className="text-xs text-white/70">
+                {qtdPlacas ? `${qtdPlacas}× ` : ''}
+                {modeloPlaca || 'placas'}
+                {modeloInv ? ` + ${modeloInv}` : ''}
+              </span>
+            </>
+          )}
         </div>
-        <span className="text-[10px] text-white/30">{dataFmt}</span>
+        <div className="flex items-center gap-3 shrink-0">
+          {valor && valor > 0 && (
+            <span className="text-xs font-bold text-verde tabular-nums">
+              R$ {valor.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+            </span>
+          )}
+          <span className="text-[10px] text-white/30">{dataFmt}</span>
+        </div>
       </div>
       <TimelineProjeto status={projeto.status} />
     </Link>
