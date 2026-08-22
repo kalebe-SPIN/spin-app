@@ -69,7 +69,10 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .eq('ativo', true)
     .order('specs->potencia_wp', { ascending: false })
 
-  // Buscar todos os inversores disponíveis
+  // Buscar todos os inversores solares (string + micro).
+  // A planilha WEG cataloga CFW como inversor_bombeamento (bombas d'água)
+  // e a linha industrial também cai em 'inversor' — precisamos EXCLUIR
+  // esses do gerador de kit solar. Só string e microinversor entram.
   const { data: inversores } = await supabase
     .from('produtos')
     .select(`
@@ -77,6 +80,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
       precos_produtos!inner(preco_venda, vigente_de)
     `)
     .eq('categoria', 'inversor')
+    .in('subcategoria', ['inversor_string', 'microinversor'])
     .eq('ativo', true)
 
   return (
