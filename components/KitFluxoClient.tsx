@@ -82,7 +82,7 @@ export function KitFluxoClient({
   const [categoria, setCategoria] = useState<CategoriaSistema | null>(
     (kitSalvo?.tipo_projeto as CategoriaSistema) || null
   )
-  const [potCcAlvo, setPotCcAlvo] = useState<number>(potCcAlvoAuto)
+  const [potCcAlvo, setPotCcAlvo] = useState<number>(Math.round(potCcAlvoAuto * 100) / 100)
   const [placaId, setPlacaId] = useState<string | null>(kitSalvo?.placa?.id || null)
   const [kitEscolhidoId, setKitEscolhidoId] = useState<string | null>(null)
   const [mostrarIndisponiveis, setMostrarIndisponiveis] = useState(false)
@@ -247,13 +247,14 @@ export function KitFluxoClient({
         <Metric label="Pot. CC alvo" value={`${fmtNum(potCcAlvo, 2)} kWp`} highlight editavel>
           <input
             type="number"
-            step="0.5"
+            step="0.01"
             min="1"
             max="200"
-            value={potCcAlvo}
+            value={Number(potCcAlvo.toFixed(2))}
             onChange={e => {
               const v = parseFloat(e.target.value)
-              if (!isNaN(v) && v > 0) setPotCcAlvo(v)
+              // Arredonda pra 2 casas ao setar — evita floats tipo 5.5933333...
+              if (!isNaN(v) && v > 0) setPotCcAlvo(Math.round(v * 100) / 100)
             }}
             className="w-full bg-transparent text-sol font-bold text-lg focus:outline-none"
           />
