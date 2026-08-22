@@ -640,11 +640,15 @@ function ModoManual({
   onConfirmar: () => void
   pending: boolean
 }) {
-  const [mostrarSemEstoque, setMostrarSemEstoque] = useState(false)
+  // Modo manual mostra TUDO por padrão — item fora de estoque pode
+  // já ter sido reservado pra esse projeto quando o cadastro entrou
+  // (regra fixa da Spin, ver memória feedback-kit-manual-reserva-estoque).
+  // Filtro opcional pra quem quiser ver só o disponível de fato.
+  const [ocultarSemEstoque, setOcultarSemEstoque] = useState(false)
 
-  const invVisiveis = mostrarSemEstoque
-    ? inversoresTodos
-    : inversoresTodos.filter(i => i.disponivel_estoque)
+  const invVisiveis = ocultarSemEstoque
+    ? inversoresTodos.filter(i => i.disponivel_estoque)
+    : inversoresTodos
 
   // Warnings — informativos, não bloqueiam
   const warnings: string[] = []
@@ -662,6 +666,10 @@ function ModoManual({
         Você monta o kit escolhendo direto <strong>placa (já escolhida acima)</strong>, <strong>qtd de placas</strong>,
         <strong> inversor</strong> e <strong>qtd de inversores</strong>. O sistema calcula FCI e potência automaticamente
         e mostra avisos se algo estiver fora do padrão — mas não bloqueia salvar.
+      </p>
+      <p className="text-xs text-sol/80 leading-relaxed">
+        💡 Itens fora de estoque continuam disponíveis pra escolha — pode acontecer do material sair do estoque
+        entre o cadastro do projeto e a montagem do kit, mas ele já foi reservado pra essa venda.
       </p>
 
       {/* Qtd placas + resultado CC */}
@@ -697,10 +705,10 @@ function ModoManual({
           <label className="text-[10px] text-white/50 flex items-center gap-1.5 cursor-pointer">
             <input
               type="checkbox"
-              checked={mostrarSemEstoque}
-              onChange={e => setMostrarSemEstoque(e.target.checked)}
+              checked={ocultarSemEstoque}
+              onChange={e => setOcultarSemEstoque(e.target.checked)}
             />
-            mostrar sem estoque
+            ocultar sem estoque
           </label>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
