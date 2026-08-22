@@ -136,17 +136,68 @@ Sem texto antes ou depois. Sem markdown fora do bloco json.`
     }
   }
 
-  // Extrai JSON
-  const match = rawText.match(/```json\s*([\s\S]*?)\s*```/) || rawText.match(/(\{[\s\S]*\})/)
-  if (!match) throw new Error('Claude não retornou JSON válido: ' + rawText.slice(0, 200))
-
-  const parsed = JSON.parse(match[1])
+  // Extrai JSON — extrator robusto que tolera fences variados e fallback pra SVG puro
+  const parsed = extrairJsonDoResponse(rawText)
   return {
     svg: parsed.svg || '',
     memoria: parsed.memoria_calculo || {},
     avisos: parsed.avisos || [],
     rawText,
   }
+}
+
+/**
+ * Extrai o JSON esperado da resposta do Claude tolerando várias fromas:
+ *  - ```json ... ```   (fence padrão)
+ *  - ``` ... ```       (fence sem tag)
+ *  - {"svg": ...}      (JSON puro)
+ *  - <svg>...</svg>    (SVG puro sem envelope — embrulha num JSON sintético)
+ *
+ * Antes tinha só 2 regexes e um deles quebrava quando o SVG interno tinha `}`
+ * antes do fechamento correto do objeto. Aqui o parse tenta bracket-matching
+ * do primeiro `{` até o `}` que fecha a contagem, ignorando `{` `}` dentro
+ * de strings.
+ */
+function extrairJsonDoResponse(rawText: string): { svg?: string; memoria_calculo?: any; avisos?: any[] } {
+  const txt = rawText.trim()
+
+  // 1. Fence markdown — aceita ```json, ```JSON, ```jsonc, ``` puro
+  const mFence = txt.match(/```(?:json|jsonc|JSON)?\s*([\s\S]*?)\s*```/)
+  if (mFence) {
+    try { return JSON.parse(mFence[1].trim()) } catch { /* tenta o próximo caminho */ }
+  }
+
+  // 2. JSON puro — bracket-matching do primeiro `{` até seu fechamento
+  const idxAbre = txt.indexOf('{')
+  if (idxAbre >= 0) {
+    let profundidade = 0
+    let dentroString = false
+    let escape = false
+    for (let i = idxAbre; i < txt.length; i++) {
+      const c = txt[i]
+      if (escape) { escape = false; continue }
+      if (c === '\\') { escape = true; continue }
+      if (c === '"') { dentroString = !dentroString; continue }
+      if (dentroString) continue
+      if (c === '{') profundidade++
+      else if (c === '}') {
+        profundidade--
+        if (profundidade === 0) {
+          const bloco = txt.slice(idxAbre, i + 1)
+          try { return JSON.parse(bloco) } catch { /* deixa cair no fallback */ }
+          break
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: só o SVG puro — embrulha em envelope sintético
+  const mSvg = txt.match(/<svg[\s\S]*?<\/svg>/i)
+  if (mSvg) {
+    return { svg: mSvg[0], memoria_calculo: {}, avisos: ['⚠ Claude devolveu SVG solto (sem envelope JSON) — memória de cálculo veio vazia.'] }
+  }
+
+  throw new Error('Claude não retornou JSON válido. Resposta (primeiros 800 chars): ' + rawText.slice(0, 800))
 }
 
 function construirPromptUsuario(
@@ -352,10 +403,10 @@ Retorne APENAS JSON no formato:
     })
     const bloco = resp.content.find((b: any) => b.type === 'text') as any
     const text = bloco?.text || ''
-    const match = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/(\{[\s\S]*\})/)
-    if (match) {
-      return JSON.parse(match[1])
-    }
+    try {
+      const parsed = extrairJsonDoResponse(text) as any
+      if (parsed && typeof parsed.passou === 'boolean') return parsed
+    } catch { /* cai no default */ }
   } catch (e) {
     console.error('[auditarSvg]', e)
   }
