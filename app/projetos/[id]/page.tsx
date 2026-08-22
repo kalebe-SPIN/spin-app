@@ -7,6 +7,7 @@ import { TimelineProjeto } from '@/components/TimelineProjeto'
 import { MudarEtapaCard } from '@/components/MudarEtapaCard'
 import { ItensPropostaCard } from '@/components/ItensPropostaCard'
 import { AcoesRapidasCard } from '@/components/AcoesRapidasCard'
+import { ValorItemManual } from '@/components/ValorItemManual'
 import { getPassosRelevantes, INFO_PASSO, apenasServicos, type TipoItem } from '@/lib/tipos-projeto'
 
 // Sempre buscar dados frescos do banco (sem cache stale após edição)
@@ -262,9 +263,17 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             {itensComValor.length > 0 && (
               <div className="space-y-1.5 mb-4 pb-4 border-b border-white/10">
                 {itensComValor.map((it: any) => (
-                  <div key={it.id} className="flex items-baseline justify-between text-sm">
-                    <span className="text-white/70 truncate">{it.titulo || it.tipo}</span>
-                    <span className="text-white font-mono">
+                  <div key={it.id} className="flex items-baseline justify-between text-sm gap-2">
+                    <span className="text-white/70 truncate flex-1 min-w-0">
+                      {it.titulo || it.tipo}
+                      <ValorItemManual
+                        itemId={it.id}
+                        projetoId={projeto.id}
+                        titulo={it.titulo || it.tipo}
+                        valorAtual={parseFloat(it.valor_estimado)}
+                      />
+                    </span>
+                    <span className="text-white font-mono shrink-0">
                       {parseFloat(it.valor_estimado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </span>
                   </div>
@@ -275,9 +284,16 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             {itensPendentes.length > 0 && (
               <div className="mb-4 p-3 bg-sol/10 border border-sol/30 rounded-lg">
                 <p className="text-xs text-sol font-bold mb-1">⚠️ Módulos pendentes de preço:</p>
-                <ul className="text-xs text-white/70 space-y-0.5">
+                <ul className="text-xs text-white/70 space-y-1">
                   {itensPendentes.map((it: any) => (
-                    <li key={it.id}>· {it.titulo || it.tipo}</li>
+                    <li key={it.id} className="flex items-center flex-wrap gap-1">
+                      <span>· {it.titulo || it.tipo}</span>
+                      <ValorItemManual
+                        itemId={it.id}
+                        projetoId={projeto.id}
+                        titulo={it.titulo || it.tipo}
+                      />
+                    </li>
                   ))}
                 </ul>
               </div>

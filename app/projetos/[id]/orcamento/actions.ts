@@ -5,6 +5,56 @@ import { revalidatePath } from 'next/cache'
 import { mudarEtapaProjetoAction } from '@/app/projetos/[id]/etapa/actions'
 
 /**
+ * Define o valor_estimado de um projeto_item manualmente. Usado quando
+ * o consultor já cotou fora do sistema e só quer registrar o total pra
+ * fechar a proposta consolidada — não precisa passar pelo fluxo de
+ * cálculo automático (kit → lista CA → orçamento com margens).
+ */
+export async function definirValorItemManualAction(
+  itemId: string,
+  valor: number,
+  projetoId: string,
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  if (!isFinite(valor) || valor <= 0) return { erro: 'Valor inválido' }
+
+  const { error } = await supabase
+    .from('projeto_itens')
+    .update({ valor_estimado: valor })
+    .eq('id', itemId)
+    .eq('projeto_id', projetoId)
+
+  if (error) return { erro: error.message }
+  revalidatePath(`/projetos/${projetoId}`)
+  return { sucesso: true }
+}
+
+/**
+ * Remove um projeto_item da proposta consolidada. Não apaga o kit/orçamento
+ * relacionado — só marca como 'removido' pra sair da conta e da tela.
+ */
+export async function excluirProjetoItemAction(
+  itemId: string,
+  projetoId: string,
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const { error } = await supabase
+    .from('projeto_itens')
+    .update({ status: 'removido' })
+    .eq('id', itemId)
+    .eq('projeto_id', projetoId)
+
+  if (error) return { erro: error.message }
+  revalidatePath(`/projetos/${projetoId}`)
+  return { sucesso: true }
+}
+
+/**
  * Salva orçamento gerado. Também dispara transição de status → 'orcamento_gerado'
  * via mudarEtapaProjetoAction (registra histórico + automações).
  */
