@@ -438,6 +438,7 @@ function RankVendedores({ rank }: { rank: LinhaRank[] }) {
         const pct = topValor > 0 ? (v.vendido / topValor) * 100 : 0
         const roleLabel = v.role === 'representante' ? '☀️ Solar' : '🧽 Serviços'
         const roleCor = v.role === 'representante' ? 'text-sol' : 'text-weg-azul'
+        const rotuloReal = v.role === 'admin' ? '👑 Admin/Solar' : roleLabel
         return (
           <div key={v.id} className="flex items-center gap-3 p-2 bg-white/[0.03] border border-white/5 rounded-lg">
             <span className="text-white/40 font-black text-sm tabular-nums w-6 text-center">
@@ -451,7 +452,7 @@ function RankVendedores({ rank }: { rank: LinhaRank[] }) {
                 </p>
               </div>
               <div className="flex items-center gap-2 mt-1">
-                <span className={`text-[10px] uppercase tracking-wider font-bold ${roleCor}`}>{roleLabel}</span>
+                <span className={`text-[10px] uppercase tracking-wider font-bold ${roleCor}`}>{rotuloReal}</span>
                 <div className="flex-1 h-1 bg-white/[0.05] rounded-full overflow-hidden">
                   <div
                     className="h-full bg-verde rounded-full"
