@@ -485,24 +485,22 @@ function preencherSpecsFallback(
     if (wp) specs.potencia_wp = Number(wp)
   }
 
-  // INVERSOR STRING — extrai kW de "SIW400H T025", "T015", "K050", "ST030"
+  // INVERSOR STRING — extrai kW do sufixo. Convenção WEG:
+  // - T/K/ST + 3 dígitos = kW direto (T025 = 25 kW, K050 = 50 kW, ST030 = 30 kW)
+  // - M + 3 dígitos = kW × 10 (M050 = 5 kW, M070 = 7 kW, M100 = 10 kW)
   if (categoria === 'inversor' && subcategoria === 'inversor_string' && !specs.potencia_kw) {
     const m = texto.match(/\b(T|K|ST)(\d{3})\b/)
     if (m) specs.potencia_kw = Number(m[2])
-    // Padrão SIW200/300 residencial: "M050" = 5 kW, "M070" = 7 kW, "M100" = 10 kW
     if (!specs.potencia_kw) {
       const m2 = texto.match(/\bM(\d{3})\b/)
-      if (m2) {
-        const n = Number(m2[1])
-        // Se n < 20, provavelmente potência em kW × 10 (M050 = 5 kW). Senão kW direto (M100 = 10 kW? ambíguo)
-        specs.potencia_kw = n <= 100 ? n / 10 : n / 100
-      }
+      if (m2) specs.potencia_kw = Number(m2[1]) / 10
     }
   }
 
-  // MICROINVERSOR — "SIW100G M024" = 2,4 kW (M{XXX} = XXX × 100 W)
+  // MICROINVERSOR — mesma convenção M+XXX = kW × 10.
+  // Ex: SIW100G M010 = 1,0 kW | M016 = 1,6 kW | M020 = 2,0 kW | M024 = 2,4 kW
   if (categoria === 'inversor' && subcategoria === 'microinversor' && !specs.potencia_kw) {
     const m = texto.match(/\bM(\d{3})\b/)
-    if (m) specs.potencia_kw = Number(m[1]) / 100
+    if (m) specs.potencia_kw = Number(m[1]) / 10
   }
 }
