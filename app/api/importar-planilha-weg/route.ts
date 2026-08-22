@@ -223,8 +223,20 @@ function classificar(
   const t = tipo.toLowerCase()
   const n = nome.toLowerCase()
 
-  // MÓDULO FOTOVOLTAICO
-  if (t.includes('módulo') || t.includes('modulo') || t.includes('celula') || t.includes('célula')) {
+  // MÓDULO FOTOVOLTAICO — exige indicador claro de placa solar. Antes
+  // pegava "Módulo" isolado, o que capturava smart home ("Módulo Dimmer
+  // Wi-Fi") e rapid shutdown ("Módulo de Teste RSDW"). Agora exige que
+  // a linha bata em "fotovoltaico|monofacial|bifacial|topcon|celula" ou
+  // que o próprio Tipo seja "Módulo Fotovoltaico".
+  const isPlaca = (
+    t.includes('fotovoltaico') || t.includes('monofacial') || t.includes('bifacial') ||
+    t.includes('topcon') || t.includes('perc') || t.includes('heterojun') ||
+    t.includes('celula') || t.includes('célula') ||
+    (t.includes('módulo') && !t.includes('wi-fi') && !t.includes('wifi') &&
+     !t.includes('dimmer') && !t.includes('interruptor') && !t.includes('cortina') &&
+     !/rsdw|rsd|rapid shutdown/.test(t))
+  )
+  if (isPlaca) {
     return {
       categoria: 'placa',
       subcategoria: 'modulo_fotovoltaico',
