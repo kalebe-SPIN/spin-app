@@ -424,8 +424,14 @@ export function KitFluxoClient({
 function PlacaCard({
   placa, selecionada, onSelect,
 }: { placa: ProdutoRow; selecionada: boolean; onSelect: () => void }) {
-  const wp = placa.specs?.potencia_wp || 0
-  const area = placa.specs?.area_m2 || 0
+  const wpBruto = Number(placa.specs?.potencia_wp) || 0
+  // Sanidade: placa fotovoltaica real é 200-1000 Wp. Se veio "2.278"
+  // é cadastro em kW por engano — mostra corrigido. Se veio muito baixo
+  // (< 100), mostra "—" pra sinalizar que o cadastro tá quebrado.
+  const wp = wpBruto < 100 && wpBruto > 0
+    ? Math.round(wpBruto * 1000) // veio em kW, mostra Wp
+    : wpBruto
+  const area = Number(placa.specs?.area_m2) || 0
 
   return (
     <div
@@ -450,7 +456,9 @@ function PlacaCard({
             <p className="text-xs text-white/40 mt-0.5">{placa.fabricante}</p>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-black text-sol">{wp}</p>
+            <p className="text-2xl font-black text-sol">
+              {wp >= 100 ? fmtNum(wp, 0) : '—'}
+            </p>
             <p className="text-[10px] text-white/40 uppercase">Wp</p>
           </div>
         </div>
