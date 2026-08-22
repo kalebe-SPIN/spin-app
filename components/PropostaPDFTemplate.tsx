@@ -249,20 +249,49 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
 
             <div style={{ flex: 1 }} />
 
-            {/* Assinatura Spin — Kalebe */}
-            <div style={E.blocoAssinatura}>
-              {empresa.rt_assinatura_url && (
-                <img
-                  src={empresa.rt_assinatura_url}
-                  alt="Assinatura"
-                  style={{ height: 64, objectFit: 'contain', marginBottom: -8, filter: 'brightness(0) invert(1)' }}
-                  crossOrigin="anonymous"
-                />
-              )}
-              <div style={E.linhaAssinatura} />
-              <p style={E.nomeAssinatura}>{empresa.rt_nome || 'Kalebe Grün'}</p>
-              <p style={E.cargoAssinatura}>Diretor comercial · Spin Solar</p>
-              {empresa.rt_email && <p style={E.emailAssinatura}>{empresa.rt_email}</p>}
+            {/* Aceite e assinaturas — cartão branco pra dar leitura de "documento
+                oficial" no meio da paleta dark. Bloco Spin (Kalebe, com scan) +
+                bloco Cliente (linha vazia pra assinar). */}
+            <div style={E.blocoAssinaturaCard}>
+              <div style={E.tituloAceite}>
+                <span style={E.rotuloAceiteDourado}>Aceite e assinaturas</span>
+                <span style={E.dataAceite}>
+                  {projeto.cliente_endereco?.cidade || 'Tijucas'}/{projeto.cliente_endereco?.uf || 'SC'}, {dataHoje}
+                </span>
+              </div>
+
+              <div style={E.gridAssinaturas}>
+                {/* Spin — Kalebe */}
+                <div style={E.blocoAssinaturaLado}>
+                  <div style={E.espacoScan}>
+                    {empresa.rt_assinatura_url && (
+                      <img
+                        src={empresa.rt_assinatura_url}
+                        alt="Assinatura Kalebe"
+                        style={E.imgAssinatura}
+                        crossOrigin="anonymous"
+                      />
+                    )}
+                  </div>
+                  <div style={E.linhaAssinaturaBranca} />
+                  <p style={E.nomeAssinaturaEscuro}>{empresa.rt_nome || 'Kalebe Grün'}</p>
+                  <p style={E.cargoAssinaturaEscuro}>Diretor comercial · Spin Solar</p>
+                  <p style={E.docAssinaturaEscuro}>CNPJ 22.279.642/0001-04</p>
+                </div>
+
+                {/* Cliente */}
+                <div style={E.blocoAssinaturaLado}>
+                  <div style={E.espacoScan} />
+                  <div style={E.linhaAssinaturaBranca} />
+                  <p style={E.nomeAssinaturaEscuro}>{projeto.cliente_razao_social || '—'}</p>
+                  <p style={E.cargoAssinaturaEscuro}>Cliente · Tomador</p>
+                  <p style={E.docAssinaturaEscuro}>
+                    {projeto.cliente_cpf_cnpj
+                      ? `CPF/CNPJ ${formatarCpfCnpj(String(projeto.cliente_cpf_cnpj))}`
+                      : 'CPF/CNPJ ______________________'}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div style={E.rodapeManifesto}>
@@ -602,5 +631,84 @@ const E = {
     margin: '2px 0 0',
     fontSize: 10,
     color: 'rgba(245,245,240,.45)',
+  },
+  // ═══ Cartão branco de aceite/assinaturas ═══
+  blocoAssinaturaCard: {
+    marginTop: 32,
+    background: '#FFFFFF',
+    color: '#050B16',
+    padding: '28px 32px 32px',
+    borderRadius: 4,
+    boxShadow: '0 8px 32px rgba(245,180,0,0.08)',
+    border: '1px solid rgba(245,180,0,.3)',
+  },
+  tituloAceite: {
+    display: 'flex' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'baseline' as const,
+    paddingBottom: 16,
+    marginBottom: 24,
+    borderBottom: '1px solid rgba(5,11,22,.08)',
+  },
+  rotuloAceiteDourado: {
+    fontFamily: '"Space Grotesk", sans-serif',
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 3,
+    textTransform: 'uppercase' as const,
+    color: '#B8860B',
+  },
+  dataAceite: {
+    fontSize: 10,
+    color: 'rgba(5,11,22,.55)',
+    fontStyle: 'italic' as const,
+  },
+  gridAssinaturas: {
+    display: 'grid' as const,
+    gridTemplateColumns: '1fr 1fr',
+    gap: 48,
+  },
+  blocoAssinaturaLado: {
+    display: 'flex' as const,
+    flexDirection: 'column' as const,
+    alignItems: 'flex-start' as const,
+  },
+  espacoScan: {
+    height: 72,
+    width: '100%',
+    display: 'flex' as const,
+    alignItems: 'flex-end' as const,
+    marginBottom: -12,
+  },
+  imgAssinatura: {
+    height: 68,
+    objectFit: 'contain' as const,
+    filter: 'contrast(1.15) brightness(0.85)',
+    // sem invert — fundo agora é branco, assinatura preta natural
+  },
+  linhaAssinaturaBranca: {
+    width: '100%',
+    borderTop: '1.5px solid #050B16',
+    marginTop: 4,
+    paddingTop: 8,
+  },
+  nomeAssinaturaEscuro: {
+    margin: 0,
+    fontFamily: '"Space Grotesk", sans-serif',
+    fontSize: 15,
+    fontWeight: 700,
+    letterSpacing: '-0.01em',
+    color: '#050B16',
+  },
+  cargoAssinaturaEscuro: {
+    margin: '3px 0 0',
+    fontSize: 10,
+    color: 'rgba(5,11,22,.65)',
+    fontWeight: 500,
+  },
+  docAssinaturaEscuro: {
+    margin: '2px 0 0',
+    fontSize: 10,
+    color: 'rgba(5,11,22,.45)',
   },
 }
