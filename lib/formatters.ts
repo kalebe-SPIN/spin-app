@@ -60,26 +60,27 @@ export function formatarCep(valor: string): string {
  * Formata número no padrão brasileiro: vírgula pra decimal, ponto pra milhar.
  * Regra fixa Spin: TODO valor numérico exibido pro usuário passa por aqui.
  *
- * Ex: fmtNum(1234.5)          → "1.234,5"
- *     fmtNum(1234.5, 2)       → "1.234,50"
- *     fmtNum(0.243, 2)        → "0,24"
+ * DEFAULT = 2 casas decimais (regra Kalebe 2026-08-22). Passe 0 pra
+ * inteiro puro, ou outro valor pra sobrescrever.
+ *
+ * Ex: fmtNum(1234.5)          → "1.234,50"
+ *     fmtNum(1234.5, 0)       → "1.235"
+ *     fmtNum(0.243)           → "0,24"
  *     fmtNum(null)            → "—"
  *     fmtNum(8.14, 2, ' kWp') → "8,14 kWp"
  */
 export function fmtNum(
   valor: number | string | null | undefined,
-  casas?: number,
+  casas: number = 2,
   sufixo?: string,
 ): string {
   if (valor === null || valor === undefined || valor === '') return '—'
   const n = typeof valor === 'string' ? parseFloat(valor.replace(',', '.')) : valor
   if (!isFinite(n)) return '—'
-  const opts: Intl.NumberFormatOptions = {}
-  if (casas !== undefined) {
-    opts.minimumFractionDigits = casas
-    opts.maximumFractionDigits = casas
-  }
-  const s = n.toLocaleString('pt-BR', opts)
+  const s = n.toLocaleString('pt-BR', {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas,
+  })
   return sufixo ? `${s}${sufixo}` : s
 }
 
