@@ -100,11 +100,15 @@ export async function POST(req: NextRequest) {
       if (codigosVistos.has(sapRaw)) continue
       codigosVistos.add(sapRaw)
 
-      const unitario = Number(l[3]) || null
-      const unitarioComFrete = Number(l[4]) || null
+      const unitario = parseNumPtBr(l[3])
+      const unitarioComFrete = parseNumPtBr(l[4])
       // Coluna 5 = "Fator 0,4182" = preço com desconto WEG aplicado = custo real Spin
-      const custoComDesconto = Number(l[5]) || null
+      const custoComDesconto = parseNumPtBr(l[5])
       const { categoria, subcategoria, fabricante, specs } = classificar(tipo, nome, l)
+
+      // Fallbacks — se planilha veio com célula vazia, tenta extrair do próprio nome/modelo
+      const modeloExtraido = extrairModelo(nome, l)
+      preencherSpecsFallback(specs, categoria, subcategoria, modeloExtraido, nome)
 
       produtos.push({
         categoria,
@@ -242,9 +246,9 @@ function classificar(
       subcategoria: 'modulo_fotovoltaico',
       fabricante: String(linha[8] || 'WEG'),
       specs: {
-        potencia_wp: Number(linha[6]) || null,
-        area_m2: Number(linha[9]) || null,
-        largura_mm: Number(linha[10]) || null,
+        potencia_wp: parseNumPtBr(linha[6]),
+        area_m2: parseNumPtBr(linha[9]),
+        largura_mm: parseNumPtBr(linha[10]),
         tipo_celula: tipo,
       },
     }
@@ -257,10 +261,10 @@ function classificar(
       subcategoria: 'microinversor',
       fabricante: 'WEG',
       specs: {
-        potencia_kw: Number(linha[6]) || null,
+        potencia_kw: parseNumPtBr(linha[6]),
         tensao_desc: tipo,
         disjuntor_equivalente: String(linha[7] || '') || null,
-        entradas_mppt: Number(linha[8]) || null,
+        entradas_mppt: parseNumPtBr(linha[8]),
       },
     }
   }
@@ -272,7 +276,7 @@ function classificar(
       subcategoria: 'inversor_bombeamento',
       fabricante: 'WEG',
       specs: {
-        potencia_kw: Number(linha[6]) || null,
+        potencia_kw: parseNumPtBr(linha[6]),
         tensao_desc: tipo,
       },
     }
@@ -285,10 +289,10 @@ function classificar(
       subcategoria: 'inversor_string',
       fabricante: 'WEG',
       specs: {
-        potencia_kw: Number(linha[6]) || null,
+        potencia_kw: parseNumPtBr(linha[6]),
         tensao_desc: tipo,
         disjuntor_equivalente: String(linha[7] || '') || null,
-        entradas_mppt: Number(linha[8]) || null,
+        entradas_mppt: parseNumPtBr(linha[8]),
       },
     }
   }
@@ -428,4 +432,77 @@ function extrairModelo(nome: string, linha: unknown[]): string {
   const c11 = String(linha[11] || '').trim()
   if (c11 && c11.length < 40) return c11
   return nome
+}
+
+/**
+ * Parse robusto de número em formato brasileiro do Excel.
+ * Aceita: number, "1234,56", "1.234,56", "R$ 1.234,56", "2,4 kW",
+ * "615 Wp", "48 A". Retorna null se não conseguir extrair um número.
+ * O Number() puro falhava em qualquer célula com vírgula/símbolo e
+ * deixava specs vazio + preço 0 — era a causa dos cadastros incompletos.
+ */
+function parseNumPtBr(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  if (typeof v === 'number') return isFinite(v) ? v : null
+  const s = String(v)
+    .replace(/\s|R\$|kW|Wp|W|A|kWh|Ω|%|V|Hz|km|m²|kg/gi, '') // sufixos
+    .replace(/[^\d,.-]/g, '')                                  // resto
+  if (!s) return null
+  // Formato brasileiro: pontos são milhar, vírgula é decimal
+  // Ex: "1.234,56" → "1234.56"
+  const bralike = s.includes(',')
+    ? s.replace(/\./g, '').replace(',', '.')
+    : s
+  const n = Number(bralike)
+  return isFinite(n) ? n : null
+}
+
+/**
+ * Se a planilha veio com célula vazia (Wp/kW), tenta extrair do próprio
+ * código do modelo WEG. Padrões conhecidos:
+ * - Placas: "615 Wp WEG BIFACIAL" → 615 Wp; "JAM66D45-620/LB" → 620 Wp
+ * - Inversor string: "SIW400H T025 W00" → 25 kW (T/K/ST + 3 dígitos)
+ * - Microinversor: "SIW100G M024 W10" → 2,4 kW (M{XXX} → XXX/10)
+ *
+ * Só preenche se o valor atual está null — não sobrescreve dado bom.
+ */
+function preencherSpecsFallback(
+  specs: Record<string, unknown>,
+  categoria: string,
+  subcategoria: string,
+  modelo: string,
+  descricao: string,
+) {
+  const texto = `${modelo} ${descricao}`.toUpperCase()
+
+  // PLACA — extrai Wp de "615 Wp", "JAM66D45-620", "WPV 615 Wp"
+  if (categoria === 'placa' && !specs.potencia_wp) {
+    // Padrão "615Wp", "615 Wp", "620W"
+    const m1 = texto.match(/(\d{3,4})\s?W[P]?\b/)
+    // Padrão "JAM66D45-620/LB" ou "CS7L-620"
+    const m2 = texto.match(/[-_](\d{3,4})[\/\s]/) || texto.match(/[-_](\d{3,4})\b/)
+    const wp = m1?.[1] || m2?.[1]
+    if (wp) specs.potencia_wp = Number(wp)
+  }
+
+  // INVERSOR STRING — extrai kW de "SIW400H T025", "T015", "K050", "ST030"
+  if (categoria === 'inversor' && subcategoria === 'inversor_string' && !specs.potencia_kw) {
+    const m = texto.match(/\b(T|K|ST)(\d{3})\b/)
+    if (m) specs.potencia_kw = Number(m[2])
+    // Padrão SIW200/300 residencial: "M050" = 5 kW, "M070" = 7 kW, "M100" = 10 kW
+    if (!specs.potencia_kw) {
+      const m2 = texto.match(/\bM(\d{3})\b/)
+      if (m2) {
+        const n = Number(m2[1])
+        // Se n < 20, provavelmente potência em kW × 10 (M050 = 5 kW). Senão kW direto (M100 = 10 kW? ambíguo)
+        specs.potencia_kw = n <= 100 ? n / 10 : n / 100
+      }
+    }
+  }
+
+  // MICROINVERSOR — "SIW100G M024" = 2,4 kW (M{XXX} = XXX × 100 W)
+  if (categoria === 'inversor' && subcategoria === 'microinversor' && !specs.potencia_kw) {
+    const m = texto.match(/\bM(\d{3})\b/)
+    if (m) specs.potencia_kw = Number(m[1]) / 100
+  }
 }
