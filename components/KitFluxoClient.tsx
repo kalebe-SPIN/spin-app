@@ -88,7 +88,10 @@ export function KitFluxoClient({
 
   // Modo manual: você escolhe placa + qtd + inversor + qtd, ignora
   // sugestões e validações bloqueantes. Warnings continuam informativos.
+  // Escolha da placa no manual é independente da etapa 2 acima —
+  // permite trocar sem sair do modo.
   const [modoManual, setModoManual] = useState<boolean>(false)
+  const [manualPlacaId, setManualPlacaId] = useState<string | null>(null)
   const [manualQtdPlacas, setManualQtdPlacas] = useState<number>(0)
   const [manualInversorId, setManualInversorId] = useState<string | null>(null)
   const [manualQtdInv, setManualQtdInv] = useState<number>(1)
@@ -177,19 +180,21 @@ export function KitFluxoClient({
   }
 
   // ─── Modo manual — o vendedor mesmo monta o kit ─────────────────────────
+  // Placa efetiva: prioriza a escolhida no bloco manual; cai pra da etapa 2.
+  const placaManual = placas.find(p => p.id === manualPlacaId) || placaEscolhida
   const manualInv = inversores.find(i => i.id === manualInversorId)
   const manualQtd = manualQtdPlacas > 0
     ? manualQtdPlacas
-    : Math.max(1, Math.ceil((potCcAlvo * 1000) / (placaEscolhida?.specs?.potencia_wp || 1)))
-  const manualPotCc = ((placaEscolhida?.specs?.potencia_wp || 0) * manualQtd) / 1000
+    : Math.max(1, Math.ceil((potCcAlvo * 1000) / (placaManual?.specs?.potencia_wp || 1)))
+  const manualPotCc = ((placaManual?.specs?.potencia_wp || 0) * manualQtd) / 1000
   const manualPotCa = (manualInv?.specs?.potencia_kw || 0) * manualQtdInv
   const manualFci = manualPotCa > 0 ? (manualPotCc / manualPotCa) * 100 : 0
-  const manualPreco = placaEscolhida && manualInv
-    ? (precoDe(placaEscolhida) * manualQtd) + (precoDe(manualInv) * manualQtdInv)
+  const manualPreco = placaManual && manualInv
+    ? (precoDe(placaManual) * manualQtd) + (precoDe(manualInv) * manualQtdInv)
     : 0
 
   function handleConfirmarManual() {
-    if (!placaEscolhida) { setErro('Escolha uma placa antes.'); return }
+    if (!placaManual) { setErro('Escolha uma placa antes.'); return }
     if (!manualInv) { setErro('Escolha o inversor.'); return }
     if (manualQtd < 1) { setErro('Qtd de placas inválida.'); return }
     if (manualQtdInv < 1) { setErro('Qtd de inversores inválida.'); return }
@@ -198,11 +203,11 @@ export function KitFluxoClient({
 
     const payload: any = {
       placa: {
-        id: placaEscolhida.id,
-        codigo_weg: placaEscolhida.codigo_weg,
-        modelo: placaEscolhida.modelo,
-        potencia_wp: placaEscolhida.specs?.potencia_wp || 0,
-        preco_venda: precoDe(placaEscolhida),
+        id: placaManual.id,
+        codigo_weg: placaManual.codigo_weg,
+        modelo: placaManual.modelo,
+        potencia_wp: placaManual.specs?.potencia_wp || 0,
+        preco_venda: precoDe(placaManual),
       },
       qtd_placas: manualQtd,
       potencia_cc_kwp: manualPotCc,
@@ -365,7 +370,10 @@ export function KitFluxoClient({
 
             {modoManual && (
               <ModoManual
-                placa={placaEscolhida!}
+                placas={placas}
+                placaEfetiva={placaManual || null}
+                manualPlacaId={manualPlacaId || placaEscolhida?.id || null}
+                setManualPlacaId={setManualPlacaId}
                 inversoresTodos={inversores}
                 manualQtdPlacas={manualQtd}
                 setManualQtdPlacas={setManualQtdPlacas}
@@ -616,7 +624,9 @@ function formatarLigacao(v?: string): string {
  * (FCI muito longe do ideal, potência CA acima do CELESC).
  */
 function ModoManual({
-  placa, inversoresTodos,
+  placas, placaEfetiva,
+  manualPlacaId, setManualPlacaId,
+  inversoresTodos,
   manualQtdPlacas, setManualQtdPlacas,
   manualInversorId, setManualInversorId,
   manualQtdInv, setManualQtdInv,
@@ -624,7 +634,10 @@ function ModoManual({
   tipoLigacao,
   onConfirmar, pending,
 }: {
-  placa: ProdutoRow
+  placas: ProdutoRow[]
+  placaEfetiva: ProdutoRow | null
+  manualPlacaId: string | null
+  setManualPlacaId: (id: string | null) => void
   inversoresTodos: ProdutoRow[]
   manualQtdPlacas: number
   setManualQtdPlacas: (n: number) => void
@@ -640,40 +653,93 @@ function ModoManual({
   onConfirmar: () => void
   pending: boolean
 }) {
-  // Modo manual mostra TUDO por padrão — item fora de estoque pode
-  // já ter sido reservado pra esse projeto quando o cadastro entrou
-  // (regra fixa da Spin, ver memória feedback-kit-manual-reserva-estoque).
-  // Filtro opcional pra quem quiser ver só o disponível de fato.
-  const [ocultarSemEstoque, setOcultarSemEstoque] = useState(false)
+  // Lista TUDO cadastrado por padrão (regra fixa —
+  // feedback-kit-manual-reserva-estoque). A→Z pelo modelo.
+  const placasOrd = placas
+    .slice()
+    .sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '', 'pt-BR'))
+  const inversoresOrd = inversoresTodos
+    .slice()
+    .sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '', 'pt-BR'))
 
-  const invVisiveis = ocultarSemEstoque
-    ? inversoresTodos.filter(i => i.disponivel_estoque)
-    : inversoresTodos
+  const inv = inversoresTodos.find(i => i.id === manualInversorId)
 
   // Warnings — informativos, não bloqueiam
   const warnings: string[] = []
   if (fci > 0 && fci < 80) warnings.push(`FCI ${fci.toFixed(0)}% — inversor superdimensionado, geração vai desperdiçar potência CA.`)
   if (fci > 145) warnings.push(`FCI ${fci.toFixed(0)}% — inversor subdimensionado demais, vai clipar bastante em pico de sol.`)
   if (tipoLigacao === 'monofasico' && potCa > 8) warnings.push(`Potência CA ${potCa.toFixed(1)} kW ultrapassa o limite CELESC monofásico de 8 kW.`)
-  if (manualQtdPlacas > 0 && placa.specs?.potencia_wp === 0) warnings.push('Essa placa está com potência 0 Wp no cadastro. Confere o produto em /admin/catalogo.')
+  if (placaEfetiva && (placaEfetiva.specs?.potencia_wp || 0) === 0) warnings.push('Essa placa está com potência 0 Wp no cadastro. Confere o produto em /admin/catalogo.')
+  if (inv && (inv.specs?.potencia_kw || 0) === 0) warnings.push('Esse inversor está com potência 0 kW no cadastro. Confere o produto em /admin/catalogo.')
 
-  const inv = inversoresTodos.find(i => i.id === manualInversorId)
-  const podeSalvar = !!inv && manualQtdPlacas >= 1 && manualQtdInv >= 1
+  const podeSalvar = !!placaEfetiva && !!inv && manualQtdPlacas >= 1 && manualQtdInv >= 1
 
   return (
     <div className="mt-4 p-4 bg-white/[0.02] border border-sol/25 rounded-lg space-y-4">
-      <p className="text-xs text-white/70 leading-relaxed">
-        Você monta o kit escolhendo direto <strong>placa (já escolhida acima)</strong>, <strong>qtd de placas</strong>,
-        <strong> inversor</strong> e <strong>qtd de inversores</strong>. O sistema calcula FCI e potência automaticamente
-        e mostra avisos se algo estiver fora do padrão — mas não bloqueia salvar.
-      </p>
       <p className="text-xs text-sol/80 leading-relaxed">
         💡 Itens fora de estoque continuam disponíveis pra escolha — pode acontecer do material sair do estoque
         entre o cadastro do projeto e a montagem do kit, mas ele já foi reservado pra essa venda.
       </p>
 
-      {/* Qtd placas + resultado CC */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      {/* Dois selects lado a lado — placa + inversor */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">
+            Modelo de placa ({placasOrd.length} opções)
+          </span>
+          <select
+            value={manualPlacaId || ''}
+            onChange={e => setManualPlacaId(e.target.value || null)}
+            className="mt-1 w-full px-3 py-2.5 bg-white/5 border border-white/15 rounded text-white text-sm"
+          >
+            <option value="" className="bg-noite">— escolha uma placa —</option>
+            {placasOrd.map(p => (
+              <option key={p.id} value={p.id} className="bg-noite">
+                {p.modelo} · {p.specs?.potencia_wp || 0} Wp
+                {!p.disponivel_estoque ? ' · sem estoque' : ''}
+              </option>
+            ))}
+          </select>
+          {placaEfetiva && (
+            <p className="text-[10px] text-white/40 mt-1">
+              {placaEfetiva.codigo_weg} · {placaEfetiva.fabricante || 'sem fabricante'}
+              {!placaEfetiva.disponivel_estoque && <span className="text-coral"> · ⚠ sem estoque</span>}
+            </p>
+          )}
+        </label>
+
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">
+            Modelo de inversor / microinversor ({inversoresOrd.length} opções)
+          </span>
+          <select
+            value={manualInversorId || ''}
+            onChange={e => setManualInversorId(e.target.value || null)}
+            className="mt-1 w-full px-3 py-2.5 bg-white/5 border border-white/15 rounded text-white text-sm"
+          >
+            <option value="" className="bg-noite">— escolha um inversor —</option>
+            {inversoresOrd.map(i => {
+              const isMicro = /^SIW100/i.test(i.modelo || '')
+              return (
+                <option key={i.id} value={i.id} className="bg-noite">
+                  {isMicro ? '[micro] ' : '[string] '}
+                  {i.modelo} · {i.specs?.potencia_kw || 0} kW
+                  {!i.disponivel_estoque ? ' · sem estoque' : ''}
+                </option>
+              )
+            })}
+          </select>
+          {inv && (
+            <p className="text-[10px] text-white/40 mt-1">
+              {inv.codigo_weg}
+              {!inv.disponivel_estoque && <span className="text-coral"> · ⚠ sem estoque</span>}
+            </p>
+          )}
+        </label>
+      </div>
+
+      {/* Qtds + resumo (FCI, CC, CA, preço) */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <label className="block">
           <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Qtd placas</span>
           <input
@@ -685,122 +751,55 @@ function ModoManual({
             className="mt-1 w-full px-3 py-2 bg-white/5 border border-white/15 rounded text-white font-bold text-lg"
           />
         </label>
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Qtd inversores</span>
+          <input
+            type="number"
+            min={1}
+            max={20}
+            value={manualQtdInv}
+            onChange={e => setManualQtdInv(parseInt(e.target.value) || 1)}
+            className="mt-1 w-full px-3 py-2 bg-white/5 border border-white/15 rounded text-white font-bold text-lg"
+          />
+        </label>
         <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
-          <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Potência CC</p>
-          <p className="text-lg font-black text-sol tabular-nums">{potCc.toFixed(2)} kWp</p>
+          <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Pot. CC</p>
+          <p className="text-lg font-black text-sol tabular-nums">{potCc.toFixed(2)}<span className="text-xs text-white/50 font-normal"> kWp</span></p>
         </div>
         <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
-          <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Placa</p>
-          <p className="text-xs text-white truncate">{placa.modelo}</p>
-          <p className="text-[10px] text-white/50">{placa.specs?.potencia_wp || 0} Wp cada</p>
+          <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Pot. CA</p>
+          <p className="text-lg font-black text-weg-azul tabular-nums">{potCa.toFixed(2)}<span className="text-xs text-white/50 font-normal"> kW</span></p>
+        </div>
+        <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
+          <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">FCI</p>
+          <p className={`text-lg font-black tabular-nums ${
+            fci >= 100 && fci <= 145 ? 'text-verde' : fci >= 80 ? 'text-sol' : 'text-coral'
+          }`}>{fci > 0 ? fci.toFixed(0) : '—'}<span className="text-xs text-white/50 font-normal">%</span></p>
+        </div>
+        <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
+          <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Preço WEG</p>
+          <p className="text-sm font-black text-white tabular-nums">R$ {preco.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
         </div>
       </div>
 
-      {/* Grid de inversores */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">
-            Escolha o inversor / microinversor ({invVisiveis.length} opções)
-          </span>
-          <label className="text-[10px] text-white/50 flex items-center gap-1.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={ocultarSemEstoque}
-              onChange={e => setOcultarSemEstoque(e.target.checked)}
-            />
-            ocultar sem estoque
-          </label>
+      {warnings.length > 0 && (
+        <div className="p-3 bg-sol/5 border border-sol/25 rounded-lg space-y-1">
+          {warnings.map((w, i) => (
+            <p key={i} className="text-xs text-sol/90">⚠ {w}</p>
+          ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
-          {invVisiveis
-            .slice()
-            .sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '', 'pt-BR'))
-            .map(i => {
-              const sel = manualInversorId === i.id
-              const isMicro = /^SIW100/i.test(i.modelo || '')
-              return (
-                <button
-                  key={i.id}
-                  type="button"
-                  onClick={() => setManualInversorId(i.id)}
-                  className={`text-left p-3 border rounded transition ${
-                    sel
-                      ? 'bg-sol/15 border-sol/60'
-                      : 'bg-white/[0.02] border-white/10 hover:border-white/25'
-                  } ${!i.disponivel_estoque ? 'opacity-50' : ''}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-bold text-white truncate">{i.modelo}</p>
-                    <span className="text-[9px] uppercase tracking-wider font-bold text-sol flex-shrink-0">
-                      {isMicro ? '🔀 micro' : '⚡ string'}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-white/50 mt-0.5">{i.codigo_weg} · {i.specs?.potencia_kw || 0} kW</p>
-                  {!i.disponivel_estoque && (
-                    <p className="text-[10px] text-coral mt-0.5">⚠ sem estoque</p>
-                  )}
-                </button>
-              )
-            })}
-          {invVisiveis.length === 0 && (
-            <p className="col-span-2 text-xs text-white/40 italic text-center py-4">
-              Nenhum inversor no catálogo. Cadastre em /admin/catalogo.
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Qtd inversor + resumo CA + FCI + preço */}
-      {inv && (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <label className="block">
-              <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Qtd inversores</span>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                value={manualQtdInv}
-                onChange={e => setManualQtdInv(parseInt(e.target.value) || 1)}
-                className="mt-1 w-full px-3 py-2 bg-white/5 border border-white/15 rounded text-white font-bold text-lg"
-              />
-            </label>
-            <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
-              <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Potência CA</p>
-              <p className="text-lg font-black text-weg-azul tabular-nums">{potCa.toFixed(2)} kW</p>
-            </div>
-            <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
-              <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">FCI</p>
-              <p className={`text-lg font-black tabular-nums ${
-                fci >= 100 && fci <= 145 ? 'text-verde' : fci >= 80 ? 'text-sol' : 'text-coral'
-              }`}>{fci.toFixed(0)}%</p>
-            </div>
-            <div className="p-2 bg-white/[0.03] border border-white/10 rounded">
-              <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Preço kit WEG</p>
-              <p className="text-lg font-black text-white tabular-nums">R$ {preco.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
-            </div>
-          </div>
-
-          {warnings.length > 0 && (
-            <div className="p-3 bg-sol/5 border border-sol/25 rounded-lg space-y-1">
-              {warnings.map((w, i) => (
-                <p key={i} className="text-xs text-sol/90">⚠ {w}</p>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center justify-end pt-2 border-t border-white/10">
-            <button
-              type="button"
-              onClick={onConfirmar}
-              disabled={pending || !podeSalvar}
-              className="px-5 py-2.5 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40"
-            >
-              {pending ? 'Salvando...' : '✓ Confirmar kit manual → Lista CA'}
-            </button>
-          </div>
-        </>
       )}
+
+      <div className="flex items-center justify-end pt-2 border-t border-white/10">
+        <button
+          type="button"
+          onClick={onConfirmar}
+          disabled={pending || !podeSalvar}
+          className="px-5 py-2.5 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40"
+        >
+          {pending ? 'Salvando...' : '✓ Confirmar kit manual → Lista CA'}
+        </button>
+      </div>
     </div>
   )
 }
