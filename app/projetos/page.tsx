@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
+import { formatarCpfCnpj } from '@/lib/formatters'
 
 /**
  * Listagem de projetos — /projetos
@@ -119,7 +120,7 @@ function ClienteBloco({ grupo }: {
             </span>
           </div>
           {cpf && (
-            <p className="text-[11px] text-white/40">CPF/CNPJ {cpf}</p>
+            <p className="text-[11px] text-white/40">CPF/CNPJ {formatarCpfCnpj(String(cpf))}</p>
           )}
         </div>
         <div className="text-right shrink-0">
