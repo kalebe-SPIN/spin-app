@@ -137,21 +137,46 @@ Este handler tem apenas 5 min de runtime. SVG compacto = geração rápida = ent
   // Usuário: dados do projeto + template + biblioteca de símbolos
   const userPrompt = construirPromptUsuario(dados, template, skill)
 
-  const stream = anthropic.messages.stream({
-    model: 'claude-sonnet-5',
-    max_tokens: 16000,           // reduzido de 32k pra caber em 300s do Vercel
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }],
-  })
+  // Modelo pode ser trocado via env var. Fallback: sonnet 4.5 (mais estável e
+  // amplamente disponível; sonnet 5 ainda pode não estar liberado na conta).
+  const modeloPrincipal = process.env.PROJETISTA_MODEL || 'claude-sonnet-4-5-20250929'
 
   let rawText = ''
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta') {
-      const delta = event.delta as any
-      if (delta.type === 'text_delta' && typeof delta.text === 'string') {
-        rawText += delta.text
+  let ultimoErroApi: any = null
+  try {
+    const stream = anthropic.messages.stream({
+      model: modeloPrincipal,
+      max_tokens: 16000,           // reduzido de 32k pra caber em 300s do Vercel
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    })
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta') {
+        const delta = event.delta as any
+        if (delta.type === 'text_delta' && typeof delta.text === 'string') {
+          rawText += delta.text
+        }
       }
     }
+  } catch (e: any) {
+    ultimoErroApi = e
+    console.error('[projetista/pipeline] chamada Anthropic falhou:', e?.message, e?.status, e?.error)
+  }
+
+  // Diagnóstico: se rawText veio vazio, o Claude não respondeu nada.
+  // Causas comuns: modelo indisponível na conta, prompt > context window,
+  // rate limit, quota estourada. Joga erro específico em vez do genérico
+  // "não retornou JSON válido" que confundiu o Kalebe.
+  if (!rawText.trim()) {
+    const detalheApi = ultimoErroApi
+      ? ` [erro API: ${ultimoErroApi?.status || '?'} ${ultimoErroApi?.message || ultimoErroApi}]`
+      : ' [stream fechou sem erro visível — provável modelo indisponível ou quota]'
+    throw new Error(
+      `Claude devolveu resposta VAZIA (modelo=${modeloPrincipal}).${detalheApi} ` +
+      `Verifique: (a) modelo liberado na sua conta Anthropic, ` +
+      `(b) ANTHROPIC_API_KEY do Vercel válida, (c) prompt não estourou context window.`,
+    )
   }
 
   // Extrai JSON — extrator robusto que tolera fences variados e fallback pra SVG puro
@@ -470,7 +495,7 @@ Retorne APENAS o SVG corrigido completo dentro de bloco xml:
 
   try {
     const resp = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      model: process.env.PROJETISTA_MODEL || 'claude-sonnet-4-5-20250929',
       max_tokens: 12000,          // refinamento: menor que o inicial (só corrige itens)
       messages: [{ role: 'user', content: prompt }],
     })
