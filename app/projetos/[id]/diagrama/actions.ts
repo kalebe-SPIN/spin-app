@@ -496,9 +496,6 @@ function montarRelatorioTecnico(args: {
   const correnteCaA = potCaKw > 0
     ? (potCaKw * 1000) / (isTri ? 380 * Math.SQRT2 * Math.sqrt(1.5) : 220)
     : 0
-  const disjSugeridoA = arredondarDisjuntorCA(correnteCaA * 1.25)
-  const numFasesTexto = ligacao === 'trifasico' ? '3F+N' : ligacao === 'bifasico' ? '2F+N' : 'F+N'
-  const qtdDps = ligacao === 'trifasico' ? 4 : ligacao === 'bifasico' ? 3 : 2
 
   const partes: string[] = [
     `RELATÓRIO TÉCNICO — ${nomeFolhaDiagrama(tipoDesenho)}`,
@@ -584,37 +581,69 @@ function montarRelatorioTecnico(args: {
     )
   }
 
+  // ═══ Composição do kit — vem preenchida pelo gerador de kits (Passo 5) ═══
+  const comp = kit.composicao || {}
+  const listaCa: any[] = Array.isArray(projeto.lista_ca_confirmada) ? projeto.lista_ca_confirmada : []
+
   partes.push(
     `## 6. CONDUTORES`,
     ``,
     `### CC (módulos → inversor)`,
-    `- Positivo: 4 mm² (padrão SPIN)`,
-    `- Negativo: 4 mm²`,
-    `- Proteção: 4 mm²`,
-    `- Distância aprox.: ${padrao.distancia_string_qgbt_m ? `${padrao.distancia_string_qgbt_m} m` : '~15 m (a confirmar em campo)'}`,
+    comp.cabo_cc
+      ? `- Extraído do kit selecionado: **${comp.cabo_cc}**`
+      : `- Padrão SPIN: 4 mm² positivo + 4 mm² negativo + 4 mm² proteção`,
+    `- Distância aprox.: ${padrao.distancia_string_qgbt_m ? `${padrao.distancia_string_qgbt_m} m` : 'a confirmar em campo'}`,
     `- Isolação: 1,8kV XLPE termofixo com proteção UV (nota 2 padrão)`,
     ``,
     `### CA`,
-    `- Ramal de ligação:        ${padrao.ramal_ligacao_bitola || `3x10+1x10 mm² (padrão CELESC)`}`,
-    `- Padrão medição → QD:     ${bitolaCaSugerida(correnteCaA)}`,
-    `- QD → QPCA:               ${bitolaCaSugerida(correnteCaA)}`,
-    `- QPCA → inversor:         ${bitolaCaSugerida(correnteCaA / qtdInv)}`,
+    `- Ramal de ligação:     ${padrao.ramal_ligacao_bitola || 'a preencher no Passo 4'}`,
+    `- Padrão medição → QD:  ${padrao.bitola_medicao_qd || 'ver dimensionamento pelo QPCA no kit'}`,
+    `- QPCA → inversor:      ${comp.bitola_ca_saida_qpca || (comp.disjuntor ? 'ver kit selecionado' : 'a preencher')}`,
     `- Isolação: 1kV PVC (nota 3 padrão)`,
     ``,
-    `## 7. PROTEÇÕES`,
+    `## 7. PROTEÇÕES (extraídas do kit gerado no Passo 5)`,
     ``,
-    `- Disjuntor geral (entrada):   ${padrao.amperagem_disjuntor_geral_a ? `${padrao.amperagem_disjuntor_geral_a} A` : `${disjSugeridoA} A`} tripolar`,
-    `- Disjuntor sistema FV (QPCA): ${disjSugeridoA} A · MDW${isTri ? 'H' : 'P'}-C${disjSugeridoA}-${isTri ? '3' : '2'}`,
-    `- DPS CA:                     Classe II, 275Vca, In 10kA, Imax 20kA · ${qtdDps}× (${numFasesTexto})`,
-    `- Aterramento:                Haste 5/8" × 2,4m + cabo cobre nu 16mm²`,
+    `- Disjuntor geral (entrada CELESC): ${padrao.amperagem_disjuntor_geral_a ? `**${padrao.amperagem_disjuntor_geral_a} A** tripolar (cadastrado no Passo 4)` : '⚠ NÃO CADASTRADO no padrão de entrada'}`,
+    `- Disjuntor / DPS do sistema FV (QPCA):`,
+    ...(comp.disjuntor ? [`    · ${comp.disjuntor}`] : []),
+    ...(comp.dps ? [`    · ${comp.dps}`] : []),
+    ...(comp.quadro ? [`    · ${comp.quadro}`] : []),
+    ...((!comp.disjuntor && !comp.dps) ? [`    ⚠ Kit ainda não foi montado — clique em "Selecionar kit" no projeto pra gerar composição`] : []),
+    `- Aterramento: ${comp.aterramento || `Haste 5/8" × 2,4m + cabo cobre nu 16mm² (padrão SPIN)`}`,
+    `- Estrutura de fixação: ${comp.estrutura || 'a preencher'}`,
     ``,
-    `## 8. PADRÃO DE ENTRADA`,
+  )
+
+  // Se lista_ca_confirmada tem produtos com códigos WEG exatos, exibe também
+  if (listaCa.length > 0) {
+    partes.push(
+      `### Lista CA CONFIRMADA (materiais complementares com códigos WEG)`,
+      ``,
+    )
+    for (const item of listaCa) {
+      const codigoWeg = item.codigo_weg || item.codigo || ''
+      const modelo = item.modelo || item.descricao || item.nome || ''
+      const qtd = item.qtd || item.quantidade || 1
+      const preco = item.preco_venda || item.preco_unitario
+      partes.push(
+        `- ${qtd}× ${modelo}${codigoWeg ? ` [WEG ${codigoWeg}]` : ''}${preco ? ` · R$ ${num(preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ''}`,
+      )
+    }
+    partes.push(``)
+  }
+
+  partes.push(
+    `## 8. PADRÃO DE ENTRADA (cadastro do cliente — Passo 4)`,
     ``,
-    `- Amperagem padrão:      ${padrao.amperagem_disjuntor_geral_a || 'a preencher'} A`,
-    `- Grupo tarifário:       ${padrao.grupo_tarifa || 'B (BT)'}`,
-    `- Modalidade:            ${fatura.modalidade || 'convencional'}`,
+    `- Disjuntor geral:       ${padrao.amperagem_disjuntor_geral_a ? `${padrao.amperagem_disjuntor_geral_a} A` : 'a preencher'}`,
+    `- Grupo tarifário:       ${padrao.grupo_tarifa || fatura.grupo_tarifario || 'B (BT)'}`,
+    `- Modalidade:            ${fatura.modalidade || padrao.modalidade || 'convencional'}`,
     `- Tensão nominal:        ${padrao.tensao_nominal_v || tensaoFornec}`,
-    `- Localização do padrão: ${padrao.localizacao_descricao || 'poste na entrada do terreno'}`,
+    `- Tipo de ligação:       ${ligacao}`,
+    `- Ramal de ligação:      ${padrao.ramal_ligacao_bitola || 'a preencher'}`,
+    `- Localização:           ${padrao.localizacao_descricao || 'a preencher'}`,
+    `- Distância medidor→QGBT: ${padrao.distancia_string_qgbt_m ? `${padrao.distancia_string_qgbt_m} m` : 'a preencher'}`,
+    `- Poste próprio?         ${padrao.poste_proprio ? 'SIM' : padrao.poste_proprio === false ? 'NÃO (poste da concessionária)' : 'não informado'}`,
     ``,
   )
 
@@ -682,22 +711,6 @@ function normLigacao(v: any): 'monofasico' | 'bifasico' | 'trifasico' {
   if (/tri/.test(s)) return 'trifasico'
   if (/bi/.test(s)) return 'bifasico'
   return 'monofasico'
-}
-
-function arredondarDisjuntorCA(a: number): number {
-  const opcoes = [16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 300, 400, 500, 630]
-  for (const o of opcoes) if (a <= o) return o
-  return 800
-}
-
-function bitolaCaSugerida(a: number): string {
-  if (a <= 32) return '3#10(10)+T10 mm²'
-  if (a <= 50) return '3#16(16)+T16 mm²'
-  if (a <= 80) return '3#25(25)+T16 mm²'
-  if (a <= 100) return '3#35(35)+T16 mm²'
-  if (a <= 125) return '3#50(50)+T25 mm²'
-  if (a <= 160) return '3#70(70)+T35 mm²'
-  return '3#95(95)+T50 mm² (revisar dimensionamento)'
 }
 
 function extrairArranjo(telhadoSecoes: any[], kit: any): Array<{ numero: number; strings: Array<{ numero: number; qtd_modulos: number }> }> {
