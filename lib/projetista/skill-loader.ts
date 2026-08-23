@@ -13,13 +13,16 @@ const SKILL_DIR = path.join(process.cwd(), 'skills', 'projetista-spin')
 type SkillContent = {
   instrucaoMestre: string             // SKILL.md
   regras: string                      // references/regras-spin.md
-  simbolos: string                    // references/simbolos.md
   estilo: string                      // references/estilo-casa.md
   normas: string                      // references/normas-celesc.md
   calculos: string                    // references/calculos.md
-  templates: Record<string, string>   // templates/*.svg
-  exemplos: Record<string, string>    // exemplos/*.md
-  quadrantes: Record<string, string>  // quadrantes/*.svg — 9 quadrantes CELESC oficiais
+  topologias: string                  // references/topologias.md — folhas 01/02/03 + checklist
+  // Legacy (podem estar em _arquivo/) — mantidos pra retrocompat, mas o
+  // pipeline novo (Projeto Ideal) não depende de nenhum deles.
+  simbolos: string                    // references/simbolos.md — retornará '' se movido
+  templates: Record<string, string>   // templates/*.svg — retornará {} se movido
+  exemplos: Record<string, string>    // exemplos/*.md — retornará {} se movido
+  quadrantes: Record<string, string>  // quadrantes/*.svg — retornará {} se movido
 }
 
 let cache: SkillContent | null = null
@@ -57,13 +60,14 @@ export function carregarSkillProjetista(): SkillContent {
   cache = {
     instrucaoMestre: lerArq('SKILL.md'),
     regras: lerArq('references/regras-spin.md'),
-    simbolos: lerArq('references/simbolos.md'),
     estilo: lerArq('references/estilo-casa.md'),
     normas: lerArq('references/normas-celesc.md'),
     calculos: lerArq('references/calculos.md'),
-    templates: lerDir('templates', '.svg'),
-    exemplos: lerDir('exemplos', '.md'),
-    quadrantes: lerDir('quadrantes', '.svg'),
+    topologias: lerArq('references/topologias.md'),
+    simbolos: lerArq('references/simbolos.md'),          // legacy — vazio se movido
+    templates: lerDir('templates', '.svg'),              // legacy — {} se movido
+    exemplos: lerDir('exemplos', '.md'),                 // legacy — {} se movido
+    quadrantes: lerDir('quadrantes', '.svg'),            // legacy — {} se movido
   }
 
   return cache

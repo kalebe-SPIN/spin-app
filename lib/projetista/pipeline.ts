@@ -105,6 +105,15 @@ ${skill.regras}
 ## PADRÃO GRÁFICO DA CASA
 ${skill.estilo}
 
+## MODO DE EXECUÇÃO — LEIA COM ATENÇÃO
+A skill projetista-spin descreve um motor Python (draw_svg.py + draw_dxf.py + cairosvg + ezdxf) — este ambiente NÃO executa Python. Você está rodando dentro de um handler Node.js Serverless (Vercel). Portanto:
+
+- NÃO tente gerar código Python.
+- NÃO importe/chame scripts/draw_svg.py — eles não existem em runtime aqui.
+- VOCÊ MESMO desenha o SVG diretamente, seguindo à risca as especificações da skill (padrão "Projeto Ideal", A4 paisagem 1190×842, moldura, carimbo SPIN, legenda, placa de advertência, cores de fase CELESC, notas numeradas).
+- Os arquivos Python da skill servem só como referência CONCEITUAL do padrão gráfico — copie o resultado visual, não o código.
+- Todas as regras técnicas da skill (CC direto no inversor, QPCA com DPS, DPS por fase+neutro, cores CELESC, etc.) valem SEMPRE.
+
 ## FORMATO DE SAÍDA OBRIGATÓRIO
 Responda APENAS com JSON válido no formato:
 \`\`\`json
@@ -274,63 +283,56 @@ function construirPromptUsuario(
     `Se o config vier vazio, use esses valores como default. Nunca deixe o carimbo com RT em branco.`,
   )
 
-  // Template escolhido (se disponível) — SEM truncar, é a referência principal
+  // ═══ SKILL NOVA — PADRÃO "PROJETO IDEAL" ═══
+  // Injeta as references estruturadas da skill como contexto denso.
+  // O motor Python (draw_svg.py/draw_dxf.py) descrito na skill NÃO roda aqui
+  // (Vercel é Node.js). Você — Claude — vai desenhar o SVG diretamente,
+  // seguindo a especificação abaixo à risca.
+
+  if (skill.topologias) {
+    partes.push(
+      ``,
+      `## TOPOLOGIAS E ESTRUTURA DAS FOLHAS (referência obrigatória)`,
+      ``,
+      `Este documento define, POR TIPO DE PROJETO, quais folhas gerar (01 unifilar, 02 trifilar, 03 localização) e o checklist de qualidade visual que precisa passar. Você está gerando UMA folha por vez (a que o usuário pediu neste request). Se o tipo pedido é "${tipoDesenho}", identifique a folha correspondente e siga a especificação.`,
+      ``,
+      skill.topologias,
+    )
+  }
+
+  if (skill.calculos) {
+    partes.push(
+      ``,
+      `## CÁLCULOS (fórmulas de dimensionamento)`,
+      ``,
+      `Use quando precisar recalcular ou validar valores mostrados no desenho — não invente números; se algo faltar nos dados do projeto, marque como "a definir" em avisos.`,
+      ``,
+      skill.calculos,
+    )
+  }
+
+  if (skill.normas) {
+    partes.push(
+      ``,
+      `## NORMAS CELESC (mapa de referência)`,
+      ``,
+      skill.normas,
+    )
+  }
+
+  // Legacy: se algum template ainda existir no repo, expõe como referência
+  // gráfica ADICIONAL — mas as instruções acima têm prioridade.
   if (template.svg) {
     partes.push(
       ``,
-      `## TEMPLATE BASE (${template.chave})`,
+      `## TEMPLATE LEGADO DISPONÍVEL (${template.chave}) — referência gráfica opcional`,
       ``,
-      `Use este SVG como estrutura de referência. Substitua as {VARIAVEIS} pelos dados reais acima.`,
-      `Você pode adaptar posições e adicionar detalhes específicos deste projeto, MAS mantenha o padrão gráfico (layout, cores, tipografia, legenda, notas, carimbo).`,
+      `Este é um SVG de uma versão anterior. Pode reaproveitar peças (moldura, carimbo, disposição de blocos) mas o padrão gráfico OFICIAL vem das seções acima.`,
       ``,
       '```xml',
       template.svg,
       '```',
     )
-  }
-
-  // Biblioteca de símbolos (referência rápida)
-  partes.push(
-    ``,
-    `## BIBLIOTECA DE SÍMBOLOS (usar EXATAMENTE)`,
-    ``,
-    skill.simbolos,
-  )
-
-  // Quadrantes CELESC oficiais como blocos plug-and-play
-  // Cada quadrante é um SVG independente que o agente pode reaproveitar/copiar
-  // no output. Reduz reinvenção de carimbo/legenda/placa/QPCA a cada geração.
-  const quadranteNomes = Object.keys(skill.quadrantes || {})
-  if (quadranteNomes.length > 0) {
-    partes.push(
-      ``,
-      `## QUADRANTES CELESC OFICIAIS (blocos plug-and-play)`,
-      ``,
-      `Você tem à disposição ${quadranteNomes.length} quadrantes já aprovados pela CELESC. Cada um é um SVG independente que pode ser reaproveitado no seu output — copia o bloco correspondente e ajusta só as variáveis do projeto. Preferir isto a reinventar do zero garante conformidade CELESC.`,
-    )
-    for (const nome of quadranteNomes) {
-      partes.push(
-        ``,
-        `### Quadrante: ${nome}`,
-        '```xml',
-        skill.quadrantes[nome],
-        '```',
-      )
-    }
-  }
-
-  // Exemplos aprovados (few-shot)
-  const exemploNomes = Object.keys(skill.exemplos || {})
-  if (exemploNomes.length > 0) {
-    partes.push(
-      ``,
-      `## EXEMPLOS APROVADOS (referência de qualidade)`,
-      ``,
-      `${exemploNomes.length} projetos anteriores validados pelo Kalebe. Use-os como referência do NÍVEL de detalhe, organização e conformidade esperados no seu output.`,
-    )
-    for (const nome of exemploNomes) {
-      partes.push(``, `### Exemplo: ${nome}`, skill.exemplos[nome])
-    }
   }
 
   // Se refinamento
