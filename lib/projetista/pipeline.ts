@@ -123,14 +123,23 @@ Responda APENAS com JSON válido no formato:
   "avisos": [...]
 }
 \`\`\`
-Sem texto antes ou depois. Sem markdown fora do bloco json.`
+Sem texto antes ou depois. Sem markdown fora do bloco json.
+
+## OTIMIZAÇÃO DE SAÍDA (crítico — evita timeout Vercel 300s)
+Este handler tem apenas 5 min de runtime. SVG compacto = geração rápida = entrega dentro do prazo. Regras:
+- SEM comentários XML (\`<!-- -->\`)
+- SEM indentação nem quebras de linha desnecessárias dentro do SVG
+- Reutilize \`<g>\` com \`transform\` em vez de repetir coordenadas absolutas em N elementos iguais
+- Atributos numéricos SEM zeros à direita (\`x="120"\` não \`x="120.00"\`)
+- Cores em nome curto quando existir (\`red\` em vez de \`#FF0000\`)
+- Objetivo: SVG final ≤ 60KB. Se estourar, você cortará no meio e falhará.`
 
   // Usuário: dados do projeto + template + biblioteca de símbolos
   const userPrompt = construirPromptUsuario(dados, template, skill)
 
   const stream = anthropic.messages.stream({
     model: 'claude-sonnet-5',
-    max_tokens: 32000,
+    max_tokens: 16000,           // reduzido de 32k pra caber em 300s do Vercel
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
   })
@@ -446,7 +455,7 @@ Retorne APENAS o SVG corrigido completo dentro de bloco xml:
   try {
     const resp = await anthropic.messages.create({
       model: 'claude-sonnet-5',
-      max_tokens: 32000,
+      max_tokens: 12000,          // refinamento: menor que o inicial (só corrige itens)
       messages: [{ role: 'user', content: prompt }],
     })
     const bloco = resp.content.find((b: any) => b.type === 'text') as any
@@ -494,8 +503,17 @@ export async function executarProjetista(
   // Etapa 5: Auditar
   const auditoria = await auditarSvg(anthropic, svgFinal, { tipoDesenho: analise.tipoDesenho })
 
-  // Etapa 6: Refinar se necessário (máx 1 tentativa pra economizar tokens)
-  if (!auditoria.passou && auditoria.itens_falhados.length > 0 && auditoria.itens_falhados.length <= 3) {
+  // Etapa 6: Refinar se necessário — só quando há tempo de sobra
+  // Vercel timeout = 300s; se a geração já demorou > 150s, PULA refinamento
+  // (o SVG entregue passa como está, com aviso da auditoria).
+  const tempoGeracaoMs = Date.now() - tempoInicio
+  const temTempoPraRefinar = tempoGeracaoMs < 150_000  // 2m30s
+  if (
+    !auditoria.passou
+    && auditoria.itens_falhados.length > 0
+    && auditoria.itens_falhados.length <= 3
+    && temTempoPraRefinar
+  ) {
     svgFinal = await refinarSvg(anthropic, svgFinal, auditoria.itens_falhados)
     tentativas = 2
   }

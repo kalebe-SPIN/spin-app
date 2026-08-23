@@ -8,6 +8,9 @@ import { MudarEtapaCard } from '@/components/MudarEtapaCard'
 import { ItensPropostaCard } from '@/components/ItensPropostaCard'
 import { AcoesRapidasCard } from '@/components/AcoesRapidasCard'
 import { ValorItemManual } from '@/components/ValorItemManual'
+import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
+import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
+import { montarPropsDocsHomologacao } from '@/lib/homologacao/utils'
 import { getPassosRelevantes, INFO_PASSO, apenasServicos, type TipoItem } from '@/lib/tipos-projeto'
 
 // Sempre buscar dados frescos do banco (sem cache stale após edição)
@@ -70,11 +73,14 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
   const clienteFechou = projeto.status === 'aceito' || projeto.status === 'vendido'
 
   // Homologação (se já criada — automação dispara ao fechar venda)
+  // Traz TUDO pra alimentar o DocumentosObrigatoriosCard também
   const { data: homologacao } = await supabase
     .from('homologacoes')
-    .select('id, status_geral, etapa_atual')
+    .select('*')
     .eq('projeto_id', projeto.id)
     .maybeSingle()
+
+  const propsDocs = montarPropsDocsHomologacao(homologacao, projeto)
 
   return (
     <main className="min-h-screen p-8 md:p-12">
@@ -114,6 +120,25 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
         <div className="mb-6">
           <MudarEtapaCard projetoId={projeto.id} statusAtual={projeto.status} soServicos={soServicos} />
         </div>
+
+        {/* Documentos obrigatórios da homologação — Kalebe pediu 2026-08-23 pra
+            aparecer aqui também (não só na tela /homologacoes/[id]). Aponta pra
+            mesma tabela: mudou aqui, mudou lá. Só exibe se homologação foi criada. */}
+        {homologacao?.id && (
+          <div className="mb-6">
+            <ErrorBoundaryClient nome="Documentos obrigatórios">
+              <DocumentosObrigatoriosCard
+                homologacaoId={homologacao.id}
+                ehPJ={propsDocs.ehPJ}
+                faturaOk={propsDocs.faturaOk}
+                projetoId={propsDocs.projetoId}
+                urls={propsDocs.urls as any}
+                socios={propsDocs.socios}
+                documentosCompletosEm={propsDocs.documentosCompletosEm}
+              />
+            </ErrorBoundaryClient>
+          </div>
+        )}
 
         {/* Itens da proposta (múltiplos tipos) */}
         <ItensPropostaCard projetoId={projeto.id} />

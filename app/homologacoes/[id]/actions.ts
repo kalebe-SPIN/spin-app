@@ -533,3 +533,27 @@ export async function reprocessarArquivosHomologacaoAction(homologacaoId: string
     return { erro: e?.message || 'Erro ao reprocessar' }
   }
 }
+
+/**
+ * Edita o número do protocolo CELESC. Kalebe recebe o número quando envia
+ * a solicitação (via Agência Web CELESC) e volta aqui pra registrar.
+ */
+export async function editarProtocoloCelescAction(
+  homologacaoId: string,
+  protocolo: string,
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const valorLimpo = protocolo.trim().slice(0, 60)
+
+  const { error } = await supabase
+    .from('homologacoes')
+    .update({ protocolo_celesc: valorLimpo || null })
+    .eq('id', homologacaoId)
+
+  if (error) return { erro: error.message }
+  revalidatePath(`/homologacoes/${homologacaoId}`)
+  return { sucesso: true }
+}

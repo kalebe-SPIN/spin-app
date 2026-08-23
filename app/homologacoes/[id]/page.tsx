@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { EtapaHomologacaoClient } from '@/components/EtapaHomologacaoClient'
 import { ReprocessarArquivosBtn } from '@/components/ReprocessarArquivosBtn'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
+import { ProtocoloCelescEditor } from '@/components/ProtocoloCelescEditor'
 import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
 import { PadraoNovoToggle } from '@/components/PadraoNovoToggle'
 import { GerarTodosDiagramasBtn } from '@/components/GerarTodosDiagramasBtn'
@@ -224,7 +225,9 @@ export default async function HomologacaoDetalhePage({
 
         {/* Metadados */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white/[0.03] border border-white/10 rounded-xl">
-          <Campo label="Protocolo CELESC" valor={hom.protocolo_celesc || '—'} />
+          <CampoCustom label="Protocolo CELESC">
+            <ProtocoloCelescEditor homologacaoId={params.id} valorAtual={hom.protocolo_celesc} />
+          </CampoCustom>
           <Campo label="Data solicitação" valor={fmtData(hom.data_solicitacao)} />
           <Campo label="Data aprovação" valor={fmtData(hom.data_aprovacao)} />
           <Campo label="Troca medidor" valor={fmtData(hom.data_prevista_troca_medidor)} />
@@ -319,6 +322,15 @@ function Campo({ label, valor }: { label: string; valor: any }) {
     <div>
       <p className="text-[10px] uppercase text-white/40">{label}</p>
       <p className="text-sm text-white">{valor}</p>
+    </div>
+  )
+}
+
+function CampoCustom({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase text-white/40">{label}</p>
+      <div className="text-sm text-white">{children}</div>
     </div>
   )
 }
