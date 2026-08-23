@@ -433,6 +433,21 @@ export async function montarPromptDiagramaAction(
   const { data: configEmpresa } = await supabaseAdmin
     .from('configuracoes_empresa').select('*').eq('singleton', true).maybeSingle()
 
+  // Homologação — traz protocolo CELESC + datas + eletrotécnico pro carimbo.
+  // Se ainda não tem homologação, os campos vão como "a preencher".
+  const { data: homologacao } = await supabaseAdmin
+    .from('homologacoes')
+    .select('id, protocolo_celesc, data_solicitacao, data_aprovacao, data_prevista_troca_medidor, eletrotecnico_id')
+    .eq('projeto_id', projetoId)
+    .maybeSingle()
+
+  let eletrotecnicoNome: string | null = null
+  if (homologacao?.eletrotecnico_id) {
+    const { data: p } = await supabaseAdmin
+      .from('profiles').select('nome_completo').eq('id', homologacao.eletrotecnico_id).maybeSingle()
+    eletrotecnicoNome = p?.nome_completo || null
+  }
+
   let hibridoDim: any = null
   let hibridoAn: any = null
   if (tipoDesenho === 'unifilar_hibrido') {
@@ -453,6 +468,8 @@ export async function montarPromptDiagramaAction(
     tipoDesenho,
     hibridoDim,
     hibridoAn,
+    homologacao,
+    eletrotecnicoNome,
   })
 
   return { prompt: relatorio }
@@ -469,8 +486,10 @@ function montarRelatorioTecnico(args: {
   tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao'
   hibridoDim: any
   hibridoAn: any
+  homologacao: any
+  eletrotecnicoNome: string | null
 }): string {
-  const { projeto, telhadoSecoes, configEmpresa, tipoDesenho, hibridoDim, hibridoAn } = args
+  const { projeto, telhadoSecoes, configEmpresa, tipoDesenho, hibridoDim, hibridoAn, homologacao, eletrotecnicoNome } = args
 
   const kit = projeto.kit_selecionado || {}
   const padrao = projeto.padrao_entrada || {}
@@ -694,6 +713,13 @@ function montarRelatorioTecnico(args: {
   const cepFmt = formatarCEP(enderecoObra.cep) || '—'
   const enderecoLinha1 = [enderecoObra.logradouro, enderecoObra.numero ? `Nº ${enderecoObra.numero}` : null, enderecoObra.bairro].filter(Boolean).join(', ') || '—'
 
+  // ═══ Dados do carimbo — vem da homologação (não do projeto) ═══
+  const protocoloCelesc = homologacao?.protocolo_celesc || '⚠ preencher em /homologacoes'
+  const dataSolicit = homologacao?.data_solicitacao ? fmtDataBr(homologacao.data_solicitacao) : null
+  const dataAprov = homologacao?.data_aprovacao ? fmtDataBr(homologacao.data_aprovacao) : null
+  const artNum = projeto.art_numero || configEmpresa?.rt_art_padrao || '⚠ preencher'
+  const rtNome = eletrotecnicoNome || 'Kalebe Grün'
+
   partes.push(
     `## ${tipoDesenho === 'unifilar_hibrido' && hibridoDim ? '10' : '9'}. ETIQUETA / CARIMBO DA PRANCHA`,
     ``,
@@ -705,12 +731,12 @@ function montarRelatorioTecnico(args: {
     `PROJETO:            ${descrProjeto}`,
     `PROPRIETÁRIO:       ${projeto.cliente_razao_social || '⚠ preencher'}`,
     `CNPJ/CPF:           ${cnpjCpfFmt}`,
-    `ID DO PEDIDO:       ${projeto.id_pedido_externo || projeto.codigo || '—'}`,
+    `PROTOCOLO CELESC:   ${protocoloCelesc}`,
     ``,
     `TÍTULO:             ${tituloCarimbo(tipoDesenho)}`,
     ``,
     `ENDEREÇO DA OBRA:   ${enderecoLinha1}`,
-    `                    ${enderecoObra.cidade || '—'} / ${enderecoObra.uf || 'SC'}`,
+    `                    ${enderecoObra.cidade || '⚠ preencher'} / ${enderecoObra.uf || 'SC'}`,
     `CEP:                ${cepFmt}`,
     ``,
     `PROJETISTA:         Kalebe Grün`,
@@ -721,14 +747,23 @@ function montarRelatorioTecnico(args: {
     `INTEGRADOR:         SPIN Solar`,
     `FOLHA:              ${numeroFolha(tipoDesenho)}`,
     ``,
-    `RT ASSINATURA:      Kalebe Grün · Eletrotécnico`,
+    `RT ASSINATURA:      ${rtNome} · Eletrotécnico`,
     `CPF (assinatura):   943.121.760-00`,
     `Registro CFT:       ${configEmpresa?.rt_crea || '94312176000'}`,
-    `ART:                ${projeto.art_numero || configEmpresa?.rt_art_padrao || 'a definir'}`,
+    `ART:                ${artNum}`,
+    ...(dataSolicit ? [`DATA SOLICITAÇÃO:   ${dataSolicit}`] : []),
+    ...(dataAprov ? [`DATA APROVAÇÃO:     ${dataAprov}`] : []),
     ``,
     `└────────────────────────────────────────────────────────────────────┘`,
     '```',
     ``,
+    ...(!homologacao?.protocolo_celesc || !projeto.cliente_endereco?.logradouro && !projeto.endereco_instalacao?.rua ? [
+      `⚠️ ATENÇÃO — DADOS FALTANDO NO CARIMBO`,
+      ``,
+      ...(!homologacao?.protocolo_celesc ? [`- Protocolo CELESC não cadastrado → vá em /homologacoes/${homologacao?.id || '{id}'} e clique em "Cadastrar" ao lado de "PROTOCOLO CELESC"`] : []),
+      ...((!projeto.endereco_instalacao?.rua && !projeto.cliente_endereco?.logradouro) ? [`- Endereço da obra não cadastrado → vá no cadastro do telhado do projeto e preencha o endereço completo da instalação`] : []),
+      ``,
+    ] : []),
     `═══════════════════════════════════════════════════════════════════`,
     `Entregável esperado: PDF finalizado da folha ${nomeFolhaDiagrama(tipoDesenho)}, no padrão gráfico "Projeto Ideal" SPIN.`,
     `Formatos adicionais (opcional): DXF, SVG.`,
@@ -849,6 +884,16 @@ function formatarCEP(cep: any): string {
   const s = String(cep || '').replace(/\D/g, '')
   if (s.length !== 8) return String(cep || '').trim()
   return `${s.slice(0, 5)}-${s.slice(5)}`
+}
+
+function fmtDataBr(d: any): string {
+  if (!d) return ''
+  const s = String(d)
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`
+  try {
+    return new Date(s).toLocaleDateString('pt-BR')
+  } catch { return s }
 }
 
 function formatarCpfCnpj(v: any): string {
