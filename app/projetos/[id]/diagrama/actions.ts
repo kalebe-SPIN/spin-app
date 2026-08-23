@@ -137,6 +137,168 @@ export async function gerarDiagramaAction(
 }
 
 /**
+ * NOVO FLUXO (2026-08-23) — upload manual dos 3 formatos.
+ *
+ * A skill projetista-spin agora roda LOCAL no Claude Code do Kalebe, com motor
+ * Python (draw_svg.py + draw_dxf.py). O Kalebe gera as 3 folhas (unifilar,
+ * trifilar, localização) em PDF+DXF+SVG na máquina dele e sobe aqui.
+ *
+ * Esta action:
+ *   1. Calcula próxima versão do tipo_desenho pra este projeto
+ *   2. Sobe PDF (obrigatório), DXF (opcional), SVG (opcional) pro bucket
+ *      projetos-diagramas em ${projeto_id}/${diagrama_id}/${tipo}-v${versao}.{ext}
+ *   3. Cria registro projetos_diagramas com status='pronto' já (nada de 'gerando')
+ *   4. Bidirecional: se tem homologação, marca etapa diagrama_unifilar como
+ *      em_andamento com link do PDF (mesmo comportamento do pipeline antigo)
+ */
+export async function enviarDiagramaAction(formData: FormData) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { sucesso: false, erro: 'Não autenticado' }
+
+  const pode = await usuarioPodeGerarDiagramas()
+  if (!pode) return { sucesso: false, erro: 'Sem permissão pra enviar diagramas' }
+
+  const projetoId = formData.get('projeto_id') as string
+  const tipoDesenho = formData.get('tipo_desenho') as
+    | 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao'
+  const arquivoPdf = formData.get('arquivo_pdf') as File | null
+  const arquivoDxf = formData.get('arquivo_dxf') as File | null
+  const arquivoSvg = formData.get('arquivo_svg') as File | null
+
+  if (!projetoId || !tipoDesenho) {
+    return { sucesso: false, erro: 'projeto_id e tipo_desenho obrigatórios' }
+  }
+  if (!arquivoPdf || arquivoPdf.size === 0) {
+    return { sucesso: false, erro: 'PDF obrigatório — DXF e SVG são opcionais' }
+  }
+
+  const supabaseAdmin = createAdminClient()
+
+  // Carrega projeto (bypass RLS)
+  const { data: projeto, error: projErr } = await supabaseAdmin
+    .from('projetos')
+    .select('id, status, codigo')
+    .eq('id', projetoId)
+    .maybeSingle()
+
+  if (projErr || !projeto) return { sucesso: false, erro: 'Projeto não encontrado' }
+
+  if (!STATUS_PODE_GERAR.includes(projeto.status)) {
+    return {
+      sucesso: false,
+      erro: `Projeto ainda não está pronto pra receber diagrama (status: ${projeto.status}).`,
+    }
+  }
+
+  // Snapshot da config empresa pra rastreabilidade
+  const { data: config } = await supabaseAdmin
+    .from('configuracoes_empresa')
+    .select('*')
+    .eq('singleton', true)
+    .maybeSingle()
+
+  // Próxima versão do mesmo tipo
+  const { data: ultimas } = await supabaseAdmin
+    .from('projetos_diagramas')
+    .select('versao')
+    .eq('projeto_id', projetoId)
+    .eq('tipo_desenho', tipoDesenho)
+    .order('versao', { ascending: false })
+    .limit(1)
+
+  const proximaVersao = (ultimas?.[0]?.versao || 0) + 1
+
+  // Cria registro (ainda sem URLs — preenche depois do upload)
+  const { data: novoDiagrama, error: insErr } = await supabaseAdmin
+    .from('projetos_diagramas')
+    .insert({
+      projeto_id: projetoId,
+      versao: proximaVersao,
+      tipo_desenho: tipoDesenho,
+      status: 'pronto',
+      gerado_por: user.id,
+      snapshot_empresa: config,
+      memoria_calculo: { _meta: { origem: 'upload_manual', enviado_em: new Date().toISOString() } },
+    })
+    .select()
+    .single()
+
+  if (insErr || !novoDiagrama) {
+    return { sucesso: false, erro: insErr?.message || 'Erro ao criar registro do diagrama' }
+  }
+
+  const BUCKET = 'projetos-diagramas'
+  const nomeBase = `${tipoDesenho}-v${proximaVersao}`
+  const pastaBase = `${projetoId}/${novoDiagrama.id}`
+
+  async function upar(file: File, ext: string, contentType: string): Promise<string | null> {
+    const path = `${pastaBase}/${nomeBase}.${ext}`
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const { error: upErr } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .upload(path, bytes, { contentType, upsert: true })
+    if (upErr) throw new Error(`Upload ${ext.toUpperCase()} falhou: ${upErr.message}`)
+    const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path)
+    return data.publicUrl
+  }
+
+  let url_pdf: string | null = null
+  let url_dxf: string | null = null
+  let url_svg: string | null = null
+
+  try {
+    url_pdf = await upar(arquivoPdf, 'pdf', 'application/pdf')
+    if (arquivoDxf && arquivoDxf.size > 0) {
+      url_dxf = await upar(arquivoDxf, 'dxf', 'application/dxf')
+    }
+    if (arquivoSvg && arquivoSvg.size > 0) {
+      url_svg = await upar(arquivoSvg, 'svg', 'image/svg+xml')
+    }
+  } catch (e: any) {
+    // Rollback: apaga o registro se algum upload falhou
+    await supabaseAdmin.from('projetos_diagramas').delete().eq('id', novoDiagrama.id)
+    return { sucesso: false, erro: e?.message || 'Erro no upload dos arquivos' }
+  }
+
+  // Atualiza registro com URLs
+  const { error: updErr } = await supabaseAdmin
+    .from('projetos_diagramas')
+    .update({ url_pdf, url_dxf, url_svg })
+    .eq('id', novoDiagrama.id)
+
+  if (updErr) {
+    // Não faz rollback aqui — os arquivos já estão no storage; se preferir excluir manual
+    return { sucesso: false, erro: `Registro criado mas falhou atualizar URLs: ${updErr.message}` }
+  }
+
+  // Bidirecional: linkar homologação (mesma lógica do pipeline antigo)
+  if (tipoDesenho === 'unifilar_ongrid' || tipoDesenho === 'unifilar_hibrido') {
+    try {
+      const { data: hom } = await supabaseAdmin
+        .from('homologacoes').select('id').eq('projeto_id', projetoId).maybeSingle()
+      if (hom) {
+        await supabaseAdmin
+          .from('homologacao_etapas')
+          .update({
+            status: 'em_andamento',
+            iniciado_em: new Date().toISOString(),
+            url_arquivo_svg: url_svg || url_pdf,
+            observacoes: `✓ Unifilar enviado manualmente (v${proximaVersao}, tipo ${tipoDesenho}). Kalebe gerou local via skill projetista-spin.`,
+          })
+          .eq('homologacao_id', hom.id)
+          .eq('chave', 'diagrama_unifilar')
+      }
+    } catch (e) {
+      // linkar homologação é opcional — não bloqueia
+    }
+  }
+
+  revalidatePath(`/projetos/${projetoId}/diagrama`)
+  return { sucesso: true, diagrama_id: novoDiagrama.id, versao: proximaVersao }
+}
+
+/**
  * Regenera diagrama baseado em versao existente.
  * Se instrucaoAjuste for passada, envia como feedback pro Claude refinar.
  * Se nao, apenas tenta gerar de novo (util pra erros transientes).

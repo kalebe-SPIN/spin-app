@@ -179,10 +179,10 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
             </span>
           </div>
           <h1 className="text-3xl md:text-4xl font-black text-white">
-            Gerar diagrama técnico
+            Diagramas técnicos do projeto
           </h1>
           <p className="text-white/60 mt-1 text-sm">
-            {projeto.cliente_razao_social} · Para envio à CELESC
+            {projeto.cliente_razao_social} · Envio à CELESC · Padrão gráfico "Projeto Ideal" SPIN
           </p>
         </header>
 

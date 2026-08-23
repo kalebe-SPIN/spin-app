@@ -1,13 +1,11 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  gerarDiagramaAction,
-  regenerarDiagramaAction,
+  enviarDiagramaAction,
   excluirDiagramaAction,
 } from '@/app/projetos/[id]/diagrama/actions'
-import { baixarComoPdf, baixarComoDxf } from '@/lib/diagrama/converter-svg'
 
 type Diagrama = {
   id: string
@@ -35,49 +33,78 @@ type Props = {
 }
 
 export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk, tiposDisponiveis }: Props) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-  const [erro, setErro] = useState<string | null>(null)
+  return (
+    <div className="space-y-8">
+      <BlocoUpload projetoId={projeto.id} configOk={configOk} tiposDisponiveis={tiposDisponiveis} />
+      <BlocoVersoes diagramas={diagramasExistentes} />
+    </div>
+  )
+}
 
-  // Primeira opcao vira selecao inicial (sempre tem pelo menos padrao_entrada)
+function BlocoUpload({
+  projetoId,
+  configOk,
+  tiposDisponiveis,
+}: {
+  projetoId: string
+  configOk: boolean
+  tiposDisponiveis: OpcaoTipo[]
+}) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [erro, setErro] = useState<string | null>(null)
+  const [sucesso, setSucesso] = useState<string | null>(null)
   const [tipoSelecionado, setTipoSelecionado] = useState<TipoDiagrama>(
     tiposDisponiveis[0]?.id || 'padrao_entrada',
   )
+  const [pdfName, setPdfName] = useState<string>('')
+  const [dxfName, setDxfName] = useState<string>('')
+  const [svgName, setSvgName] = useState<string>('')
+  const formRef = useRef<HTMLFormElement>(null)
 
-  // Auto-refresh a cada 5s enquanto houver diagrama em 'gerando'
-  useEffect(() => {
-    const temGerando = diagramasExistentes.some(d => d.status === 'gerando')
-    if (!temGerando) return
-    const interval = setInterval(() => router.refresh(), 5000)
-    return () => clearInterval(interval)
-  }, [diagramasExistentes, router])
-
-  function handleGerar() {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
     setErro(null)
+    setSucesso(null)
+    const formData = new FormData(e.currentTarget)
+    formData.set('projeto_id', projetoId)
+    formData.set('tipo_desenho', tipoSelecionado)
     startTransition(async () => {
-      const result = await gerarDiagramaAction(projeto.id, tipoSelecionado, { modoPrevia: false })
-      if (!result.sucesso) {
-        setErro(result.erro || 'Erro ao gerar diagrama')
+      const r = await enviarDiagramaAction(formData)
+      if (!r.sucesso) {
+        setErro(r.erro || 'Erro no envio')
       } else {
+        setSucesso(`✓ v${r.versao} enviada. Aparece embaixo em segundos.`)
+        setPdfName(''); setDxfName(''); setSvgName('')
+        formRef.current?.reset()
         router.refresh()
       }
     })
   }
 
   return (
-    <div className="space-y-8">
-      {/* Escolha do tipo — só mostra opções que fazem sentido pro projeto */}
-      <section className="bg-white/[0.03] border border-white/10 rounded-xl p-6">
-        <h2 className="text-lg font-bold text-white mb-1">Qual desenho gerar?</h2>
-        <p className="text-xs text-white/50 mb-4">
-          Opções filtradas pelos itens deste projeto. Padrão de entrada sempre disponível.
+    <section className="bg-white/[0.03] border border-white/10 rounded-xl p-6 space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-white mb-1">Enviar diagrama gerado localmente</h2>
+        <p className="text-xs text-white/50">
+          Os diagramas são desenhados pela skill <strong className="text-sol">projetista-spin</strong> no
+          Claude Code local do Kalebe (motor Python — PDF via cairosvg + DXF via ezdxf). Envie aqui os
+          arquivos gerados. O sistema calcula a próxima versão automaticamente.
         </p>
+      </div>
+
+      {/* Seletor de tipo */}
+      <div>
+        <label className="block text-xs uppercase tracking-wider text-white/40 font-bold mb-2">
+          Qual desenho?
+        </label>
         <div className={`grid gap-3 grid-cols-1 ${tiposDisponiveis.length > 1 ? 'md:grid-cols-2' : ''} ${tiposDisponiveis.length > 2 ? 'md:grid-cols-3' : ''}`}>
           {tiposDisponiveis.map(t => (
             <button
               key={t.id}
+              type="button"
               onClick={() => setTipoSelecionado(t.id)}
-              className={`text-left p-4 rounded-lg border transition ${
+              className={`text-left p-3 rounded-lg border transition ${
                 tipoSelecionado === t.id
                   ? 'bg-sol/15 border-sol/60'
                   : 'bg-white/[0.02] border-white/10 hover:border-white/20'
@@ -87,140 +114,144 @@ export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk, 
                 <span className="font-bold text-white text-sm">{t.label}</span>
                 {tipoSelecionado === t.id && <span className="text-sol">✓</span>}
               </div>
-              <p className="text-xs text-white/60">{t.desc}</p>
+              <p className="text-[11px] text-white/60">{t.desc}</p>
             </button>
           ))}
         </div>
-      </section>
+      </div>
 
-      {/* Botão gerar */}
-      <section className="bg-white/[0.03] border border-white/10 rounded-xl p-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <p className="text-sm text-white/80">
-              O sistema vai reunir os dados do projeto (fatura + telhado + padrão + kit
-              {tipoSelecionado === 'unifilar_hibrido' && ' + dimensionamento BESS'})
-              e desenhar o unifilar com o selo da Spin.
-            </p>
-            <p className="text-xs text-white/40 mt-1">
-              Saída: <strong className="text-white">SVG</strong> (PDF/DXF na fase F.2)
-            </p>
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
+        <FileInputRow
+          nome="arquivo_pdf"
+          label="PDF"
+          obrigatorio
+          accept="application/pdf,.pdf"
+          exemploNome={pdfName}
+          onFileName={setPdfName}
+          hint="Prancha finalizada — o que vai pra CELESC"
+        />
+        <FileInputRow
+          nome="arquivo_dxf"
+          label="DXF (AutoCAD)"
+          accept=".dxf"
+          exemploNome={dxfName}
+          onFileName={setDxfName}
+          hint="Opcional — pra edição em AutoCAD/QCAD"
+        />
+        <FileInputRow
+          nome="arquivo_svg"
+          label="SVG"
+          accept="image/svg+xml,.svg"
+          exemploNome={svgName}
+          onFileName={setSvgName}
+          hint="Opcional — pra preview inline aqui na tela"
+        />
+
+        <div className="flex items-center justify-between gap-4 pt-2 border-t border-white/5">
+          <div className="text-[10px] text-white/40">
+            {!configOk && <span className="text-coral">⚠ Config empresa incompleta — cadastre RT antes.</span>}
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button
-              onClick={handleGerar}
-              disabled={isPending || !configOk}
-              className="px-6 py-3 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-              title="Gera nova versão do diagrama com os dados atuais do projeto"
-            >
-              {isPending ? '⏳ Gerando...' : '🖨️ Gerar diagrama'}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={pending || !configOk || !pdfName}
+            className="px-6 py-3 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {pending ? '⏳ Enviando…' : '📤 Enviar diagrama'}
+          </button>
         </div>
 
         {erro && (
-          <div className="mt-4 bg-coral/10 border border-coral/30 rounded-lg p-3 text-sm text-coral">
+          <div className="bg-coral/10 border border-coral/30 rounded-lg p-3 text-sm text-coral">
             ❌ {erro}
           </div>
         )}
-      </section>
-
-      {/* Histórico de versões */}
-      <section>
-        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-          📁 Versões geradas
-          <span className="text-xs font-normal text-white/40">({diagramasExistentes.length})</span>
-        </h2>
-        {diagramasExistentes.length === 0 ? (
-          <div className="text-sm text-white/40 py-6 text-center bg-white/[0.02] border border-dashed border-white/10 rounded-lg">
-            Nenhum diagrama gerado ainda.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {diagramasExistentes.map(d => (
-              <DiagramaCard key={d.id} d={d} />
-            ))}
+        {sucesso && (
+          <div className="bg-verde/10 border border-verde/30 rounded-lg p-3 text-sm text-verde">
+            {sucesso}
           </div>
         )}
-      </section>
+      </form>
+    </section>
+  )
+}
+
+function FileInputRow({
+  nome,
+  label,
+  obrigatorio,
+  accept,
+  exemploNome,
+  onFileName,
+  hint,
+}: {
+  nome: string
+  label: string
+  obrigatorio?: boolean
+  accept: string
+  exemploNome: string
+  onFileName: (n: string) => void
+  hint: string
+}) {
+  const id = `file-${nome}`
+  return (
+    <div className="flex items-start gap-3">
+      <div className="min-w-[110px]">
+        <label htmlFor={id} className="text-xs font-bold text-white">
+          {label}
+          {obrigatorio && <span className="text-coral ml-1">*</span>}
+        </label>
+        <p className="text-[10px] text-white/40">{hint}</p>
+      </div>
+      <div className="flex-1">
+        <label
+          htmlFor={id}
+          className="flex items-center gap-2 px-3 py-2 bg-noite/60 border border-dashed border-white/20 rounded-lg cursor-pointer hover:border-sol/40 hover:bg-noite/80 transition"
+        >
+          <span className="text-xs text-white/60">
+            {exemploNome ? '📎 ' + exemploNome : '＋ Escolher arquivo'}
+          </span>
+        </label>
+        <input
+          id={id}
+          type="file"
+          name={nome}
+          accept={accept}
+          required={obrigatorio}
+          onChange={(e) => onFileName(e.currentTarget.files?.[0]?.name || '')}
+          className="hidden"
+        />
+      </div>
     </div>
   )
 }
 
-function BotoesDownload({ urlSvg, nomeBase }: { urlSvg: string; nomeBase: string }) {
-  const [baixando, setBaixando] = useState<'pdf' | 'dxf' | null>(null)
-  const [erro, setErro] = useState<string | null>(null)
-
-  async function baixar(tipo: 'pdf' | 'dxf') {
-    setErro(null)
-    setBaixando(tipo)
-    try {
-      if (tipo === 'pdf') await baixarComoPdf(urlSvg, `${nomeBase}.pdf`)
-      else await baixarComoDxf(urlSvg, `${nomeBase}.dxf`)
-    } catch (e: any) {
-      setErro(e.message || 'Erro ao converter')
-    } finally {
-      setBaixando(null)
-    }
-  }
-
+function BlocoVersoes({ diagramas }: { diagramas: Diagrama[] }) {
   return (
-    <div className="mt-3 space-y-2">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => baixar('pdf')}
-          disabled={baixando !== null}
-          className="text-xs px-3 py-1.5 bg-sol text-noite font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {baixando === 'pdf' ? '⏳ Gerando PDF...' : '📄 Baixar PDF'}
-        </button>
-        <button
-          type="button"
-          onClick={() => baixar('dxf')}
-          disabled={baixando !== null}
-          className="text-xs px-3 py-1.5 bg-weg-azul text-white font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {baixando === 'dxf' ? '⏳ Convertendo...' : '✏️ Baixar DXF (AutoCAD)'}
-        </button>
-        <a
-          href={urlSvg}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10"
-        >
-          🖼️ Abrir SVG
-        </a>
-      </div>
-      {erro && (
-        <p className="text-[10px] text-coral">⚠️ {erro}</p>
+    <section>
+      <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        📁 Versões enviadas
+        <span className="text-xs font-normal text-white/40">({diagramas.length})</span>
+      </h2>
+      {diagramas.length === 0 ? (
+        <div className="text-sm text-white/40 py-6 text-center bg-white/[0.02] border border-dashed border-white/10 rounded-lg">
+          Nenhum diagrama enviado ainda.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {diagramas.map(d => <DiagramaCard key={d.id} d={d} />)}
+        </div>
       )}
-      <details className="text-[10px] text-white/40 mt-1">
-        <summary className="cursor-pointer hover:text-white/60">💡 Preciso do DWG? (Autodesk)</summary>
-        <p className="mt-1 text-white/50 leading-relaxed">
-          O DWG é formato proprietário Autodesk. Baixa o DXF acima e converta grátis com o
-          <a href="https://www.opendesign.com/guestfiles/oda_file_converter" target="_blank" rel="noreferrer"
-             className="text-sol hover:underline"> ODA File Converter</a>
-          — abre no AutoCAD 100% compatível.
-        </p>
-      </details>
-    </div>
+    </section>
   )
 }
 
 function DiagramaCard({ d }: { d: Diagrama }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [mostrarRefino, setMostrarRefino] = useState(false)
-  const [instrucao, setInstrucao] = useState('')
   const [erro, setErro] = useState<string | null>(null)
 
   const dataFmt = new Date(d.created_at).toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
 
   const statusCor =
@@ -228,21 +259,8 @@ function DiagramaCard({ d }: { d: Diagrama }) {
       : d.status === 'gerando' ? 'text-sol bg-sol/10 border-sol/30'
       : 'text-coral bg-coral/10 border-coral/30'
 
-  function regenerar(instrucaoAjuste?: string) {
-    setErro(null)
-    startTransition(async () => {
-      const res = await regenerarDiagramaAction(d.id, instrucaoAjuste)
-      if (!res.sucesso) setErro(res.erro || 'Falha ao regenerar')
-      else {
-        setInstrucao('')
-        setMostrarRefino(false)
-        router.refresh()
-      }
-    })
-  }
-
   function excluir() {
-    if (!confirm(`Excluir v${d.versao} desse tipo? Não dá pra desfazer.`)) return
+    if (!confirm(`Excluir v${d.versao} desse tipo? Apaga PDF, DXF e SVG do storage — não dá pra desfazer.`)) return
     setErro(null)
     startTransition(async () => {
       const res = await excluirDiagramaAction(d.id)
@@ -265,19 +283,16 @@ function DiagramaCard({ d }: { d: Diagrama }) {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-white/40">{dataFmt}</span>
-          <BotaoAcaoDiagrama
-            titulo={d.status === 'pronto' ? '✏️ Refinar' : '🔄 Tentar de novo'}
-            onClick={() => setMostrarRefino(!mostrarRefino)}
-            disabled={pending}
-            cor={d.status === 'pronto' ? 'sol' : 'weg-azul'}
-          />
-          <BotaoAcaoDiagrama
-            titulo="🗑"
+          <button
+            type="button"
             onClick={excluir}
             disabled={pending}
-            cor="coral"
-            aria="Excluir esta versão"
-          />
+            aria-label="Excluir esta versão"
+            title="Excluir esta versão"
+            className="text-[10px] px-2 py-1 rounded border font-bold disabled:opacity-40 bg-coral/10 border-coral/30 text-coral hover:bg-coral/20"
+          >
+            🗑
+          </button>
         </div>
       </div>
 
@@ -291,94 +306,47 @@ function DiagramaCard({ d }: { d: Diagrama }) {
         </ul>
       )}
 
-      {/* Campo de refinamento */}
-      {mostrarRefino && (
-        <div className="mt-3 p-3 bg-sol/5 border border-sol/30 rounded-lg">
-          <p className="text-xs font-bold text-sol mb-2">
-            {d.status === 'pronto' ? '✏️ O que ajustar nessa versão?' : '🔄 Regenerar diagrama'}
-          </p>
-          {d.status === 'pronto' && (
-            <textarea
-              value={instrucao}
-              onChange={(e) => setInstrucao(e.target.value)}
-              rows={3}
-              placeholder="Ex: Aumentar espaço entre inversor e módulos, adicionar disjuntor 50A, corrigir tensão pra 380V trifásico..."
-              className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-white text-xs placeholder:text-white/30 mb-2"
-            />
-          )}
-          {d.status !== 'pronto' && (
-            <p className="text-[10px] text-white/60 mb-2">
-              Gera uma nova versão do mesmo tipo — útil quando deu erro transitório do Claude.
-            </p>
-          )}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => regenerar(instrucao.trim() || undefined)}
-              disabled={pending || (d.status === 'pronto' && !instrucao.trim())}
-              className="px-3 py-1.5 bg-sol text-noite text-xs font-bold rounded hover:bg-sol/90 disabled:opacity-40"
-            >
-              {pending ? '⏳ Gerando...' : d.status === 'pronto' ? '🚀 Gerar refinada' : '🔄 Tentar de novo'}
-            </button>
-            <button
-              onClick={() => { setMostrarRefino(false); setInstrucao('') }}
-              disabled={pending}
-              className="px-3 py-1.5 bg-white/5 border border-white/10 text-white/70 text-xs rounded hover:bg-white/10"
-            >
-              Cancelar
-            </button>
-          </div>
-          {erro && <p className="text-[10px] text-coral mt-2">⚠️ {erro}</p>}
-        </div>
-      )}
-
-      {!mostrarRefino && erro && (
-        <p className="text-[10px] text-coral mt-2">⚠️ {erro}</p>
-      )}
-
       {d.status === 'pronto' && (
         <>
           {d.url_svg && (
             <div className="mt-3 p-2 bg-white rounded-lg overflow-auto max-h-[500px]">
-              <img
-                src={d.url_svg}
-                alt={`Unifilar v${d.versao}`}
-                className="w-full h-auto"
-              />
+              <img src={d.url_svg} alt={`${d.tipo_desenho} v${d.versao}`} className="w-full h-auto" />
             </div>
           )}
-          {d.url_svg && (
-            <BotoesDownload urlSvg={d.url_svg} nomeBase={`unifilar-${d.tipo_desenho}-v${d.versao}`} />
+          {!d.url_svg && d.url_pdf && (
+            <div className="mt-3 aspect-[297/210] w-full">
+              <iframe src={d.url_pdf} title={`${d.tipo_desenho} v${d.versao}`} className="w-full h-full rounded border border-white/10" />
+            </div>
           )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {d.url_pdf && (
+              <a href={d.url_pdf} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-sol text-noite font-bold rounded-md">
+                📄 Baixar PDF
+              </a>
+            )}
+            {d.url_dxf && (
+              <a href={d.url_dxf} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-weg-azul text-white font-bold rounded-md">
+                ✏️ Baixar DXF
+              </a>
+            )}
+            {d.url_svg && (
+              <a href={d.url_svg} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white hover:bg-white/10">
+                🖼️ Abrir SVG
+              </a>
+            )}
+          </div>
+          <details className="text-[10px] text-white/40 mt-2">
+            <summary className="cursor-pointer hover:text-white/60">💡 Preciso do DWG? (Autodesk)</summary>
+            <p className="mt-1 text-white/50 leading-relaxed">
+              O DWG é formato proprietário Autodesk. Baixa o DXF e converta grátis com o
+              <a href="https://www.opendesign.com/guestfiles/oda_file_converter" target="_blank" rel="noreferrer" className="text-sol hover:underline"> ODA File Converter</a>
+              — abre no AutoCAD 100% compatível.
+            </p>
+          </details>
         </>
       )}
-    </div>
-  )
-}
 
-function BotaoAcaoDiagrama({
-  titulo, onClick, disabled, cor, aria,
-}: {
-  titulo: string
-  onClick: () => void
-  disabled?: boolean
-  cor: 'sol' | 'coral' | 'weg-azul'
-  aria?: string
-}) {
-  const cores: Record<string, string> = {
-    sol: 'bg-sol/10 border-sol/30 text-sol hover:bg-sol/20',
-    coral: 'bg-coral/10 border-coral/30 text-coral hover:bg-coral/20',
-    'weg-azul': 'bg-weg-azul/10 border-weg-azul/30 text-weg-azul hover:bg-weg-azul/20',
-  }
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={aria}
-      title={aria}
-      className={`text-[10px] px-2 py-1 rounded border font-bold disabled:opacity-40 disabled:cursor-not-allowed transition ${cores[cor]}`}
-    >
-      {titulo}
-    </button>
+      {erro && <p className="text-[10px] text-coral mt-2">⚠️ {erro}</p>}
+    </div>
   )
 }
