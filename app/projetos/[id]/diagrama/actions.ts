@@ -568,21 +568,7 @@ function montarRelatorioTecnico(args: {
     `- Eficiência:         ${placa.eficiencia_pct ? `${placa.eficiencia_pct}%` : 'ver datasheet'}`,
     `- Quantidade total:   ${qtdMod} unidades`,
     ``,
-    `## 4. INVERSOR`,
-    ``,
-    `- Marca:              WEG`,
-    `- Modelo:             ${inversor.modelo || 'a preencher'}`,
-    `- Código WEG:         ${inversor.codigo_weg || '—'}`,
-    `- Potência CA:        ${fmt(potInvKw, 2)} kW`,
-    `- Nº MPPTs:           ${inversor.entradas_mppt || 'ver datasheet'}`,
-    `- Tensão entrada:     ${inversor.tensao_cc_desc || '200V - 1000V'}`,
-    `- Corrente entrada:   ${inversor.corrente_cc_desc || 'ver datasheet'}`,
-    `- Tensão saída:       ${tensaoFornec}`,
-    `- Corrente saída:     ${fmt(correnteCaA / qtdInv, 1)} A por inversor`,
-    `- Proteções ANSI:     27 (0,8pu/0,4s), 59 (1,1pu/0,2s), 81U (57,5Hz/0,2s), 81O (62,0Hz/0,2s), 25, 78`,
-    `- Anti-ilhamento:     ativo, NBR IEC 62116`,
-    `- Quantidade:         ${qtdInv} unidade(s)`,
-    ``,
+    ...secaoInversorOuMicro({ inversor, potInvKw, qtdInv, correnteCaA, tensaoRede: tensaoFornec, ligacaoRede: ligacao }),
   ]
 
   // Arranjo de strings — se telhado_secoes tiver a estrutura
@@ -816,6 +802,134 @@ function extrairArranjo(telhadoSecoes: any[], kit: any): Array<{ numero: number;
     out.push({ numero: m, strings })
   }
   return out
+}
+
+/**
+ * Seção 4 do relatório — desenha diferente pra microinversor vs string.
+ *
+ * Regra importante (Kalebe 2026-08-23): microinversor SIW100* é SEMPRE
+ * MONOFÁSICO (tensão de saída 220V F+N). O que muda é a REDE DO CLIENTE,
+ * que pode ser mono/bi/tri. Quando cliente tem rede tri, N micros são
+ * distribuídos entre as 3 fases (N/3 por fase, balanceado). Não confundir
+ * "rede tri" com "inversor tri" — são coisas distintas.
+ *
+ * Cadastro do produto pode vir com tensao_desc = "Trifásico 380/220V" por
+ * erro do parser da planilha WEG — sobrescreve com dado correto quando é
+ * detectado como micro (subcategoria='microinversor' ou modelo SIW100*).
+ */
+function secaoInversorOuMicro(args: {
+  inversor: any
+  potInvKw: number
+  qtdInv: number
+  correnteCaA: number
+  tensaoRede: string   // rede do cliente: "220V" ou "380/220V"
+  ligacaoRede: 'monofasico' | 'bifasico' | 'trifasico'
+}): string[] {
+  const { inversor, potInvKw, qtdInv, correnteCaA, tensaoRede, ligacaoRede } = args
+
+  const modelo = String(inversor.modelo || '').toUpperCase()
+  const subcategoria = String(inversor.subcategoria || '').toLowerCase()
+  const isMicro = subcategoria.includes('micro') || /^SIW100/i.test(modelo)
+
+  if (!isMicro) {
+    // Inversor string — usar tensao_desc do cadastro
+    return [
+      `## 4. INVERSOR STRING`,
+      ``,
+      `- Marca:              WEG`,
+      `- Modelo:             ${inversor.modelo || 'a preencher'}`,
+      `- Código WEG:         ${inversor.codigo_weg || '—'}`,
+      `- Potência CA:        ${fmt(potInvKw, 2)} kW`,
+      `- Nº MPPTs:           ${inversor.entradas_mppt || 'ver datasheet'}`,
+      `- Tensão entrada CC:  ${inversor.tensao_cc_desc || '200V - 1000V'}`,
+      `- Corrente entrada:   ${inversor.corrente_cc_desc || 'ver datasheet'}`,
+      `- Tensão de saída:    ${inversor.tensao_desc || tensaoRede}`,
+      `- Corrente de saída:  ${fmt(correnteCaA / qtdInv, 1)} A por inversor`,
+      `- Proteções ANSI:     27 (0,8pu/0,4s), 59 (1,1pu/0,2s), 81U (57,5Hz/0,2s), 81O (62,0Hz/0,2s), 25, 78`,
+      `- Anti-ilhamento:     ativo, NBR IEC 62116`,
+      `- Quantidade:         ${qtdInv} unidade(s)`,
+      ``,
+    ]
+  }
+
+  // MICROINVERSOR — sempre monofásico (220V F+N), independente do cadastro
+  const numFases = ligacaoRede === 'trifasico' ? 3 : ligacaoRede === 'bifasico' ? 2 : 1
+  const balanceado = qtdInv % numFases === 0
+  const microsPorFase = Math.floor(qtdInv / numFases)
+  const sobra = qtdInv - (microsPorFase * numFases)
+
+  const partes: string[] = [
+    `## 4. MICROINVERSORES (monofásicos individuais)`,
+    ``,
+    `- Marca:              WEG`,
+    `- Modelo:             ${inversor.modelo || 'a preencher'}`,
+    `- Código WEG:         ${inversor.codigo_weg || '—'}`,
+    `- Potência CA (unid): ${fmt(potInvKw, 2)} kW`,
+    `- Tensão de saída:    **220V (monofásico F+N)**`,
+    `  ⚠ CADASTRO PODE ESTAR ERRADO: se tensao_desc do produto disser "trifásico",`,
+    `  IGNORE — o microinversor SIW100G é sempre monofásico (regra fixa SPIN).`,
+    `- MPPTs por unidade:  ${inversor.entradas_mppt || 4} (${inversor.qtd_entradas_por_mppt || 1} módulo(s) por MPPT)`,
+    `- Corrente saída:     ${fmt((potInvKw * 1000) / 220, 2)} A por microinversor`,
+    `- Proteções ANSI:     27 (0,8pu/0,4s), 59 (1,1pu/0,2s), 81U (57,5Hz/0,2s), 81O (62,0Hz/0,2s), 25, 78`,
+    `- Anti-ilhamento:     ativo, NBR IEC 62116`,
+    `- Quantidade total:   **${qtdInv} unidades**`,
+    ``,
+    `### Rede do cliente (destino dos microinversores)`,
+    ``,
+    `- Ligação do padrão de entrada: **${ligacaoRede}** (${tensaoRede})`,
+    ``,
+    `### Balanceamento entre fases (regra SPIN)`,
+    ``,
+  ]
+
+  if (ligacaoRede === 'monofasico') {
+    partes.push(
+      `- Cliente é monofásico — todos os ${qtdInv} microinversores conectados na única fase (F+N)`,
+      `- Sem balanceamento necessário.`,
+      ``,
+    )
+  } else {
+    partes.push(
+      `- Cliente tem rede ${ligacaoRede} — os ${qtdInv} microinversores devem ser distribuídos entre as ${numFases} fases pra manter equilíbrio de carga.`,
+      ``,
+      `**Distribuição por fase:**`,
+    )
+    if (balanceado) {
+      partes.push(
+        `- ✅ Distribuição BALANCEADA: ${microsPorFase} microinversores em cada fase (${qtdInv} ÷ ${numFases} = ${microsPorFase}).`,
+      )
+      if (ligacaoRede === 'trifasico') {
+        partes.push(
+          `    · Fase R: ${microsPorFase}× micro`,
+          `    · Fase S: ${microsPorFase}× micro`,
+          `    · Fase T: ${microsPorFase}× micro`,
+        )
+      } else {
+        partes.push(
+          `    · Fase R: ${microsPorFase}× micro`,
+          `    · Fase S: ${microsPorFase}× micro`,
+        )
+      }
+    } else {
+      partes.push(
+        `- ⚠️ DESBALANCEAMENTO: ${qtdInv} microinversores NÃO é divisível por ${numFases} fases (sobra ${sobra}).`,
+        `- Distribuição atual (impacta CELESC / regra SPIN):`,
+      )
+      const dist = new Array(numFases).fill(0)
+      for (let i = 0; i < qtdInv; i++) dist[i % numFases]++
+      const labelsFase = ligacaoRede === 'trifasico' ? ['R', 'S', 'T'] : ['R', 'S']
+      for (let i = 0; i < numFases; i++) {
+        partes.push(`    · Fase ${labelsFase[i]}: ${dist[i]}× micro`)
+      }
+      partes.push(
+        ``,
+        `⚠ Recomendação: revise a quantidade de micros pra que seja múltiplo de ${numFases} (ex: ${(Math.ceil(qtdInv / numFases) * numFases)} ou ${(Math.floor(qtdInv / numFases) * numFases)} micros) — evita desbalanceamento entre fases.`,
+      )
+    }
+    partes.push(``)
+  }
+
+  return partes
 }
 
 function nomeFolhaDiagrama(tipo: string): string {
