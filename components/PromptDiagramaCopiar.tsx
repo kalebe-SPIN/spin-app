@@ -48,15 +48,15 @@ export function PromptDiagramaCopiar({
   return (
     <details className="bg-white/[0.02] border border-white/10 rounded-xl">
       <summary className="cursor-pointer p-4 flex items-center gap-2 text-sm text-white/70 hover:bg-white/[0.02] rounded-xl">
-        <span>💬</span>
-        <span>Preferir gerar em outro chat? Copiar prompt com todos os dados</span>
+        <span>📋</span>
+        <span>Copiar relatório técnico do projeto (pra alimentar sua skill)</span>
       </summary>
       <div className="px-6 pb-6 pt-2 space-y-3">
         <p className="text-[11px] text-white/50">
-          Monta um texto completo com <strong className="text-white/70">todos os dados do projeto</strong>
-          {' '}+ regras SPIN + padrão gráfico. Cola no chat da sua preferência
-          (Claude Code local com skill projetista-spin em Python, ChatGPT, Gemini, etc.),
-          ele gera o PDF e você sobe aqui usando "Já tem o arquivo pronto?".
+          Relatório técnico estruturado com <strong className="text-white/70">todos os dados do projeto</strong>
+          {' '}(cliente, sistema FV, módulos, inversor, arranjo, condutores, proteções, padrão de entrada, carimbo).
+          Cola na sua skill projetista-spin já testada, ela desenha o PDF e você sobe pelo
+          bloco "Já tem o arquivo pronto?".
         </p>
 
         {!prompt && (

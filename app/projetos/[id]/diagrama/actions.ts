@@ -398,17 +398,19 @@ export async function excluirDiagramaAction(diagramaId: string) {
 }
 
 /**
- * Monta um prompt DE TEXTO completo com tudo que o Claude/skill precisa
- * pra desenhar o diagrama do projeto: instruções da skill projetista-spin,
- * regras SPIN, exemplo canônico da folha01 e todos os dados do projeto.
+ * Monta um RELATÓRIO TÉCNICO estruturado com todos os dados do projeto que
+ * a skill projetista-spin (rodando local no Claude Code do Kalebe) precisa
+ * consumir pra gerar o diagrama.
  *
- * O consultor cola esse texto no chat de sua preferência (Claude Code
- * local com a skill Python, chat web, o que for), o assistant gera o PDF,
- * e ele volta aqui e sobe o arquivo via bloco "Enviar arquivo pronto".
+ * NÃO inclui instruções gráficas, regras SPIN, padrão de layout — isso a
+ * skill já sabe. Aqui só o CONTEÚDO TÉCNICO do projeto: cliente, sistema,
+ * módulos, inversor, arranjo, condutores, proteções, padrão, endereço,
+ * carimbo. Cálculos derivados (Vmp×N, corrente CA total, FCI) vêm calculados
+ * pra economizar chamada.
  *
- * Kalebe pediu 2026-08-23 depois que o pipeline no Vercel deu problemas
- * repetidos (modelo indisponível, timeout, etc). Assim contorna Vercel e
- * usa o motor Python da skill fora do serverless.
+ * Kalebe pediu 2026-08-23: "não crie prompt pra outro prompt já
+ * funcional — crie o relatório de informações técnicas que precisam
+ * conter no diagrama pro outro prompt executar".
  */
 export async function montarPromptDiagramaAction(
   projetoId: string,
@@ -444,112 +446,283 @@ export async function montarPromptDiagramaAction(
     hibridoAn = an
   }
 
+  const relatorio = montarRelatorioTecnico({
+    projeto,
+    telhadoSecoes: telhadoSecoes || [],
+    configEmpresa,
+    tipoDesenho,
+    hibridoDim,
+    hibridoAn,
+  })
+
+  return { prompt: relatorio }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// MONTAGEM DO RELATÓRIO TÉCNICO
+// ══════════════════════════════════════════════════════════════════════
+
+function montarRelatorioTecnico(args: {
+  projeto: any
+  telhadoSecoes: any[]
+  configEmpresa: any
+  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao'
+  hibridoDim: any
+  hibridoAn: any
+}): string {
+  const { projeto, telhadoSecoes, configEmpresa, tipoDesenho, hibridoDim, hibridoAn } = args
+
+  const kit = projeto.kit_selecionado || {}
+  const padrao = projeto.padrao_entrada || {}
+  const fatura = projeto.analise_fatura || {}
   const end = projeto.cliente_endereco || {}
   const enderecoObra = [end.logradouro, end.numero, end.bairro, end.cidade, end.uf, end.cep]
-    .filter(Boolean).join(', ') || 'não informado'
+    .filter(Boolean).join(', ') || 'a preencher'
+
+  // ═══ Cálculos derivados ═══
+  const placa = kit.placa || {}
+  const inversor = kit.inversor || {}
+  const potWpMod = num(placa.potencia_wp)
+  const qtdMod = num(kit.qtd_placas)
+  const potCcKwp = qtdMod && potWpMod ? (qtdMod * potWpMod) / 1000 : num(kit.potencia_cc_kwp)
+  const potInvKw = num(inversor.potencia_kw)
+  const qtdInv = num(kit.qtd_inversores) || 1
+  const potCaKw = potInvKw * qtdInv
+  const fciPct = potCcKwp && potCaKw ? (potCcKwp / potCaKw) * 100 : num(kit.fci_pct)
+
+  const ligacao = normLigacao(padrao.tipo_ligacao)
+  const tensaoFornec = ligacao === 'trifasico' ? '380/220V' : '220V'
+  const isTri = ligacao === 'trifasico'
+  const correnteCaA = potCaKw > 0
+    ? (potCaKw * 1000) / (isTri ? 380 * Math.SQRT2 * Math.sqrt(1.5) : 220)
+    : 0
+  const disjSugeridoA = arredondarDisjuntorCA(correnteCaA * 1.25)
+  const numFasesTexto = ligacao === 'trifasico' ? '3F+N' : ligacao === 'bifasico' ? '2F+N' : 'F+N'
+  const qtdDps = ligacao === 'trifasico' ? 4 : ligacao === 'bifasico' ? 3 : 2
 
   const partes: string[] = [
-    `# GERAR DIAGRAMA TÉCNICO — SPIN Solar (${tipoDesenho.replace('_', ' ').toUpperCase()})`,
+    `RELATÓRIO TÉCNICO — ${nomeFolhaDiagrama(tipoDesenho)}`,
+    `Projeto ${projeto.codigo || projeto.id} · gerado em ${new Date().toISOString().slice(0, 10)}`,
+    `═══════════════════════════════════════════════════════════════════`,
     ``,
-    `Contexto: você está atuando como a skill **projetista-spin** (padrão gráfico "Projeto Ideal" SPIN). Se você tem essa skill instalada localmente (Claude Code com skill projetista-spin em Python), invoque-a normalmente. Se não, use as instruções abaixo diretamente.`,
+    `## 1. IDENTIFICAÇÃO`,
     ``,
-    `## OBJETIVO`,
-    `Gerar o **PDF finalizado da folha ${nomeFolhaDiagrama(tipoDesenho)}** deste projeto, no padrão gráfico "Projeto Ideal" SPIN, seguindo o exemplo canônico validado (folha01 LDM 38,5 kWp).`,
+    `- Cliente:            ${projeto.cliente_razao_social || 'a preencher'}`,
+    `- CPF/CNPJ:           ${projeto.cliente_cpf_cnpj || 'a preencher'}`,
+    `- UC geradora:        ${projeto.uc_geradora || 'a preencher'}`,
+    `- Conta contrato:     ${projeto.conta_contrato || 'a preencher'}`,
+    `- Endereço da obra:   ${enderecoObra}`,
+    `- Concessionária:     CELESC (Santa Catarina)`,
+    `- Código do pedido:   ${projeto.codigo || projeto.id}`,
+    `- ID do pedido:       ${projeto.id_pedido_externo || projeto.codigo || '—'}`,
     ``,
-    `## PADRÃO GRÁFICO (INEGOCIÁVEL)`,
+    `## 2. SISTEMA FOTOVOLTAICO`,
     ``,
-    `- **Formato:** A4 paisagem (297×210 mm)`,
-    `- **Zonas:** A (diagrama à esquerda), B (legenda + placa CUIDADO + padrão representativo, meio-direita), C (notas + carimbo SPIN, direita)`,
-    `- **Fonte:** sans-serif limpa (Bahnschrift, Barlow ou Arial fallback)`,
-    `- **Cores:** só preto/branco; amarelo apenas no fundo da placa de advertência; vermelho apenas no texto "CUIDADO / RISCO DE CHOQUE ELÉTRICO / GERAÇÃO PRÓPRIA"`,
-    `- **Logo SPIN:** hachuras diagonais no bloco esquerdo do carimbo`,
-    `- **RT sempre:** Kalebe Grün / CPF 943.121.760-00`,
+    `- Potência CC total:      ${fmt(potCcKwp, 2)} kWp`,
+    `- Potência CA instalada:  ${fmt(potCaKw, 2)} kW`,
+    `- Fator FCI (CC/CA):      ${fmt(fciPct, 1)}%`,
+    `- Tipo de ligação:        ${ligacao}`,
+    `- Tensão de fornecimento: ${tensaoFornec}`,
+    `- Corrente CA total:      ${fmt(correnteCaA, 1)} A`,
     ``,
-    `## REGRAS FIXAS SPIN`,
+    `## 3. MÓDULOS FOTOVOLTAICOS`,
     ``,
-    `- NUNCA desenhar Quadro de Proteção CC / string box — CC vai direto ao inversor`,
-    `- SEMPRE Quadro de Proteção CA (QPCA) com disjuntor + DPS`,
-    `- DPS classe II 275Vca, In 10kA, Imax 20kA`,
-    `- Cabos CC 4mm² positivo/negativo/proteção`,
-    `- Cabos CA dimensionados por corrente real`,
-    `- Notas numeradas 1-6 conforme exemplo canônico (I-432.0004, N-321.0001, NBR IEC 62116, funções ANSI 27/59/81U/81O/25/78)`,
+    `- Marca:              ${placa.fabricante || 'WEG'}`,
+    `- Modelo:             ${placa.modelo || 'a preencher'}`,
+    `- Código WEG:         ${placa.codigo_weg || '—'}`,
+    `- Potência unitária:  ${fmt(potWpMod, 0)} Wp`,
+    `- Vmp (nominal):      ${placa.vmp_v ? `${placa.vmp_v} V` : 'ver datasheet'}`,
+    `- Imp:                ${placa.imp_a ? `${placa.imp_a} A` : 'ver datasheet'}`,
+    `- Voc:                ${placa.voc_v ? `${placa.voc_v} V` : 'ver datasheet'}`,
+    `- Eficiência:         ${placa.eficiencia_pct ? `${placa.eficiencia_pct}%` : 'ver datasheet'}`,
+    `- Quantidade total:   ${qtdMod} unidades`,
     ``,
-    `## DADOS DO PROJETO`,
+    `## 4. INVERSOR`,
     ``,
-    `### Cliente / Proprietário`,
-    `- Razão social: **${projeto.cliente_razao_social}**`,
-    `- CPF/CNPJ: ${projeto.cliente_cpf_cnpj || 'não informado'}`,
-    `- UC geradora: ${projeto.uc_geradora}`,
-    `- Endereço da obra: ${enderecoObra}`,
-    `- Código do pedido: ${projeto.codigo || projeto.id}`,
-    `- Conta contrato: ${projeto.conta_contrato || 'a definir'}`,
+    `- Marca:              WEG`,
+    `- Modelo:             ${inversor.modelo || 'a preencher'}`,
+    `- Código WEG:         ${inversor.codigo_weg || '—'}`,
+    `- Potência CA:        ${fmt(potInvKw, 2)} kW`,
+    `- Nº MPPTs:           ${inversor.entradas_mppt || 'ver datasheet'}`,
+    `- Tensão entrada:     ${inversor.tensao_cc_desc || '200V - 1000V'}`,
+    `- Corrente entrada:   ${inversor.corrente_cc_desc || 'ver datasheet'}`,
+    `- Tensão saída:       ${tensaoFornec}`,
+    `- Corrente saída:     ${fmt(correnteCaA / qtdInv, 1)} A por inversor`,
+    `- Proteções ANSI:     27 (0,8pu/0,4s), 59 (1,1pu/0,2s), 81U (57,5Hz/0,2s), 81O (62,0Hz/0,2s), 25, 78`,
+    `- Anti-ilhamento:     ativo, NBR IEC 62116`,
+    `- Quantidade:         ${qtdInv} unidade(s)`,
     ``,
-    `### Análise da fatura`,
-    '```json',
-    JSON.stringify(projeto.analise_fatura || {}, null, 2),
-    '```',
-    ``,
-    `### Padrão de entrada`,
-    '```json',
-    JSON.stringify(projeto.padrao_entrada || {}, null, 2),
-    '```',
   ]
 
-  if (tipoDesenho !== 'padrao_entrada') {
+  // Arranjo de strings — se telhado_secoes tiver a estrutura
+  const arranjo = extrairArranjo(telhadoSecoes, kit)
+  if (arranjo.length > 0) {
     partes.push(
+      `## 5. ARRANJO DE STRINGS (por MPPT)`,
       ``,
-      `### Telhado (seções)`,
-      '```json',
-      JSON.stringify(telhadoSecoes || [], null, 2),
-      '```',
-      ``,
-      `### Kit selecionado`,
-      '```json',
-      JSON.stringify(projeto.kit_selecionado || {}, null, 2),
-      '```',
-      ``,
-      `### Lista CA confirmada (materiais complementares)`,
-      '```json',
-      JSON.stringify(projeto.lista_ca_confirmada || [], null, 2),
-      '```',
     )
-  }
-
-  if (tipoDesenho === 'unifilar_hibrido') {
+    for (const mppt of arranjo) {
+      partes.push(`### MPPT ${mppt.numero}`)
+      for (const s of mppt.strings) {
+        const vmp = potWpMod && placa.vmp_v ? `${placa.vmp_v} × ${s.qtd_modulos} = ${(placa.vmp_v * s.qtd_modulos).toFixed(2)}V` : `${s.qtd_modulos} módulos em série`
+        partes.push(
+          `- String ${s.numero}: ${s.qtd_modulos} módulos · Vmp: ${vmp} · Imp: ${placa.imp_a || '—'} A · Potência: ${(s.qtd_modulos * potWpMod).toLocaleString('pt-BR')} Wp`,
+        )
+      }
+      partes.push(``)
+    }
+  } else {
     partes.push(
+      `## 5. ARRANJO DE STRINGS`,
       ``,
-      `### Dimensionamento BESS`,
-      '```json', JSON.stringify(hibridoDim || {}, null, 2), '```',
+      `- Total de módulos: ${qtdMod}`,
+      `- MPPTs disponíveis no inversor: ${inversor.entradas_mppt || '—'}`,
+      `- Distribuir os ${qtdMod} módulos entre os MPPTs equilibrando strings (ex: ${qtdMod} ÷ ${inversor.entradas_mppt || 'N'} MPPTs, ajustar pra Voc dentro dos limites)`,
+      `- Vmp por módulo: ${placa.vmp_v || 'ver datasheet'} V`,
+      `- Imp por módulo:  ${placa.imp_a || 'ver datasheet'} A`,
       ``,
-      `### Análise demanda`,
-      '```json', JSON.stringify(hibridoAn || {}, null, 2), '```',
     )
   }
 
   partes.push(
+    `## 6. CONDUTORES`,
     ``,
-    `## DADOS DA EMPRESA (pro carimbo)`,
-    `- Razão social: ${configEmpresa?.razao_social || 'SPIN Solar'}`,
-    `- CNPJ: ${configEmpresa?.cnpj || ''}`,
-    `- Integrador: SPIN Solar`,
+    `### CC (módulos → inversor)`,
+    `- Positivo: 4 mm² (padrão SPIN)`,
+    `- Negativo: 4 mm²`,
+    `- Proteção: 4 mm²`,
+    `- Distância aprox.: ${padrao.distancia_string_qgbt_m ? `${padrao.distancia_string_qgbt_m} m` : '~15 m (a confirmar em campo)'}`,
+    `- Isolação: 1,8kV XLPE termofixo com proteção UV (nota 2 padrão)`,
     ``,
-    `## RESPONSÁVEL TÉCNICO (regra fixa)`,
-    `- Nome: **Kalebe Grün**`,
-    `- Título: Eletrotécnico`,
-    `- Registro CFT: ${configEmpresa?.rt_crea || '94312176000'}`,
-    `- CPF (assinatura): 943.121.760-00`,
-    `- ART: ${projeto.art_numero || configEmpresa?.rt_art_padrao || 'a definir'}`,
-    `- Data: ${new Date().toISOString().slice(0, 10)}`,
+    `### CA`,
+    `- Ramal de ligação:        ${padrao.ramal_ligacao_bitola || `3x10+1x10 mm² (padrão CELESC)`}`,
+    `- Padrão medição → QD:     ${bitolaCaSugerida(correnteCaA)}`,
+    `- QD → QPCA:               ${bitolaCaSugerida(correnteCaA)}`,
+    `- QPCA → inversor:         ${bitolaCaSugerida(correnteCaA / qtdInv)}`,
+    `- Isolação: 1kV PVC (nota 3 padrão)`,
     ``,
-    `## ENTREGA`,
+    `## 7. PROTEÇÕES`,
     ``,
-    `Gere e me devolva o **PDF finalizado** (folha ${nomeFolhaDiagrama(tipoDesenho)}), pronto pra envio à CELESC.`,
-    `Se possível, gere também DXF (AutoCAD) e SVG. Só o PDF é obrigatório.`,
+    `- Disjuntor geral (entrada):   ${padrao.amperagem_disjuntor_geral_a ? `${padrao.amperagem_disjuntor_geral_a} A` : `${disjSugeridoA} A`} tripolar`,
+    `- Disjuntor sistema FV (QPCA): ${disjSugeridoA} A · MDW${isTri ? 'H' : 'P'}-C${disjSugeridoA}-${isTri ? '3' : '2'}`,
+    `- DPS CA:                     Classe II, 275Vca, In 10kA, Imax 20kA · ${qtdDps}× (${numFasesTexto})`,
+    `- Aterramento:                Haste 5/8" × 2,4m + cabo cobre nu 16mm²`,
     ``,
-    `Depois de receber o PDF, vou subi-lo no bloco "Já tem o arquivo pronto? Enviar manualmente" da tela ${'`/projetos/' + projetoId + '/diagrama`'} no portal SPIN.`,
+    `## 8. PADRÃO DE ENTRADA`,
+    ``,
+    `- Amperagem padrão:      ${padrao.amperagem_disjuntor_geral_a || 'a preencher'} A`,
+    `- Grupo tarifário:       ${padrao.grupo_tarifa || 'B (BT)'}`,
+    `- Modalidade:            ${fatura.modalidade || 'convencional'}`,
+    `- Tensão nominal:        ${padrao.tensao_nominal_v || tensaoFornec}`,
+    `- Localização do padrão: ${padrao.localizacao_descricao || 'poste na entrada do terreno'}`,
+    ``,
   )
 
-  return { prompt: partes.join('\n') }
+  if (tipoDesenho === 'unifilar_hibrido' && hibridoDim) {
+    partes.push(
+      `## 9. ARMAZENAMENTO (BESS)`,
+      ``,
+      `- Capacidade útil:       ${hibridoDim.capacidade_util_kwh || '—'} kWh`,
+      `- Potência CA de saída:  ${hibridoDim.potencia_ca_backup_kw || '—'} kW`,
+      `- Autonomia (backup):    ${hibridoDim.autonomia_h || '—'} h`,
+      `- Modelo do BESS:        ${hibridoDim.bess_modelo || '—'}`,
+      `- Cargas críticas:       ${hibridoDim.cargas_criticas_desc || '—'}`,
+      `- EPS (transfer switch): ${hibridoDim.tem_eps ? 'SIM' : 'NÃO'}`,
+      ``,
+    )
+    if (hibridoAn) {
+      partes.push(
+        `### Análise de demanda`,
+        `- Demanda média:  ${hibridoAn.demanda_media_kw || '—'} kW`,
+        `- Demanda pico:   ${hibridoAn.demanda_pico_kw || '—'} kW`,
+        `- Consumo médio:  ${hibridoAn.consumo_medio_kwh || '—'} kWh/mês`,
+        ``,
+      )
+    }
+  }
+
+  partes.push(
+    `## ${tipoDesenho === 'unifilar_hibrido' && hibridoDim ? '10' : '9'}. CARIMBO / METADADOS`,
+    ``,
+    `- Título da folha:         ${nomeFolhaDiagrama(tipoDesenho)}`,
+    `- Data de emissão:         ${new Date().toLocaleDateString('pt-BR')}`,
+    `- Projetista:              Kalebe Grün`,
+    `- Responsável técnico:     Kalebe Grün — Eletrotécnico`,
+    `- Registro CFT:            ${configEmpresa?.rt_crea || '94312176000'}`,
+    `- CPF (assinatura):        943.121.760-00`,
+    `- ART:                     ${projeto.art_numero || configEmpresa?.rt_art_padrao || 'a definir'}`,
+    `- Revisão:                 ${projeto.revisao_diagrama || '01'}`,
+    `- Integrador:              SPIN Solar`,
+    `- CNPJ SPIN:               ${configEmpresa?.cnpj || '—'}`,
+    ``,
+    `═══════════════════════════════════════════════════════════════════`,
+    `Entregável esperado: PDF finalizado da folha ${nomeFolhaDiagrama(tipoDesenho)}, no padrão gráfico "Projeto Ideal" SPIN.`,
+    `Formatos adicionais (opcional): DXF, SVG.`,
+  )
+
+  return partes.join('\n')
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════════════════
+
+function num(v: any): number {
+  const n = typeof v === 'number' ? v : parseFloat(v)
+  return isFinite(n) ? n : 0
+}
+
+function fmt(v: number, casas: number): string {
+  if (!isFinite(v) || v === 0) return '—'
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })
+}
+
+function normLigacao(v: any): 'monofasico' | 'bifasico' | 'trifasico' {
+  const s = String(v || '').toLowerCase()
+  if (/tri/.test(s)) return 'trifasico'
+  if (/bi/.test(s)) return 'bifasico'
+  return 'monofasico'
+}
+
+function arredondarDisjuntorCA(a: number): number {
+  const opcoes = [16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 300, 400, 500, 630]
+  for (const o of opcoes) if (a <= o) return o
+  return 800
+}
+
+function bitolaCaSugerida(a: number): string {
+  if (a <= 32) return '3#10(10)+T10 mm²'
+  if (a <= 50) return '3#16(16)+T16 mm²'
+  if (a <= 80) return '3#25(25)+T16 mm²'
+  if (a <= 100) return '3#35(35)+T16 mm²'
+  if (a <= 125) return '3#50(50)+T25 mm²'
+  if (a <= 160) return '3#70(70)+T35 mm²'
+  return '3#95(95)+T50 mm² (revisar dimensionamento)'
+}
+
+function extrairArranjo(telhadoSecoes: any[], kit: any): Array<{ numero: number; strings: Array<{ numero: number; qtd_modulos: number }> }> {
+  // Estrutura esperada em telhado_secoes[i].strings[j].qtd_modulos + mppt
+  const porMppt = new Map<number, Array<{ numero: number; qtd_modulos: number }>>()
+  for (const secao of telhadoSecoes || []) {
+    const strings = Array.isArray(secao.strings) ? secao.strings : []
+    for (const s of strings) {
+      const mppt = num(s.mppt) || 1
+      const num_str = num(s.numero_string) || (porMppt.get(mppt)?.length || 0) + 1
+      const qtd = num(s.qtd_modulos) || num(s.modulos_em_serie) || 0
+      if (qtd <= 0) continue
+      const lista = porMppt.get(mppt) || []
+      lista.push({ numero: num_str, qtd_modulos: qtd })
+      porMppt.set(mppt, lista)
+    }
+  }
+  if (porMppt.size === 0) return []
+  const out: Array<{ numero: number; strings: Array<{ numero: number; qtd_modulos: number }> }> = []
+  const mpptsOrdenados = Array.from(porMppt.keys()).sort((a, b) => a - b)
+  for (const m of mpptsOrdenados) {
+    const strings = (porMppt.get(m) || []).sort((a, b) => a.numero - b.numero)
+    out.push({ numero: m, strings })
+  }
+  return out
 }
 
 function nomeFolhaDiagrama(tipo: string): string {
