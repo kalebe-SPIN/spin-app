@@ -624,9 +624,8 @@ function montarRelatorioTecnico(args: {
       const codigoWeg = item.codigo_weg || item.codigo || ''
       const modelo = item.modelo || item.descricao || item.nome || ''
       const qtd = item.qtd || item.quantidade || 1
-      const preco = item.preco_venda || item.preco_unitario
       partes.push(
-        `- ${qtd}× ${modelo}${codigoWeg ? ` [WEG ${codigoWeg}]` : ''}${preco ? ` · R$ ${num(preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ''}`,
+        `- ${qtd}× ${modelo}${codigoWeg ? ` [WEG ${codigoWeg}]` : ''}`,
       )
     }
     partes.push(``)
