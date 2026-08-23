@@ -475,9 +475,14 @@ function montarRelatorioTecnico(args: {
   const kit = projeto.kit_selecionado || {}
   const padrao = projeto.padrao_entrada || {}
   const fatura = projeto.analise_fatura || {}
-  const end = projeto.cliente_endereco || {}
-  const enderecoObra = [end.logradouro, end.numero, end.bairro, end.cidade, end.uf, end.cep]
-    .filter(Boolean).join(', ') || 'a preencher'
+
+  // ═══ Endereço da OBRA (onde o sistema fotovoltaico vai ser instalado) ═══
+  // Prioridade: endereco_instalacao (se preenchido pelo consultor no cadastro
+  // "obra diferente do titular") > cliente_endereco (titular) > fatura CELESC.
+  // Aceita ambos shapes de key: {logradouro|rua, numero, complemento, bairro,
+  // cidade|municipio, uf|estado, cep, coordenadas_gps}.
+  const enderecoObra = extrairEnderecoObra(projeto)
+  const linhaEnderecoObra = formatarLinhaEndereco(enderecoObra)
 
   // ═══ Cálculos derivados ═══
   const placa = kit.placa || {}
@@ -504,14 +509,24 @@ function montarRelatorioTecnico(args: {
     ``,
     `## 1. IDENTIFICAÇÃO`,
     ``,
-    `- Cliente:            ${projeto.cliente_razao_social || 'a preencher'}`,
-    `- CPF/CNPJ:           ${projeto.cliente_cpf_cnpj || 'a preencher'}`,
-    `- UC geradora:        ${projeto.uc_geradora || 'a preencher'}`,
-    `- Conta contrato:     ${projeto.conta_contrato || 'a preencher'}`,
-    `- Endereço da obra:   ${enderecoObra}`,
-    `- Concessionária:     CELESC (Santa Catarina)`,
-    `- Código do pedido:   ${projeto.codigo || projeto.id}`,
-    `- ID do pedido:       ${projeto.id_pedido_externo || projeto.codigo || '—'}`,
+    `- Cliente (proprietário):  ${projeto.cliente_razao_social || '⚠ a preencher'}`,
+    `- CPF/CNPJ:                ${formatarCpfCnpj(projeto.cliente_cpf_cnpj) || '⚠ a preencher'}`,
+    `- UC geradora:             ${projeto.uc_geradora || '⚠ a preencher'}`,
+    `- Conta contrato:          ${projeto.conta_contrato || '⚠ a preencher'}`,
+    `- Concessionária:          CELESC (Santa Catarina)`,
+    `- Código do pedido SPIN:   ${projeto.codigo || projeto.id}`,
+    `- ID do pedido externo:    ${projeto.id_pedido_externo || projeto.codigo || '—'}`,
+    ``,
+    `### Endereço da OBRA (onde o sistema fotovoltaico vai ser instalado)`,
+    ``,
+    `- Logradouro:  ${enderecoObra.logradouro || '⚠ a preencher'}`,
+    `- Número:      ${enderecoObra.numero || '⚠ a preencher'}`,
+    ...(enderecoObra.complemento ? [`- Complemento: ${enderecoObra.complemento}`] : []),
+    `- Bairro:      ${enderecoObra.bairro || '⚠ a preencher'}`,
+    `- Cidade/UF:   ${enderecoObra.cidade || '⚠ a preencher'} / ${enderecoObra.uf || 'SC'}`,
+    `- CEP:         ${formatarCEP(enderecoObra.cep) || '⚠ a preencher'}`,
+    ...(enderecoObra.coordenadas_gps ? [`- Coordenadas: ${JSON.stringify(enderecoObra.coordenadas_gps)}`] : []),
+    `- Linha única (pra carimbo): ${linhaEnderecoObra}`,
     ``,
     `## 2. SISTEMA FOTOVOLTAICO`,
     ``,
@@ -669,19 +684,50 @@ function montarRelatorioTecnico(args: {
     }
   }
 
+  // Descrição do sistema pra estampar no carimbo (ex: "Sistema fotovoltaico 6,99 kWp")
+  const potCcTxt = fmt(potCcKwp, 2)
+  const descrProjeto = tipoDesenho === 'unifilar_hibrido'
+    ? `Sistema híbrido fotovoltaico ${potCcTxt} kWp + BESS`
+    : `Sistema fotovoltaico ${potCcTxt} kWp`
+  const dataEmissao = new Date().toLocaleDateString('pt-BR')
+  const cnpjCpfFmt = formatarCpfCnpj(projeto.cliente_cpf_cnpj) || '—'
+  const cepFmt = formatarCEP(enderecoObra.cep) || '—'
+  const enderecoLinha1 = [enderecoObra.logradouro, enderecoObra.numero ? `Nº ${enderecoObra.numero}` : null, enderecoObra.bairro].filter(Boolean).join(', ') || '—'
+
   partes.push(
-    `## ${tipoDesenho === 'unifilar_hibrido' && hibridoDim ? '10' : '9'}. CARIMBO / METADADOS`,
+    `## ${tipoDesenho === 'unifilar_hibrido' && hibridoDim ? '10' : '9'}. ETIQUETA / CARIMBO DA PRANCHA`,
     ``,
-    `- Título da folha:         ${nomeFolhaDiagrama(tipoDesenho)}`,
-    `- Data de emissão:         ${new Date().toLocaleDateString('pt-BR')}`,
-    `- Projetista:              Kalebe Grün`,
-    `- Responsável técnico:     Kalebe Grün — Eletrotécnico`,
-    `- Registro CFT:            ${configEmpresa?.rt_crea || '94312176000'}`,
-    `- CPF (assinatura):        943.121.760-00`,
-    `- ART:                     ${projeto.art_numero || configEmpresa?.rt_art_padrao || 'a definir'}`,
-    `- Revisão:                 ${projeto.revisao_diagrama || '01'}`,
-    `- Integrador:              SPIN Solar`,
-    `- CNPJ SPIN:               ${configEmpresa?.cnpj || '—'}`,
+    `Formato exato pra estampar no bloco carimbo do folha01 (padrão "Projeto Ideal"). Copie os valores linha a linha:`,
+    ``,
+    '```',
+    `┌─ CARIMBO ─────────────────────────────────────────────────────────┐`,
+    ``,
+    `PROJETO:            ${descrProjeto}`,
+    `PROPRIETÁRIO:       ${projeto.cliente_razao_social || '⚠ preencher'}`,
+    `CNPJ/CPF:           ${cnpjCpfFmt}`,
+    `ID DO PEDIDO:       ${projeto.id_pedido_externo || projeto.codigo || '—'}`,
+    ``,
+    `TÍTULO:             ${tituloCarimbo(tipoDesenho)}`,
+    ``,
+    `ENDEREÇO DA OBRA:   ${enderecoLinha1}`,
+    `                    ${enderecoObra.cidade || '—'} / ${enderecoObra.uf || 'SC'}`,
+    `CEP:                ${cepFmt}`,
+    ``,
+    `PROJETISTA:         Kalebe Grün`,
+    `DATA:               ${dataEmissao}`,
+    `REVISADO POR:       Kalebe Grün`,
+    `REVISÃO:            ${projeto.revisao_diagrama || '01'}`,
+    `CONTA CONTRATO:     ${projeto.conta_contrato || '⚠ preencher'}`,
+    `INTEGRADOR:         SPIN Solar`,
+    `FOLHA:              ${numeroFolha(tipoDesenho)}`,
+    ``,
+    `RT ASSINATURA:      Kalebe Grün · Eletrotécnico`,
+    `CPF (assinatura):   943.121.760-00`,
+    `Registro CFT:       ${configEmpresa?.rt_crea || '94312176000'}`,
+    `ART:                ${projeto.art_numero || configEmpresa?.rt_art_padrao || 'a definir'}`,
+    ``,
+    `└────────────────────────────────────────────────────────────────────┘`,
+    '```',
     ``,
     `═══════════════════════════════════════════════════════════════════`,
     `Entregável esperado: PDF finalizado da folha ${nomeFolhaDiagrama(tipoDesenho)}, no padrão gráfico "Projeto Ideal" SPIN.`,
@@ -744,5 +790,90 @@ function nomeFolhaDiagrama(tipo: string): string {
     case 'padrao_entrada': return 'PADRÃO DE ENTRADA CELESC'
     case 'layout_instalacao': return 'LAYOUT DE INSTALAÇÃO'
     default: return tipo
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// EXTRAÇÃO / FORMATAÇÃO DE ENDEREÇO
+// ══════════════════════════════════════════════════════════════════════
+
+type EnderecoNormalizado = {
+  logradouro: string
+  numero: string
+  complemento: string
+  bairro: string
+  cidade: string
+  uf: string
+  cep: string
+  coordenadas_gps?: any
+}
+
+/**
+ * Endereço da OBRA (onde o sistema fotovoltaico será instalado). Prioridade:
+ *   1. projeto.endereco_instalacao (preenchido quando obra ≠ titular)
+ *   2. projeto.cliente_endereco (endereço cadastrado)
+ *
+ * Kalebe pediu 2026-08-23: "endereço da instalação é o que deve ser
+ * considerado" — mesmo quando o titular tem outro endereço.
+ *
+ * Aceita 2 shapes de key: `logradouro|rua`, `cidade|municipio`, `uf|estado`.
+ */
+function extrairEnderecoObra(projeto: any): EnderecoNormalizado {
+  const raw = projeto?.endereco_instalacao || projeto?.cliente_endereco || {}
+  return normalizarEndereco(raw)
+}
+
+function normalizarEndereco(raw: any): EnderecoNormalizado {
+  const r = raw || {}
+  return {
+    logradouro: String(r.logradouro || r.rua || r.endereco || '').trim(),
+    numero: String(r.numero || r.num || '').trim(),
+    complemento: String(r.complemento || r.compl || '').trim(),
+    bairro: String(r.bairro || '').trim(),
+    cidade: String(r.cidade || r.municipio || '').trim(),
+    uf: String(r.uf || r.estado || '').trim().toUpperCase(),
+    cep: String(r.cep || '').trim(),
+    coordenadas_gps: r.coordenadas_gps || null,
+  }
+}
+
+function formatarLinhaEndereco(e: EnderecoNormalizado): string {
+  const linha1 = [e.logradouro, e.numero ? `Nº ${e.numero}` : null, e.complemento || null, e.bairro].filter(Boolean).join(', ')
+  const linha2 = [e.cidade, e.uf].filter(Boolean).join('/')
+  const cep = formatarCEP(e.cep)
+  const partes = [linha1, linha2, cep ? `CEP: ${cep}` : null].filter(Boolean)
+  return partes.length > 0 ? partes.join(' — ') : '⚠ endereço não cadastrado'
+}
+
+function formatarCEP(cep: any): string {
+  const s = String(cep || '').replace(/\D/g, '')
+  if (s.length !== 8) return String(cep || '').trim()
+  return `${s.slice(0, 5)}-${s.slice(5)}`
+}
+
+function formatarCpfCnpj(v: any): string {
+  const s = String(v || '').replace(/\D/g, '')
+  if (s.length === 11) return `${s.slice(0, 3)}.${s.slice(3, 6)}.${s.slice(6, 9)}-${s.slice(9)}`
+  if (s.length === 14) return `${s.slice(0, 2)}.${s.slice(2, 5)}.${s.slice(5, 8)}/${s.slice(8, 12)}-${s.slice(12)}`
+  return String(v || '').trim()
+}
+
+function tituloCarimbo(tipo: string): string {
+  switch (tipo) {
+    case 'unifilar_ongrid': return 'DIAGRAMA UNIFILAR'
+    case 'unifilar_hibrido': return 'DIAGRAMA UNIFILAR HÍBRIDO'
+    case 'padrao_entrada': return 'PADRÃO DE ENTRADA'
+    case 'layout_instalacao': return 'LAYOUT DE INSTALAÇÃO'
+    default: return String(tipo).toUpperCase()
+  }
+}
+
+function numeroFolha(tipo: string): string {
+  switch (tipo) {
+    case 'unifilar_ongrid':
+    case 'unifilar_hibrido': return '01'
+    case 'padrao_entrada': return '02'
+    case 'layout_instalacao': return '03'
+    default: return '—'
   }
 }
