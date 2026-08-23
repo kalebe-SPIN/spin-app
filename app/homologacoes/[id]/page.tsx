@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { EtapaHomologacaoClient } from '@/components/EtapaHomologacaoClient'
+// EtapaHomologacaoClient removido — substituído pela TimelineHomologacao (bdb6f74)
 import { ReprocessarArquivosBtn } from '@/components/ReprocessarArquivosBtn'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 import { ProtocoloCelescEditor } from '@/components/ProtocoloCelescEditor'
@@ -287,25 +287,17 @@ export default async function HomologacaoDetalhePage({
           />
         </ErrorBoundaryClient>
 
-        {/* Progresso visual das 6 etapas (7 se padrão novo) */}
-        <section className="p-5 bg-white/[0.03] border border-white/10 rounded-xl">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
-              📋 Etapas da homologação
-            </h2>
-            <ReprocessarArquivosBtn homologacaoId={params.id} />
-          </div>
-
-          <div className="space-y-2">
-            {(etapas || []).map((etapa: any) => (
-              <EtapaHomologacaoClient
-                key={etapa.id}
-                etapa={etapa}
-                statusInfo={STATUS_ETAPA_INFO}
-              />
-            ))}
-          </div>
-        </section>
+        {/*
+          Listagem antiga "📋 Etapas da homologação" com dropdowns de status
+          foi removida — a TimelineHomologacao acima já mostra as 7 fases
+          reais do fluxo com editores completos por fase (Kalebe 2026-08-23:
+          "qual é a função dessa etapas pq não faz muito sentido se eu não
+          abrir e poder preencher cada uma delas"). O botão de reprocessar
+          arquivos antigo migra pra baixo pra continuar acessível.
+        */}
+        <div className="flex justify-end">
+          <ReprocessarArquivosBtn homologacaoId={params.id} />
+        </div>
 
         {/* Ação rápida: link pra diagrama do projeto */}
         <section className="p-4 bg-sol/[0.06] border border-sol/30 rounded-xl">
