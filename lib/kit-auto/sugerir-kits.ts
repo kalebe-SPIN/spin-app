@@ -368,11 +368,23 @@ function tentarComposicao(args: {
     return null
   }
 
-  // MICROINVERSOR — limite físico de placas por unidade
-  // SIW100 series suporta até 4 módulos por microinversor
+  // MICROINVERSOR — capacidade real por unidade calculada dinamicamente pela
+  // potência do micro e da placa. A constante fixa "4 placas por micro" antiga
+  // ignorava que SIW100G M010 (1 kW) suporta só 2 placas de 635W, enquanto o
+  // M300 (3 kW) suporta ~6. FCI máximo por micro: 145% (limite pra clipping
+  // aceitável do MPPT). Rejeita também se sobra micro sem placa nenhuma.
   if (categoria === 'microinversor') {
-    const MICRO_MAX_PLACAS_POR_UN = 4
-    if (qtdPlacas > qtdInversorPrincipal * MICRO_MAX_PLACAS_POR_UN) {
+    const placasMaxPorMicro = Math.max(
+      1,
+      Math.floor((inversorPrincipal.potencia_kw * 1000 * 1.45) / placa.potencia_wp),
+    )
+    const capacidadeTotal = qtdInversorPrincipal * placasMaxPorMicro
+    if (qtdPlacas > capacidadeTotal) {
+      if (diagnostico) diagnostico.rejeitados_por_micro_placas++
+      return null
+    }
+    // Cada micro precisa de pelo menos 1 placa — sem "micro órfão" no kit
+    if (qtdPlacas < qtdInversorPrincipal) {
       if (diagnostico) diagnostico.rejeitados_por_micro_placas++
       return null
     }
