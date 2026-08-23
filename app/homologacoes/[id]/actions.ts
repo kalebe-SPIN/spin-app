@@ -557,3 +557,152 @@ export async function editarProtocoloCelescAction(
   revalidatePath(`/homologacoes/${homologacaoId}`)
   return { sucesso: true }
 }
+
+// ══════════════════════════════════════════════════════════════════════
+// FLUXO 7 FASES — actions genéricas (migration 079)
+// ══════════════════════════════════════════════════════════════════════
+
+const BUCKET_HOM = 'homologacao-arquivos'
+
+const COLUNAS_PERMITIDAS_TEXTO = new Set([
+  // Fase 1
+  'fase1_observacoes',
+  // Fase 2 — TRT projeto
+  'trt_projeto_numero', 'trt_projeto_observacoes',
+  // Fase 3
+  'fase3_observacoes',
+  // Fase 4
+  'fase4_observacoes',
+  // Fase 5
+  'fase5_observacoes',
+  // Fase 6 — TRT execução
+  'trt_execucao_numero', 'trt_execucao_observacoes',
+  // Fase 7
+  'fase7_observacoes',
+])
+
+const COLUNAS_PERMITIDAS_NUM = new Set([
+  'trt_projeto_valor_boleto',
+  'trt_execucao_valor_boleto',
+])
+
+const COLUNAS_PERMITIDAS_DATA = new Set([
+  'trt_projeto_data_pagamento', 'trt_projeto_data_emissao',
+  'trt_execucao_data_pagamento', 'trt_execucao_data_emissao',
+  'data_submissao_projeto', 'data_autorizacao_projeto',
+  'data_pedido_conexao', 'data_troca_medidor', 'data_ligacao',
+])
+
+const COLUNAS_PERMITIDAS_URL = new Set([
+  'trt_projeto_boleto_url', 'trt_projeto_comprovante_url', 'trt_projeto_pdf_url',
+  'trt_execucao_boleto_url', 'trt_execucao_comprovante_url', 'trt_execucao_pdf_url',
+])
+
+/**
+ * Salva um único campo do fluxo de homologação. Genérico:
+ * aceita texto, número (numeric), data (YYYY-MM-DD) ou URL. O caller
+ * passa o nome da coluna + o valor. Validado por allow-lists acima.
+ */
+export async function salvarCampoFaseAction(
+  homologacaoId: string,
+  coluna: string,
+  valor: string | number | null,
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const permitida =
+    COLUNAS_PERMITIDAS_TEXTO.has(coluna) ||
+    COLUNAS_PERMITIDAS_NUM.has(coluna) ||
+    COLUNAS_PERMITIDAS_DATA.has(coluna) ||
+    COLUNAS_PERMITIDAS_URL.has(coluna)
+  if (!permitida) return { erro: `Coluna "${coluna}" não permitida` }
+
+  let valorNormalizado: any = valor
+  if (valor === '' || valor === undefined) valorNormalizado = null
+  if (COLUNAS_PERMITIDAS_NUM.has(coluna) && typeof valor === 'string') {
+    const n = parseFloat(valor.replace(/\./g, '').replace(',', '.'))
+    valorNormalizado = isFinite(n) ? n : null
+  }
+
+  const { error } = await supabase
+    .from('homologacoes')
+    .update({ [coluna]: valorNormalizado })
+    .eq('id', homologacaoId)
+
+  if (error) return { erro: error.message }
+  revalidatePath(`/homologacoes/${homologacaoId}`)
+  return { sucesso: true }
+}
+
+/**
+ * Upload de arquivo do fluxo (boleto, comprovante ou PDF final da TRT).
+ * Recebe base64 da tela e sobe pro bucket homologacao-arquivos, depois
+ * salva a URL pública no campo correspondente.
+ */
+export async function uploadArquivoFaseAction(args: {
+  homologacaoId: string
+  coluna: string           // ex: 'trt_projeto_boleto_url'
+  arquivoBase64: string    // "data:mime;base64,..."
+  nomeOriginal: string
+}): Promise<{ sucesso: true; url: string } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  if (!COLUNAS_PERMITIDAS_URL.has(args.coluna)) return { erro: `Coluna URL "${args.coluna}" não permitida` }
+
+  // Extrai bytes do dataURL
+  const match = args.arquivoBase64.match(/^data:([^;]+);base64,(.+)$/)
+  if (!match) return { erro: 'Formato de arquivo inválido' }
+  const contentType = match[1]
+  const bytes = Buffer.from(match[2], 'base64')
+  if (bytes.length > 10 * 1024 * 1024) return { erro: 'Arquivo > 10MB' }
+
+  // Path: {homologacaoId}/{coluna}/{timestamp}-{nome}
+  const nomeSeguro = args.nomeOriginal.replace(/[^a-zA-Z0-9.\-_]/g, '_').slice(0, 80)
+  const path = `${args.homologacaoId}/${args.coluna}/${Date.now()}-${nomeSeguro}`
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabaseAdmin = createAdminClient()
+
+  const { error: upErr } = await supabaseAdmin.storage
+    .from(BUCKET_HOM)
+    .upload(path, bytes, { contentType, upsert: false })
+  if (upErr) return { erro: `Upload falhou: ${upErr.message}` }
+
+  const { data } = supabaseAdmin.storage.from(BUCKET_HOM).getPublicUrl(path)
+  const publicUrl = data.publicUrl
+
+  const { error: updErr } = await supabaseAdmin
+    .from('homologacoes')
+    .update({ [args.coluna]: publicUrl })
+    .eq('id', args.homologacaoId)
+  if (updErr) return { erro: `Salvou arquivo mas falhou atualizar registro: ${updErr.message}` }
+
+  revalidatePath(`/homologacoes/${args.homologacaoId}`)
+  return { sucesso: true, url: publicUrl }
+}
+
+/**
+ * Remove um arquivo (limpa a URL do campo — mantém o arquivo no bucket
+ * por auditoria; delete físico só via console).
+ */
+export async function removerArquivoFaseAction(
+  homologacaoId: string,
+  coluna: string,
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  if (!COLUNAS_PERMITIDAS_URL.has(coluna)) return { erro: `Coluna "${coluna}" não permitida` }
+
+  const { error } = await supabase
+    .from('homologacoes')
+    .update({ [coluna]: null })
+    .eq('id', homologacaoId)
+  if (error) return { erro: error.message }
+  revalidatePath(`/homologacoes/${homologacaoId}`)
+  return { sucesso: true }
+}

@@ -5,6 +5,7 @@ import { EtapaHomologacaoClient } from '@/components/EtapaHomologacaoClient'
 import { ReprocessarArquivosBtn } from '@/components/ReprocessarArquivosBtn'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 import { ProtocoloCelescEditor } from '@/components/ProtocoloCelescEditor'
+import { TimelineHomologacao } from '@/components/TimelineHomologacao'
 import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
 import { PadraoNovoToggle } from '@/components/PadraoNovoToggle'
 import { GerarTodosDiagramasBtn } from '@/components/GerarTodosDiagramasBtn'
@@ -173,7 +174,20 @@ export default async function HomologacaoDetalhePage({
     .from('homologacao_etapas')
     .select('*')
     .eq('homologacao_id', params.id)
+    .eq('legacy', false)
     .order('ordem', { ascending: true })
+
+  // Fluxo 7 fases — usa a view criada na migration 079
+  const { data: fluxoRow } = await supabase
+    .from('vw_homologacao_fluxo')
+    .select('*')
+    .eq('homologacao_id', params.id)
+    .maybeSingle()
+
+  const fluxo = fluxoRow || {
+    f1_status: 'pendente', f2_status: 'pendente', f3_status: 'pendente',
+    f4_status: 'pendente', f5_status: 'pendente', f6_status: 'pendente', f7_status: 'pendente',
+  }
 
   const statusInfo = STATUS_GERAL_INFO[hom.status_geral] || STATUS_GERAL_INFO.iniciado
   const totalEtapas = etapas?.length || 0
@@ -223,16 +237,21 @@ export default async function HomologacaoDetalhePage({
           />
         </ErrorBoundaryClient>
 
-        {/* Metadados */}
+        {/* NOVO — Timeline do fluxo real de 7 fases (migration 079) */}
+        <ErrorBoundaryClient nome="Fluxo 7 fases">
+          <TimelineHomologacao
+            homologacao={homSafe}
+            projetoId={hom.projeto?.id}
+            fluxo={fluxo as any}
+          />
+        </ErrorBoundaryClient>
+
+        {/* Metadados resumidos (informativo — dados editáveis estão na timeline acima) */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white/[0.03] border border-white/10 rounded-xl">
-          <CampoCustom label="Protocolo CELESC">
-            <ProtocoloCelescEditor homologacaoId={params.id} valorAtual={hom.protocolo_celesc} />
-          </CampoCustom>
-          <Campo label="Data solicitação" valor={fmtData(hom.data_solicitacao)} />
-          <Campo label="Data aprovação" valor={fmtData(hom.data_aprovacao)} />
-          <Campo label="Troca medidor" valor={fmtData(hom.data_prevista_troca_medidor)} />
-          <Campo label="Responsável técnico" valor={hom.eletrotecnico?.nome_completo || '—'} />
-          <Campo label="Etapa atual" valor={`${hom.etapa_atual}/${totalEtapas}`} />
+          <Campo label="Responsável técnico" valor={hom.eletrotecnico?.nome_completo || 'Kalebe Grün'} />
+          <Campo label="Data prevista troca medidor" valor={fmtData(hom.data_troca_medidor || hom.data_prevista_troca_medidor)} />
+          <Campo label="Data ligação" valor={fmtData(hom.data_ligacao)} />
+          <Campo label="Status geral" valor={hom.status_geral || 'iniciado'} />
         </section>
 
         {/* Botão destacado: gerar todos os arquivos */}
