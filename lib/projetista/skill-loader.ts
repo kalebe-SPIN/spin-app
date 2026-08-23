@@ -17,6 +17,7 @@ type SkillContent = {
   normas: string                      // references/normas-celesc.md
   calculos: string                    // references/calculos.md
   topologias: string                  // references/topologias.md — folhas 01/02/03 + checklist
+  exemplosOficiais: Record<string, string>  // exemplos-oficiais/*.md — Kalebe validou
   // Legacy (podem estar em _arquivo/) — mantidos pra retrocompat, mas o
   // pipeline novo (Projeto Ideal) não depende de nenhum deles.
   simbolos: string                    // references/simbolos.md — retornará '' se movido
@@ -64,6 +65,7 @@ export function carregarSkillProjetista(): SkillContent {
     normas: lerArq('references/normas-celesc.md'),
     calculos: lerArq('references/calculos.md'),
     topologias: lerArq('references/topologias.md'),
+    exemplosOficiais: lerDir('exemplos-oficiais', '.md'),  // Kalebe validou visualmente
     simbolos: lerArq('references/simbolos.md'),          // legacy — vazio se movido
     templates: lerDir('templates', '.svg'),              // legacy — {} se movido
     exemplos: lerDir('exemplos', '.md'),                 // legacy — {} se movido

@@ -309,6 +309,22 @@ function construirPromptUsuario(
     )
   }
 
+  // ═══ EXEMPLOS OFICIAIS validados pelo Kalebe ═══
+  // Especificação visual DETALHADA de projetos reais que passaram na validação.
+  // Estes textos vêm de PDFs oficiais anotados — SEGUIR À RISCA.
+  const exemplosOficiaisNomes = Object.keys(skill.exemplosOficiais || {})
+  if (exemplosOficiaisNomes.length > 0) {
+    partes.push(
+      ``,
+      `## EXEMPLOS OFICIAIS CANÔNICOS (KALEBE VALIDOU — SEGUIR À RISCA)`,
+      ``,
+      `Cada exemplo abaixo é a descrição TEXTUAL DETALHADA de um PDF real que o Kalebe validou como "assim que fica o Projeto Ideal SPIN". Se o tipo de folha que você está gerando corresponder a um destes exemplos, use-o como PADRÃO OFICIAL — a estética é INEGOCIÁVEL. Adapte só os valores técnicos (potência, quantidades, endereço, cliente, contratos), a estrutura visual (zonas, moldura, tipografia, disposição, carimbo, logo, notas) é FIXA.`,
+    )
+    for (const nome of exemplosOficiaisNomes) {
+      partes.push(``, `### Exemplo oficial: ${nome}`, skill.exemplosOficiais[nome])
+    }
+  }
+
   if (skill.calculos) {
     partes.push(
       ``,

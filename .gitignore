@@ -42,3 +42,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Pasta temporária pra referências (nunca versionar)
+tmp-refs/
