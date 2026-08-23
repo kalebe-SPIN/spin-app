@@ -396,3 +396,168 @@ export async function excluirDiagramaAction(diagramaId: string) {
   revalidatePath(`/projetos/${diag.projeto_id}/diagrama`)
   return { sucesso: true }
 }
+
+/**
+ * Monta um prompt DE TEXTO completo com tudo que o Claude/skill precisa
+ * pra desenhar o diagrama do projeto: instruções da skill projetista-spin,
+ * regras SPIN, exemplo canônico da folha01 e todos os dados do projeto.
+ *
+ * O consultor cola esse texto no chat de sua preferência (Claude Code
+ * local com a skill Python, chat web, o que for), o assistant gera o PDF,
+ * e ele volta aqui e sobe o arquivo via bloco "Enviar arquivo pronto".
+ *
+ * Kalebe pediu 2026-08-23 depois que o pipeline no Vercel deu problemas
+ * repetidos (modelo indisponível, timeout, etc). Assim contorna Vercel e
+ * usa o motor Python da skill fora do serverless.
+ */
+export async function montarPromptDiagramaAction(
+  projetoId: string,
+  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao',
+): Promise<{ prompt: string } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const supabaseAdmin = createAdminClient()
+
+  const { data: projeto } = await supabaseAdmin
+    .from('projetos').select('*').eq('id', projetoId).maybeSingle()
+  if (!projeto) return { erro: 'Projeto não encontrado' }
+
+  const { data: telhadoSecoes } = await supabaseAdmin
+    .from('projetos_telhado_secoes').select('*').eq('projeto_id', projetoId)
+    .order('ordem', { ascending: true })
+
+  const { data: configEmpresa } = await supabaseAdmin
+    .from('configuracoes_empresa').select('*').eq('singleton', true).maybeSingle()
+
+  let hibridoDim: any = null
+  let hibridoAn: any = null
+  if (tipoDesenho === 'unifilar_hibrido') {
+    const { data: dim } = await supabaseAdmin
+      .from('projeto_hibrido_dimensionamento').select('*').eq('projeto_id', projetoId)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    hibridoDim = dim
+    const { data: an } = await supabaseAdmin
+      .from('projeto_hibrido_analise').select('*').eq('projeto_id', projetoId)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    hibridoAn = an
+  }
+
+  const end = projeto.cliente_endereco || {}
+  const enderecoObra = [end.logradouro, end.numero, end.bairro, end.cidade, end.uf, end.cep]
+    .filter(Boolean).join(', ') || 'não informado'
+
+  const partes: string[] = [
+    `# GERAR DIAGRAMA TÉCNICO — SPIN Solar (${tipoDesenho.replace('_', ' ').toUpperCase()})`,
+    ``,
+    `Contexto: você está atuando como a skill **projetista-spin** (padrão gráfico "Projeto Ideal" SPIN). Se você tem essa skill instalada localmente (Claude Code com skill projetista-spin em Python), invoque-a normalmente. Se não, use as instruções abaixo diretamente.`,
+    ``,
+    `## OBJETIVO`,
+    `Gerar o **PDF finalizado da folha ${nomeFolhaDiagrama(tipoDesenho)}** deste projeto, no padrão gráfico "Projeto Ideal" SPIN, seguindo o exemplo canônico validado (folha01 LDM 38,5 kWp).`,
+    ``,
+    `## PADRÃO GRÁFICO (INEGOCIÁVEL)`,
+    ``,
+    `- **Formato:** A4 paisagem (297×210 mm)`,
+    `- **Zonas:** A (diagrama à esquerda), B (legenda + placa CUIDADO + padrão representativo, meio-direita), C (notas + carimbo SPIN, direita)`,
+    `- **Fonte:** sans-serif limpa (Bahnschrift, Barlow ou Arial fallback)`,
+    `- **Cores:** só preto/branco; amarelo apenas no fundo da placa de advertência; vermelho apenas no texto "CUIDADO / RISCO DE CHOQUE ELÉTRICO / GERAÇÃO PRÓPRIA"`,
+    `- **Logo SPIN:** hachuras diagonais no bloco esquerdo do carimbo`,
+    `- **RT sempre:** Kalebe Grün / CPF 943.121.760-00`,
+    ``,
+    `## REGRAS FIXAS SPIN`,
+    ``,
+    `- NUNCA desenhar Quadro de Proteção CC / string box — CC vai direto ao inversor`,
+    `- SEMPRE Quadro de Proteção CA (QPCA) com disjuntor + DPS`,
+    `- DPS classe II 275Vca, In 10kA, Imax 20kA`,
+    `- Cabos CC 4mm² positivo/negativo/proteção`,
+    `- Cabos CA dimensionados por corrente real`,
+    `- Notas numeradas 1-6 conforme exemplo canônico (I-432.0004, N-321.0001, NBR IEC 62116, funções ANSI 27/59/81U/81O/25/78)`,
+    ``,
+    `## DADOS DO PROJETO`,
+    ``,
+    `### Cliente / Proprietário`,
+    `- Razão social: **${projeto.cliente_razao_social}**`,
+    `- CPF/CNPJ: ${projeto.cliente_cpf_cnpj || 'não informado'}`,
+    `- UC geradora: ${projeto.uc_geradora}`,
+    `- Endereço da obra: ${enderecoObra}`,
+    `- Código do pedido: ${projeto.codigo || projeto.id}`,
+    `- Conta contrato: ${projeto.conta_contrato || 'a definir'}`,
+    ``,
+    `### Análise da fatura`,
+    '```json',
+    JSON.stringify(projeto.analise_fatura || {}, null, 2),
+    '```',
+    ``,
+    `### Padrão de entrada`,
+    '```json',
+    JSON.stringify(projeto.padrao_entrada || {}, null, 2),
+    '```',
+  ]
+
+  if (tipoDesenho !== 'padrao_entrada') {
+    partes.push(
+      ``,
+      `### Telhado (seções)`,
+      '```json',
+      JSON.stringify(telhadoSecoes || [], null, 2),
+      '```',
+      ``,
+      `### Kit selecionado`,
+      '```json',
+      JSON.stringify(projeto.kit_selecionado || {}, null, 2),
+      '```',
+      ``,
+      `### Lista CA confirmada (materiais complementares)`,
+      '```json',
+      JSON.stringify(projeto.lista_ca_confirmada || [], null, 2),
+      '```',
+    )
+  }
+
+  if (tipoDesenho === 'unifilar_hibrido') {
+    partes.push(
+      ``,
+      `### Dimensionamento BESS`,
+      '```json', JSON.stringify(hibridoDim || {}, null, 2), '```',
+      ``,
+      `### Análise demanda`,
+      '```json', JSON.stringify(hibridoAn || {}, null, 2), '```',
+    )
+  }
+
+  partes.push(
+    ``,
+    `## DADOS DA EMPRESA (pro carimbo)`,
+    `- Razão social: ${configEmpresa?.razao_social || 'SPIN Solar'}`,
+    `- CNPJ: ${configEmpresa?.cnpj || ''}`,
+    `- Integrador: SPIN Solar`,
+    ``,
+    `## RESPONSÁVEL TÉCNICO (regra fixa)`,
+    `- Nome: **Kalebe Grün**`,
+    `- Título: Eletrotécnico`,
+    `- Registro CFT: ${configEmpresa?.rt_crea || '94312176000'}`,
+    `- CPF (assinatura): 943.121.760-00`,
+    `- ART: ${projeto.art_numero || configEmpresa?.rt_art_padrao || 'a definir'}`,
+    `- Data: ${new Date().toISOString().slice(0, 10)}`,
+    ``,
+    `## ENTREGA`,
+    ``,
+    `Gere e me devolva o **PDF finalizado** (folha ${nomeFolhaDiagrama(tipoDesenho)}), pronto pra envio à CELESC.`,
+    `Se possível, gere também DXF (AutoCAD) e SVG. Só o PDF é obrigatório.`,
+    ``,
+    `Depois de receber o PDF, vou subi-lo no bloco "Já tem o arquivo pronto? Enviar manualmente" da tela ${'`/projetos/' + projetoId + '/diagrama`'} no portal SPIN.`,
+  )
+
+  return { prompt: partes.join('\n') }
+}
+
+function nomeFolhaDiagrama(tipo: string): string {
+  switch (tipo) {
+    case 'unifilar_ongrid': return '01 — DIAGRAMA UNIFILAR (on-grid)'
+    case 'unifilar_hibrido': return '01 — DIAGRAMA UNIFILAR (híbrido BESS)'
+    case 'padrao_entrada': return 'PADRÃO DE ENTRADA CELESC'
+    case 'layout_instalacao': return 'LAYOUT DE INSTALAÇÃO'
+    default: return tipo
+  }
+}

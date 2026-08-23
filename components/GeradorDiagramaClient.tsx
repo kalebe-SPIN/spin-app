@@ -8,6 +8,7 @@ import {
   gerarDiagramaAction,
   regenerarDiagramaAction,
 } from '@/app/projetos/[id]/diagrama/actions'
+import { PromptDiagramaCopiar } from '@/components/PromptDiagramaCopiar'
 
 type Diagrama = {
   id: string
@@ -56,6 +57,10 @@ export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk, 
         tiposDisponiveis={tiposDisponiveis}
         tipoSelecionado={tipoSelecionado}
         setTipoSelecionado={setTipoSelecionado}
+      />
+      <PromptDiagramaCopiar
+        projetoId={projeto.id}
+        tipoDesenho={tipoSelecionado}
       />
       <BlocoUploadOpcional
         projetoId={projeto.id}
