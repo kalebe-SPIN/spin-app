@@ -178,11 +178,20 @@ export default async function HomologacaoDetalhePage({
     .order('ordem', { ascending: true })
 
   // Diagramas prontos do projeto pra Fase 3 escolher qual é o oficial
-  const { data: diagramasProjeto } = await supabase
-    .from('projetos_diagramas')
-    .select('id, versao, tipo_desenho, status, url_pdf, created_at')
-    .eq('projeto_id', hom.projeto?.id || '')
-    .order('created_at', { ascending: false })
+  let diagramasProjeto: any[] = []
+  try {
+    const projId = hom.projeto?.id
+    if (projId) {
+      const { data } = await supabase
+        .from('projetos_diagramas')
+        .select('id, versao, tipo_desenho, status, url_pdf, created_at')
+        .eq('projeto_id', projId)
+        .order('created_at', { ascending: false })
+      diagramasProjeto = data || []
+    }
+  } catch (e: any) {
+    console.error('[homologacoes/page] falha ao buscar diagramas:', e?.message)
+  }
 
   // Fluxo 7 fases — deriva os status direto do próprio homSafe (não depende
   // da view vw_homologacao_fluxo, que pode faltar GRANT pro role
@@ -241,8 +250,43 @@ export default async function HomologacaoDetalhePage({
         {/* NOVO — Timeline do fluxo real de 7 fases (migration 079).
             Passa APENAS os campos usados, serializados JSON-safe pra não
             estourar o Server Component ao passar objetos complexos
-            (docs_socios, eletrotecnico obj, etc) pro Client Component. */}
-        <ErrorBoundaryClient nome="Fluxo 7 fases">
+            (docs_socios, eletrotecnico obj, etc) pro Client Component.
+            Wrapper renderTimeline try/catch expõe erro real quando quebra. */}
+        {(() => {
+          try {
+            return (
+              <ErrorBoundaryClient nome="Fluxo 7 fases (client)">
+                <TimelineHomologacaoWrapper
+                  homologacao={homSafe}
+                  projetoId={hom.projeto?.id || ''}
+                  fluxo={fluxo}
+                  diagramasProjeto={diagramasProjeto}
+                />
+              </ErrorBoundaryClient>
+            )
+          } catch (e: any) {
+            console.error('[homologacoes/page] Timeline server-side crashed:', e?.message, e?.stack)
+            return (
+              <div className="p-4 bg-coral/10 border border-coral/30 rounded-xl">
+                <p className="text-xs uppercase font-bold text-coral mb-2">
+                  ⚠️ Fluxo 7 fases não pôde renderizar (server-side)
+                </p>
+                <pre className="text-[10px] text-white/70 whitespace-pre-wrap break-all font-mono">
+                  {String(e?.message || e || 'erro sem mensagem')}
+                </pre>
+                {e?.stack && (
+                  <pre className="mt-2 text-[9px] text-white/40 whitespace-pre-wrap break-all font-mono max-h-40 overflow-y-auto">
+                    {String(e.stack).slice(0, 1500)}
+                  </pre>
+                )}
+              </div>
+            )
+          }
+        })()}
+
+        {/* placeholder — o bloco antigo abaixo foi movido pro wrapper acima */}
+        {false && (
+          <ErrorBoundaryClient nome="Fluxo 7 fases (antigo)">
           <TimelineHomologacao
             homologacao={JSON.parse(JSON.stringify({
               id: homSafe.id,
@@ -290,6 +334,7 @@ export default async function HomologacaoDetalhePage({
             diagramasProjeto={JSON.parse(JSON.stringify(diagramasProjeto || []))}
           />
         </ErrorBoundaryClient>
+        )}
 
         {/* Metadados resumidos (informativo — dados editáveis estão na timeline acima) */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-white/[0.03] border border-white/10 rounded-xl">
@@ -394,6 +439,77 @@ function CampoCustom({ label, children }: { label: string; children: React.React
 function fmtData(d: string | null) {
   if (!d) return '—'
   return new Date(d + 'T12:00:00-03:00').toLocaleDateString('pt-BR')
+}
+
+/**
+ * Wrapper server-side que serializa TODAS as props em try/catch,
+ * expõe erro real na tela em vez do "digest omitido" do Next.
+ */
+function TimelineHomologacaoWrapper({
+  homologacao, projetoId, fluxo, diagramasProjeto,
+}: {
+  homologacao: any
+  projetoId: string
+  fluxo: any
+  diagramasProjeto: any[]
+}) {
+  let homSerializavel: any
+  let diagsSerializavel: any
+  try {
+    homSerializavel = JSON.parse(JSON.stringify({
+      id: homologacao.id,
+      protocolo_celesc: homologacao.protocolo_celesc ?? null,
+      fase1_observacoes: homologacao.fase1_observacoes ?? null,
+      trt_projeto_numero: homologacao.trt_projeto_numero ?? null,
+      trt_projeto_valor_boleto: homologacao.trt_projeto_valor_boleto ?? null,
+      trt_projeto_boleto_url: homologacao.trt_projeto_boleto_url ?? null,
+      trt_projeto_data_pagamento: homologacao.trt_projeto_data_pagamento ?? null,
+      trt_projeto_comprovante_url: homologacao.trt_projeto_comprovante_url ?? null,
+      trt_projeto_pdf_url: homologacao.trt_projeto_pdf_url ?? null,
+      trt_projeto_data_emissao: homologacao.trt_projeto_data_emissao ?? null,
+      trt_projeto_observacoes: homologacao.trt_projeto_observacoes ?? null,
+      diagrama_unifilar_id: homologacao.diagrama_unifilar_id ?? null,
+      fase3_observacoes: homologacao.fase3_observacoes ?? null,
+      data_submissao_projeto: homologacao.data_submissao_projeto ?? null,
+      data_autorizacao_projeto: homologacao.data_autorizacao_projeto ?? null,
+      fase4_observacoes: homologacao.fase4_observacoes ?? null,
+      ordem_servico_id: homologacao.ordem_servico_id ?? null,
+      fase5_observacoes: homologacao.fase5_observacoes ?? null,
+      trt_execucao_numero: homologacao.trt_execucao_numero ?? null,
+      trt_execucao_valor_boleto: homologacao.trt_execucao_valor_boleto ?? null,
+      trt_execucao_boleto_url: homologacao.trt_execucao_boleto_url ?? null,
+      trt_execucao_data_pagamento: homologacao.trt_execucao_data_pagamento ?? null,
+      trt_execucao_comprovante_url: homologacao.trt_execucao_comprovante_url ?? null,
+      trt_execucao_pdf_url: homologacao.trt_execucao_pdf_url ?? null,
+      trt_execucao_data_emissao: homologacao.trt_execucao_data_emissao ?? null,
+      trt_execucao_observacoes: homologacao.trt_execucao_observacoes ?? null,
+      data_pedido_conexao: homologacao.data_pedido_conexao ?? null,
+      data_troca_medidor: homologacao.data_troca_medidor ?? null,
+      data_ligacao: homologacao.data_ligacao ?? null,
+      fase7_observacoes: homologacao.fase7_observacoes ?? null,
+      data_instalacao_concluida: homologacao.data_instalacao_concluida ?? null,
+    }))
+    diagsSerializavel = JSON.parse(JSON.stringify(diagramasProjeto || []))
+  } catch (e: any) {
+    throw new Error(`Serialização falhou: ${e?.message || e}`)
+  }
+
+  return (
+    <TimelineHomologacao
+      homologacao={homSerializavel}
+      projetoId={projetoId}
+      fluxo={{
+        f1_status: fluxo?.f1_status || 'pendente',
+        f2_status: fluxo?.f2_status || 'pendente',
+        f3_status: fluxo?.f3_status || 'pendente',
+        f4_status: fluxo?.f4_status || 'pendente',
+        f5_status: fluxo?.f5_status || 'pendente',
+        f6_status: fluxo?.f6_status || 'pendente',
+        f7_status: fluxo?.f7_status || 'pendente',
+      }}
+      diagramasProjeto={diagsSerializavel}
+    />
+  )
 }
 
 /**
