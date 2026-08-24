@@ -177,17 +177,11 @@ export default async function HomologacaoDetalhePage({
     .eq('legacy', false)
     .order('ordem', { ascending: true })
 
-  // Fluxo 7 fases — usa a view criada na migration 079
-  const { data: fluxoRow } = await supabase
-    .from('vw_homologacao_fluxo')
-    .select('*')
-    .eq('homologacao_id', params.id)
-    .maybeSingle()
-
-  const fluxo = fluxoRow || {
-    f1_status: 'pendente', f2_status: 'pendente', f3_status: 'pendente',
-    f4_status: 'pendente', f5_status: 'pendente', f6_status: 'pendente', f7_status: 'pendente',
-  }
+  // Fluxo 7 fases — deriva os status direto do próprio homSafe (não depende
+  // da view vw_homologacao_fluxo, que pode faltar GRANT pro role
+  // authenticated). Se algum campo específico gerar exception, cada fase
+  // cai em 'pendente' isoladamente e a página segue renderizando.
+  const fluxo = calcularFluxo7Fases(hom)
 
   const statusInfo = STATUS_GERAL_INFO[hom.status_geral] || STATUS_GERAL_INFO.iniciado
   const totalEtapas = etapas?.length || 0
@@ -391,4 +385,33 @@ function CampoCustom({ label, children }: { label: string; children: React.React
 function fmtData(d: string | null) {
   if (!d) return '—'
   return new Date(d + 'T12:00:00-03:00').toLocaleDateString('pt-BR')
+}
+
+/**
+ * Deriva status de cada uma das 7 fases direto dos campos da homologação.
+ * Fica no page.tsx (não depende da view SQL) pra não bloquear em RLS/GRANT.
+ * Try/catch por segurança — qualquer erro cai em 'pendente'.
+ */
+function calcularFluxo7Fases(hom: any) {
+  const S = (v: any) => {
+    try { return v && String(v).trim() ? true : false } catch { return false }
+  }
+  return {
+    f1_status: S(hom?.protocolo_celesc) ? 'concluido' : 'pendente',
+    f2_status:
+      S(hom?.trt_projeto_pdf_url) && S(hom?.trt_projeto_data_emissao) ? 'concluido' :
+      S(hom?.trt_projeto_boleto_url) ? 'em_andamento' : 'pendente',
+    f3_status: S(hom?.diagrama_unifilar_id) ? 'concluido' : 'pendente',
+    f4_status:
+      S(hom?.data_autorizacao_projeto) ? 'concluido' :
+      S(hom?.data_submissao_projeto)   ? 'em_andamento' : 'pendente',
+    f5_status: S(hom?.ordem_servico_id) ? 'em_andamento' : 'pendente',
+    f6_status:
+      S(hom?.trt_execucao_pdf_url) && S(hom?.trt_execucao_data_emissao) ? 'concluido' :
+      S(hom?.trt_execucao_boleto_url) ? 'em_andamento' : 'pendente',
+    f7_status:
+      S(hom?.data_ligacao)        ? 'concluido'    :
+      S(hom?.data_troca_medidor)  ? 'em_andamento' :
+      S(hom?.data_pedido_conexao) ? 'em_andamento' : 'pendente',
+  }
 }
