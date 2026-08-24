@@ -237,12 +237,54 @@ export default async function HomologacaoDetalhePage({
           />
         </ErrorBoundaryClient>
 
-        {/* NOVO — Timeline do fluxo real de 7 fases (migration 079) */}
+        {/* NOVO — Timeline do fluxo real de 7 fases (migration 079).
+            Passa APENAS os campos usados, serializados JSON-safe pra não
+            estourar o Server Component ao passar objetos complexos
+            (docs_socios, eletrotecnico obj, etc) pro Client Component. */}
         <ErrorBoundaryClient nome="Fluxo 7 fases">
           <TimelineHomologacao
-            homologacao={homSafe}
-            projetoId={hom.projeto?.id}
-            fluxo={fluxo as any}
+            homologacao={JSON.parse(JSON.stringify({
+              id: homSafe.id,
+              protocolo_celesc: homSafe.protocolo_celesc ?? null,
+              fase1_observacoes: homSafe.fase1_observacoes ?? null,
+              trt_projeto_numero: homSafe.trt_projeto_numero ?? null,
+              trt_projeto_valor_boleto: homSafe.trt_projeto_valor_boleto ?? null,
+              trt_projeto_boleto_url: homSafe.trt_projeto_boleto_url ?? null,
+              trt_projeto_data_pagamento: homSafe.trt_projeto_data_pagamento ?? null,
+              trt_projeto_comprovante_url: homSafe.trt_projeto_comprovante_url ?? null,
+              trt_projeto_pdf_url: homSafe.trt_projeto_pdf_url ?? null,
+              trt_projeto_data_emissao: homSafe.trt_projeto_data_emissao ?? null,
+              trt_projeto_observacoes: homSafe.trt_projeto_observacoes ?? null,
+              diagrama_unifilar_id: homSafe.diagrama_unifilar_id ?? null,
+              fase3_observacoes: homSafe.fase3_observacoes ?? null,
+              data_submissao_projeto: homSafe.data_submissao_projeto ?? null,
+              data_autorizacao_projeto: homSafe.data_autorizacao_projeto ?? null,
+              fase4_observacoes: homSafe.fase4_observacoes ?? null,
+              ordem_servico_id: homSafe.ordem_servico_id ?? null,
+              fase5_observacoes: homSafe.fase5_observacoes ?? null,
+              trt_execucao_numero: homSafe.trt_execucao_numero ?? null,
+              trt_execucao_valor_boleto: homSafe.trt_execucao_valor_boleto ?? null,
+              trt_execucao_boleto_url: homSafe.trt_execucao_boleto_url ?? null,
+              trt_execucao_data_pagamento: homSafe.trt_execucao_data_pagamento ?? null,
+              trt_execucao_comprovante_url: homSafe.trt_execucao_comprovante_url ?? null,
+              trt_execucao_pdf_url: homSafe.trt_execucao_pdf_url ?? null,
+              trt_execucao_data_emissao: homSafe.trt_execucao_data_emissao ?? null,
+              trt_execucao_observacoes: homSafe.trt_execucao_observacoes ?? null,
+              data_pedido_conexao: homSafe.data_pedido_conexao ?? null,
+              data_troca_medidor: homSafe.data_troca_medidor ?? null,
+              data_ligacao: homSafe.data_ligacao ?? null,
+              fase7_observacoes: homSafe.fase7_observacoes ?? null,
+            }))}
+            projetoId={hom.projeto?.id || ''}
+            fluxo={{
+              f1_status: (fluxo as any).f1_status || 'pendente',
+              f2_status: (fluxo as any).f2_status || 'pendente',
+              f3_status: (fluxo as any).f3_status || 'pendente',
+              f4_status: (fluxo as any).f4_status || 'pendente',
+              f5_status: (fluxo as any).f5_status || 'pendente',
+              f6_status: (fluxo as any).f6_status || 'pendente',
+              f7_status: (fluxo as any).f7_status || 'pendente',
+            }}
           />
         </ErrorBoundaryClient>
 
