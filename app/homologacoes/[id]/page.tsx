@@ -177,6 +177,13 @@ export default async function HomologacaoDetalhePage({
     .eq('legacy', false)
     .order('ordem', { ascending: true })
 
+  // Diagramas prontos do projeto pra Fase 3 escolher qual é o oficial
+  const { data: diagramasProjeto } = await supabase
+    .from('projetos_diagramas')
+    .select('id, versao, tipo_desenho, status, url_pdf, created_at')
+    .eq('projeto_id', hom.projeto?.id || '')
+    .order('created_at', { ascending: false })
+
   // Fluxo 7 fases — deriva os status direto do próprio homSafe (não depende
   // da view vw_homologacao_fluxo, que pode faltar GRANT pro role
   // authenticated). Se algum campo específico gerar exception, cada fase
@@ -268,6 +275,7 @@ export default async function HomologacaoDetalhePage({
               data_troca_medidor: homSafe.data_troca_medidor ?? null,
               data_ligacao: homSafe.data_ligacao ?? null,
               fase7_observacoes: homSafe.fase7_observacoes ?? null,
+              data_instalacao_concluida: homSafe.data_instalacao_concluida ?? null,
             }))}
             projetoId={hom.projeto?.id || ''}
             fluxo={{
@@ -279,6 +287,7 @@ export default async function HomologacaoDetalhePage({
               f6_status: (fluxo as any).f6_status || 'pendente',
               f7_status: (fluxo as any).f7_status || 'pendente',
             }}
+            diagramasProjeto={JSON.parse(JSON.stringify(diagramasProjeto || []))}
           />
         </ErrorBoundaryClient>
 
@@ -401,11 +410,16 @@ function calcularFluxo7Fases(hom: any) {
     f2_status:
       S(hom?.trt_projeto_pdf_url) && S(hom?.trt_projeto_data_emissao) ? 'concluido' :
       S(hom?.trt_projeto_boleto_url) ? 'em_andamento' : 'pendente',
-    f3_status: S(hom?.diagrama_unifilar_id) ? 'concluido' : 'pendente',
+    f3_status:
+      S(hom?.diagrama_unifilar_id) ? 'concluido' :
+      S(hom?.fase3_observacoes)    ? 'em_andamento' : 'pendente',
     f4_status:
       S(hom?.data_autorizacao_projeto) ? 'concluido' :
       S(hom?.data_submissao_projeto)   ? 'em_andamento' : 'pendente',
-    f5_status: S(hom?.ordem_servico_id) ? 'em_andamento' : 'pendente',
+    f5_status:
+      S(hom?.data_instalacao_concluida) ? 'concluido'    :
+      S(hom?.ordem_servico_id)          ? 'em_andamento' :
+      S(hom?.fase5_observacoes)         ? 'em_andamento' : 'pendente',
     f6_status:
       S(hom?.trt_execucao_pdf_url) && S(hom?.trt_execucao_data_emissao) ? 'concluido' :
       S(hom?.trt_execucao_boleto_url) ? 'em_andamento' : 'pendente',

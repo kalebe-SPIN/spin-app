@@ -591,6 +591,11 @@ const COLUNAS_PERMITIDAS_DATA = new Set([
   'trt_execucao_data_pagamento', 'trt_execucao_data_emissao',
   'data_submissao_projeto', 'data_autorizacao_projeto',
   'data_pedido_conexao', 'data_troca_medidor', 'data_ligacao',
+  'data_instalacao_concluida',   // migration 080
+])
+
+const COLUNAS_PERMITIDAS_UUID = new Set([
+  'diagrama_unifilar_id',        // fase 3 — id do diagrama oficial
 ])
 
 const COLUNAS_PERMITIDAS_URL = new Set([
@@ -616,7 +621,8 @@ export async function salvarCampoFaseAction(
     COLUNAS_PERMITIDAS_TEXTO.has(coluna) ||
     COLUNAS_PERMITIDAS_NUM.has(coluna) ||
     COLUNAS_PERMITIDAS_DATA.has(coluna) ||
-    COLUNAS_PERMITIDAS_URL.has(coluna)
+    COLUNAS_PERMITIDAS_URL.has(coluna) ||
+    COLUNAS_PERMITIDAS_UUID.has(coluna)
   if (!permitida) return { erro: `Coluna "${coluna}" não permitida` }
 
   let valorNormalizado: any = valor

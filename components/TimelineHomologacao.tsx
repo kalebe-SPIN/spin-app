@@ -6,6 +6,7 @@ import { EditorTRT } from '@/components/EditorTRT'
 import { ProtocoloCelescEditor } from '@/components/ProtocoloCelescEditor'
 import { EditorCampoData } from '@/components/EditorCampoData'
 import { EditorCampoTextarea } from '@/components/EditorCampoTextarea'
+import { EditorDiagramaOficial } from '@/components/EditorDiagramaOficial'
 
 /**
  * Timeline vertical do fluxo de homologação em 7 fases.
@@ -28,6 +29,7 @@ type Props = {
     f6_status: string
     f7_status: string
   }
+  diagramasProjeto: Array<{ id: string; versao: number; tipo_desenho: string; status: string; url_pdf: string | null; created_at: string }>
 }
 
 const FASES = [
@@ -75,7 +77,7 @@ const FASES = [
   },
 ] as const
 
-export function TimelineHomologacao({ homologacao, projetoId, fluxo }: Props) {
+export function TimelineHomologacao({ homologacao, projetoId, fluxo, diagramasProjeto }: Props) {
   const status = [
     fluxo.f1_status, fluxo.f2_status, fluxo.f3_status,
     fluxo.f4_status, fluxo.f5_status, fluxo.f6_status, fluxo.f7_status,
@@ -114,6 +116,7 @@ export function TimelineHomologacao({ homologacao, projetoId, fluxo }: Props) {
               faseAnterior={FASES[idx - 1]?.titulo}
               homologacao={homologacao}
               projetoId={projetoId}
+              diagramasProjeto={diagramasProjeto}
             />
           )
         })}
@@ -124,7 +127,7 @@ export function TimelineHomologacao({ homologacao, projetoId, fluxo }: Props) {
 
 function CardFase({
   fase, status, isCorrente, isBloqueada, isConcluida, isEmAndamento,
-  faseAnterior, homologacao, projetoId,
+  faseAnterior, homologacao, projetoId, diagramasProjeto,
 }: {
   fase: typeof FASES[number]
   status: string
@@ -135,6 +138,7 @@ function CardFase({
   faseAnterior?: string
   homologacao: any
   projetoId: string
+  diagramasProjeto: any[]
 }) {
   const [aberto, setAberto] = useState(isCorrente || isEmAndamento)
 
@@ -183,7 +187,7 @@ function CardFase({
               🔒 Conclua a fase anterior ({faseAnterior}) pra desbloquear esta.
             </p>
           ) : (
-            <ConteudoFase fase={fase} homologacao={homologacao} projetoId={projetoId} />
+            <ConteudoFase fase={fase} homologacao={homologacao} projetoId={projetoId} diagramasProjeto={diagramasProjeto} />
           )}
         </div>
       )}
@@ -192,11 +196,12 @@ function CardFase({
 }
 
 function ConteudoFase({
-  fase, homologacao, projetoId,
+  fase, homologacao, projetoId, diagramasProjeto,
 }: {
   fase: typeof FASES[number]
   homologacao: any
   projetoId: string
+  diagramasProjeto: any[]
 }) {
   const homId = homologacao.id
 
@@ -243,7 +248,7 @@ function ConteudoFase({
     return (
       <div className="space-y-3">
         <p className="text-xs text-white/70">
-          Monte o diagrama unifilar do projeto. Depois de pronto, ele fica anexado no processo.
+          Monte o diagrama unifilar e escolha qual versão é a oficial da homologação.
         </p>
         <Link
           href={`/projetos/${projetoId}/diagrama`}
@@ -251,6 +256,12 @@ function ConteudoFase({
         >
           🖨️ Ir pra tela do diagrama →
         </Link>
+        <EditorDiagramaOficial
+          homologacaoId={homId}
+          projetoId={projetoId}
+          diagramas={diagramasProjeto}
+          diagramaIdSelecionado={homologacao.diagrama_unifilar_id}
+        />
         <EditorCampoTextarea
           label="Observações da montagem"
           homologacaoId={homId}
@@ -304,8 +315,8 @@ function ConteudoFase({
             🚧 <strong className="text-white">Módulo Ordem de Serviço pendente</strong>
           </p>
           <p className="text-[11px] text-white/50 mt-1">
-            O profissional de campo vai executar a instalação seguindo um checklist ponta a ponta,
-            registrando as 5 fotos obrigatórias:
+            Quando ficar pronto, o profissional de campo vai executar a instalação seguindo um
+            checklist ponta a ponta com as 5 fotos obrigatórias:
           </p>
           <ul className="text-[11px] text-white/60 mt-2 pl-4 list-disc space-y-0.5">
             <li>Painéis instalados (visão total)</li>
@@ -314,7 +325,16 @@ function ConteudoFase({
             <li>Padrão com placa "GERAÇÃO PRÓPRIA"</li>
             <li>Parede com inversor instalado</li>
           </ul>
+          <p className="text-[10px] text-white/40 mt-2 italic">
+            Por enquanto marque manualmente a data de conclusão pra desbloquear a Fase 6.
+          </p>
         </div>
+        <EditorCampoData
+          label="Data de conclusão da instalação (manual)"
+          homologacaoId={homId}
+          coluna="data_instalacao_concluida"
+          valorAtual={homologacao.data_instalacao_concluida}
+        />
         <EditorCampoTextarea
           label="Observações da instalação"
           homologacaoId={homId}
