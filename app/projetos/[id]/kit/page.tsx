@@ -40,7 +40,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
   const padrao = projeto.padrao_entrada
   if (!padrao || !padrao.tipo_ligacao) {
     return (
-      <main className="min-h-screen p-8 md:p-12">
+      <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
         <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-coral mb-2">⚠️ Padrão CELESC não preenchido</h1>
           <p className="text-white/70 text-sm mb-4">
@@ -84,7 +84,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .eq('ativo', true)
 
   return (
-    <main className="min-h-screen p-8 md:p-12">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
       <div className="max-w-6xl mx-auto">
         <header className="mb-8">
           <Link href={`/projetos/${projeto.id}`} className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
