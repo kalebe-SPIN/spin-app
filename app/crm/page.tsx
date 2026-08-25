@@ -23,7 +23,7 @@ export default async function CrmHubPage() {
   const rolesPermitidos = ['admin', 'representante']
   if (!rolesPermitidos.includes(perfil?.role || '')) {
     return (
-      <main className="min-h-screen p-8 md:p-12">
+      <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
         <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-coral">Área restrita</h1>
           <p className="text-white/60 text-sm mt-2">CRM comercial é da equipe de vendas de solar.</p>

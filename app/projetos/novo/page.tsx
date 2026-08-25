@@ -18,7 +18,7 @@ export default async function NovoProjetoPage() {
   }
 
   return (
-    <main className="min-h-screen p-8 md:p-12">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <header className="mb-8">

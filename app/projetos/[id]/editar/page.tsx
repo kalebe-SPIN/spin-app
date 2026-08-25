@@ -28,7 +28,7 @@ export default async function EditarProjetoPage({ params }: { params: { id: stri
   if (error) {
     console.error('[editar/page] Erro Supabase:', error)
     return (
-      <main className="min-h-screen p-8 md:p-12">
+      <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
         <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-coral mb-2">Erro ao carregar projeto</h1>
           <p className="text-white/70 text-sm mb-2">{error.message}</p>
@@ -47,7 +47,7 @@ export default async function EditarProjetoPage({ params }: { params: { id: stri
   if (!projeto) notFound()
 
   return (
-    <main className="min-h-screen p-8 md:p-12">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
       <div className="max-w-3xl mx-auto">
         <header className="mb-8">
           <Link

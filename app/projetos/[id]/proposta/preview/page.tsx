@@ -82,7 +82,7 @@ export default async function PreviewPropostaPage({ params, searchParams }: {
 
   return (
     <main className="min-h-screen p-4 md:p-6 bg-noite">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-screen-xl mx-auto">
         <header className="mb-4 flex items-center justify-between gap-3 flex-wrap">
           <div>
             <Link href={`/projetos/${projeto.id}`} className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">

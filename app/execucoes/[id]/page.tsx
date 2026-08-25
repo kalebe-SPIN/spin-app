@@ -33,8 +33,8 @@ export default async function ExecucaoDetalhePage({ params }: { params: { id: st
   const info = STATUS_INFO[exec.status as StatusExecucao] || STATUS_INFO.aguardando_pre_requisitos
 
   return (
-    <main className="min-h-screen p-8 md:p-12">
-      <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
+      <div className="max-w-screen-xl mx-auto">
         <header className="mb-8">
           <Link href="/execucoes" className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
             ← Todas execuções

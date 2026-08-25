@@ -42,7 +42,7 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
     <div className="min-h-screen">
       {/* Barra de prévia (admin) */}
       <div className="sticky top-0 z-40 bg-weg-azul/20 border-b border-weg-azul/40 backdrop-blur">
-        <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+        <div className="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 text-sm">
             <span className="text-sol font-bold">👁 Prévia</span>
             <div className="flex gap-1">
@@ -57,7 +57,7 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
         </div>
       </div>
 
-      <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">
+      <main className="max-w-screen-xl mx-auto px-6 py-10 md:py-14">
         {/* Navegação interna */}
         <nav className="flex flex-wrap gap-2 mb-10">
           <a href="#proposta" className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white/80 hover:bg-white/10 transition-colors">1 · Proposta</a>

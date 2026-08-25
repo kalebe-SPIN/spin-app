@@ -38,8 +38,8 @@ export default async function CalendarioPage(props: {
     .order('data_hora_inicio', { ascending: true })
 
   return (
-    <main className="min-h-screen p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
+    <main className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8">
+      <div className="max-w-screen-2xl mx-auto">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-black text-white">

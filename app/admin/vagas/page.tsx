@@ -14,7 +14,7 @@ export default async function AdminVagasPage() {
   const { data: perfil } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (perfil?.role !== 'admin') {
     return (
-      <main className="min-h-screen p-8 md:p-12">
+      <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
         <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-coral">Acesso restrito</h1>
           <p className="text-white/60 text-sm mt-2">Área exclusiva do administrador.</p>
@@ -29,8 +29,8 @@ export default async function AdminVagasPage() {
     .order('created_at', { ascending: false })
 
   return (
-    <main className="min-h-screen p-8 md:p-12">
-      <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
+      <div className="max-w-screen-xl mx-auto">
         <nav className="mb-6">
           <Link href="/admin" className="text-sm text-white/50 hover:text-sol transition-colors">← Voltar ao admin</Link>
         </nav>

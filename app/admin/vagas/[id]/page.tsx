@@ -45,7 +45,7 @@ export default async function AdminVagaDetalhePage({ params }: { params: { id: s
   const dataFmt = (v: string | null) => (v ? new Date(v).toLocaleString('pt-BR') : '—')
 
   return (
-    <main className="min-h-screen p-8 md:p-12">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
       <div className="max-w-3xl mx-auto">
         <nav className="mb-6">
           <Link href="/admin/vagas" className="text-sm text-white/50 hover:text-sol transition-colors">← Voltar aos convites</Link>

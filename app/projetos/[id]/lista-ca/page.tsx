@@ -25,7 +25,7 @@ export default async function ListaCaPage({ params }: { params: { id: string } }
   const kit = projeto.kit_selecionado
   if (!kit) {
     return (
-      <main className="min-h-screen p-8 md:p-12">
+      <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
         <div className="max-w-3xl mx-auto bg-sol/10 border border-sol/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-sol mb-2">⚠️ Kit não escolhido</h1>
           <p className="text-white/70 text-sm mb-4">
@@ -93,8 +93,8 @@ export default async function ListaCaPage({ params }: { params: { id: string } }
   const listaComPrecos = aplicarPrecosEstimados(listaDoCatalogo)
 
   return (
-    <main className="min-h-screen p-8 md:p-12">
-      <div className="max-w-5xl mx-auto">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
+      <div className="max-w-screen-2xl mx-auto">
         <header className="mb-8">
           <Link href={`/projetos/${projeto.id}`} className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
             ← Voltar ao projeto

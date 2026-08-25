@@ -49,7 +49,7 @@ export default async function ServicoGenericoPage({
 
   if (!tipoParam || !info) {
     return (
-      <main className="min-h-screen p-8 md:p-12">
+      <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
         <div className="max-w-3xl mx-auto bg-coral/10 border border-coral/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-coral">Item não encontrado</h1>
           <p className="text-white/70 text-sm mt-2">
@@ -107,8 +107,8 @@ export default async function ServicoGenericoPage({
     : undefined
 
   return (
-    <main className="min-h-screen p-8 md:p-12">
-      <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
+      <div className="max-w-screen-xl mx-auto">
         <header className="mb-8">
           <Link
             href={`/projetos/${projeto.id}`}

@@ -30,7 +30,7 @@ export default async function TiposProjetoPage({ params }: { params: { id: strin
 
   return (
     <main className="min-h-screen p-6 md:p-10">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-screen-2xl mx-auto">
         <header className="mb-6">
           <Link href={`/projetos/${projeto.id}`} className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
             ← Voltar ao projeto

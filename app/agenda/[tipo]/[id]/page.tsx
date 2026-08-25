@@ -55,8 +55,8 @@ export default async function AgendaDetalhePage({
     .order('criado_em', { ascending: false })
 
   return (
-    <main className="min-h-screen p-4 md:p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <main className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8">
+      <div className="max-w-screen-xl mx-auto space-y-6">
         <header>
           <Link href="/agenda" className="text-xs text-white/40 hover:text-white/70">
             ← Voltar à agenda

@@ -28,7 +28,7 @@ export default async function PropostaPage() {
   // Proposta do profissional de campo
   if (convite.tipo_proposta === 'campo') {
     return (
-      <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">
+      <main className="max-w-screen-xl mx-auto px-6 py-10 md:py-14">
         <PropostaCampoConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} cidades={convite.cidades || []} empresa={empresa} />
         <p className="mt-10 text-center text-xs text-white/30">
           SPIN Solar · Proposta válida para discussão — sujeita a formalização em contrato.
@@ -40,7 +40,7 @@ export default async function PropostaPage() {
   // Proposta de vendas de sistemas fotovoltaicos (em preparação)
   if (convite.tipo_proposta === 'solar') {
     return (
-      <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">
+      <main className="max-w-screen-xl mx-auto px-6 py-10 md:py-14">
         <PropostaSolarConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} cidades={convite.cidades || []} empresa={empresa} />
         <p className="mt-10 text-center text-xs text-white/30">
           SPIN Solar · Proposta válida para discussão — sujeita a formalização em contrato.
@@ -50,7 +50,7 @@ export default async function PropostaPage() {
   }
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-10 md:py-14">
+    <main className="max-w-screen-xl mx-auto px-6 py-10 md:py-14">
       <PropostaConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} empresa={empresa} podeBaixarPdf={contratoAssinado} cidades={convite.cidades || []} />
 
       {/* ===== CTA / DECISÃO ===== */}

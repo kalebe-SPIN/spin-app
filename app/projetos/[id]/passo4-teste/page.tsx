@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 export default function Passo4TestePage({ params }: { params: { id: string } }) {
   return (
-    <main className="min-h-screen p-8 md:p-12">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
       <div className="max-w-3xl mx-auto bg-verde/10 border border-verde/40 rounded-xl p-8 text-center">
         <h1 className="text-3xl font-black text-verde mb-3">✅ Vercel deployou OK</h1>
         <p className="text-white/80 text-sm mb-2">
