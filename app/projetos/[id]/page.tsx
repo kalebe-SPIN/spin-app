@@ -84,7 +84,7 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-screen-xl mx-auto">
         {/* Header */}
         <header className="mb-8">
           <Link href="/projetos" className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">

@@ -206,7 +206,7 @@ export default async function HomologacaoDetalhePage({
 
   return (
     <main className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-screen-2xl mx-auto space-y-6">
         <header>
           <Link href={`/projetos/${hom.projeto?.id}`} className="text-xs text-white/40 hover:text-white/70">
             ← Voltar ao projeto

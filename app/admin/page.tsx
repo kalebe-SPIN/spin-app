@@ -40,7 +40,7 @@ export default async function AdminHomePage() {
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-screen-2xl mx-auto">
         <header className="mb-8">
           <h1 className="text-3xl md:text-4xl font-black text-white">
             ⚙️ Administração da empresa

@@ -26,7 +26,7 @@ export default async function BibliotecaPage() {
 
   return (
     <main className="min-h-screen p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-screen-2xl mx-auto">
         <nav className="mb-4">
           <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/70">← Dashboard</Link>
         </nav>
