@@ -1,7 +1,13 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { salvarVeRecargaAction, type VeRecargaSelecionada } from '@/app/projetos/[id]/ve/actions'
+import {
+  sugerirListaCaVE,
+  deduzirFasesPorPotencia,
+  resumoDimensionamento,
+  type FasesRede,
+} from '@/lib/estacao-ve/montar-lista-ca'
 
 type Wallbox = {
   id: string
@@ -78,12 +84,55 @@ export function EstacaoRecargaFluxoClient({
   const [qtd, setQtd] = useState<number>(selecaoSalva?.qtd || 1)
   const [margemPct, setMargemPct] = useState<number>(selecaoSalva?.margem_pct ?? margemPadraoPct)
   const [linhasCA, setLinhasCA] = useState<LinhaCA[]>(selecaoSalva?.itens_ca || [])
+  const [fasesManual, setFasesManual] = useState<FasesRede | null>(null)
+  const [distanciaM, setDistanciaM] = useState<number>(10)
   const [filtroCategoria, setFiltroCategoria] = useState<string>('')
   const [buscaTexto, setBuscaTexto] = useState<string>('')
   const [pending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
 
   const wallboxEscolhido = wallboxes.find(w => w.id === wallboxId) || null
+
+  // Fases finais — usa manual se selecionado, senão deduz pela potência
+  const fasesEfetivas: FasesRede = fasesManual
+    ?? (wallboxEscolhido ? deduzirFasesPorPotencia(extrairPotenciaKw(wallboxEscolhido)) : 'monofasico')
+
+  // Gera lista CA sugerida automaticamente
+  function gerarSugestao(): LinhaCA[] {
+    if (!wallboxEscolhido) return []
+    const pot = extrairPotenciaKw(wallboxEscolhido)
+    if (!pot) return []
+    return sugerirListaCaVE({
+      potencia_wallbox_kw: pot,
+      qtd_wallboxes: qtd,
+      fases: fasesEfetivas,
+      distancia_qgbt_m: distanciaM,
+    }).map(s => ({
+      produto_id: s.codigo_weg,  // usa código como id sintético (não existe no catálogo)
+      codigo_weg: s.codigo_weg,
+      modelo: s.modelo,
+      categoria: s.categoria,
+      qtd: s.qtd,
+      preco_unitario: s.preco_unitario,
+    }))
+  }
+
+  function regenerarSugestao() {
+    setLinhasCA(gerarSugestao())
+  }
+
+  // Ao escolher wallbox pela 1ª vez (ou sem lista salva), popula automaticamente
+  const jaAutoPopulou = useRef<boolean>(!!selecaoSalva?.itens_ca?.length)
+  useEffect(() => {
+    if (!jaAutoPopulou.current && wallboxEscolhido && linhasCA.length === 0) {
+      const sugerida = gerarSugestao()
+      if (sugerida.length > 0) {
+        setLinhasCA(sugerida)
+        jaAutoPopulou.current = true
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallboxId])
 
   const catalogoFiltrado = useMemo(() => {
     let f = itensCatalogoCA
@@ -233,15 +282,66 @@ export function EstacaoRecargaFluxoClient({
           </div>
         </div>
 
-        {/* Bloco 2 — Lista CA editável */}
+        {/* Bloco 2 — Lista CA editável (montada automaticamente pela potência) */}
         <div>
           <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
             <h2 className="text-lg font-bold text-white">2. Lista CA da estação</h2>
             <span className="text-[10px] text-white/40">{linhasCA.length} item(ns) · {fmtR$(calc.precoCA)}</span>
           </div>
           <p className="text-xs text-white/50 mb-3">
-            Adicione disjuntores, quadros, DPS, cabos e demais itens do catálogo WEG. Editável no molde do orçamento FV.
+            Dimensionada automaticamente pela potência do wallbox (disjuntor, DPS, cabo, quadro, aterramento).
+            Ainda dá pra editar tudo, remover e adicionar itens do catálogo.
           </p>
+
+          {/* Parâmetros de dimensionamento — só aparece se tem wallbox escolhido */}
+          {wallboxEscolhido && (
+            <div className="mb-3 p-3 bg-white/[0.02] border border-white/10 rounded-lg space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">Rede do cliente</label>
+                  <select
+                    value={fasesManual || 'auto'}
+                    onChange={(e) => setFasesManual(e.target.value === 'auto' ? null : e.target.value as FasesRede)}
+                    className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-xs text-white"
+                  >
+                    <option value="auto">Auto (pela potência) — {fasesEfetivas}</option>
+                    <option value="monofasico">Monofásico 220V (F+N)</option>
+                    <option value="bifasico">Bifásico 220V (2F+N)</option>
+                    <option value="trifasico">Trifásico 380/220V (3F+N)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">Distância até QGBT (m)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={distanciaM}
+                    onChange={(e) => setDistanciaM(Math.max(1, Number(e.target.value) || 10))}
+                    className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-xs text-white"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={regenerarSugestao}
+                    className="w-full px-3 py-1.5 bg-sol/20 border border-sol/40 text-sol text-xs font-bold rounded hover:bg-sol/30"
+                    title="Sobrescreve a lista CA atual com nova sugestão baseada na potência"
+                  >
+                    🔄 Regenerar Lista CA
+                  </button>
+                </div>
+              </div>
+              <p className="text-[10px] text-white/50 italic">
+                Cálculo: {resumoDimensionamento({
+                  potencia_wallbox_kw: extrairPotenciaKw(wallboxEscolhido),
+                  qtd_wallboxes: qtd,
+                  fases: fasesEfetivas,
+                  distancia_qgbt_m: distanciaM,
+                })}
+              </p>
+            </div>
+          )}
 
           {/* Tabela de linhas */}
           {linhasCA.length > 0 ? (

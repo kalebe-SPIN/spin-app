@@ -24,31 +24,57 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
 
   if (error || !projeto) notFound()
 
-  // Wallboxes WEG (linha WEMOB categorizada como outro/ve_wallbox nas migrations 078/079)
-  // LEFT join com precos: mostra mesmo sem preço cadastrado (aviso no card)
-  const { data: wallboxes } = await supabase
+  // Wallboxes WEG (linha WEMOB) + itens CA em 2 queries separadas.
+  // Antes: LEFT JOIN implícito com precos_produtos vinha [] mesmo quando existia
+  // preço no banco — provável ambiguidade do PostgREST. Fix: buscar produtos +
+  // preços vigentes em queries separadas e juntar em memória.
+
+  const { data: wallboxesRaw } = await supabase
     .from('produtos')
-    .select(`
-      id, codigo_weg, modelo, descricao_curta, specs, disponivel_estoque, url_datasheet,
-      precos_produtos(preco_venda, vigente_de)
-    `)
+    .select('id, codigo_weg, modelo, descricao_curta, specs, disponivel_estoque, url_datasheet')
     .eq('subcategoria', 've_wallbox')
     .eq('ativo', true)
     .order('modelo', { ascending: true })
 
-  // Itens CA (Lista CA da estação VE) — Kalebe pediu quadros/DPS/disjuntores/cabos
-  // igual ao orçamento FV. Amplia a busca pra todas as categorias relevantes.
-  const { data: itensCatalogoCA } = await supabase
+  const { data: itensCARaw } = await supabase
     .from('produtos')
-    .select(`
-      id, codigo_weg, modelo, descricao_curta, categoria, subcategoria, specs,
-      precos_produtos(preco_venda, vigente_de)
-    `)
+    .select('id, codigo_weg, modelo, descricao_curta, categoria, subcategoria, specs')
     .in('categoria', ['disjuntor', 'dps', 'cabo', 'quadro', 'conector', 'monitoramento', 'smart_meter'])
     .eq('ativo', true)
     .order('categoria', { ascending: true })
     .order('modelo', { ascending: true })
     .limit(500)
+
+  // Busca todos os preços VIGENTES desses produtos numa query só
+  const todosIds = [
+    ...(wallboxesRaw || []).map(p => p.id),
+    ...(itensCARaw || []).map(p => p.id),
+  ]
+  let precosPorProduto: Record<string, Array<{ preco_venda: number; vigente_de: string }>> = {}
+  if (todosIds.length > 0) {
+    const hojeIso = new Date().toISOString().slice(0, 10)
+    const { data: precos } = await supabase
+      .from('precos_produtos')
+      .select('produto_id, preco_venda, vigente_de, vigente_ate')
+      .in('produto_id', todosIds)
+      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+      .order('vigente_de', { ascending: false })
+    for (const p of precos || []) {
+      const arr = precosPorProduto[p.produto_id] || []
+      arr.push({ preco_venda: Number(p.preco_venda), vigente_de: p.vigente_de })
+      precosPorProduto[p.produto_id] = arr
+    }
+  }
+
+  // Anexa precos_produtos em cada wallbox / item CA
+  const wallboxes = (wallboxesRaw || []).map(w => ({
+    ...w,
+    precos_produtos: precosPorProduto[w.id] || [],
+  }))
+  const itensCatalogoCA = (itensCARaw || []).map(i => ({
+    ...i,
+    precos_produtos: precosPorProduto[i.id] || [],
+  }))
 
   // Parâmetros de margem — se existir tabela parametros_fotovoltaico, tenta pegar;
   // senão fallback pra 35% margem SPIN padrão.
