@@ -25,29 +25,30 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
   if (error || !projeto) notFound()
 
   // Wallboxes WEG (linha WEMOB categorizada como outro/ve_wallbox nas migrations 078/079)
+  // LEFT join com precos: mostra mesmo sem preço cadastrado (aviso no card)
   const { data: wallboxes } = await supabase
     .from('produtos')
     .select(`
       id, codigo_weg, modelo, descricao_curta, specs, disponivel_estoque, url_datasheet,
-      precos_produtos!inner(preco_venda, vigente_de)
+      precos_produtos(preco_venda, vigente_de)
     `)
     .eq('subcategoria', 've_wallbox')
     .eq('ativo', true)
     .order('modelo', { ascending: true })
 
-  // Acessórios opcionais (cabos, disjuntores, box) — hoje sem categoria própria pra VE,
-  // então busca o catálogo geral de acessórios comuns (disjuntor CA, cabo, DPS) que
-  // Kalebe pode adicionar avulso ao pedido.
-  const { data: acessorios } = await supabase
+  // Itens CA (Lista CA da estação VE) — Kalebe pediu quadros/DPS/disjuntores/cabos
+  // igual ao orçamento FV. Amplia a busca pra todas as categorias relevantes.
+  const { data: itensCatalogoCA } = await supabase
     .from('produtos')
     .select(`
       id, codigo_weg, modelo, descricao_curta, categoria, subcategoria, specs,
-      precos_produtos!inner(preco_venda, vigente_de)
+      precos_produtos(preco_venda, vigente_de)
     `)
-    .in('categoria', ['disjuntor', 'dps', 'cabo'])
+    .in('categoria', ['disjuntor', 'dps', 'cabo', 'quadro', 'conector', 'monitoramento', 'smart_meter'])
     .eq('ativo', true)
+    .order('categoria', { ascending: true })
     .order('modelo', { ascending: true })
-    .limit(80)
+    .limit(500)
 
   // Parâmetros de margem — se existir tabela parametros_fotovoltaico, tenta pegar;
   // senão fallback pra 35% margem SPIN padrão.
@@ -85,7 +86,7 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
         <EstacaoRecargaFluxoClient
           projetoId={projeto.id}
           wallboxes={(wallboxes || []) as any}
-          acessorios={(acessorios || []) as any}
+          itensCatalogoCA={(itensCatalogoCA || []) as any}
           selecaoSalva={projeto.ve_recarga_selecionada}
           margemPadraoPct={margemPadraoPct}
         />
