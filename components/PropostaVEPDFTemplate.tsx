@@ -28,7 +28,10 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
     const dataHoje = new Date().toLocaleDateString('pt-BR')
     const validade = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
 
-    const equipamentos: any[] = selecao?.equipamentos || []
+    // Usa equipamentos_enriquecidos (com descricao_curta+specs vindas do catálogo)
+    // se disponível; senão cai pra estrutura salva no projeto
+    const equipamentos: any[] = selecao?.equipamentos_enriquecidos || selecao?.equipamentos || []
+    const prazoEntregaDias: number = Number(selecao?.prazo_entrega_dias || 45)
     const itensCA: any[] = selecao?.itens_ca || []
     const mao = selecao?.mao_obra || {}
     const totalCliente = Number(selecao?.preco_final_cliente || 0)
@@ -137,36 +140,18 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <h2 style={E.tituloSecao}>Equipamentos, materiais e serviços</h2>
             </div>
 
-            {/* Bloco 1 — Equipamentos WEG */}
+            {/* Bloco 1 — Equipamentos WEG (com ficha técnica de cada) */}
             <h3 style={E.subtituloSecao}>🔌 Equipamentos WEG</h3>
             <p style={E.paragrafo}>
               Composição do kit de recarga com equipamentos originais WEG da linha WEMOB, com garantia de fábrica.
+              <strong style={{ color: '#F5B400' }}> Prazo de entrega do fabricante: {prazoEntregaDias} dias úteis</strong> após confirmação do pedido.
             </p>
-            <table style={E.tabela}>
-              <thead>
-                <tr>
-                  <th style={E.th}>Equipamento</th>
-                  <th style={{ ...E.th, textAlign: 'right' }}>Qtd</th>
-                  <th style={E.th}>Código</th>
-                  <th style={{ ...E.th, textAlign: 'right' }}>Potência</th>
-                </tr>
-              </thead>
-              <tbody>
-                {equipamentos.length === 0 && (
-                  <tr><td style={E.td} colSpan={4}><em style={{ color: 'rgba(245,245,240,.4)' }}>Nenhum equipamento adicionado.</em></td></tr>
-                )}
-                {equipamentos.map((e, i) => (
-                  <tr key={i}>
-                    <td style={E.td}>{e.modelo}</td>
-                    <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700 }}>{e.qtd}</td>
-                    <td style={E.td}>{e.codigo_weg}</td>
-                    <td style={{ ...E.td, textAlign: 'right' }}>
-                      {Number(e.potencia_kw || 0) > 0 ? `${fmtNum(Number(e.potencia_kw), 1)} kW` : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {equipamentos.length === 0 && (
+              <p style={{ ...E.paragrafo, color: 'rgba(245,245,240,.4)', fontStyle: 'italic' }}>Nenhum equipamento adicionado.</p>
+            )}
+            {equipamentos.map((e, i) => (
+              <FichaEquipamento key={i} equip={e} />
+            ))}
 
             {/* Bloco 2 — Lista de materiais CA */}
             <h3 style={{ ...E.subtituloSecao, marginTop: 32 }}>📋 Lista de materiais (CA)</h3>
@@ -333,6 +318,71 @@ function MetricM({ label, valor, unidade, cor, prefixo, borda }: {
         {valor}
         <span style={{ fontSize: 14, color: 'rgba(245,245,240,.6)', fontWeight: 500 }}> {unidade}</span>
       </p>
+    </div>
+  )
+}
+
+/**
+ * Ficha técnica de 1 equipamento WEG.
+ * Mostra: modelo + qtd + potência no header dourado, descrição curta do
+ * catálogo, e specs relevantes (tensão, corrente, protocolos, dimensões).
+ * Se não tem descrição cadastrada, orienta pra completar no catálogo.
+ */
+function FichaEquipamento({ equip }: { equip: any }) {
+  const specs = equip.specs || {}
+  const specsRelevantes: Array<[string, string]> = []
+  const push = (rot: string, val: any) => {
+    if (val !== undefined && val !== null && val !== '') specsRelevantes.push([rot, String(val)])
+  }
+  push('Tensão', specs.tensao || specs.tensao_desc)
+  push('Corrente máx', specs.corrente_max_a ? `${specs.corrente_max_a} A` : specs.corrente)
+  push('Fases', specs.fases || specs.num_fases)
+  push('Conector', specs.tipo_conector || specs.conector)
+  push('Protocolo', specs.protocolo_comunicacao || specs.protocolos)
+  push('Grau proteção', specs.grau_protecao || specs.ip)
+  push('Certificação', specs.certificacoes || specs.certificacao)
+
+  return (
+    <div style={{ marginBottom: 16, border: '1px solid rgba(245,180,0,.2)', borderRadius: 4, overflow: 'hidden' as const }}>
+      <div style={{ background: 'rgba(245,180,0,.08)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: 12 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{ margin: 0, fontFamily: E.font.display, fontSize: 13, fontWeight: 700, color: '#F5F5F0', letterSpacing: '-0.01em' }}>
+            {equip.modelo}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 9, color: 'rgba(245,245,240,.55)', letterSpacing: 0.5 }}>
+            Código WEG · {equip.codigo_weg}
+          </p>
+        </div>
+        <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+          <p style={{ margin: 0, fontFamily: E.font.display, fontSize: 20, fontWeight: 700, color: '#F5B400', letterSpacing: '-0.02em' }}>
+            {equip.qtd}×
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 9, color: 'rgba(245,245,240,.55)' }}>
+            {Number(equip.potencia_kw || 0) > 0 ? `${equip.potencia_kw} kW` : 'sem potência'}
+          </p>
+        </div>
+      </div>
+      <div style={{ padding: '10px 14px' }}>
+        {equip.descricao_curta ? (
+          <p style={{ margin: '0 0 8px', fontSize: 10.5, color: 'rgba(245,245,240,.75)', lineHeight: 1.5 }}>
+            {equip.descricao_curta}
+          </p>
+        ) : (
+          <p style={{ margin: '0 0 8px', fontSize: 10, color: 'rgba(245,245,240,.35)', fontStyle: 'italic' as const, lineHeight: 1.5 }}>
+            Descrição técnica não cadastrada no catálogo — complete em /admin/catalogo pra aparecer aqui.
+          </p>
+        )}
+        {specsRelevantes.length > 0 && (
+          <div style={{ display: 'grid' as const, gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px 16px', paddingTop: 6, borderTop: '1px solid rgba(245,245,240,.06)' }}>
+            {specsRelevantes.slice(0, 8).map(([rot, val]) => (
+              <div key={rot} style={{ display: 'flex' as const, justifyContent: 'space-between' as const, gap: 8, fontSize: 9.5 }}>
+                <span style={{ color: 'rgba(245,245,240,.5)' }}>{rot}</span>
+                <span style={{ color: '#F5F5F0', fontWeight: 600 as const, textAlign: 'right' as const }}>{val}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

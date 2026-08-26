@@ -48,6 +48,29 @@ export default async function PropostaVEPage({ params }: { params: { id: string 
     .eq('singleton', true)
     .single()
 
+  // Enriquece equipamentos com descrição/spec do catálogo (busca por ID)
+  const equipIds = (selecao?.equipamentos || []).map((e: any) => e.produto_id).filter(Boolean)
+  let descPorProduto: Record<string, { descricao_curta?: string; specs?: any; url_datasheet?: string | null }> = {}
+  if (equipIds.length > 0) {
+    const { data: prods } = await supabase
+      .from('produtos')
+      .select('id, descricao_curta, specs, url_datasheet')
+      .in('id', equipIds)
+    for (const p of prods || []) {
+      descPorProduto[p.id] = {
+        descricao_curta: p.descricao_curta || '',
+        specs: p.specs || {},
+        url_datasheet: p.url_datasheet,
+      }
+    }
+  }
+  const equipamentosEnriquecidos = (selecao?.equipamentos || []).map((e: any) => ({
+    ...e,
+    descricao_curta: descPorProduto[e.produto_id]?.descricao_curta || '',
+    specs: descPorProduto[e.produto_id]?.specs || {},
+    url_datasheet: descPorProduto[e.produto_id]?.url_datasheet || null,
+  }))
+
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8">
       <div className="max-w-screen-2xl mx-auto">
@@ -71,7 +94,7 @@ export default async function PropostaVEPage({ params }: { params: { id: string 
 
         <PropostaVEClient
           projeto={projeto}
-          selecao={selecao}
+          selecao={{ ...selecao, equipamentos_enriquecidos: equipamentosEnriquecidos }}
           configEmpresa={configEmpresa}
         />
       </div>

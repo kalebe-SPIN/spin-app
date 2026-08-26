@@ -143,6 +143,7 @@ export function EstacaoRecargaFluxoClient({
   const [qtdManualWb, setQtdManualWb] = useState<number>((selecaoSalva as any)?.qtd_manual_wallboxes ?? 1)
   // Diagramas (unifilar + trifilar) — Kalebe: 'compõem a precificação e
   // aparecem na descrição dos serviços do PDF'
+  const [prazoEntregaDias, setPrazoEntregaDias] = useState<number>((selecaoSalva as any)?.prazo_entrega_dias ?? 45)
   const [incluiUnifilar, setIncluiUnifilar] = useState<boolean>((selecaoSalva as any)?.inclui_diagrama_unifilar ?? true)
   const [incluiTrifilar, setIncluiTrifilar] = useState<boolean>((selecaoSalva as any)?.inclui_diagrama_trifilar ?? true)
   const [valorUnifilar, setValorUnifilar] = useState<number>((selecaoSalva as any)?.valor_diagrama_unifilar ?? valorDiagramaUnifilar)
@@ -367,6 +368,7 @@ export function EstacaoRecargaFluxoClient({
       potencia_manual_kw: potManualKw,
       qtd_manual_wallboxes: qtdManualWb,
       potencia_efetiva_kw: potenciaEfetivaKw,
+      prazo_entrega_dias: prazoEntregaDias,
       inclui_diagrama_unifilar: incluiUnifilar,
       inclui_diagrama_trifilar: incluiTrifilar,
       valor_diagrama_unifilar: valorUnifilar,
@@ -727,6 +729,20 @@ export function EstacaoRecargaFluxoClient({
                 className="w-full px-2 py-1.5 bg-noite/60 border border-white/15 rounded text-xs text-white text-right tabular-nums" />
               <p className="text-[9px] text-white/40 mt-0.5">Pad. {fmtNum(impostosPadraoPct, 1)}</p>
             </div>
+          </div>
+
+          {/* Prazo de entrega WEG */}
+          <div className="pt-3 border-t border-white/5 space-y-2">
+            <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">📦 Prazo de entrega WEG</p>
+            <div className="p-2 bg-white/[0.02] border border-white/10 rounded flex items-center gap-2">
+              <input type="number" min={1} max={365} value={prazoEntregaDias}
+                onChange={(e) => setPrazoEntregaDias(Math.max(1, Number(e.target.value) || 45))}
+                className="w-20 px-2 py-1 bg-noite border border-white/15 rounded text-xs text-white text-right tabular-nums" />
+              <span className="text-[11px] text-white/70">dias úteis (fabricante)</span>
+            </div>
+            <p className="text-[9px] text-white/40 italic">
+              Aparece na proposta PDF pra alinhar expectativa com o cliente.
+            </p>
           </div>
 
           {/* Diagramas técnicos — compõem o serviço */}

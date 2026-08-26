@@ -74,8 +74,7 @@ export async function PortalHeader() {
               <img
                 src={logoUrl}
                 alt="Spin Solar"
-                className="h-6 md:h-8 w-auto object-contain"
-                style={{ filter: 'brightness(0) invert(1)' }}
+                className="h-10 md:h-12 w-auto object-contain"
               />
             ) : (
               <span className="text-sol font-black text-base md:text-lg">SPIN</span>
