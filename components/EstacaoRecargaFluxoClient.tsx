@@ -44,8 +44,22 @@ type Props = {
   projetoId: string
   wallboxes: Wallbox[]
   itensCatalogoCA: ItemCatalogo[]
-  selecaoSalva?: (VeRecargaSelecionada & { itens_ca?: LinhaCA[] }) | null
+  selecaoSalva?: (VeRecargaSelecionada & {
+    itens_ca?: LinhaCA[]
+    mao_obra?: MaoObraEstado
+  }) | null
   margemPadraoPct: number
+  valorDiariaAlvenaria: number
+  valorDiariaEletrica: number
+}
+
+type MaoObraEstado = {
+  alvenaria_qtd_profissionais: number
+  alvenaria_dias: number
+  alvenaria_valor_diaria: number
+  eletrica_qtd_profissionais: number
+  eletrica_dias: number
+  eletrica_valor_diaria: number
 }
 
 function fmtR$(v: number): string {
@@ -79,6 +93,7 @@ const CATEGORIAS_LABEL: Record<string, string> = {
 
 export function EstacaoRecargaFluxoClient({
   projetoId, wallboxes, itensCatalogoCA, selecaoSalva, margemPadraoPct,
+  valorDiariaAlvenaria, valorDiariaEletrica,
 }: Props) {
   const [wallboxId, setWallboxId] = useState<string>(selecaoSalva?.wallbox?.id || '')
   const [precoManualWallbox, setPrecoManualWallbox] = useState<number>(
@@ -89,6 +104,14 @@ export function EstacaoRecargaFluxoClient({
   const [linhasCA, setLinhasCA] = useState<LinhaCA[]>(selecaoSalva?.itens_ca || [])
   const [fasesManual, setFasesManual] = useState<FasesRede | null>(null)
   const [distanciaM, setDistanciaM] = useState<number>(10)
+  const [maoObra, setMaoObra] = useState<MaoObraEstado>(selecaoSalva?.mao_obra || {
+    alvenaria_qtd_profissionais: 0,
+    alvenaria_dias: 0,
+    alvenaria_valor_diaria: valorDiariaAlvenaria,
+    eletrica_qtd_profissionais: 1,
+    eletrica_dias: 1,
+    eletrica_valor_diaria: valorDiariaEletrica,
+  })
   const [filtroCategoria, setFiltroCategoria] = useState<string>('')
   const [buscaTexto, setBuscaTexto] = useState<string>('')
   const [pending, startTransition] = useTransition()
@@ -153,18 +176,24 @@ export function EstacaoRecargaFluxoClient({
   }, [itensCatalogoCA])
 
   const calc = useMemo(() => {
-    if (!wallboxEscolhido) return { precoWb: 0, precoCA: 0, precoBruto: 0, precoFinal: 0, margemR$: 0, precoUnitWb: 0 }
+    if (!wallboxEscolhido) return {
+      precoWb: 0, precoCA: 0, precoAlvenaria: 0, precoEletrica: 0,
+      precoBruto: 0, precoFinal: 0, margemR$: 0, precoUnitWb: 0,
+    }
     const precoUnitCatalogo = precoAtual(wallboxEscolhido.precos_produtos)
-    // Se catálogo tem preço, prioriza catálogo. Se não tem (linha WEMOB sob consulta),
-    // usa o preço manual que Kalebe digita na tela.
     const precoUnitWb = precoUnitCatalogo > 0 ? precoUnitCatalogo : precoManualWallbox
     const precoWb = precoUnitWb * qtd
     const precoCA = linhasCA.reduce((s, l) => s + l.preco_unitario * l.qtd, 0)
-    const precoBruto = precoWb + precoCA
+    const precoAlvenaria = maoObra.alvenaria_qtd_profissionais * maoObra.alvenaria_dias * maoObra.alvenaria_valor_diaria
+    const precoEletrica = maoObra.eletrica_qtd_profissionais * maoObra.eletrica_dias * maoObra.eletrica_valor_diaria
+    const precoBruto = precoWb + precoCA + precoAlvenaria + precoEletrica
     const fator = 1 / (1 - margemPct / 100)
     const precoFinal = precoBruto * fator
-    return { precoWb, precoCA, precoBruto, precoFinal, margemR$: precoFinal - precoBruto, precoUnitWb }
-  }, [wallboxEscolhido, qtd, linhasCA, margemPct, precoManualWallbox])
+    return {
+      precoWb, precoCA, precoAlvenaria, precoEletrica,
+      precoBruto, precoFinal, margemR$: precoFinal - precoBruto, precoUnitWb,
+    }
+  }, [wallboxEscolhido, qtd, linhasCA, margemPct, precoManualWallbox, maoObra])
 
   function adicionarLinha(item: ItemCatalogo) {
     const existente = linhasCA.findIndex(l => l.produto_id === item.id)
@@ -209,8 +238,11 @@ export function EstacaoRecargaFluxoClient({
         qtd: l.qtd, preco_unitario: l.preco_unitario,
       })),
       itens_ca: linhasCA,
+      mao_obra: maoObra,
       preco_wallbox_total: calc.precoWb,
       preco_acessorios_total: calc.precoCA,
+      preco_alvenaria_total: calc.precoAlvenaria,
+      preco_eletrica_total: calc.precoEletrica,
       preco_bruto: calc.precoBruto,
       margem_pct: margemPct,
       preco_final_cliente: calc.precoFinal,
@@ -513,9 +545,53 @@ export function EstacaoRecargaFluxoClient({
             <p className="text-[10px] text-white/40 mt-1">Padrão: {fmtNum(margemPadraoPct, 1)}%</p>
           </div>
 
+          {/* 👷 Mão de obra auxiliar (alvenaria + elétrica predial) */}
+          <div className="pt-3 border-t border-white/5 space-y-3">
+            <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">
+              👷 Mão de obra auxiliar
+            </p>
+
+            {/* Alvenaria */}
+            <div className="p-2 bg-white/[0.02] border border-white/10 rounded space-y-2">
+              <p className="text-[11px] font-bold text-white flex items-center justify-between">
+                🧱 Alvenaria
+                <span className="text-[10px] text-white/40 font-normal tabular-nums">{fmtR$(calc.precoAlvenaria)}</span>
+              </p>
+              <div className="grid grid-cols-3 gap-1">
+                <MiniInput label="Prof." value={maoObra.alvenaria_qtd_profissionais}
+                  onChange={(v) => setMaoObra(m => ({ ...m, alvenaria_qtd_profissionais: v }))} />
+                <MiniInput label="Dias" value={maoObra.alvenaria_dias}
+                  onChange={(v) => setMaoObra(m => ({ ...m, alvenaria_dias: v }))} />
+                <MiniInput label="R$/dia" value={maoObra.alvenaria_valor_diaria} step={10}
+                  onChange={(v) => setMaoObra(m => ({ ...m, alvenaria_valor_diaria: v }))} />
+              </div>
+            </div>
+
+            {/* Elétrica predial */}
+            <div className="p-2 bg-white/[0.02] border border-white/10 rounded space-y-2">
+              <p className="text-[11px] font-bold text-white flex items-center justify-between">
+                🏢⚡ Elétrica predial
+                <span className="text-[10px] text-white/40 font-normal tabular-nums">{fmtR$(calc.precoEletrica)}</span>
+              </p>
+              <div className="grid grid-cols-3 gap-1">
+                <MiniInput label="Prof." value={maoObra.eletrica_qtd_profissionais}
+                  onChange={(v) => setMaoObra(m => ({ ...m, eletrica_qtd_profissionais: v }))} />
+                <MiniInput label="Dias" value={maoObra.eletrica_dias}
+                  onChange={(v) => setMaoObra(m => ({ ...m, eletrica_dias: v }))} />
+                <MiniInput label="R$/dia" value={maoObra.eletrica_valor_diaria} step={10}
+                  onChange={(v) => setMaoObra(m => ({ ...m, eletrica_valor_diaria: v }))} />
+              </div>
+            </div>
+            <p className="text-[9px] text-white/40 italic">
+              Diárias padrão vêm de parametros_fotovoltaico (admin edita globalmente).
+            </p>
+          </div>
+
           <div className="pt-3 border-t border-white/5 space-y-2 text-xs">
             <Linha label={`Wallbox × ${qtd}`} valor={fmtR$(calc.precoWb)} />
             {calc.precoCA > 0 && <Linha label={`Lista CA (${linhasCA.length})`} valor={fmtR$(calc.precoCA)} />}
+            {calc.precoAlvenaria > 0 && <Linha label="🧱 Alvenaria" valor={fmtR$(calc.precoAlvenaria)} />}
+            {calc.precoEletrica > 0 && <Linha label="🏢⚡ Elétrica predial" valor={fmtR$(calc.precoEletrica)} />}
             <Linha label="Custo bruto" valor={fmtR$(calc.precoBruto)} destaque="white" />
             <Linha label={`Margem ${fmtNum(margemPct, 1)}%`} valor={fmtR$(calc.margemR$)} />
             <div className="pt-2 border-t border-white/10">
@@ -532,6 +608,27 @@ export function EstacaoRecargaFluxoClient({
           </button>
         </div>
       </aside>
+    </div>
+  )
+}
+
+function MiniInput({ label, value, onChange, step = 1 }: {
+  label: string
+  value: number
+  onChange: (v: number) => void
+  step?: number
+}) {
+  return (
+    <div>
+      <label className="block text-[9px] uppercase tracking-wider text-white/40 font-bold mb-0.5">{label}</label>
+      <input
+        type="number"
+        min={0}
+        step={step}
+        value={value || ''}
+        onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
+        className="w-full px-1.5 py-1 bg-noite border border-white/15 rounded text-xs text-white text-right tabular-nums"
+      />
     </div>
   )
 }

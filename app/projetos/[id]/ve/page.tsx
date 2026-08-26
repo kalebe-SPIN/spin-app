@@ -76,17 +76,21 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
     precos_produtos: precosPorProduto[i.id] || [],
   }))
 
-  // Parâmetros de margem — se existir tabela parametros_fotovoltaico, tenta pegar;
-  // senão fallback pra 35% margem SPIN padrão.
+  // Parâmetros de margem + mão de obra auxiliar (alvenaria + elétrica predial)
   let margemPadraoPct = 35
+  let valorDiariaAlvenaria = 250
+  let valorDiariaEletrica = 350
   try {
     const { data: params } = await supabase
       .from('parametros_fotovoltaico')
       .select('chave, valor_numero')
-      .in('chave', ['margem_contribuicao_perc'])
-    const m = (params || []).find((p: any) => p.chave === 'margem_contribuicao_perc')
-    if (m?.valor_numero) margemPadraoPct = Number(m.valor_numero)
-  } catch { /* usa fallback */ }
+      .in('chave', ['margem_contribuicao_perc', 'valor_diaria_alvenaria', 'valor_diaria_eletrica_predial'])
+    for (const p of params || []) {
+      if (p.chave === 'margem_contribuicao_perc' && p.valor_numero) margemPadraoPct = Number(p.valor_numero)
+      if (p.chave === 'valor_diaria_alvenaria' && p.valor_numero) valorDiariaAlvenaria = Number(p.valor_numero)
+      if (p.chave === 'valor_diaria_eletrica_predial' && p.valor_numero) valorDiariaEletrica = Number(p.valor_numero)
+    }
+  } catch { /* usa fallbacks */ }
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -115,6 +119,8 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
           itensCatalogoCA={(itensCatalogoCA || []) as any}
           selecaoSalva={projeto.ve_recarga_selecionada}
           margemPadraoPct={margemPadraoPct}
+          valorDiariaAlvenaria={valorDiariaAlvenaria}
+          valorDiariaEletrica={valorDiariaEletrica}
         />
       </div>
     </main>
