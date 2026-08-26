@@ -25,6 +25,13 @@
 -- alimentar o painel automaticamente — sem tocar em cada arquivo.
 -- ═══════════════════════════════════════════════════════════════════════
 
+-- ─── Coluna pv_total (fantasma até agora — nenhuma migration criou) ────
+-- O painel/actions leem `projetos.pv_total` mas ele nunca foi criado
+-- na tabela. Criamos aqui como numeric(14,2), populado pelo trigger 2
+-- abaixo e pelo backfill.
+ALTER TABLE public.projetos
+  ADD COLUMN IF NOT EXISTS pv_total numeric(14, 2);
+
 -- ─── Trigger 1: status_atualizado_em + histórico ────────────────────────
 CREATE OR REPLACE FUNCTION public.projetos_status_touch()
 RETURNS trigger LANGUAGE plpgsql AS $$
