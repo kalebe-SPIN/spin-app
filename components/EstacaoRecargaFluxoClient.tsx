@@ -81,6 +81,9 @@ export function EstacaoRecargaFluxoClient({
   projetoId, wallboxes, itensCatalogoCA, selecaoSalva, margemPadraoPct,
 }: Props) {
   const [wallboxId, setWallboxId] = useState<string>(selecaoSalva?.wallbox?.id || '')
+  const [precoManualWallbox, setPrecoManualWallbox] = useState<number>(
+    selecaoSalva?.wallbox?.preco_unitario || 0,
+  )
   const [qtd, setQtd] = useState<number>(selecaoSalva?.qtd || 1)
   const [margemPct, setMargemPct] = useState<number>(selecaoSalva?.margem_pct ?? margemPadraoPct)
   const [linhasCA, setLinhasCA] = useState<LinhaCA[]>(selecaoSalva?.itens_ca || [])
@@ -150,15 +153,18 @@ export function EstacaoRecargaFluxoClient({
   }, [itensCatalogoCA])
 
   const calc = useMemo(() => {
-    if (!wallboxEscolhido) return { precoWb: 0, precoCA: 0, precoBruto: 0, precoFinal: 0, margemR$: 0 }
-    const precoUnitWb = precoAtual(wallboxEscolhido.precos_produtos)
+    if (!wallboxEscolhido) return { precoWb: 0, precoCA: 0, precoBruto: 0, precoFinal: 0, margemR$: 0, precoUnitWb: 0 }
+    const precoUnitCatalogo = precoAtual(wallboxEscolhido.precos_produtos)
+    // Se catálogo tem preço, prioriza catálogo. Se não tem (linha WEMOB sob consulta),
+    // usa o preço manual que Kalebe digita na tela.
+    const precoUnitWb = precoUnitCatalogo > 0 ? precoUnitCatalogo : precoManualWallbox
     const precoWb = precoUnitWb * qtd
     const precoCA = linhasCA.reduce((s, l) => s + l.preco_unitario * l.qtd, 0)
     const precoBruto = precoWb + precoCA
     const fator = 1 / (1 - margemPct / 100)
     const precoFinal = precoBruto * fator
-    return { precoWb, precoCA, precoBruto, precoFinal, margemR$: precoFinal - precoBruto }
-  }, [wallboxEscolhido, qtd, linhasCA, margemPct])
+    return { precoWb, precoCA, precoBruto, precoFinal, margemR$: precoFinal - precoBruto, precoUnitWb }
+  }, [wallboxEscolhido, qtd, linhasCA, margemPct, precoManualWallbox])
 
   function adicionarLinha(item: ItemCatalogo) {
     const existente = linhasCA.findIndex(l => l.produto_id === item.id)
@@ -195,7 +201,7 @@ export function EstacaoRecargaFluxoClient({
         codigo_weg: wallboxEscolhido.codigo_weg,
         modelo: wallboxEscolhido.modelo,
         potencia_kw: extrairPotenciaKw(wallboxEscolhido),
-        preco_unitario: precoAtual(wallboxEscolhido.precos_produtos),
+        preco_unitario: calc.precoUnitWb,  // catálogo OU manual
       },
       qtd,
       acessorios: linhasCA.map(l => ({
@@ -232,7 +238,10 @@ export function EstacaoRecargaFluxoClient({
         {/* Bloco 1 — Escolha wallbox */}
         <div>
           <h2 className="text-lg font-bold text-white mb-1">1. Escolha o wallbox</h2>
-          <p className="text-xs text-white/50 mb-3">Linha WEMOB WEG. Cards sem preço precisam ser cadastrados no catálogo.</p>
+          <p className="text-xs text-white/50 mb-3">
+            Linha WEMOB WEG. Itens "sob consulta" na planilha vêm sem preço no catálogo —
+            digite o preço direto no campo que aparece depois de escolher.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {wallboxes.map(w => {
               const preco = precoAtual(w.precos_produtos)
@@ -243,11 +252,9 @@ export function EstacaoRecargaFluxoClient({
                 <button
                   key={w.id}
                   type="button"
-                  disabled={semPreco}
-                  onClick={() => !semPreco && setWallboxId(w.id)}
+                  onClick={() => setWallboxId(w.id)}
                   className={`text-left p-4 rounded-lg border transition ${
-                    semPreco ? 'bg-coral/5 border-coral/30 opacity-70 cursor-not-allowed'
-                    : escolhido ? 'bg-sol/15 border-sol/60'
+                    escolhido ? 'bg-sol/15 border-sol/60'
                     : 'bg-white/[0.02] border-white/10 hover:border-white/25'
                   }`}
                 >
@@ -263,23 +270,44 @@ export function EstacaoRecargaFluxoClient({
                     </div>
                     <div className="text-right shrink-0">
                       {semPreco ? (
-                        <p className="text-xs font-bold text-coral">⚠ sem preço</p>
+                        <p className="text-[11px] font-bold text-white/50">sob consulta</p>
                       ) : (
                         <p className="text-sm font-bold text-sol">{fmtR$(preco)}</p>
                       )}
                     </div>
                   </div>
-                  {semPreco && (
-                    <a href={`/admin/catalogo?q=${encodeURIComponent(w.codigo_weg)}`}
-                       onClick={(e) => e.stopPropagation()}
-                       className="mt-2 inline-block text-[10px] font-bold text-coral hover:underline">
-                      → cadastrar preço
-                    </a>
-                  )}
                 </button>
               )
             })}
           </div>
+
+          {/* Input de preço manual — só aparece quando escolheu um wallbox
+              e ele NÃO tem preço no catálogo (linha WEMOB "sob consulta") */}
+          {wallboxEscolhido && precoAtual(wallboxEscolhido.precos_produtos) <= 0 && (
+            <div className="mt-4 p-3 bg-sol/10 border border-sol/30 rounded-lg">
+              <label className="block text-[10px] uppercase tracking-wider text-sol font-bold mb-1">
+                💰 Preço unitário WEG deste wallbox (R$)
+              </label>
+              <p className="text-[10px] text-white/60 mb-2">
+                Este modelo está como "sob consulta" na planilha WEG. Digite o preço que o
+                fornecedor te passou pra este orçamento.
+              </p>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={precoManualWallbox || ''}
+                onChange={(e) => setPrecoManualWallbox(Math.max(0, Number(e.target.value) || 0))}
+                placeholder="Ex: 3450.00"
+                className="w-full px-3 py-2 bg-noite border border-sol/40 rounded text-sm text-white tabular-nums focus:outline-none focus:border-sol"
+              />
+              {precoManualWallbox > 0 && (
+                <p className="text-[11px] text-verde mt-2">
+                  ✓ Preço aplicado: <strong className="tabular-nums">{fmtR$(precoManualWallbox)}</strong> × {qtd} = {fmtR$(precoManualWallbox * qtd)}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Bloco 2 — Lista CA editável (montada automaticamente pela potência) */}
