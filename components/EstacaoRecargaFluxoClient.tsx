@@ -134,6 +134,10 @@ export function EstacaoRecargaFluxoClient({
   const [linhasCA, setLinhasCA] = useState<LinhaCA[]>(selecaoSalva?.itens_ca || [])
   const [fasesManual, setFasesManual] = useState<FasesRede | null>(null)
   const [distanciaM, setDistanciaM] = useState<number>(10)
+  // Potência manual da estação — usada quando cadastro WEG não tem potência
+  // ou quando kit tem só acessórios (totem sozinho).
+  const [potManualKw, setPotManualKw] = useState<number>((selecaoSalva as any)?.potencia_manual_kw ?? 0)
+  const [qtdManualWb, setQtdManualWb] = useState<number>((selecaoSalva as any)?.qtd_manual_wallboxes ?? 1)
   // Deslocamento — km da cidade × R$/km × 2 (ida+volta)
   const [kmManual, setKmManual] = useState<number>((selecaoSalva as any)?.deslocamento_km ?? kmDaCidade)
   const [rsPorKm, setRsPorKm] = useState<number>((selecaoSalva as any)?.deslocamento_rs_km ?? valorKmRodado)
@@ -159,14 +163,19 @@ export function EstacaoRecargaFluxoClient({
   const qtdWallboxesReais = equipamentos.filter(e => e.potencia_kw > 0).reduce((s, e) => s + e.qtd, 0) || 1
   const temAlgumEquipamento = equipamentos.length > 0
 
+  // Potência efetiva: cadastro WEG se tiver, senão manual
+  const potenciaEfetivaKw = equipamentoPrincipal?.potencia_kw || potManualKw || 0
+  const qtdWallboxesEfetiva = equipamentoPrincipal ? qtdWallboxesReais : Math.max(1, qtdManualWb)
+  const podeDimensionar = potenciaEfetivaKw > 0
+
   const fasesEfetivas: FasesRede = fasesManual
-    ?? (equipamentoPrincipal ? deduzirFasesPorPotencia(equipamentoPrincipal.potencia_kw) : 'monofasico')
+    ?? (potenciaEfetivaKw > 0 ? deduzirFasesPorPotencia(potenciaEfetivaKw) : 'monofasico')
 
   function gerarSugestao(): LinhaCA[] {
-    if (!equipamentoPrincipal) return []
+    if (!podeDimensionar) return []
     return sugerirListaCaVE({
-      potencia_wallbox_kw: equipamentoPrincipal.potencia_kw,
-      qtd_wallboxes: qtdWallboxesReais,
+      potencia_wallbox_kw: potenciaEfetivaKw,
+      qtd_wallboxes: qtdWallboxesEfetiva,
       fases: fasesEfetivas,
       distancia_qgbt_m: distanciaM,
     }).map(s => ({
@@ -341,6 +350,9 @@ export function EstacaoRecargaFluxoClient({
       preco_deslocamento_total: calc.precoDeslocamento,
       deslocamento_km: kmManual,
       deslocamento_rs_km: rsPorKm,
+      potencia_manual_kw: potManualKw,
+      qtd_manual_wallboxes: qtdManualWb,
+      potencia_efetiva_kw: potenciaEfetivaKw,
       deslocamento_km_total: calc.kmTotal,
       cidade_cliente: cidadeCliente,
       preco_bruto: calc.precoBruto,
@@ -495,45 +507,73 @@ export function EstacaoRecargaFluxoClient({
             Editável — remova, adicione ou ajuste qtd/preço de cada item.
           </p>
 
-          {equipamentoPrincipal && (
-            <div className="mb-3 p-3 bg-white/[0.02] border border-white/10 rounded-lg space-y-2">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">Rede do cliente</label>
-                  <select
-                    value={fasesManual || 'auto'}
-                    onChange={(e) => setFasesManual(e.target.value === 'auto' ? null : e.target.value as FasesRede)}
-                    className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-xs text-white"
-                  >
-                    <option value="auto">Auto — {fasesEfetivas}</option>
-                    <option value="monofasico">Monofásico 220V</option>
-                    <option value="bifasico">Bifásico 220V</option>
-                    <option value="trifasico">Trifásico 380/220V</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">Distância QGBT (m)</label>
-                  <input type="number" min={1} max={200} value={distanciaM}
-                    onChange={(e) => setDistanciaM(Math.max(1, Number(e.target.value) || 10))}
-                    className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-xs text-white" />
-                </div>
-                <div className="flex items-end">
-                  <button type="button" onClick={regenerarSugestao}
-                    className="w-full px-3 py-1.5 bg-sol/20 border border-sol/40 text-sol text-xs font-bold rounded hover:bg-sol/30">
-                    🔄 Regenerar Lista CA
-                  </button>
-                </div>
+          <div className="mb-3 p-3 bg-white/[0.02] border border-white/10 rounded-lg space-y-2">
+            {equipamentoPrincipal ? (
+              <p className="text-[10px] text-verde/80 flex items-center gap-1">
+                ✓ Potência puxada do cadastro: <strong>{fmtNum(equipamentoPrincipal.potencia_kw, 1)} kW</strong> × {qtdWallboxesReais}
+              </p>
+            ) : (
+              <p className="text-[10px] text-white/50">
+                ℹ Nenhum equipamento com potência cadastrada. Digite manualmente pra gerar a Lista CA.
+              </p>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">
+                  Potência (kW) {equipamentoPrincipal && <span className="text-white/30 normal-case">— auto</span>}
+                </label>
+                <input type="number" min={0} step={0.1}
+                  value={equipamentoPrincipal ? equipamentoPrincipal.potencia_kw : potManualKw}
+                  onChange={(e) => setPotManualKw(Math.max(0, Number(e.target.value) || 0))}
+                  disabled={!!equipamentoPrincipal}
+                  placeholder="ex: 7.4"
+                  className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-xs text-white disabled:opacity-60" />
               </div>
-              <p className="text-[10px] text-white/50 italic">
-                Cálculo: {resumoDimensionamento({
-                  potencia_wallbox_kw: equipamentoPrincipal.potencia_kw,
-                  qtd_wallboxes: qtdWallboxesReais,
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">Qtd wallbox</label>
+                <input type="number" min={1}
+                  value={equipamentoPrincipal ? qtdWallboxesReais : qtdManualWb}
+                  onChange={(e) => setQtdManualWb(Math.max(1, Number(e.target.value) || 1))}
+                  disabled={!!equipamentoPrincipal}
+                  className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-xs text-white disabled:opacity-60" />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">Rede</label>
+                <select
+                  value={fasesManual || 'auto'}
+                  onChange={(e) => setFasesManual(e.target.value === 'auto' ? null : e.target.value as FasesRede)}
+                  className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-xs text-white"
+                >
+                  <option value="auto">Auto — {fasesEfetivas}</option>
+                  <option value="monofasico">Mono 220V</option>
+                  <option value="bifasico">Bi 220V</option>
+                  <option value="trifasico">Tri 380V</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">Dist. QGBT (m)</label>
+                <input type="number" min={1} max={200} value={distanciaM}
+                  onChange={(e) => setDistanciaM(Math.max(1, Number(e.target.value) || 10))}
+                  className="w-full px-2 py-1.5 bg-noite border border-white/15 rounded text-xs text-white" />
+              </div>
+            </div>
+            <button type="button" onClick={regenerarSugestao} disabled={!podeDimensionar}
+              className="w-full px-3 py-2 bg-sol/20 border border-sol/40 text-sol text-xs font-bold rounded hover:bg-sol/30 disabled:opacity-40 disabled:cursor-not-allowed">
+              {podeDimensionar
+                ? `🔄 ${linhasCA.length > 0 ? 'Regenerar' : 'Gerar'} Lista CA (${fmtNum(potenciaEfetivaKw, 1)}kW × ${qtdWallboxesEfetiva})`
+                : '⚠ Digite a potência acima pra gerar a lista'}
+            </button>
+            {podeDimensionar && (
+              <p className="text-[10px] text-white/40 italic">
+                {resumoDimensionamento({
+                  potencia_wallbox_kw: potenciaEfetivaKw,
+                  qtd_wallboxes: qtdWallboxesEfetiva,
                   fases: fasesEfetivas,
                   distancia_qgbt_m: distanciaM,
                 })}
               </p>
-            </div>
-          )}
+            )}
+          </div>
 
           {linhasCA.length > 0 ? (
             <div className="overflow-x-auto bg-white/[0.03] border border-white/10 rounded-lg mb-3">
@@ -586,9 +626,9 @@ export function EstacaoRecargaFluxoClient({
             </div>
           ) : (
             <div className="p-4 bg-white/[0.02] border border-dashed border-white/20 rounded-lg text-xs text-white/50 text-center mb-3">
-              {equipamentoPrincipal
-                ? 'Nenhum item na Lista CA. Adicione do catálogo abaixo ou clique em Regenerar.'
-                : 'Adicione um wallbox com potência (⚡) pra dimensionar automaticamente.'}
+              {podeDimensionar
+                ? 'Nenhum item na Lista CA. Clique em Gerar acima ou adicione do catálogo abaixo.'
+                : 'Digite a potência da estação (kW) acima pra gerar a Lista CA.'}
             </div>
           )}
 
