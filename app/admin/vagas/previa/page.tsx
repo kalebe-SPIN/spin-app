@@ -1,9 +1,8 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { PropostaConteudo } from '@/components/vaga/PropostaConteudo'
+import { PropostaConsultorConteudo } from '@/components/vaga/PropostaConsultorConteudo'
 import { PropostaCampoConteudo } from '@/components/vaga/PropostaCampoConteudo'
-import { PropostaSolarConteudo } from '@/components/vaga/PropostaSolarConteudo'
 import { montarContrato } from '@/lib/contrato-representacao'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +20,7 @@ const DOCS = [
 ]
 
 export default async function PreviaVagaPage({ searchParams }: { searchParams?: { tipo?: string } }) {
-  const tipo = searchParams?.tipo === 'campo' ? 'campo' : searchParams?.tipo === 'solar' ? 'solar' : 'comercial'
+  const tipo = searchParams?.tipo === 'campo' ? 'campo' : 'comercial'
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -46,8 +45,7 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
           <div className="flex items-center gap-3 text-sm">
             <span className="text-sol font-bold">👁 Prévia</span>
             <div className="flex gap-1">
-              <Link href="/admin/vagas/previa?tipo=solar" className={`text-xs px-2.5 py-1 rounded-full border ${tipo === 'solar' ? 'bg-sol text-noite-0 border-sol font-bold' : 'text-white/60 border-white/15 hover:bg-white/10'}`}>Vendas Solar</Link>
-              <Link href="/admin/vagas/previa?tipo=comercial" className={`text-xs px-2.5 py-1 rounded-full border ${tipo === 'comercial' ? 'bg-sol text-noite-0 border-sol font-bold' : 'text-white/60 border-white/15 hover:bg-white/10'}`}>Comercial O&M</Link>
+              <Link href="/admin/vagas/previa?tipo=comercial" className={`text-xs px-2.5 py-1 rounded-full border ${tipo === 'comercial' ? 'bg-sol text-noite-0 border-sol font-bold' : 'text-white/60 border-white/15 hover:bg-white/10'}`}>Consultor Comercial</Link>
               <Link href="/admin/vagas/previa?tipo=campo" className={`text-xs px-2.5 py-1 rounded-full border ${tipo === 'campo' ? 'bg-sol text-noite-0 border-sol font-bold' : 'text-white/60 border-white/15 hover:bg-white/10'}`}>Prof. de campo</Link>
             </div>
           </div>
@@ -76,17 +74,10 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
               cidades={['Florianópolis', 'Itajaí', 'Blumenau', 'Joinville', 'Criciúma', 'Chapecó', 'Lages']}
               empresa={empresa}
             />
-          ) : tipo === 'solar' ? (
-            <PropostaSolarConteudo
-              nomeCandidato={nomeExemplo}
-              zona={zonaExemplo}
-              cidades={['Florianópolis', 'Itajaí', 'Blumenau', 'Joinville', 'Criciúma', 'Chapecó', 'Lages']}
-              empresa={empresa}
-            />
           ) : (
           <>
-          {/* Espelha o candidato: PDF só libera após assinatura, então na prévia fica travado */}
-          <PropostaConteudo
+          {/* Consultor Comercial (unificada) — PDF só libera após assinatura */}
+          <PropostaConsultorConteudo
             nomeCandidato={nomeExemplo}
             zona={zonaExemplo}
             empresa={empresa}

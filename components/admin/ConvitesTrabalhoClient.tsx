@@ -28,9 +28,9 @@ type Convite = {
 }
 
 const TIPO_INFO: Record<TipoProposta, { label: string; emoji: string; cor: string }> = {
-  solar:     { label: 'Vendas Solar',   emoji: '☀️', cor: 'text-sol bg-sol/10 border-sol/25' },
-  comercial: { label: 'Comercial O&M', emoji: '💼', cor: 'text-verde bg-verde/10 border-verde/25' },
-  campo:     { label: 'Prof. de Campo', emoji: '🔧', cor: 'text-weg-azul bg-weg-azul/10 border-weg-azul/25' },
+  comercial: { label: 'Consultor Comercial', emoji: '💼', cor: 'text-sol bg-sol/10 border-sol/25' },
+  campo:     { label: 'Prof. de Campo',      emoji: '🔧', cor: 'text-weg-azul bg-weg-azul/10 border-weg-azul/25' },
+  solar:     { label: 'Consultor Comercial', emoji: '💼', cor: 'text-sol bg-sol/10 border-sol/25' },
 }
 
 const STATUS_LABEL: Record<string, { txt: string; cor: string }> = {
@@ -110,7 +110,7 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <label className="text-sm font-semibold text-white/80">Tipo de proposta</label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {([['solar', '☀️ Vendas Solar'], ['comercial', '💼 Comercial O&M'], ['campo', '🔧 Prof. de Campo']] as const).map(([v, l]) => (
+              {([['comercial', '💼 Consultor Comercial'], ['campo', '🔧 Profissional de Campo']] as const).map(([v, l]) => (
                 <button
                   key={v}
                   type="button"
@@ -191,7 +191,8 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
             {convites.map((c) => {
               const st = STATUS_LABEL[c.status] || STATUS_LABEL.enviado
               const expirado = c.bloqueado || c.entradas_usadas >= c.max_entradas
-              const tipoAtual: TipoProposta = (c.tipo_proposta as TipoProposta) || 'comercial'
+              // 'solar' e 'comercial' foram unificados em Consultor Comercial → exibe 'comercial'
+              const tipoAtual: TipoProposta = (c.tipo_proposta === 'solar' ? 'comercial' : (c.tipo_proposta as TipoProposta)) || 'comercial'
               const tInfo = TIPO_INFO[tipoAtual]
               return (
                 <div key={c.id} className="p-4 bg-white/[0.03] border border-white/10 rounded-xl flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
@@ -209,7 +210,7 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
                         title="Trocar o tipo de proposta que o candidato vê"
                         className={`appearance-none text-xs font-bold pl-2.5 pr-6 py-1 rounded-full border cursor-pointer ${tInfo.cor} disabled:opacity-50`}
                       >
-                        {(Object.keys(TIPO_INFO) as TipoProposta[]).map((k) => (
+                        {(['comercial', 'campo'] as TipoProposta[]).map((k) => (
                           <option key={k} value={k} className="bg-noite text-white">
                             {TIPO_INFO[k].emoji} {TIPO_INFO[k].label}
                           </option>

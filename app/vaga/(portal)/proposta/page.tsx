@@ -2,13 +2,14 @@ import { getConviteAtual } from '@/lib/convite'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { AceitarPropostaBtn } from '@/components/vaga/AceitarPropostaBtn'
-import { PropostaConteudo } from '@/components/vaga/PropostaConteudo'
 import { PropostaCampoConteudo } from '@/components/vaga/PropostaCampoConteudo'
-import { PropostaSolarConteudo } from '@/components/vaga/PropostaSolarConteudo'
+import { PropostaConsultorConteudo } from '@/components/vaga/PropostaConsultorConteudo'
 
 /**
  * Apresentação da proposta de trabalho — /vaga/proposta
- * Conteúdo em PropostaConteudo (reutilizado pela prévia do admin).
+ * - campo    → Profissional de Campo (empreitada por OS)
+ * - demais   → Consultor Comercial (Linha Completa: sistemas + O&M) — unificada,
+ *              cobre os tipos 'solar' e 'comercial' antigos.
  */
 export default async function PropostaPage() {
   const convite = await getConviteAtual()
@@ -25,7 +26,7 @@ export default async function PropostaPage() {
     .eq('singleton', true)
     .maybeSingle()
 
-  // Proposta do profissional de campo
+  // Profissional de campo (empreitada por OS)
   if (convite.tipo_proposta === 'campo') {
     return (
       <main className="max-w-screen-xl mx-auto px-6 py-10 md:py-14">
@@ -37,21 +38,16 @@ export default async function PropostaPage() {
     )
   }
 
-  // Proposta de vendas de sistemas fotovoltaicos (em preparação)
-  if (convite.tipo_proposta === 'solar') {
-    return (
-      <main className="max-w-screen-xl mx-auto px-6 py-10 md:py-14">
-        <PropostaSolarConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} cidades={convite.cidades || []} empresa={empresa} />
-        <p className="mt-10 text-center text-xs text-white/30">
-          SPIN Solar · Proposta válida para discussão — sujeita a formalização em contrato.
-        </p>
-      </main>
-    )
-  }
-
+  // Unificada — Consultor Comercial (Linha Completa)
   return (
     <main className="max-w-screen-xl mx-auto px-6 py-10 md:py-14">
-      <PropostaConteudo nomeCandidato={convite.nome_candidato} zona={convite.zona} empresa={empresa} podeBaixarPdf={contratoAssinado} cidades={convite.cidades || []} />
+      <PropostaConsultorConteudo
+        nomeCandidato={convite.nome_candidato}
+        zona={convite.zona}
+        cidades={convite.cidades || []}
+        empresa={empresa}
+        podeBaixarPdf={contratoAssinado}
+      />
 
       {/* ===== CTA / DECISÃO ===== */}
       {recusada ? (
@@ -74,7 +70,7 @@ export default async function PropostaPage() {
       )}
 
       <p className="mt-10 text-center text-xs text-white/30">
-        SPIN Solar · Proposta válida para discussão — sujeita a formalização em contrato.
+        SPIN Solar · Proposta para discussão — sujeita a formalização contratual.
       </p>
     </main>
   )

@@ -44,20 +44,12 @@ export default async function AdminVagasPage() {
           </div>
           <div className="shrink-0 flex flex-col gap-2">
             <Link
-              href="/admin/vagas/previa?tipo=solar"
-              target="_blank"
-              rel="noopener"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-sol/15 border border-sol/40 text-sol font-semibold rounded-lg hover:bg-sol/25 transition-colors whitespace-nowrap text-sm"
-            >
-              👁 Prévia — Vendas Solar ↗
-            </Link>
-            <Link
               href="/admin/vagas/previa?tipo=comercial"
               target="_blank"
               rel="noopener"
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-sol/15 border border-sol/40 text-sol font-semibold rounded-lg hover:bg-sol/25 transition-colors whitespace-nowrap text-sm"
             >
-              👁 Prévia — Comercial O&M ↗
+              👁 Prévia — Consultor Comercial ↗
             </Link>
             <Link
               href="/admin/vagas/previa?tipo=campo"
