@@ -184,6 +184,7 @@ export function EstacaoRecargaFluxoClient({
     if (!wallboxEscolhido) return {
       precoWb: 0, precoCA: 0, precoAlvenaria: 0, precoEletrica: 0,
       precoBruto: 0, precoFinal: 0, margemR$: 0, comissaoR$: 0, impostosR$: 0, precoUnitWb: 0,
+      baseImpostavel: 0,
     }
     const precoUnitCatalogo = precoAtual(wallboxEscolhido.precos_produtos)
     const precoUnitWb = precoUnitCatalogo > 0 ? precoUnitCatalogo : precoManualWallbox
@@ -192,20 +193,37 @@ export function EstacaoRecargaFluxoClient({
     const precoAlvenaria = maoObra.alvenaria_qtd_profissionais * maoObra.alvenaria_dias * maoObra.alvenaria_valor_diaria
     const precoEletrica = maoObra.eletrica_qtd_profissionais * maoObra.eletrica_dias * maoObra.eletrica_valor_diaria
     const precoBruto = precoWb + precoCA + precoAlvenaria + precoEletrica
-    // Método invertido: PV = custo / (1 - (margem + comissao + impostos)/100)
-    // Aceita até somar 99% (protege divisão por zero)
-    const percTotal = Math.min(99, margemPct + comissaoPct + impostosPct)
-    const fator = 1 / (1 - percTotal / 100)
-    const precoFinal = precoBruto * fator
-    const acrescimoTotal = precoFinal - precoBruto
-    // Distribui acrescimo em cada componente proporcionalmente
-    const somaPerc = margemPct + comissaoPct + impostosPct
-    const margemR$ = somaPerc > 0 ? acrescimoTotal * (margemPct / somaPerc) : 0
-    const comissaoR$ = somaPerc > 0 ? acrescimoTotal * (comissaoPct / somaPerc) : 0
-    const impostosR$ = somaPerc > 0 ? acrescimoTotal * (impostosPct / somaPerc) : 0
+
+    // Regra SPIN (skill mestre-em-precificacao):
+    // Equipamento WEG (wallbox) NÃO paga imposto Simples — é revenda direta.
+    // Só margem + comissão incidem sobre o wallbox.
+    // Lista CA + mão de obra recebem margem + comissão + impostos.
+    const baseImpostavel = precoCA + precoAlvenaria + precoEletrica
+
+    // 2 PVs separados, método invertido
+    const percSemImposto = Math.min(99, margemPct + comissaoPct)
+    const percComImposto = Math.min(99, margemPct + comissaoPct + impostosPct)
+    const pvWallbox = precoWb / (1 - percSemImposto / 100)
+    const pvResto = baseImpostavel / (1 - percComImposto / 100)
+    const precoFinal = pvWallbox + pvResto
+
+    // R$ de cada componente: soma dos 2 blocos
+    const acresWb = pvWallbox - precoWb
+    const acresResto = pvResto - baseImpostavel
+    const somaPercWb = percSemImposto
+    const somaPercResto = percComImposto
+    const margemR$ =
+      (somaPercWb > 0 ? acresWb * (margemPct / somaPercWb) : 0) +
+      (somaPercResto > 0 ? acresResto * (margemPct / somaPercResto) : 0)
+    const comissaoR$ =
+      (somaPercWb > 0 ? acresWb * (comissaoPct / somaPercWb) : 0) +
+      (somaPercResto > 0 ? acresResto * (comissaoPct / somaPercResto) : 0)
+    const impostosR$ = somaPercResto > 0 ? acresResto * (impostosPct / somaPercResto) : 0
+
     return {
       precoWb, precoCA, precoAlvenaria, precoEletrica,
       precoBruto, precoFinal, margemR$, comissaoR$, impostosR$, precoUnitWb,
+      baseImpostavel,
     }
   }, [wallboxEscolhido, qtd, linhasCA, margemPct, comissaoPct, impostosPct, precoManualWallbox, maoObra])
 
@@ -258,6 +276,7 @@ export function EstacaoRecargaFluxoClient({
       preco_alvenaria_total: calc.precoAlvenaria,
       preco_eletrica_total: calc.precoEletrica,
       preco_bruto: calc.precoBruto,
+      base_impostavel: calc.baseImpostavel,
       margem_pct: margemPct,
       comissao_pct: comissaoPct,
       impostos_pct: impostosPct,
@@ -630,7 +649,11 @@ export function EstacaoRecargaFluxoClient({
             <Linha label="Custo bruto" valor={fmtR$(calc.precoBruto)} destaque="white" />
             <Linha label={`Margem ${fmtNum(margemPct, 1)}%`} valor={fmtR$(calc.margemR$)} />
             <Linha label={`Comissão vendedor ${fmtNum(comissaoPct, 1)}%`} valor={fmtR$(calc.comissaoR$)} />
-            <Linha label={`Impostos ${fmtNum(impostosPct, 1)}%`} valor={fmtR$(calc.impostosR$)} />
+            <Linha label={`Impostos ${fmtNum(impostosPct, 1)}% (sem WEG)`} valor={fmtR$(calc.impostosR$)} />
+            <p className="text-[9px] text-white/40 italic pt-1">
+              💡 Impostos incidem só sobre Lista CA + mão de obra ({fmtR$(calc.baseImpostavel)}).
+              Wallbox WEG é revenda — não paga Simples.
+            </p>
             <div className="pt-2 border-t border-white/10">
               <Linha label="TOTAL AO CLIENTE" valor={fmtR$(calc.precoFinal)} destaque="sol" grande />
             </div>
