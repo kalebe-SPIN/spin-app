@@ -83,6 +83,7 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
   let impostosPadraoPct = 6
   let valorDiariaAlvenaria = 250
   let valorDiariaEletrica = 350
+  let valorKmRodado = 2.5
   try {
     const { data: params } = await supabase
       .from('parametros_precificacao')
@@ -94,6 +95,7 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
         'impostos_simples_perc',
         'valor_diaria_alvenaria',
         'valor_diaria_eletrica_predial',
+        'valor_km_rodado',
       ])
     for (const p of params || []) {
       if (!p.valor_numero) continue
@@ -103,8 +105,28 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
       else if (p.chave === 'impostos_simples_perc') impostosPadraoPct = v
       else if (p.chave === 'valor_diaria_alvenaria') valorDiariaAlvenaria = v
       else if (p.chave === 'valor_diaria_eletrica_predial') valorDiariaEletrica = v
+      else if (p.chave === 'valor_km_rodado') valorKmRodado = v
     }
   } catch { /* usa fallbacks */ }
+
+  // Distância da cidade do cliente até SPIN (ida — o total ida+volta multiplica por 2 no client)
+  let kmDaCidade = 0
+  const cidade = projeto.endereco_instalacao?.cidade
+    || projeto.cliente_endereco?.cidade
+    || projeto.cliente_endereco?.municipio
+  const uf = projeto.endereco_instalacao?.uf || projeto.cliente_endereco?.uf || 'SC'
+  if (cidade) {
+    try {
+      const { data: c } = await supabase
+        .from('cidades_distancia')
+        .select('km')
+        .eq('cidade', String(cidade).toUpperCase())
+        .eq('uf', uf)
+        .eq('ativo', true)
+        .maybeSingle()
+      if (c?.km) kmDaCidade = Number(c.km)
+    } catch { /* cidade não cadastrada — usa 0 */ }
+  }
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -137,6 +159,9 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
           impostosPadraoPct={impostosPadraoPct}
           valorDiariaAlvenaria={valorDiariaAlvenaria}
           valorDiariaEletrica={valorDiariaEletrica}
+          valorKmRodado={valorKmRodado}
+          kmDaCidade={kmDaCidade}
+          cidadeCliente={cidade ? `${cidade}/${uf}` : ''}
         />
       </div>
     </main>
