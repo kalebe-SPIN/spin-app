@@ -147,6 +147,10 @@ export function EstacaoRecargaFluxoClient({
   })
   const [filtroCategoria, setFiltroCategoria] = useState<string>('')
   const [buscaTexto, setBuscaTexto] = useState<string>('')
+  // Controle aberto/fechado dos <details> — antes usava open={length===0}
+  // que forçava REACT a fechar após 1º item e travava o usuário.
+  const [catalogoWegAberto, setCatalogoWegAberto] = useState<boolean>(true)
+  const [catalogoCaAberto, setCatalogoCaAberto] = useState<boolean>(false)
   const [pending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
 
@@ -435,7 +439,11 @@ export function EstacaoRecargaFluxoClient({
           )}
 
           {/* Catálogo linha WEMOB pra adicionar */}
-          <details className="bg-white/[0.02] border border-white/10 rounded-lg" open={equipamentos.length === 0}>
+          <details
+            className="bg-white/[0.02] border border-white/10 rounded-lg"
+            open={catalogoWegAberto}
+            onToggle={(e) => setCatalogoWegAberto((e.currentTarget as HTMLDetailsElement).open)}
+          >
             <summary className="cursor-pointer p-3 text-xs font-bold text-white/80 hover:text-white">
               + Adicionar equipamento WEG ao kit ({wallboxes.length} disponíveis)
             </summary>
@@ -584,7 +592,11 @@ export function EstacaoRecargaFluxoClient({
             </div>
           )}
 
-          <details className="bg-white/[0.02] border border-white/10 rounded-lg" open={linhasCA.length === 0 && !!equipamentoPrincipal}>
+          <details
+            className="bg-white/[0.02] border border-white/10 rounded-lg"
+            open={catalogoCaAberto}
+            onToggle={(e) => setCatalogoCaAberto((e.currentTarget as HTMLDetailsElement).open)}
+          >
             <summary className="cursor-pointer p-3 text-xs font-bold text-white/80 hover:text-white">
               + Adicionar itens do catálogo WEG ({itensCatalogoCA.length} disponíveis)
             </summary>
