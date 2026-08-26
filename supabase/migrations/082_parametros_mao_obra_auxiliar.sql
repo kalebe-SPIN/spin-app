@@ -5,12 +5,12 @@
 -- quantidade de profissionais que puxa informações na precificação tanto
 -- para alvenaria, quanto elétrica predial'.
 --
--- Alvenaria e elétrica predial entram como componente auxiliar em vários
--- serviços (estação VE, padrão de entrada, retrofit) — parametros de
--- diária ficam globais em parametros_fotovoltaico pra reutilizar.
+-- Vai em parametros_precificacao (grupo 'mao_obra') pra reutilizar em
+-- vários fluxos: estação VE, padrão de entrada, retrofit, etc.
 -- ═══════════════════════════════════════════════════════════════════════
 
-INSERT INTO public.parametros_fotovoltaico (categoria, chave, descricao, valor_numero, unidade, min_valor, max_valor, obrigatorio)
+INSERT INTO public.parametros_precificacao
+  (grupo, chave, descricao, valor_numero, unidade, valor_minimo, valor_maximo, requer_aprovacao_kalebe)
 VALUES
   ('mao_obra', 'valor_diaria_alvenaria',
    'Custo de 1 profissional de alvenaria por dia (pedreiro + servente médio)',

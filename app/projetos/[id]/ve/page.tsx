@@ -77,13 +77,15 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
   }))
 
   // Parâmetros de margem + mão de obra auxiliar (alvenaria + elétrica predial)
+  // Tabela correta: parametros_precificacao (com colunas grupo/chave/valor_numero)
   let margemPadraoPct = 35
   let valorDiariaAlvenaria = 250
   let valorDiariaEletrica = 350
   try {
     const { data: params } = await supabase
-      .from('parametros_fotovoltaico')
+      .from('parametros_precificacao')
       .select('chave, valor_numero')
+      .eq('ativo', true)
       .in('chave', ['margem_contribuicao_perc', 'valor_diaria_alvenaria', 'valor_diaria_eletrica_predial'])
     for (const p of params || []) {
       if (p.chave === 'margem_contribuicao_perc' && p.valor_numero) margemPadraoPct = Number(p.valor_numero)
