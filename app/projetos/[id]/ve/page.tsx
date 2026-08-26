@@ -84,6 +84,8 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
   let valorDiariaAlvenaria = 250
   let valorDiariaEletrica = 350
   let valorKmRodado = 2.5
+  let valorDiagramaUnifilar = 350
+  let valorDiagramaTrifilar = 250
   try {
     const { data: params } = await supabase
       .from('parametros_precificacao')
@@ -96,6 +98,8 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
         'valor_diaria_alvenaria',
         'valor_diaria_eletrica_predial',
         'valor_km_rodado',
+        'valor_diagrama_unifilar',
+        'valor_diagrama_trifilar',
       ])
     for (const p of params || []) {
       if (!p.valor_numero) continue
@@ -106,6 +110,8 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
       else if (p.chave === 'valor_diaria_alvenaria') valorDiariaAlvenaria = v
       else if (p.chave === 'valor_diaria_eletrica_predial') valorDiariaEletrica = v
       else if (p.chave === 'valor_km_rodado') valorKmRodado = v
+      else if (p.chave === 'valor_diagrama_unifilar') valorDiagramaUnifilar = v
+      else if (p.chave === 'valor_diagrama_trifilar') valorDiagramaTrifilar = v
     }
   } catch { /* usa fallbacks */ }
 
@@ -164,6 +170,8 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
           valorKmRodado={valorKmRodado}
           kmDaCidade={kmDaCidade}
           cidadeCliente={cidade ? `${cidade}/${uf}` : ''}
+          valorDiagramaUnifilar={valorDiagramaUnifilar}
+          valorDiagramaTrifilar={valorDiagramaTrifilar}
         />
       </div>
     </main>

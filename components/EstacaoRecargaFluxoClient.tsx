@@ -75,6 +75,8 @@ type Props = {
   valorKmRodado: number
   kmDaCidade: number       // distância SPIN → cidade do cliente (ida)
   cidadeCliente: string
+  valorDiagramaUnifilar: number
+  valorDiagramaTrifilar: number
 }
 
 function fmtR$(v: number): string {
@@ -111,6 +113,7 @@ export function EstacaoRecargaFluxoClient({
   margemPadraoPct, comissaoPadraoPct, impostosPadraoPct,
   valorDiariaAlvenaria, valorDiariaEletrica,
   valorKmRodado, kmDaCidade, cidadeCliente,
+  valorDiagramaUnifilar, valorDiagramaTrifilar,
 }: Props) {
   // ═══ Estado ═══
   const [equipamentos, setEquipamentos] = useState<EquipamentoWeg[]>(() => {
@@ -138,6 +141,12 @@ export function EstacaoRecargaFluxoClient({
   // ou quando kit tem só acessórios (totem sozinho).
   const [potManualKw, setPotManualKw] = useState<number>((selecaoSalva as any)?.potencia_manual_kw ?? 0)
   const [qtdManualWb, setQtdManualWb] = useState<number>((selecaoSalva as any)?.qtd_manual_wallboxes ?? 1)
+  // Diagramas (unifilar + trifilar) — Kalebe: 'compõem a precificação e
+  // aparecem na descrição dos serviços do PDF'
+  const [incluiUnifilar, setIncluiUnifilar] = useState<boolean>((selecaoSalva as any)?.inclui_diagrama_unifilar ?? true)
+  const [incluiTrifilar, setIncluiTrifilar] = useState<boolean>((selecaoSalva as any)?.inclui_diagrama_trifilar ?? true)
+  const [valorUnifilar, setValorUnifilar] = useState<number>((selecaoSalva as any)?.valor_diagrama_unifilar ?? valorDiagramaUnifilar)
+  const [valorTrifilar, setValorTrifilar] = useState<number>((selecaoSalva as any)?.valor_diagrama_trifilar ?? valorDiagramaTrifilar)
   // Deslocamento — km da cidade × R$/km × 2 (ida+volta)
   const [kmManual, setKmManual] = useState<number>((selecaoSalva as any)?.deslocamento_km ?? kmDaCidade)
   const [rsPorKm, setRsPorKm] = useState<number>((selecaoSalva as any)?.deslocamento_rs_km ?? valorKmRodado)
@@ -261,6 +270,7 @@ export function EstacaoRecargaFluxoClient({
   const calc = useMemo(() => {
     if (!temAlgumEquipamento) return {
       precoWb: 0, precoCA: 0, precoAlvenaria: 0, precoEletrica: 0, precoDeslocamento: 0,
+      precoDiagramas: 0,
       precoBruto: 0, precoFinal: 0, margemR$: 0, comissaoR$: 0, impostosR$: 0,
       baseImpostavel: 0, kmTotal: 0,
     }
@@ -272,11 +282,15 @@ export function EstacaoRecargaFluxoClient({
     // (Kalebe pode aumentar km manualmente se precisar de N viagens)
     const kmTotal = Math.max(0, kmManual) * 2
     const precoDeslocamento = kmTotal * Math.max(0, rsPorKm)
-    const precoBruto = precoWb + precoCA + precoAlvenaria + precoEletrica + precoDeslocamento
+    // Diagramas técnicos (unifilar + trifilar) — serviço documental
+    const precoDiagramas =
+      (incluiUnifilar ? Math.max(0, valorUnifilar) : 0) +
+      (incluiTrifilar ? Math.max(0, valorTrifilar) : 0)
+    const precoBruto = precoWb + precoCA + precoAlvenaria + precoEletrica + precoDeslocamento + precoDiagramas
 
     // Regra SPIN: equipamento WEG NÃO paga imposto (revenda direta).
-    // Deslocamento entra na base impostável (é serviço, não revenda).
-    const baseImpostavel = precoCA + precoAlvenaria + precoEletrica + precoDeslocamento
+    // Deslocamento + diagramas entram na base impostável (são serviço, não revenda).
+    const baseImpostavel = precoCA + precoAlvenaria + precoEletrica + precoDeslocamento + precoDiagramas
     const percSemImposto = Math.min(99, margemPct + comissaoPct)
     const percComImposto = Math.min(99, margemPct + comissaoPct + impostosPct)
     const pvWallbox = precoWb / (1 - percSemImposto / 100)
@@ -294,11 +308,11 @@ export function EstacaoRecargaFluxoClient({
     const impostosR$ = percComImposto > 0 ? acresResto * (impostosPct / percComImposto) : 0
 
     return {
-      precoWb, precoCA, precoAlvenaria, precoEletrica, precoDeslocamento,
+      precoWb, precoCA, precoAlvenaria, precoEletrica, precoDeslocamento, precoDiagramas,
       precoBruto, precoFinal, margemR$, comissaoR$, impostosR$,
       baseImpostavel, kmTotal,
     }
-  }, [temAlgumEquipamento, equipamentos, linhasCA, margemPct, comissaoPct, impostosPct, maoObra, kmManual, rsPorKm])
+  }, [temAlgumEquipamento, equipamentos, linhasCA, margemPct, comissaoPct, impostosPct, maoObra, kmManual, rsPorKm, incluiUnifilar, incluiTrifilar, valorUnifilar, valorTrifilar])
 
   // ═══ Catálogo Lista CA ═══
   const catalogoFiltrado = useMemo(() => {
@@ -353,6 +367,11 @@ export function EstacaoRecargaFluxoClient({
       potencia_manual_kw: potManualKw,
       qtd_manual_wallboxes: qtdManualWb,
       potencia_efetiva_kw: potenciaEfetivaKw,
+      inclui_diagrama_unifilar: incluiUnifilar,
+      inclui_diagrama_trifilar: incluiTrifilar,
+      valor_diagrama_unifilar: valorUnifilar,
+      valor_diagrama_trifilar: valorTrifilar,
+      preco_diagramas_total: calc.precoDiagramas,
       deslocamento_km_total: calc.kmTotal,
       cidade_cliente: cidadeCliente,
       preco_bruto: calc.precoBruto,
@@ -710,6 +729,36 @@ export function EstacaoRecargaFluxoClient({
             </div>
           </div>
 
+          {/* Diagramas técnicos — compõem o serviço */}
+          <div className="pt-3 border-t border-white/5 space-y-2">
+            <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">📐 Documentos técnicos</p>
+            <div className="p-2 bg-white/[0.02] border border-white/10 rounded space-y-2">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="chk_uni" checked={incluiUnifilar}
+                  onChange={(e) => setIncluiUnifilar(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-sol" />
+                <label htmlFor="chk_uni" className="text-[11px] font-bold text-white flex-1 cursor-pointer">Diagrama Unifilar</label>
+                <input type="number" min={0} step={10} value={valorUnifilar}
+                  onChange={(e) => setValorUnifilar(Math.max(0, Number(e.target.value) || 0))}
+                  disabled={!incluiUnifilar}
+                  className="w-20 px-2 py-1 bg-noite border border-white/15 rounded text-[11px] text-white text-right tabular-nums disabled:opacity-40" />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="chk_tri" checked={incluiTrifilar}
+                  onChange={(e) => setIncluiTrifilar(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-sol" />
+                <label htmlFor="chk_tri" className="text-[11px] font-bold text-white flex-1 cursor-pointer">Diagrama Trifilar</label>
+                <input type="number" min={0} step={10} value={valorTrifilar}
+                  onChange={(e) => setValorTrifilar(Math.max(0, Number(e.target.value) || 0))}
+                  disabled={!incluiTrifilar}
+                  className="w-20 px-2 py-1 bg-noite border border-white/15 rounded text-[11px] text-white text-right tabular-nums disabled:opacity-40" />
+              </div>
+              <p className="text-[9px] text-white/40 italic">
+                Constam na descrição de serviços do PDF da proposta.
+              </p>
+            </div>
+          </div>
+
           {/* Deslocamento — km rodados × R$/km × 2 (ida+volta) */}
           <div className="pt-3 border-t border-white/5 space-y-2">
             <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">🚗 Deslocamento</p>
@@ -781,6 +830,7 @@ export function EstacaoRecargaFluxoClient({
             <Linha label="🧱 Alvenaria" valor={fmtR$(calc.precoAlvenaria)} />
             <Linha label="🏢⚡ Elétrica predial" valor={fmtR$(calc.precoEletrica)} />
             <Linha label={`🚗 Deslocamento (${fmtNum(calc.kmTotal, 0)}km × ${fmtR$(rsPorKm)})`} valor={fmtR$(calc.precoDeslocamento)} />
+            <Linha label={`📐 Diagramas${incluiUnifilar && incluiTrifilar ? ' (uni+tri)' : incluiUnifilar ? ' (uni)' : incluiTrifilar ? ' (tri)' : ' (nenhum)'}`} valor={fmtR$(calc.precoDiagramas)} />
             <Linha label="Custo bruto" valor={fmtR$(calc.precoBruto)} destaque="white" />
             <Linha label={`Margem ${fmtNum(margemPct, 1)}%`} valor={fmtR$(calc.margemR$)} />
             <Linha label={`Comissão vendedor ${fmtNum(comissaoPct, 1)}%`} valor={fmtR$(calc.comissaoR$)} />
@@ -801,6 +851,14 @@ export function EstacaoRecargaFluxoClient({
             className="w-full px-6 py-3 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
             {pending ? '⏳ Salvando…' : '✓ Salvar estação'}
           </button>
+
+          {selecaoSalva && (
+            <a
+              href={`/projetos/${projetoId}/ve/proposta`}
+              className="block w-full text-center px-6 py-3 bg-white/5 border border-white/15 text-white font-bold text-sm rounded-lg hover:bg-white/10">
+              📄 Ver proposta PDF
+            </a>
+          )}
         </div>
       </aside>
     </div>
