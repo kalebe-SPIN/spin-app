@@ -49,6 +49,8 @@ type Props = {
     mao_obra?: MaoObraEstado
   }) | null
   margemPadraoPct: number
+  comissaoPadraoPct: number
+  impostosPadraoPct: number
   valorDiariaAlvenaria: number
   valorDiariaEletrica: number
 }
@@ -93,6 +95,7 @@ const CATEGORIAS_LABEL: Record<string, string> = {
 
 export function EstacaoRecargaFluxoClient({
   projetoId, wallboxes, itensCatalogoCA, selecaoSalva, margemPadraoPct,
+  comissaoPadraoPct, impostosPadraoPct,
   valorDiariaAlvenaria, valorDiariaEletrica,
 }: Props) {
   const [wallboxId, setWallboxId] = useState<string>(selecaoSalva?.wallbox?.id || '')
@@ -101,6 +104,8 @@ export function EstacaoRecargaFluxoClient({
   )
   const [qtd, setQtd] = useState<number>(selecaoSalva?.qtd || 1)
   const [margemPct, setMargemPct] = useState<number>(selecaoSalva?.margem_pct ?? margemPadraoPct)
+  const [comissaoPct, setComissaoPct] = useState<number>((selecaoSalva as any)?.comissao_pct ?? comissaoPadraoPct)
+  const [impostosPct, setImpostosPct] = useState<number>((selecaoSalva as any)?.impostos_pct ?? impostosPadraoPct)
   const [linhasCA, setLinhasCA] = useState<LinhaCA[]>(selecaoSalva?.itens_ca || [])
   const [fasesManual, setFasesManual] = useState<FasesRede | null>(null)
   const [distanciaM, setDistanciaM] = useState<number>(10)
@@ -178,7 +183,7 @@ export function EstacaoRecargaFluxoClient({
   const calc = useMemo(() => {
     if (!wallboxEscolhido) return {
       precoWb: 0, precoCA: 0, precoAlvenaria: 0, precoEletrica: 0,
-      precoBruto: 0, precoFinal: 0, margemR$: 0, precoUnitWb: 0,
+      precoBruto: 0, precoFinal: 0, margemR$: 0, comissaoR$: 0, impostosR$: 0, precoUnitWb: 0,
     }
     const precoUnitCatalogo = precoAtual(wallboxEscolhido.precos_produtos)
     const precoUnitWb = precoUnitCatalogo > 0 ? precoUnitCatalogo : precoManualWallbox
@@ -187,13 +192,22 @@ export function EstacaoRecargaFluxoClient({
     const precoAlvenaria = maoObra.alvenaria_qtd_profissionais * maoObra.alvenaria_dias * maoObra.alvenaria_valor_diaria
     const precoEletrica = maoObra.eletrica_qtd_profissionais * maoObra.eletrica_dias * maoObra.eletrica_valor_diaria
     const precoBruto = precoWb + precoCA + precoAlvenaria + precoEletrica
-    const fator = 1 / (1 - margemPct / 100)
+    // Método invertido: PV = custo / (1 - (margem + comissao + impostos)/100)
+    // Aceita até somar 99% (protege divisão por zero)
+    const percTotal = Math.min(99, margemPct + comissaoPct + impostosPct)
+    const fator = 1 / (1 - percTotal / 100)
     const precoFinal = precoBruto * fator
+    const acrescimoTotal = precoFinal - precoBruto
+    // Distribui acrescimo em cada componente proporcionalmente
+    const somaPerc = margemPct + comissaoPct + impostosPct
+    const margemR$ = somaPerc > 0 ? acrescimoTotal * (margemPct / somaPerc) : 0
+    const comissaoR$ = somaPerc > 0 ? acrescimoTotal * (comissaoPct / somaPerc) : 0
+    const impostosR$ = somaPerc > 0 ? acrescimoTotal * (impostosPct / somaPerc) : 0
     return {
       precoWb, precoCA, precoAlvenaria, precoEletrica,
-      precoBruto, precoFinal, margemR$: precoFinal - precoBruto, precoUnitWb,
+      precoBruto, precoFinal, margemR$, comissaoR$, impostosR$, precoUnitWb,
     }
-  }, [wallboxEscolhido, qtd, linhasCA, margemPct, precoManualWallbox, maoObra])
+  }, [wallboxEscolhido, qtd, linhasCA, margemPct, comissaoPct, impostosPct, precoManualWallbox, maoObra])
 
   function adicionarLinha(item: ItemCatalogo) {
     const existente = linhasCA.findIndex(l => l.produto_id === item.id)
@@ -245,6 +259,11 @@ export function EstacaoRecargaFluxoClient({
       preco_eletrica_total: calc.precoEletrica,
       preco_bruto: calc.precoBruto,
       margem_pct: margemPct,
+      comissao_pct: comissaoPct,
+      impostos_pct: impostosPct,
+      margem_r: calc.margemR$,
+      comissao_r: calc.comissaoR$,
+      impostos_r: calc.impostosR$,
       preco_final_cliente: calc.precoFinal,
     }
     startTransition(async () => {
@@ -537,12 +556,28 @@ export function EstacaoRecargaFluxoClient({
               className="w-full px-3 py-2 bg-noite/60 border border-white/15 rounded text-sm text-white" />
           </div>
 
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider text-white/40 font-bold mb-1">Margem SPIN (%)</label>
-            <input type="number" min={0} max={80} step={0.5} value={margemPct}
-              onChange={(e) => setMargemPct(Math.max(0, Math.min(80, Number(e.target.value) || 0)))}
-              className="w-full px-3 py-2 bg-noite/60 border border-white/15 rounded text-sm text-white" />
-            <p className="text-[10px] text-white/40 mt-1">Padrão: {fmtNum(margemPadraoPct, 1)}%</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-[9px] uppercase tracking-wider text-white/40 font-bold mb-1">Margem %</label>
+              <input type="number" min={0} max={80} step={0.5} value={margemPct}
+                onChange={(e) => setMargemPct(Math.max(0, Math.min(80, Number(e.target.value) || 0)))}
+                className="w-full px-2 py-1.5 bg-noite/60 border border-white/15 rounded text-xs text-white text-right tabular-nums" />
+              <p className="text-[9px] text-white/40 mt-0.5">Pad. {fmtNum(margemPadraoPct, 1)}</p>
+            </div>
+            <div>
+              <label className="block text-[9px] uppercase tracking-wider text-white/40 font-bold mb-1">Comissão %</label>
+              <input type="number" min={0} max={30} step={0.5} value={comissaoPct}
+                onChange={(e) => setComissaoPct(Math.max(0, Math.min(30, Number(e.target.value) || 0)))}
+                className="w-full px-2 py-1.5 bg-noite/60 border border-white/15 rounded text-xs text-white text-right tabular-nums" />
+              <p className="text-[9px] text-white/40 mt-0.5">Pad. {fmtNum(comissaoPadraoPct, 1)}</p>
+            </div>
+            <div>
+              <label className="block text-[9px] uppercase tracking-wider text-white/40 font-bold mb-1">Impostos %</label>
+              <input type="number" min={0} max={30} step={0.5} value={impostosPct}
+                onChange={(e) => setImpostosPct(Math.max(0, Math.min(30, Number(e.target.value) || 0)))}
+                className="w-full px-2 py-1.5 bg-noite/60 border border-white/15 rounded text-xs text-white text-right tabular-nums" />
+              <p className="text-[9px] text-white/40 mt-0.5">Pad. {fmtNum(impostosPadraoPct, 1)}</p>
+            </div>
           </div>
 
           {/* 👷 Mão de obra auxiliar (alvenaria + elétrica predial) */}
@@ -589,11 +624,13 @@ export function EstacaoRecargaFluxoClient({
 
           <div className="pt-3 border-t border-white/5 space-y-2 text-xs">
             <Linha label={`Wallbox × ${qtd}`} valor={fmtR$(calc.precoWb)} />
-            {calc.precoCA > 0 && <Linha label={`Lista CA (${linhasCA.length})`} valor={fmtR$(calc.precoCA)} />}
-            {calc.precoAlvenaria > 0 && <Linha label="🧱 Alvenaria" valor={fmtR$(calc.precoAlvenaria)} />}
-            {calc.precoEletrica > 0 && <Linha label="🏢⚡ Elétrica predial" valor={fmtR$(calc.precoEletrica)} />}
+            <Linha label={`Lista CA (${linhasCA.length})`} valor={fmtR$(calc.precoCA)} />
+            <Linha label="🧱 Alvenaria" valor={fmtR$(calc.precoAlvenaria)} />
+            <Linha label="🏢⚡ Elétrica predial" valor={fmtR$(calc.precoEletrica)} />
             <Linha label="Custo bruto" valor={fmtR$(calc.precoBruto)} destaque="white" />
             <Linha label={`Margem ${fmtNum(margemPct, 1)}%`} valor={fmtR$(calc.margemR$)} />
+            <Linha label={`Comissão vendedor ${fmtNum(comissaoPct, 1)}%`} valor={fmtR$(calc.comissaoR$)} />
+            <Linha label={`Impostos ${fmtNum(impostosPct, 1)}%`} valor={fmtR$(calc.impostosR$)} />
             <div className="pt-2 border-t border-white/10">
               <Linha label="TOTAL AO CLIENTE" valor={fmtR$(calc.precoFinal)} destaque="sol" grande />
             </div>

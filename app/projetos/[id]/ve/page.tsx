@@ -78,7 +78,9 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
 
   // Parâmetros de margem + mão de obra auxiliar (alvenaria + elétrica predial)
   // Tabela correta: parametros_precificacao (com colunas grupo/chave/valor_numero)
-  let margemPadraoPct = 35
+  let margemPadraoPct = 20
+  let comissaoPadraoPct = 5
+  let impostosPadraoPct = 6
   let valorDiariaAlvenaria = 250
   let valorDiariaEletrica = 350
   try {
@@ -86,11 +88,21 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
       .from('parametros_precificacao')
       .select('chave, valor_numero')
       .eq('ativo', true)
-      .in('chave', ['margem_contribuicao_perc', 'valor_diaria_alvenaria', 'valor_diaria_eletrica_predial'])
+      .in('chave', [
+        'margem_contribuicao_perc',
+        'comissao_vendedor_perc',
+        'impostos_simples_perc',
+        'valor_diaria_alvenaria',
+        'valor_diaria_eletrica_predial',
+      ])
     for (const p of params || []) {
-      if (p.chave === 'margem_contribuicao_perc' && p.valor_numero) margemPadraoPct = Number(p.valor_numero)
-      if (p.chave === 'valor_diaria_alvenaria' && p.valor_numero) valorDiariaAlvenaria = Number(p.valor_numero)
-      if (p.chave === 'valor_diaria_eletrica_predial' && p.valor_numero) valorDiariaEletrica = Number(p.valor_numero)
+      if (!p.valor_numero) continue
+      const v = Number(p.valor_numero)
+      if (p.chave === 'margem_contribuicao_perc') margemPadraoPct = v
+      else if (p.chave === 'comissao_vendedor_perc') comissaoPadraoPct = v
+      else if (p.chave === 'impostos_simples_perc') impostosPadraoPct = v
+      else if (p.chave === 'valor_diaria_alvenaria') valorDiariaAlvenaria = v
+      else if (p.chave === 'valor_diaria_eletrica_predial') valorDiariaEletrica = v
     }
   } catch { /* usa fallbacks */ }
 
@@ -121,6 +133,8 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
           itensCatalogoCA={(itensCatalogoCA || []) as any}
           selecaoSalva={projeto.ve_recarga_selecionada}
           margemPadraoPct={margemPadraoPct}
+          comissaoPadraoPct={comissaoPadraoPct}
+          impostosPadraoPct={impostosPadraoPct}
           valorDiariaAlvenaria={valorDiariaAlvenaria}
           valorDiariaEletrica={valorDiariaEletrica}
         />
