@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef } from 'react'
+import { forwardRef, type ReactNode } from 'react'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
 
 type Props = {
@@ -27,6 +27,18 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
     const empresa = configEmpresa || {}
     const dataHoje = new Date().toLocaleDateString('pt-BR')
     const validade = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
+    // Non-breaking space e separador consistente — html2canvas colapsa
+    // whitespace comum, então usamos   pra garantir espaço estável
+    const NBSP = ' '
+    const SEP = `${NBSP}·${NBSP}`
+    // CNPJ formatado (fallback pro CNPJ da Spin quando o cadastro empresa
+    // vier sem máscara). Sempre passa pelo formatador.
+    const cnpjEmpresa = formatarCpfCnpj(String(empresa.cnpj || '22279642000104'))
+    const razaoEmpresa = empresa.razao_social || 'Spin Solar Energias Renováveis Ltda'
+    const cidadeInst = projeto.endereco_instalacao?.cidade
+      || projeto.cliente_endereco?.cidade
+      || 'Tijucas'
+    const ufInst = String(projeto.endereco_instalacao?.uf || projeto.cliente_endereco?.uf || 'SC').toUpperCase()
 
     // Usa equipamentos_enriquecidos (com descricao_curta+specs vindas do catálogo)
     // se disponível; senão cai pra estrutura salva no projeto
@@ -70,8 +82,9 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
                 <div>
                   <p style={E.tituloEmpresa}>SPIN SOLAR</p>
                   <p style={E.subEmpresa}>
-                    {empresa.razao_social || 'Energias Renováveis Ltda'}
-                    {empresa.cnpj ? ` · CNPJ ${empresa.cnpj}` : ' · CNPJ 22.279.642/0001-04'}
+                    <span>{razaoEmpresa}</span>
+                    <span style={{ margin: '0 6px' }}>·</span>
+                    <span>CNPJ {cnpjEmpresa}</span>
                   </p>
                 </div>
               </div>
@@ -82,12 +95,16 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
             </div>
 
             <div style={E.railVertical}>
-              Emitida {dataHoje.replace(/\//g, '.')} · Válida até {validade.replace(/\//g, '.')}
+              <span>Emitida {dataHoje.replace(/\//g, '.')}</span>
+              <span style={{ margin: '0 8px' }}>·</span>
+              <span>Válida até {validade.replace(/\//g, '.')}</span>
             </div>
 
             <div style={{ marginTop: 88 }}>
               <p style={{ ...E.rotuloDourado, fontSize: 11, letterSpacing: 4, marginBottom: 12 }}>
-                Proposta comercial · Estação de recarga
+                <span>Proposta comercial</span>
+                <span style={{ margin: '0 10px' }}>·</span>
+                <span>Estação de recarga</span>
               </p>
               <h1 style={E.tituloManifesto}>
                 Sua estação<br />
@@ -108,9 +125,12 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <div>
                 <p style={E.rotuloMini}>Estação proposta</p>
                 <p style={E.nomeCliente}>
-                  {equipamentos.length} equipamento(s) WEG<br />
+                  <span>{equipamentos.length} equipamento{equipamentos.length === 1 ? '' : 's'} WEG</span>
+                  <br />
                   <span style={{ fontSize: 14, color: 'rgba(245,245,240,.7)', fontWeight: 500 }}>
-                    Linha WEMOB · potência {fmtNum(potenciaHeadline, 1)} kW
+                    <span>Linha WEMOB</span>
+                    <span style={{ margin: '0 6px' }}>·</span>
+                    <span>potência {fmtNum(potenciaHeadline, 1)} kW</span>
                   </span>
                 </p>
               </div>
@@ -127,7 +147,11 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
 
             <div style={E.rodapeManifesto}>
               <span>Página 1 de 3</span>
-              <span>Equipamentos WEG WEMOB · Instalação Spin</span>
+              <span>
+                <span>Equipamentos WEG WEMOB</span>
+                <span style={{ margin: '0 6px' }}>·</span>
+                <span>Instalação Spin</span>
+              </span>
             </div>
           </div>
         </section>
@@ -136,15 +160,20 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
         <section style={E.pagina}>
           <div style={E.conteudoRel}>
             <div style={E.headerSecao}>
-              <p style={{ ...E.rotuloDourado, fontSize: 10, letterSpacing: 3 }}>02 · Composição da estação</p>
+              <p style={{ ...E.rotuloDourado, fontSize: 10, letterSpacing: 3 }}>
+                <span>02</span>
+                <span style={{ margin: '0 8px' }}>·</span>
+                <span>Composição da estação</span>
+              </p>
               <h2 style={E.tituloSecao}>Equipamentos, materiais e serviços</h2>
             </div>
 
             {/* Bloco 1 — Equipamentos WEG (com ficha técnica de cada) */}
             <h3 style={E.subtituloSecao}>🔌 Equipamentos WEG</h3>
             <p style={E.paragrafo}>
-              Composição do kit de recarga com equipamentos originais WEG da linha WEMOB, com garantia de fábrica.
-              <strong style={{ color: '#F5B400' }}> Prazo de entrega do fabricante: {prazoEntregaDias} dias úteis</strong> após confirmação do pedido.
+              <span>Composição do kit de recarga com equipamentos originais WEG da linha WEMOB, com garantia de fábrica.&nbsp;</span>
+              <strong style={{ color: '#F5B400' }}>Prazo de entrega do fabricante: {prazoEntregaDias} dias úteis</strong>
+              <span>&nbsp;após confirmação do pedido.</span>
             </p>
             {equipamentos.length === 0 && (
               <p style={{ ...E.paragrafo, color: 'rgba(245,245,240,.4)', fontStyle: 'italic' }}>Nenhum equipamento adicionado.</p>
@@ -184,40 +213,44 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
             <h3 style={{ ...E.subtituloSecao, marginTop: 32 }}>🛠 Descrição dos serviços</h3>
             <ul style={E.listaServ}>
               {mao.eletrica_qtd_profissionais > 0 && mao.eletrica_dias > 0 && (
-                <li style={E.itemServ}>
-                  <strong style={{ color: '#F5F5F0' }}>Elétrica predial:</strong> {mao.eletrica_qtd_profissionais} profissional(is) × {mao.eletrica_dias} dia(s) de execução da infraestrutura elétrica CA.
-                </li>
+                <ItemServ titulo="Elétrica predial:">
+                  {mao.eletrica_qtd_profissionais} profissional{mao.eletrica_qtd_profissionais === 1 ? '' : 'is'} × {mao.eletrica_dias} dia{mao.eletrica_dias === 1 ? '' : 's'} de execução da infraestrutura elétrica CA.
+                </ItemServ>
               )}
               {mao.alvenaria_qtd_profissionais > 0 && mao.alvenaria_dias > 0 && (
-                <li style={E.itemServ}>
-                  <strong style={{ color: '#F5F5F0' }}>Alvenaria:</strong> {mao.alvenaria_qtd_profissionais} profissional(is) × {mao.alvenaria_dias} dia(s) para fixação, canaletas e acabamentos.
-                </li>
+                <ItemServ titulo="Alvenaria:">
+                  {mao.alvenaria_qtd_profissionais} profissional{mao.alvenaria_qtd_profissionais === 1 ? '' : 'is'} × {mao.alvenaria_dias} dia{mao.alvenaria_dias === 1 ? '' : 's'} para fixação, canaletas e acabamentos.
+                </ItemServ>
               )}
               {kmTotal > 0 && (
-                <li style={E.itemServ}>
-                  <strong style={{ color: '#F5F5F0' }}>Deslocamento:</strong> {fmtNum(kmTotal, 0)} km rodados a R$ {fmt(rsKm)}/km (ida + volta).
-                </li>
+                <ItemServ titulo="Deslocamento:">
+                  {fmtNum(kmTotal, 0)} km rodados a R$ {fmt(rsKm)}/km (ida + volta).
+                </ItemServ>
               )}
               {incluiUni && (
-                <li style={E.itemServ}>
-                  <strong style={{ color: '#F5F5F0' }}>Diagrama Unifilar:</strong> elaboração do documento técnico da instalação, assinado por RT habilitado.
-                </li>
+                <ItemServ titulo="Diagrama Unifilar:">
+                  elaboração do documento técnico da instalação, assinado por RT habilitado.
+                </ItemServ>
               )}
               {incluiTri && (
-                <li style={E.itemServ}>
-                  <strong style={{ color: '#F5F5F0' }}>Diagrama Trifilar:</strong> detalhamento das fases, neutros e proteções — assinado por RT habilitado.
-                </li>
+                <ItemServ titulo="Diagrama Trifilar:">
+                  detalhamento das fases, neutros e proteções — assinado por RT habilitado.
+                </ItemServ>
               )}
-              <li style={E.itemServ}>
-                <strong style={{ color: '#F5F5F0' }}>Instalação e comissionamento:</strong> montagem, testes, energização e treinamento inicial de operação.
-              </li>
+              <ItemServ titulo="Instalação e comissionamento:">
+                montagem, testes, energização e treinamento inicial de operação.
+              </ItemServ>
             </ul>
 
             <div style={{ flex: 1 }} />
 
             <div style={E.rodapeManifesto}>
               <span>Página 2 de 3</span>
-              <span>Spin Solar · Proposta {projeto.codigo}</span>
+              <span>
+                <span>Spin Solar</span>
+                <span style={{ margin: '0 6px' }}>·</span>
+                <span>Proposta {projeto.codigo}</span>
+              </span>
             </div>
           </div>
         </section>
@@ -226,14 +259,24 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
         <section style={E.pagina}>
           <div style={E.conteudoRel}>
             <div style={E.headerSecao}>
-              <p style={{ ...E.rotuloDourado, fontSize: 10, letterSpacing: 3 }}>03 · Investimento</p>
+              <p style={{ ...E.rotuloDourado, fontSize: 10, letterSpacing: 3 }}>
+                <span>03</span>
+                <span style={{ margin: '0 8px' }}>·</span>
+                <span>Investimento</span>
+              </p>
               <h2 style={E.tituloSecao}>Valor total e formas de pagamento</h2>
             </div>
 
             <div style={E.blocoValor}>
               <p style={E.rotuloValorTotal}>Valor total da proposta</p>
               <p style={E.valorTotal}>R$ {fmt(totalCliente)}</p>
-              <p style={E.subValor}>Estação de recarga · chaves na mão · equipamentos WEG + materiais + serviços</p>
+              <p style={E.subValor}>
+                <span>Estação de recarga</span>
+                <span style={{ margin: '0 6px' }}>·</span>
+                <span>chaves na mão</span>
+                <span style={{ margin: '0 6px' }}>·</span>
+                <span>equipamentos WEG + materiais + serviços</span>
+              </p>
             </div>
 
             <h3 style={E.subtituloSecao}>Escopo consolidado</h3>
@@ -267,7 +310,9 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <div style={E.tituloAceite}>
                 <span style={E.rotuloAceiteDourado}>Aceite e assinaturas</span>
                 <span style={E.dataAceite}>
-                  {projeto.endereco_instalacao?.cidade || projeto.cliente_endereco?.cidade || 'Tijucas'}/{projeto.endereco_instalacao?.uf || projeto.cliente_endereco?.uf || 'SC'}, {dataHoje}
+                  <span>{cidadeInst}/{ufInst}</span>
+                  <span>,&nbsp;</span>
+                  <span>{dataHoje}</span>
                 </span>
               </div>
               <div style={E.gridAssinaturas}>
@@ -279,14 +324,22 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
                   </div>
                   <div style={E.linhaAssinaturaBranca} />
                   <p style={E.nomeAssinaturaEscuro}>{empresa.rt_nome || 'Kalebe Grün'}</p>
-                  <p style={E.cargoAssinaturaEscuro}>Diretor comercial · Spin Solar</p>
-                  <p style={E.docAssinaturaEscuro}>CNPJ 22.279.642/0001-04</p>
+                  <p style={E.cargoAssinaturaEscuro}>
+                    <span>Diretor comercial</span>
+                    <span style={{ margin: '0 6px' }}>·</span>
+                    <span>Spin Solar</span>
+                  </p>
+                  <p style={E.docAssinaturaEscuro}>CNPJ {cnpjEmpresa}</p>
                 </div>
                 <div style={E.blocoAssinaturaLado}>
                   <div style={E.espacoScan} />
                   <div style={E.linhaAssinaturaBranca} />
                   <p style={E.nomeAssinaturaEscuro}>{projeto.cliente_razao_social || '—'}</p>
-                  <p style={E.cargoAssinaturaEscuro}>Cliente · Tomador</p>
+                  <p style={E.cargoAssinaturaEscuro}>
+                    <span>Cliente</span>
+                    <span style={{ margin: '0 6px' }}>·</span>
+                    <span>Tomador</span>
+                  </p>
                   <p style={E.docAssinaturaEscuro}>
                     {projeto.cliente_cpf_cnpj ? `CPF/CNPJ ${formatarCpfCnpj(String(projeto.cliente_cpf_cnpj))}` : 'CPF/CNPJ ______________________'}
                   </p>
@@ -296,7 +349,11 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
 
             <div style={E.rodapeManifesto}>
               <span>Página 3 de 3</span>
-              <span>Assinado digitalmente · {dataHoje}</span>
+              <span>
+                <span>Assinado digitalmente</span>
+                <span style={{ margin: '0 6px' }}>·</span>
+                <span>{dataHoje}</span>
+              </span>
             </div>
           </div>
         </section>
@@ -350,7 +407,9 @@ function FichaEquipamento({ equip }: { equip: any }) {
             {equip.modelo}
           </p>
           <p style={{ margin: '2px 0 0', fontSize: 9, color: 'rgba(245,245,240,.55)', letterSpacing: 0.5 }}>
-            Código WEG · {equip.codigo_weg}
+            <span>Código WEG</span>
+            <span style={{ margin: '0 5px' }}>·</span>
+            <span>{equip.codigo_weg}</span>
           </p>
         </div>
         <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
@@ -387,6 +446,17 @@ function FichaEquipamento({ equip }: { equip: any }) {
   )
 }
 
+/** Item de lista de serviço com título em bold + descrição inline, sem
+ *  colar as palavras (html2canvas colapsa whitespace de text nodes puros). */
+function ItemServ({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <li style={E.itemServ}>
+      <strong style={{ color: '#F5F5F0' }}>{titulo}</strong>
+      <span>&nbsp;{children}</span>
+    </li>
+  )
+}
+
 function DadoLinha({ rot, val }: { rot: string; val: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid rgba(245,245,240,.06)' }}>
@@ -405,8 +475,8 @@ const E = {
   haloCanto: { position: 'absolute' as const, top: -200, right: -200, width: 600, height: 600, background: 'radial-gradient(circle, rgba(245,180,0,0.16) 0%, rgba(245,180,0,0) 60%)', pointerEvents: 'none' as const },
   conteudoRel: { position: 'relative' as const, padding: '56px 64px', minHeight: 1123, boxSizing: 'border-box' as const, display: 'flex' as const, flexDirection: 'column' as const },
   logoBox: { width: 36, height: 36, background: '#F5B400', display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'center' as const, fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700, fontSize: 18, color: '#050B16' },
-  tituloEmpresa: { margin: 0, fontFamily: '"Space Grotesk", sans-serif', fontSize: 14, fontWeight: 700, letterSpacing: '0.02em' },
-  subEmpresa: { margin: '2px 0 0', fontSize: 9, color: 'rgba(245,245,240,.5)' },
+  tituloEmpresa: { margin: 0, fontFamily: '"Space Grotesk", sans-serif', fontSize: 14, fontWeight: 700, letterSpacing: '0.04em' },
+  subEmpresa: { margin: '2px 0 0', fontSize: 9, color: 'rgba(245,245,240,.55)', letterSpacing: 0.4 },
   rotuloDourado: { margin: 0, fontSize: 9, letterSpacing: 2.5, color: '#F5B400', textTransform: 'uppercase' as const, fontWeight: 700 },
   codigoProposta: { margin: '4px 0 0', fontFamily: '"Space Grotesk", sans-serif', fontSize: 16, fontWeight: 700, color: '#F5F5F0' },
   railVertical: { position: 'absolute' as const, left: 20, top: '50%', transform: 'rotate(-90deg) translateX(50%)', transformOrigin: 'left top', fontSize: 9, letterSpacing: 2, color: 'rgba(245,245,240,.35)', textTransform: 'uppercase' as const },
