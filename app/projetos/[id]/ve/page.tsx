@@ -110,17 +110,19 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
   } catch { /* usa fallbacks */ }
 
   // Distância da cidade do cliente até SPIN (ida — o total ida+volta multiplica por 2 no client)
+  // Bug anterior: comparava com .toUpperCase() mas tabela guarda no case digitado — usar ilike.
   let kmDaCidade = 0
   const cidade = projeto.endereco_instalacao?.cidade
     || projeto.cliente_endereco?.cidade
     || projeto.cliente_endereco?.municipio
-  const uf = projeto.endereco_instalacao?.uf || projeto.cliente_endereco?.uf || 'SC'
+  const uf = String(projeto.endereco_instalacao?.uf || projeto.cliente_endereco?.uf || 'SC').toUpperCase()
   if (cidade) {
     try {
+      const cidadeLimpa = String(cidade).trim()
       const { data: c } = await supabase
         .from('cidades_distancia')
         .select('km')
-        .eq('cidade', String(cidade).toUpperCase())
+        .ilike('cidade', cidadeLimpa)
         .eq('uf', uf)
         .eq('ativo', true)
         .maybeSingle()

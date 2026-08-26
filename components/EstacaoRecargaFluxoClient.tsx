@@ -150,7 +150,7 @@ export function EstacaoRecargaFluxoClient({
   // Controle aberto/fechado dos <details> — antes usava open={length===0}
   // que forçava REACT a fechar após 1º item e travava o usuário.
   const [catalogoWegAberto, setCatalogoWegAberto] = useState<boolean>(true)
-  const [catalogoCaAberto, setCatalogoCaAberto] = useState<boolean>(false)
+  const [catalogoCaAberto, setCatalogoCaAberto] = useState<boolean>(true)
   const [pending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
 
@@ -675,9 +675,15 @@ export function EstacaoRecargaFluxoClient({
             <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">🚗 Deslocamento</p>
             <div className="p-2 bg-white/[0.02] border border-white/10 rounded space-y-2">
               <p className="text-[11px] font-bold text-white flex items-center justify-between">
-                {cidadeCliente ? `📍 ${cidadeCliente}` : 'Distância manual'}
+                {cidadeCliente ? `📍 ${cidadeCliente}` : '⚠ Endereço não cadastrado'}
                 <span className="text-[10px] text-white/40 font-normal tabular-nums">{fmtR$(calc.precoDeslocamento)}</span>
               </p>
+              {cidadeCliente && kmDaCidade === 0 && (
+                <p className="text-[10px] text-coral">
+                  ⚠ Cidade não cadastrada em <a href="/admin/precificacao/cidades" target="_blank" className="underline">/admin/precificacao/cidades</a>.
+                  Digite os km manualmente.
+                </p>
+              )}
               <div className="grid grid-cols-3 gap-1">
                 <MiniInput label="Km" value={kmManual} step={1} onChange={setKmManual} />
                 <MiniInput label="R$/km" value={rsPorKm} step={0.1} onChange={setRsPorKm} />
@@ -689,7 +695,9 @@ export function EstacaoRecargaFluxoClient({
                 </div>
               </div>
               <p className="text-[9px] text-white/40 italic">
-                Km × 2 (ida+volta) × R$/km. {kmDaCidade > 0 && `Padrão da cidade: ${fmtNum(kmDaCidade, 0)} km.`}
+                Km × 2 (ida+volta) × R$/km. {kmDaCidade > 0
+                  ? `Auto: ${fmtNum(kmDaCidade, 0)} km (SPIN → ${cidadeCliente}).`
+                  : 'Cadastre a cidade em /admin/precificacao/cidades pra puxar automático.'}
               </p>
             </div>
           </div>
