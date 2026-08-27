@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { baixarArquivo } from '@/lib/downloads'
 import {
   salvarCampoFaseAction,
   uploadArquivoFaseAction,
@@ -284,8 +285,14 @@ function SlotArquivo({
       </div>
       {enviado ? (
         <div className="mt-2 flex gap-2">
-          <a href={urlAtual!} target="_blank" rel="noreferrer" className="text-[10px] px-3 py-1.5 bg-verde/20 border border-verde/40 rounded text-verde font-bold">
-            📥 Abrir
+          <button type="button" onClick={() => baixarArquivo(urlAtual!)}
+            className="text-[10px] px-3 py-1.5 bg-verde/20 border border-verde/40 rounded text-verde font-bold hover:bg-verde/30"
+            title="Baixar pra máquina">
+            📥 Baixar
+          </button>
+          <a href={urlAtual!} target="_blank" rel="noreferrer"
+            className="text-[10px] px-3 py-1.5 bg-white/5 border border-white/10 rounded text-white/70 hover:text-white">
+            👁 Visualizar
           </a>
           <button type="button" onClick={remover} disabled={pending}
             className="text-[10px] px-2 py-1.5 bg-white/5 border border-white/10 rounded text-white/60 hover:text-coral">

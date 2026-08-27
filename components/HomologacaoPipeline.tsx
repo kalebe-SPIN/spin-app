@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { atualizarEtapaAction } from '@/app/admin/homologacoes/actions'
+import { baixarArquivo } from '@/lib/downloads'
 
 type Etapa = {
   id: string
@@ -223,14 +224,14 @@ function EtapaCard({ etapa, projetoId, eUltima }: { etapa: Etapa; projetoId: str
 
 function ArquivoBadge({ href, label }: { href: string; label: string }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
+    <button
+      type="button"
+      onClick={() => baixarArquivo(href)}
       className="text-[10px] px-2 py-0.5 bg-white/5 border border-white/10 rounded text-white/70 hover:bg-white/10"
+      title="Baixar pra máquina"
     >
-      {label}
-    </a>
+      📥 {label}
+    </button>
   )
 }
 

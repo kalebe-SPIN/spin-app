@@ -700,9 +700,12 @@ function montarRelatorioTecnico(args: {
   const enderecoLinha1 = [enderecoObra.logradouro, enderecoObra.numero ? `Nº ${enderecoObra.numero}` : null, enderecoObra.bairro].filter(Boolean).join(', ') || '—'
 
   // ═══ Dados do carimbo — vem da homologação (não do projeto) ═══
-  const protocoloCelesc = homologacao?.protocolo_celesc || '⚠ preencher em /homologacoes'
-  const dataSolicit = homologacao?.data_solicitacao ? fmtDataBr(homologacao.data_solicitacao) : null
-  const dataAprov = homologacao?.data_aprovacao ? fmtDataBr(homologacao.data_aprovacao) : null
+  // Kalebe 2026-08-27: protocolo CELESC saiu do carimbo (era gerado
+  // DEPOIS da homologação, então nem existia no momento da emissão do
+  // diagrama). Datas de solicitação/aprovação também. Mantidos no cadastro
+  // pra outros usos, só não vão pro desenho.
+  const dataSolicit: string | null = null
+  const dataAprov: string | null = null
   // ART/TRT: prioriza o TRT do projeto na homologação (fonte oficial),
   // fallback pra art_numero do projeto (legado) e finalmente configEmpresa.
   const artNum = homologacao?.trt_projeto_numero
@@ -722,7 +725,6 @@ function montarRelatorioTecnico(args: {
     `PROJETO:            ${descrProjeto}`,
     `PROPRIETÁRIO:       ${projeto.cliente_razao_social || '⚠ preencher'}`,
     `CNPJ/CPF:           ${cnpjCpfFmt}`,
-    `PROTOCOLO CELESC:   ${protocoloCelesc}`,
     ``,
     `TÍTULO:             ${tituloCarimbo(tipoDesenho)}`,
     ``,
@@ -748,11 +750,10 @@ function montarRelatorioTecnico(args: {
     `└────────────────────────────────────────────────────────────────────┘`,
     '```',
     ``,
-    ...(!homologacao?.protocolo_celesc || !projeto.cliente_endereco?.logradouro && !projeto.endereco_instalacao?.rua ? [
+    ...(!projeto.endereco_instalacao?.rua && !projeto.cliente_endereco?.logradouro ? [
       `⚠️ ATENÇÃO — DADOS FALTANDO NO CARIMBO`,
       ``,
-      ...(!homologacao?.protocolo_celesc ? [`- Protocolo CELESC não cadastrado → vá em /homologacoes/${homologacao?.id || '{id}'} e clique em "Cadastrar" ao lado de "PROTOCOLO CELESC"`] : []),
-      ...((!projeto.endereco_instalacao?.rua && !projeto.cliente_endereco?.logradouro) ? [`- Endereço da obra não cadastrado → vá no cadastro do telhado do projeto e preencha o endereço completo da instalação`] : []),
+      `- Endereço da obra não cadastrado → vá no cadastro do telhado do projeto e preencha o endereço completo da instalação`,
       ``,
     ] : []),
     `═══════════════════════════════════════════════════════════════════`,

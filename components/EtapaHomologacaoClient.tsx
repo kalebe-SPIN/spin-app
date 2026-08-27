@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { atualizarEtapaHomologacaoAction } from '@/app/homologacoes/[id]/actions'
+import { baixarArquivo } from '@/lib/downloads'
 
 const OPCOES_STATUS = [
   { valor: 'pendente',     label: '⏳ Pendente' },
@@ -72,39 +73,39 @@ export function EtapaHomologacaoClient({
         </p>
       )}
 
-      {/* Arquivos gerados: PDF/MD/CSV/SVG */}
+      {/* Arquivos gerados: PDF/DXF/SVG — todos baixam direto pra máquina
+          via fetch+blob (evita cross-origin bloquear atributo download). */}
       {(etapa.url_arquivo_pdf || etapa.url_arquivo_svg || etapa.url_arquivo_dwg) && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {etapa.url_arquivo_pdf && (
-            <a
-              href={etapa.url_arquivo_pdf}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => baixarArquivo(etapa.url_arquivo_pdf, `${etapa.chave}.pdf`)}
               className="inline-flex items-center gap-1 px-2 py-1 bg-verde/20 border border-verde/40 rounded text-[10px] text-verde font-bold hover:bg-verde/30"
-              title="Baixar arquivo gerado"
+              title="Baixar PDF pra máquina"
             >
-              📥 Baixar arquivo
-            </a>
+              📥 Baixar PDF
+            </button>
           )}
-          {etapa.url_arquivo_svg && !etapa.url_arquivo_pdf && (
-            <a
-              href={etapa.url_arquivo_svg}
-              target="_blank"
-              rel="noreferrer"
+          {etapa.url_arquivo_svg && (
+            <button
+              type="button"
+              onClick={() => baixarArquivo(etapa.url_arquivo_svg, `${etapa.chave}.svg`)}
               className="inline-flex items-center gap-1 px-2 py-1 bg-weg-azul/20 border border-weg-azul/40 rounded text-[10px] text-weg-azul font-bold hover:bg-weg-azul/30"
+              title="Baixar SVG pra máquina"
             >
               🖼️ Baixar SVG
-            </a>
+            </button>
           )}
           {etapa.url_arquivo_dwg && (
-            <a
-              href={etapa.url_arquivo_dwg}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => baixarArquivo(etapa.url_arquivo_dwg, `${etapa.chave}.dxf`)}
               className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 border border-white/20 rounded text-[10px] text-white/80 font-bold hover:bg-white/20"
+              title="Baixar DXF pra máquina"
             >
-              ✏️ Baixar DWG
-            </a>
+              ✏️ Baixar DXF
+            </button>
           )}
         </div>
       )}
