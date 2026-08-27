@@ -24,10 +24,13 @@ type Projeto = {
  * Filtra projetos por: código, cliente, tipo, status/fase.
  */
 export function PipelineKanbanClient({
-  projetos, isAdmin,
+  projetos, isAdmin, ctaNovoHref, ctaNovoLabel,
 }: {
   projetos: Projeto[]
   isAdmin: boolean
+  /** Se passado, mostra botão em destaque ao lado da busca */
+  ctaNovoHref?: string
+  ctaNovoLabel?: string
 }) {
   const [busca, setBusca] = useState('')
 
@@ -58,28 +61,38 @@ export function PipelineKanbanClient({
 
   return (
     <>
-      <div className="mb-4 relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">🔍</span>
-        <input
-          type="search"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por código, cliente, tipo, status, fase…"
-          className="w-full pl-10 pr-10 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-sol/40 focus:outline-none"
-        />
-        {busca && (
-          <button type="button" onClick={() => setBusca('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 text-xs px-2 py-1"
-            aria-label="Limpar busca">
-            ✕
-          </button>
-        )}
-        {busca && (
-          <p className="text-[10px] text-white/50 mt-2">
-            <strong className="text-white">{projetosFiltrados.length}</strong> de {projetos.length} projeto{projetos.length === 1 ? '' : 's'}
-          </p>
+      <div className="mb-4 flex flex-col sm:flex-row gap-2 items-stretch">
+        <div className="relative flex-1">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">🔍</span>
+          <input
+            type="search"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por código, cliente, tipo, status, fase…"
+            className="w-full h-12 pl-10 pr-10 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-sol/40 focus:outline-none"
+          />
+          {busca && (
+            <button type="button" onClick={() => setBusca('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 text-xs px-2 py-1"
+              aria-label="Limpar busca">
+              ✕
+            </button>
+          )}
+        </div>
+        {ctaNovoHref && (
+          <Link
+            href={ctaNovoHref}
+            className="h-12 inline-flex items-center justify-center gap-1 px-6 bg-sol text-noite font-black text-sm rounded-lg hover:bg-sol/90 shadow-lg shadow-sol/20 whitespace-nowrap"
+          >
+            {ctaNovoLabel || '+ Novo'}
+          </Link>
         )}
       </div>
+      {busca && (
+        <p className="text-[10px] text-white/50 mb-3">
+          <strong className="text-white">{projetosFiltrados.length}</strong> de {projetos.length} projeto{projetos.length === 1 ? '' : 's'} bate{projetos.length === 1 ? '' : 'm'} com &ldquo;{busca}&rdquo;
+        </p>
+      )}
 
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-3 min-w-min">

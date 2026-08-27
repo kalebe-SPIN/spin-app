@@ -82,41 +82,41 @@ export function KanbanTelhados({
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-black text-white">
-            CRM — <span className="text-sol">Prospecção de telhados</span>
-          </h1>
-          <p className="text-white/50 text-xs mt-0.5">
-            {busca
-              ? <><strong className="text-white">{telhadosFiltrados.length}</strong> de {telhados.length} bate{telhados.length === 1 ? '' : 'm'} com &ldquo;{busca}&rdquo;</>
-              : <>{telhados.length} telhado{telhados.length === 1 ? '' : 's'} · <strong>clica no card</strong> pra editar · <strong>arrasta</strong> pra mudar de fase</>}
-          </p>
+      <div className="mb-4">
+        <h1 className="text-xl md:text-2xl font-black text-white">
+          CRM — <span className="text-sol">Prospecção de telhados</span>
+        </h1>
+        <p className="text-white/50 text-xs mt-0.5">
+          {busca
+            ? <><strong className="text-white">{telhadosFiltrados.length}</strong> de {telhados.length} bate{telhados.length === 1 ? '' : 'm'} com &ldquo;{busca}&rdquo;</>
+            : <>{telhados.length} telhado{telhados.length === 1 ? '' : 's'} · <strong>clica no card</strong> pra editar · <strong>arrasta</strong> pra mudar de fase</>}
+        </p>
+      </div>
+
+      <div className="mb-4 flex flex-col sm:flex-row gap-2 items-stretch">
+        <div className="relative flex-1">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">🔍</span>
+          <input
+            type="search"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por apelido, cliente, telefone, endereço, bairro, cidade…"
+            className="w-full h-12 pl-10 pr-10 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-sol/40 focus:outline-none"
+          />
+          {busca && (
+            <button type="button" onClick={() => setBusca('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 text-xs px-2 py-1"
+              aria-label="Limpar busca">
+              ✕
+            </button>
+          )}
         </div>
         <button
           onClick={() => setNovoAberto(true)}
-          className="px-4 py-2 bg-sol text-noite-0 font-bold text-sm rounded-lg hover:bg-sol-claro shadow-lg shadow-sol/20"
+          className="h-12 inline-flex items-center justify-center gap-1 px-6 bg-sol text-noite font-black text-sm rounded-lg hover:bg-sol/90 shadow-lg shadow-sol/20 whitespace-nowrap"
         >
           + Novo telhado
         </button>
-      </div>
-
-      <div className="mb-4 relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">🔍</span>
-        <input
-          type="search"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por apelido, cliente, telefone, endereço, bairro, cidade…"
-          className="w-full pl-10 pr-10 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-sol/40 focus:outline-none"
-        />
-        {busca && (
-          <button type="button" onClick={() => setBusca('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 text-xs px-2 py-1"
-            aria-label="Limpar busca">
-            ✕
-          </button>
-        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">

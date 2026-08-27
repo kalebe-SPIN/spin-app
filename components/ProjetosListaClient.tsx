@@ -84,7 +84,7 @@ export function ProjetosListaClient({ grupos }: { grupos: Grupo[] }) {
 
   return (
     <>
-      <div className="mb-4 flex flex-col sm:flex-row gap-3 items-stretch">
+      <div className="mb-4 flex flex-col sm:flex-row gap-2 items-stretch">
         <div className="relative flex-1">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">🔍</span>
           <input
@@ -92,7 +92,7 @@ export function ProjetosListaClient({ grupos }: { grupos: Grupo[] }) {
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por código, cliente, CPF/CNPJ, UC, status, placa, inversor…"
-            className="w-full pl-10 pr-10 py-3 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-sol/40 focus:outline-none"
+            className="w-full h-12 pl-10 pr-10 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-sol/40 focus:outline-none"
           />
           {busca && (
             <button
@@ -105,12 +105,18 @@ export function ProjetosListaClient({ grupos }: { grupos: Grupo[] }) {
             </button>
           )}
         </div>
-        <div className="text-xs text-white/50 self-center whitespace-nowrap">
-          {filtrando
-            ? <><strong className="text-white">{totalProjetos}</strong> de {totalGeralProjetos} projeto{totalGeralProjetos !== 1 ? 's' : ''} · {totalClientes} cliente{totalClientes !== 1 ? 's' : ''}</>
-            : <><strong className="text-white">{totalGeralProjetos}</strong> projeto{totalGeralProjetos !== 1 ? 's' : ''} · {totalClientes} cliente{totalClientes !== 1 ? 's' : ''}</>}
-        </div>
+        <Link
+          href="/projetos/novo"
+          className="h-12 inline-flex items-center justify-center gap-1 px-6 bg-sol text-noite font-black text-sm rounded-lg hover:bg-sol/90 shadow-lg shadow-sol/20 whitespace-nowrap"
+        >
+          + Novo projeto
+        </Link>
       </div>
+      <p className="text-xs text-white/50 mb-3">
+        {filtrando
+          ? <><strong className="text-white">{totalProjetos}</strong> de {totalGeralProjetos} projeto{totalGeralProjetos !== 1 ? 's' : ''} · {totalClientes} cliente{totalClientes !== 1 ? 's' : ''}</>
+          : <><strong className="text-white">{totalGeralProjetos}</strong> projeto{totalGeralProjetos !== 1 ? 's' : ''} · {totalClientes} cliente{totalClientes !== 1 ? 's' : ''}</>}
+      </p>
 
       {gruposFiltrados.length > 0 ? (
         <div className="space-y-4">

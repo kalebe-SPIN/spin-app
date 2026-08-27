@@ -43,27 +43,24 @@ export default async function PipelinePage() {
   return (
     <main className="min-h-screen p-4 md:p-6">
       <div className="max-w-[1600px] mx-auto">
-        <header className="mb-6 flex items-start justify-between gap-3">
-          <div>
-            <Link href="/crm" className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
-              ← CRM
-            </Link>
-            <h1 className="text-2xl md:text-3xl font-black text-white">
-              🎯 Pipeline Comercial
-            </h1>
-            <p className="text-white/60 mt-1 text-xs">
-              {isAdmin ? 'Todos os projetos por fase' : 'Seus projetos por fase'} — {projetos?.length || 0} no total
-            </p>
-          </div>
-          <Link
-            href="/projetos/novo"
-            className="px-4 py-2 bg-sol text-noite font-bold rounded-lg text-sm hover:bg-sol/90"
-          >
-            + Novo
+        <header className="mb-4">
+          <Link href="/crm" className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
+            ← CRM
           </Link>
+          <h1 className="text-2xl md:text-3xl font-black text-white">
+            🎯 Pipeline Comercial
+          </h1>
+          <p className="text-white/60 mt-1 text-xs">
+            {isAdmin ? 'Todos os projetos por fase' : 'Seus projetos por fase'} — {projetos?.length || 0} no total
+          </p>
         </header>
 
-        <PipelineKanbanClient projetos={(projetos || []) as any} isAdmin={isAdmin} />
+        <PipelineKanbanClient
+          projetos={(projetos || []) as any}
+          isAdmin={isAdmin}
+          ctaNovoHref="/projetos/novo"
+          ctaNovoLabel="+ Novo projeto"
+        />
 
         <div className="mt-4 text-[10px] text-white/40">
           💡 Clique num card pra abrir o projeto e mudar de etapa. ✏ Editar leva ao formulário do projeto.
