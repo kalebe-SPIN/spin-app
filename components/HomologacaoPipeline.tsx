@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { atualizarEtapaAction } from '@/app/admin/homologacoes/actions'
-import { baixarArquivo } from '@/lib/downloads'
+import { baixarArquivo, nomearArquivo } from '@/lib/downloads'
 
 type Etapa = {
   id: string
@@ -56,7 +56,7 @@ const STATUS_CONFIG: Record<string, { emoji: string; classe: string; label: stri
   bloqueado:    { emoji: '🔒', classe: 'bg-white/5 border-white/10 text-white/40', label: 'Bloqueado' },
 }
 
-export function HomologacaoPipeline({ etapas, projetoId }: { etapas: Etapa[]; projetoId: string }) {
+export function HomologacaoPipeline({ etapas, projetoId, clienteNome }: { etapas: Etapa[]; projetoId: string; clienteNome?: string | null }) {
   return (
     <div className="space-y-3">
       {etapas.map((etapa, idx) => (
@@ -65,13 +65,14 @@ export function HomologacaoPipeline({ etapas, projetoId }: { etapas: Etapa[]; pr
           etapa={etapa}
           projetoId={projetoId}
           eUltima={idx === etapas.length - 1}
+          clienteNome={clienteNome}
         />
       ))}
     </div>
   )
 }
 
-function EtapaCard({ etapa, projetoId, eUltima }: { etapa: Etapa; projetoId: string; eUltima: boolean }) {
+function EtapaCard({ etapa, projetoId, eUltima, clienteNome }: { etapa: Etapa; projetoId: string; eUltima: boolean; clienteNome?: string | null }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [expandido, setExpandido] = useState(false)
@@ -132,9 +133,9 @@ function EtapaCard({ etapa, projetoId, eUltima }: { etapa: Etapa; projetoId: str
             {/* Arquivos gerados */}
             {(etapa.url_arquivo_pdf || etapa.url_arquivo_dwg || etapa.url_arquivo_svg) && (
               <div className="flex flex-wrap gap-1.5 mb-3">
-                {etapa.url_arquivo_pdf && <ArquivoBadge href={etapa.url_arquivo_pdf} label="📄 PDF" />}
-                {etapa.url_arquivo_dwg && <ArquivoBadge href={etapa.url_arquivo_dwg} label="✏️ DWG" />}
-                {etapa.url_arquivo_svg && <ArquivoBadge href={etapa.url_arquivo_svg} label="🖼️ SVG" />}
+                {etapa.url_arquivo_pdf && <ArquivoBadge href={etapa.url_arquivo_pdf} label="📄 PDF" nomeArquivo={nomearArquivo({ cliente: clienteNome, finalidade: etapa.chave, tipo: 'PDF' })} />}
+                {etapa.url_arquivo_dwg && <ArquivoBadge href={etapa.url_arquivo_dwg} label="✏️ DXF" nomeArquivo={nomearArquivo({ cliente: clienteNome, finalidade: etapa.chave, tipo: 'DXF' })} />}
+                {etapa.url_arquivo_svg && <ArquivoBadge href={etapa.url_arquivo_svg} label="🖼️ SVG" nomeArquivo={nomearArquivo({ cliente: clienteNome, finalidade: etapa.chave, tipo: 'SVG' })} />}
               </div>
             )}
 
@@ -222,11 +223,11 @@ function EtapaCard({ etapa, projetoId, eUltima }: { etapa: Etapa; projetoId: str
   )
 }
 
-function ArquivoBadge({ href, label }: { href: string; label: string }) {
+function ArquivoBadge({ href, label, nomeArquivo }: { href: string; label: string; nomeArquivo?: string }) {
   return (
     <button
       type="button"
-      onClick={() => baixarArquivo(href)}
+      onClick={() => baixarArquivo(href, nomeArquivo)}
       className="text-[10px] px-2 py-0.5 bg-white/5 border border-white/10 rounded text-white/70 hover:bg-white/10"
       title="Baixar pra máquina"
     >

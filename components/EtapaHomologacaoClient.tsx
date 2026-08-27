@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { atualizarEtapaHomologacaoAction } from '@/app/homologacoes/[id]/actions'
-import { baixarArquivo } from '@/lib/downloads'
+import { baixarArquivo, nomearArquivo } from '@/lib/downloads'
 
 const OPCOES_STATUS = [
   { valor: 'pendente',     label: '⏳ Pendente' },
@@ -13,10 +13,12 @@ const OPCOES_STATUS = [
 ]
 
 export function EtapaHomologacaoClient({
-  etapa, statusInfo,
+  etapa, statusInfo, clienteNome,
 }: {
   etapa: any
   statusInfo: Record<string, { label: string; cor: string; classe: string; emoji: string }>
+  /** Nome do cliente pra montar nome do arquivo baixado */
+  clienteNome?: string | null
 }) {
   const [isPending, startTransition] = useTransition()
   const [obsAberto, setObsAberto] = useState(false)
@@ -80,7 +82,7 @@ export function EtapaHomologacaoClient({
           {etapa.url_arquivo_pdf && (
             <button
               type="button"
-              onClick={() => baixarArquivo(etapa.url_arquivo_pdf, `${etapa.chave}.pdf`)}
+              onClick={() => baixarArquivo(etapa.url_arquivo_pdf, nomearArquivo({ cliente: clienteNome, finalidade: etapa.chave, tipo: 'PDF' }))}
               className="inline-flex items-center gap-1 px-2 py-1 bg-verde/20 border border-verde/40 rounded text-[10px] text-verde font-bold hover:bg-verde/30"
               title="Baixar PDF pra máquina"
             >
@@ -90,7 +92,7 @@ export function EtapaHomologacaoClient({
           {etapa.url_arquivo_svg && (
             <button
               type="button"
-              onClick={() => baixarArquivo(etapa.url_arquivo_svg, `${etapa.chave}.svg`)}
+              onClick={() => baixarArquivo(etapa.url_arquivo_svg, nomearArquivo({ cliente: clienteNome, finalidade: etapa.chave, tipo: 'SVG' }))}
               className="inline-flex items-center gap-1 px-2 py-1 bg-weg-azul/20 border border-weg-azul/40 rounded text-[10px] text-weg-azul font-bold hover:bg-weg-azul/30"
               title="Baixar SVG pra máquina"
             >
@@ -100,7 +102,7 @@ export function EtapaHomologacaoClient({
           {etapa.url_arquivo_dwg && (
             <button
               type="button"
-              onClick={() => baixarArquivo(etapa.url_arquivo_dwg, `${etapa.chave}.dxf`)}
+              onClick={() => baixarArquivo(etapa.url_arquivo_dwg, nomearArquivo({ cliente: clienteNome, finalidade: etapa.chave, tipo: 'DXF' }))}
               className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 border border-white/20 rounded text-[10px] text-white/80 font-bold hover:bg-white/20"
               title="Baixar DXF pra máquina"
             >

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { salvarOrcamentoAction, marcarPropostaEnviadaAction } from '@/app/projetos/[id]/orcamento/actions'
 import { PropostaPDFTemplate } from './PropostaPDFTemplate'
+import { nomearArquivo } from '@/lib/downloads'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
 
 type Props = {
@@ -51,8 +52,12 @@ export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa }: P
         pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
 
-      // 1) Baixar automaticamente
-      const nomeArquivo = `Proposta-${projeto.codigo}-${projeto.cliente_razao_social.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
+      // 1) Baixar automaticamente — padrão NOME_FINALIDADE_TIPO.ext
+      const nomeArquivo = nomearArquivo({
+        cliente: projeto.cliente_razao_social,
+        finalidade: 'PROPOSTA_COMERCIAL',
+        tipo: 'PDF',
+      })
       pdf.save(nomeArquivo)
 
       // 2) Upload no Supabase Storage

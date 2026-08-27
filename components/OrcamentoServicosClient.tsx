@@ -4,6 +4,7 @@ import { useState, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { getInfoTipo, type TipoItem } from '@/lib/tipos-projeto'
 import { formatarCpfCnpj, formatarTelefone } from '@/lib/formatters'
+import { nomearArquivo } from '@/lib/downloads'
 
 type Item = {
   id: string
@@ -94,7 +95,11 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
       const w = 210
       const h = (canvas.height * w) / canvas.width
       pdf.addImage(imgData, 'PNG', 0, 0, w, h > 297 ? 297 : h, undefined, 'FAST')
-      pdf.save(`proposta-${projeto.codigo || 'servico'}-${Date.now()}.pdf`)
+      pdf.save(nomearArquivo({
+        cliente: projeto.cliente_razao_social,
+        finalidade: 'PROPOSTA_SERVICOS',
+        tipo: 'PDF',
+      }))
     } catch (err: any) {
       setErroPdf(err?.message || 'Falha ao gerar PDF')
     } finally {

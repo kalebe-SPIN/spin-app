@@ -50,3 +50,37 @@ function inferirNomeDaUrl(url: string): string {
     return ''
   }
 }
+
+/**
+ * Nomenclatura padrão dos arquivos gerados pela Spin.
+ * Kalebe 2026-08-27: formato `NOME_FINALIDADE_TIPO.ext`
+ * Exemplo: KALEBE_DIAGRAMA_UNIFILAR_PDF.pdf
+ *
+ * Regras:
+ *  - Uppercase sem acentos
+ *  - Espaços/pontuação viram underscore
+ *  - Só primeiro nome (ou razão social truncada) pra caber
+ *  - `tipo` deve ser a extensão em UPPER (PDF, DXF, SVG, XLSX, ZIP…)
+ */
+export function nomearArquivo(input: {
+  cliente: string | null | undefined
+  finalidade: string
+  tipo: string
+}): string {
+  const nomeCliente = normalizarNome(input.cliente || 'CLIENTE')
+  const finalidade = normalizarNome(input.finalidade)
+  const tipoUpper = String(input.tipo || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const ext = tipoUpper.toLowerCase() || 'bin'
+  return `${nomeCliente}_${finalidade}_${tipoUpper}.${ext}`
+}
+
+/** Remove acentos, uppercase, colapsa não-alfanumérico em _ */
+function normalizarNome(s: string): string {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')       // tira diacríticos
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_') // não-letra vira _
+    .replace(/^_+|_+$/g, '')      // trim de _
+    .replace(/_+/g, '_')          // colapsa _ duplos
+}

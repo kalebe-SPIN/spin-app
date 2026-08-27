@@ -4,6 +4,7 @@ import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PropostaVEPDFTemplate } from './PropostaVEPDFTemplate'
+import { nomearArquivo } from '@/lib/downloads'
 import { salvarUrlPropostaVeAction } from '@/app/projetos/[id]/ve/proposta/actions'
 
 type Props = {
@@ -46,7 +47,11 @@ export function PropostaVEClient({ projeto, selecao, configEmpresa }: Props) {
         pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
 
-      const nomeArquivo = `Proposta-VE-${projeto.codigo}-${(projeto.cliente_razao_social || '').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
+      const nomeArquivo = nomearArquivo({
+        cliente: projeto.cliente_razao_social,
+        finalidade: 'PROPOSTA_VE',
+        tipo: 'PDF',
+      })
       pdf.save(nomeArquivo)
 
       const pdfBlob = pdf.output('blob')
