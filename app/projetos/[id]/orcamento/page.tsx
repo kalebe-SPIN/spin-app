@@ -34,6 +34,15 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
   const tipos = (itensProjeto || []).map((i: any) => i.tipo as TipoItem)
   const soServicos = apenasServicos(tipos)
 
+  // Kalebe 2026-08-27: quando o projeto é só ve_recarga (com config salva),
+  // manda pro template VE dedicado (dark manifesto com fichas técnicas),
+  // não pro genérico simplificado.
+  const tiposUnicos = Array.from(new Set(tipos))
+  const soVeRecarga = tiposUnicos.length === 1 && tiposUnicos[0] === 've_recarga'
+  if (soVeRecarga && projeto.ve_recarga_selecionada?.equipamentos?.length) {
+    redirect(`/projetos/${projetoId}/ve/proposta`)
+  }
+
   if (soServicos && itensProjeto && itensProjeto.length > 0) {
     // Projeto so servico — renderiza fluxo simplificado
     const { data: configEmpresa } = await supabase
