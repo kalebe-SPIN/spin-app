@@ -1,11 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import {
-  FASES_ORDEM, FASE_DE_STATUS, INFO_STATUS, INFO_FASE,
-  type StatusProjeto, type FasePipeline,
-} from '@/lib/projeto-pipeline'
-import { PipelineCardActions } from '@/components/PipelineCardActions'
+import { PipelineKanbanClient } from '@/components/PipelineKanbanClient'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -44,19 +40,6 @@ export default async function PipelinePage() {
 
   const { data: projetos } = await query
 
-  // Agrupa por fase
-  const porFase: Record<FasePipeline, any[]> = {
-    projeto: [], negocio: [], venda: [], execucao: [], pos_venda: [], perdido: [],
-  }
-
-  for (const p of projetos || []) {
-    const fase = FASE_DE_STATUS[p.status as StatusProjeto] || 'projeto'
-    porFase[fase].push(p)
-  }
-
-  // Fase perdido só mostra se tiver itens
-  const fasesVisiveis = FASES_ORDEM.filter((f) => f !== 'perdido' || porFase[f].length > 0)
-
   return (
     <main className="min-h-screen p-4 md:p-6">
       <div className="max-w-[1600px] mx-auto">
@@ -80,89 +63,7 @@ export default async function PipelinePage() {
           </Link>
         </header>
 
-        {/* Kanban horizontal — scroll infinito lateral */}
-        <div className="overflow-x-auto pb-4">
-          <div className="flex gap-3 min-w-min">
-            {fasesVisiveis.map((fase) => {
-              const info = INFO_FASE[fase]
-              const items = porFase[fase]
-              return (
-                <div
-                  key={fase}
-                  className={`flex-shrink-0 w-72 rounded-xl border ${info.bgClass} ${info.borderClass}`}
-                >
-                  {/* Header da coluna */}
-                  <div className="p-3 border-b border-white/10">
-                    <div className="flex items-center justify-between">
-                      <h2 className={`text-sm font-black`}>{info.label}</h2>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full bg-white/10 text-white`}>
-                        {items.length}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-white/50 mt-0.5">{info.descricao}</p>
-                  </div>
-
-                  {/* Cards */}
-                  <div className="p-2 space-y-2 max-h-[70vh] overflow-y-auto">
-                    {items.length === 0 && (
-                      <p className="text-[10px] text-white/30 text-center py-6 italic">
-                        Nada nessa fase.
-                      </p>
-                    )}
-                    {items.map((p) => {
-                      const statusInfo = INFO_STATUS[p.status as StatusProjeto] || INFO_STATUS.rascunho
-                      const dias = p.status_atualizado_em
-                        ? Math.floor((Date.now() - new Date(p.status_atualizado_em).getTime()) / 86400000)
-                        : null
-                      return (
-                        <div
-                          key={p.id}
-                          className="block p-3 bg-noite/60 border border-white/10 rounded-lg hover:border-sol/40 hover:bg-noite/80 transition"
-                        >
-                          <Link href={`/projetos/${p.id}`} className="block">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="text-xs font-bold text-white truncate flex-1">
-                                {p.cliente_razao_social}
-                              </p>
-                              <span className="text-sm">{statusInfo.emoji}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[9px]">
-                              <span className="text-white/40">{p.codigo}</span>
-                              {p.tipo_projeto && (
-                                <>
-                                  <span className="text-white/20">·</span>
-                                  <span className="text-white/40 truncate">{p.tipo_projeto}</span>
-                                </>
-                              )}
-                            </div>
-                            <div className="flex items-center justify-between mt-1.5">
-                              <span className={`text-[9px] uppercase font-bold ${statusInfo.cor}`}>
-                                {statusInfo.label}
-                              </span>
-                              {dias !== null && dias > 0 && (
-                                <span className={`text-[9px] ${
-                                  dias > 7 ? 'text-coral' : dias > 3 ? 'text-sol' : 'text-white/40'
-                                }`}>
-                                  {dias}d
-                                </span>
-                              )}
-                            </div>
-                          </Link>
-                          <PipelineCardActions
-                            projetoId={p.id}
-                            codigo={p.codigo}
-                            clienteNome={p.cliente_razao_social || 'sem nome'}
-                            podeExcluir={isAdmin}
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <PipelineKanbanClient projetos={(projetos || []) as any} isAdmin={isAdmin} />
 
         <div className="mt-4 text-[10px] text-white/40">
           💡 Clique num card pra abrir o projeto e mudar de etapa. ✏ Editar leva ao formulário do projeto.

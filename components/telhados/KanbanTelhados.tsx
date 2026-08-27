@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   moverTelhadoFaseAction,
@@ -56,7 +56,20 @@ export function KanbanTelhados({
   const [novoAberto, setNovoAberto] = useState(false)
   const [editando, setEditando] = useState<TelhadoCard | null>(null)
   const [colunaHover, setColunaHover] = useState<TelhadoFase | null>(null)
+  const [busca, setBusca] = useState('')
   const [, startTransition] = useTransition()
+
+  const telhadosFiltrados = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    if (!q) return telhados
+    return telhados.filter((t) => {
+      const alvo = [
+        t.apelido, t.cliente_nome, t.cliente_telefone,
+        t.endereco, t.bairro, t.cidade,
+      ].filter(Boolean).join(' ').toLowerCase()
+      return alvo.includes(q)
+    })
+  }, [telhados, busca])
 
   async function moverPorDrop(telhadoId: string, novaFase: TelhadoFase) {
     // Otimista: já mostra loading; refresh depois
@@ -75,7 +88,9 @@ export function KanbanTelhados({
             CRM — <span className="text-sol">Prospecção de telhados</span>
           </h1>
           <p className="text-white/50 text-xs mt-0.5">
-            {telhados.length} telhado{telhados.length === 1 ? '' : 's'} · <strong>clica no card</strong> pra editar · <strong>arrasta</strong> pra mudar de fase
+            {busca
+              ? <><strong className="text-white">{telhadosFiltrados.length}</strong> de {telhados.length} bate{telhados.length === 1 ? '' : 'm'} com &ldquo;{busca}&rdquo;</>
+              : <>{telhados.length} telhado{telhados.length === 1 ? '' : 's'} · <strong>clica no card</strong> pra editar · <strong>arrasta</strong> pra mudar de fase</>}
           </p>
         </div>
         <button
@@ -86,9 +101,27 @@ export function KanbanTelhados({
         </button>
       </div>
 
+      <div className="mb-4 relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">🔍</span>
+        <input
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por apelido, cliente, telefone, endereço, bairro, cidade…"
+          className="w-full pl-10 pr-10 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/30 focus:border-sol/40 focus:outline-none"
+        />
+        {busca && (
+          <button type="button" onClick={() => setBusca('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 text-xs px-2 py-1"
+            aria-label="Limpar busca">
+            ✕
+          </button>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {COLUNAS.map((col) => {
-          const cardsDaColuna = telhados.filter((t) => t.fase === col.fase)
+          const cardsDaColuna = telhadosFiltrados.filter((t) => t.fase === col.fase)
           const emHover = colunaHover === col.fase
           return (
             <div
