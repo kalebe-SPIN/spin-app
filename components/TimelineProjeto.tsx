@@ -2,15 +2,18 @@ import Link from 'next/link'
 
 // path = sub-rota relativa ao /projetos/[id]/. String vazia = fica na tela do projeto.
 const ETAPAS_FV = [
-  { chave: 'cliente',   label: 'Cliente',   statusApos: 'rascunho',            ordem: 0, path: 'editar'    },
-  { chave: 'fatura',    label: 'Fatura',    statusApos: 'fatura_analisada',    ordem: 1, path: 'fatura'    },
-  { chave: 'telhado',   label: 'Telhado',   statusApos: 'telhado_preenchido',  ordem: 2, path: 'telhado'   },
-  { chave: 'padrao',    label: 'Padrão',    statusApos: 'dimensionado',        ordem: 3, path: 'padrao'    },
-  { chave: 'kit',       label: 'Kit',       statusApos: 'kit_selecionado',     ordem: 4, path: 'kit'       },
-  { chave: 'lista_ca',  label: 'Lista CA',  statusApos: 'lista_ca_confirmada', ordem: 5, path: 'lista-ca'  },
-  { chave: 'orcamento', label: 'Orçamento', statusApos: 'orcamento_gerado',    ordem: 6, path: 'orcamento' },
-  { chave: 'proposta',  label: 'Proposta',  statusApos: 'proposta_enviada',    ordem: 7, path: 'orcamento' },
-  { chave: 'fechado',   label: 'Fechado',   statusApos: 'aceito',              ordem: 8, path: ''          },
+  { chave: 'cliente',      label: 'Cliente',      statusApos: 'rascunho',            ordem: 0, path: 'editar'                },
+  { chave: 'fatura',       label: 'Fatura',       statusApos: 'fatura_analisada',    ordem: 1, path: 'fatura'                },
+  { chave: 'telhado',      label: 'Telhado',      statusApos: 'telhado_preenchido',  ordem: 2, path: 'telhado'               },
+  { chave: 'padrao',       label: 'Padrão',       statusApos: 'dimensionado',        ordem: 3, path: 'padrao'                },
+  { chave: 'kit',          label: 'Kit',          statusApos: 'kit_selecionado',     ordem: 4, path: 'kit'                   },
+  { chave: 'lista_ca',     label: 'Lista CA',     statusApos: 'lista_ca_confirmada', ordem: 5, path: 'lista-ca'              },
+  { chave: 'orcamento',    label: 'Orçamento',    statusApos: 'orcamento_gerado',    ordem: 6, path: 'orcamento'             },
+  { chave: 'proposta',     label: 'Proposta',     statusApos: 'proposta_enviada',    ordem: 7, path: 'orcamento'             },
+  { chave: 'fechado',      label: 'Fechado',      statusApos: 'aceito',              ordem: 8, path: ''                      },
+  { chave: 'homologacao',  label: 'Homologação',  statusApos: 'em_homologacao',      ordem: 9, path: ''                      },
+  { chave: 'instalacao',   label: 'Instalação',   statusApos: 'em_execucao',         ordem: 10, path: ''                     },
+  { chave: 'pos_venda',    label: 'Pós-venda',    statusApos: 'ativo_pos_venda',     ordem: 11, path: ''                     },
 ] as const
 
 // Timeline simplificada pra projetos SÓ serviço (sem fatura/telhado/padrao/kit)
@@ -30,7 +33,14 @@ const STATUS_ORDEM: Record<string, number> = {
   lista_ca_confirmada: 5,
   orcamento_gerado: 6,
   proposta_enviada: 7,
+  negociando: 7,
+  em_fechamento: 7,
   aceito: 8,
+  vendido: 8,
+  em_homologacao: 9,
+  em_execucao: 10,
+  instalado: 10,
+  ativo_pos_venda: 11,
   recusado: -1,
   cancelado: -1,
   expirado: -1,
@@ -62,7 +72,14 @@ const STATUS_INFO_LOCAL: Record<string, { label: string; cor: string; bg: string
   lista_ca_confirmada: { label: 'Lista CA OK',        cor: 'text-weg-azul',    bg: 'bg-weg-azul/10',  borda: 'border-weg-azul/30' },
   orcamento_gerado:    { label: 'Orçamento pronto',   cor: 'text-sol',         bg: 'bg-sol/10',       borda: 'border-sol/40' },
   proposta_enviada:    { label: 'Proposta enviada',   cor: 'text-sol',         bg: 'bg-sol/10',       borda: 'border-sol/40' },
+  negociando:          { label: 'Negociando',         cor: 'text-sol',         bg: 'bg-sol/10',       borda: 'border-sol/40' },
+  em_fechamento:       { label: 'Em fechamento',      cor: 'text-sol',         bg: 'bg-sol/10',       borda: 'border-sol/40' },
   aceito:              { label: 'Aceito ✓',           cor: 'text-verde',       bg: 'bg-verde/10',     borda: 'border-verde/40' },
+  vendido:             { label: 'Vendido ✓',          cor: 'text-verde',       bg: 'bg-verde/10',     borda: 'border-verde/40' },
+  em_homologacao:      { label: 'Em homologação',     cor: 'text-sol',         bg: 'bg-sol/10',       borda: 'border-sol/40' },
+  em_execucao:         { label: 'Em instalação',      cor: 'text-sol',         bg: 'bg-sol/10',       borda: 'border-sol/40' },
+  instalado:           { label: 'Instalado ✓',        cor: 'text-verde',       bg: 'bg-verde/10',     borda: 'border-verde/40' },
+  ativo_pos_venda:     { label: 'Pós-venda ativo',    cor: 'text-verde',       bg: 'bg-verde/10',     borda: 'border-verde/40' },
   recusado:            { label: 'Recusado',           cor: 'text-coral',       bg: 'bg-coral/10',     borda: 'border-coral/40' },
   cancelado:           { label: 'Cancelado',          cor: 'text-white/40',    bg: 'bg-white/5',      borda: 'border-white/10' },
   expirado:            { label: 'Expirado',           cor: 'text-coral',       bg: 'bg-coral/10',     borda: 'border-coral/40' },
@@ -83,7 +100,12 @@ export function TimelineProjeto({
   const ETAPAS = soServicos ? ETAPAS_SERVICO : ETAPAS_FV
   const mapaOrdem = soServicos ? STATUS_ORDEM_SERVICO : STATUS_ORDEM
   const ordemAtual = mapaOrdem[status] ?? 0
-  const encerrado = ['aceito', 'recusado', 'cancelado', 'expirado'].includes(status)
+  // 'encerrado' = fluxo comercial terminou (não tem 'próxima etapa comercial').
+  // Recusado/cancelado/expirado saem do fluxo. Aceito/vendido apenas entram no
+  // fluxo pós-venda (homologação → execução → pós-venda), então NÃO ficam
+  // encerrados — a timeline continua avançando pela homologação/instalação.
+  const encerrado = ['recusado', 'cancelado', 'expirado'].includes(status)
+  const totalEtapas = soServicos ? 4 : ETAPAS_FV.length
 
   const infoStatus = STATUS_INFO_LOCAL[status] || STATUS_INFO_LOCAL.rascunho
   const proxima = ETAPAS.find((e) => e.ordem === ordemAtual + 1)
@@ -119,7 +141,7 @@ export function TimelineProjeto({
       {/* Barra de progresso — clicável quando projetoId passado */}
       {!compacto && (
         <div className="flex items-center gap-1 mt-1">
-          {ETAPAS.slice(0, soServicos ? 4 : 8).map((etapa) => {
+          {ETAPAS.slice(0, totalEtapas).map((etapa) => {
             const concluida = etapa.ordem <= ordemAtual && ordemAtual >= 0
             const atual = etapa.ordem === ordemAtual + 1 && !encerrado
             const posterior = etapa.ordem > ordemAtual + 1
@@ -175,7 +197,7 @@ export function TimelineProjeto({
 
       {compacto && (
         <div className="flex items-center gap-0.5">
-          {ETAPAS.slice(0, 8).map((etapa) => {
+          {ETAPAS.slice(0, totalEtapas).map((etapa) => {
             const concluida = etapa.ordem <= ordemAtual && ordemAtual >= 0
             const atual = etapa.ordem === ordemAtual + 1 && !encerrado
             return (

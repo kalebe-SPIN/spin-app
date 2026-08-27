@@ -108,6 +108,55 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           </div>
         </header>
 
+        {/* Dados CELESC — Kalebe pediu 2026-08-27: protocolo e ART/TRT
+            visíveis no card do projeto assim que a homologação é aberta.
+            Sistema já injeta esses valores no prompt do diagrama. */}
+        {homologacao?.id && (
+          <div className="mb-6 p-4 bg-white/[0.02] border border-white/10 rounded-xl">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm">🏛️</span>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                Dados CELESC / Homologação
+              </h3>
+              <Link
+                href={`/homologacoes/${homologacao.id}`}
+                className="ml-auto text-[10px] text-sol hover:underline"
+              >
+                Abrir homologação →
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              <DadoCelesc
+                rot="Protocolo CELESC"
+                val={homologacao.protocolo_celesc}
+                falta="Preencha em /homologacoes"
+              />
+              <DadoCelesc
+                rot="TRT do projeto (ART)"
+                val={homologacao.trt_projeto_numero}
+                falta="Emita/anexe em /homologacoes"
+              />
+              <DadoCelesc
+                rot="Data solicitação"
+                val={homologacao.data_solicitacao
+                  ? new Date(homologacao.data_solicitacao).toLocaleDateString('pt-BR')
+                  : null}
+                falta="—"
+              />
+              <DadoCelesc
+                rot="Data aprovação"
+                val={homologacao.data_aprovacao
+                  ? new Date(homologacao.data_aprovacao).toLocaleDateString('pt-BR')
+                  : null}
+                falta="aguardando"
+              />
+            </div>
+            <p className="text-[10px] text-white/40 mt-3 italic">
+              💡 Esses valores são injetados automaticamente no carimbo do diagrama unifilar/trifilar quando você gerar o desenho.
+            </p>
+          </div>
+        )}
+
         {/* Ações rápidas contextuais ao status atual */}
         <AcoesRapidasCard
           projetoId={projeto.id}
@@ -395,6 +444,20 @@ function Info({ label, value }: { label: string; value: string }) {
     <div className="grid grid-cols-3 gap-3 text-sm">
       <span className="text-white/40">{label}</span>
       <span className="col-span-2 text-white font-medium">{value}</span>
+    </div>
+  )
+}
+
+function DadoCelesc({ rot, val, falta }: { rot: string; val: string | null | undefined; falta: string }) {
+  const preenchido = val && String(val).trim() !== ''
+  return (
+    <div className={`p-3 rounded-lg border ${preenchido ? 'bg-verde/5 border-verde/20' : 'bg-sol/5 border-sol/30'}`}>
+      <p className="text-[9px] uppercase tracking-wider text-white/50 font-bold mb-1">{rot}</p>
+      {preenchido ? (
+        <p className="text-sm font-bold text-white break-words">{val}</p>
+      ) : (
+        <p className="text-xs text-sol italic">⚠ {falta}</p>
+      )}
     </div>
   )
 }

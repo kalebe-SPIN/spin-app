@@ -437,7 +437,7 @@ export async function montarPromptDiagramaAction(
   // Se ainda não tem homologação, os campos vão como "a preencher".
   const { data: homologacao } = await supabaseAdmin
     .from('homologacoes')
-    .select('id, protocolo_celesc, data_solicitacao, data_aprovacao, data_prevista_troca_medidor, eletrotecnico_id')
+    .select('id, protocolo_celesc, data_solicitacao, data_aprovacao, data_prevista_troca_medidor, eletrotecnico_id, trt_projeto_numero, trt_projeto_data_emissao')
     .eq('projeto_id', projetoId)
     .maybeSingle()
 
@@ -703,7 +703,12 @@ function montarRelatorioTecnico(args: {
   const protocoloCelesc = homologacao?.protocolo_celesc || '⚠ preencher em /homologacoes'
   const dataSolicit = homologacao?.data_solicitacao ? fmtDataBr(homologacao.data_solicitacao) : null
   const dataAprov = homologacao?.data_aprovacao ? fmtDataBr(homologacao.data_aprovacao) : null
-  const artNum = projeto.art_numero || configEmpresa?.rt_art_padrao || '⚠ preencher'
+  // ART/TRT: prioriza o TRT do projeto na homologação (fonte oficial),
+  // fallback pra art_numero do projeto (legado) e finalmente configEmpresa.
+  const artNum = homologacao?.trt_projeto_numero
+    || projeto.art_numero
+    || configEmpresa?.rt_art_padrao
+    || '⚠ preencher em /homologacoes'
   const rtNome = eletrotecnicoNome || 'Kalebe Grün'
 
   partes.push(
