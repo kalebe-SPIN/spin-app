@@ -39,18 +39,26 @@ const COLUNAS: { fase: TelhadoFase; titulo: string; sub: string; cor: string; ho
 
 const DRAG_MIME = 'application/x-telhado-id'
 
+type Vendedor = { id: string; nome_completo: string; role: string }
+
 export function KanbanTelhados({
   telhados,
   bucketPublicUrl,
   parametrosLimpeza,
   cidades,
   empresa,
+  vendedores,
+  ehAdmin,
+  userIdAtual,
 }: {
   telhados: TelhadoCard[]
   bucketPublicUrl: string
   parametrosLimpeza?: any
   cidades?: Array<{ id: string; cidade: string; uf: string; km: number }>
   empresa?: DadosEmpresa | null
+  vendedores?: Vendedor[]
+  ehAdmin?: boolean
+  userIdAtual?: string
 }) {
   const router = useRouter()
   const [novoAberto, setNovoAberto] = useState(false)
@@ -174,13 +182,22 @@ export function KanbanTelhados({
         })}
       </div>
 
-      {novoAberto && <NovoTelhadoModal onFechar={() => setNovoAberto(false)} />}
+      {novoAberto && (
+        <NovoTelhadoModal
+          onFechar={() => setNovoAberto(false)}
+          vendedores={vendedores}
+          ehAdmin={ehAdmin}
+          userIdAtual={userIdAtual}
+        />
+      )}
       {editando && (
         <EditarTelhadoModal
           telhado={editando}
           bucketPublicUrl={bucketPublicUrl}
           parametrosLimpeza={parametrosLimpeza}
           cidades={cidades}
+          vendedores={vendedores}
+          ehAdmin={ehAdmin}
           propostaAnterior={editando.proposta_dados && editando.proposta_valor
             ? {
                 entradas: editando.proposta_dados.entradas,

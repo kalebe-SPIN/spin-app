@@ -47,12 +47,20 @@ export async function criarTelhadoAction(input: {
   area_util_m2?: number | null
   geracao_anual_kwh?: number | null
   imagery_quality?: 'HIGH' | 'MEDIUM' | 'LOW' | null
+  /** Kalebe 2026-08-27: admin cadastra em nome de outro vendedor.
+   *  Se ausente, usa o userId de quem clicou. */
+  vendedor_id_override?: string | null
 }) {
   const check = await verificarPermissao()
   if ('erro' in check) return { erro: check.erro }
 
   if (!input.endereco?.trim()) return { erro: 'Endereço obrigatório' }
   if (!input.foto_url?.trim()) return { erro: 'Foto do telhado obrigatória' }
+
+  // Só admin pode setar vendedor_id diferente do próprio.
+  const vendedorId = (check.role === 'admin' && input.vendedor_id_override)
+    ? input.vendedor_id_override
+    : check.userId
 
   const solarCapturado = input.google_max_placas != null
   const qtdPlacas = input.qtd_placas_estimada && input.qtd_placas_estimada > 0
@@ -62,7 +70,7 @@ export async function criarTelhadoAction(input: {
 
   const supabase = createClient()
   const { data, error } = await supabase.from('telhados').insert({
-    vendedor_id: check.userId,
+    vendedor_id: vendedorId,
     fase: 'prospeccao',
     latitude: input.latitude ?? null,
     longitude: input.longitude ?? null,
@@ -121,6 +129,9 @@ export async function editarTelhadoAction(telhadoId: string, patch: {
   cliente_telefone?: string | null
   cliente_email?: string | null
   observacoes?: string | null
+  /** Só admin — reassocia o telhado a outro vendedor (Kalebe cadastrou
+   *  mas quem trabalha é Maria, corrige a atribuição). */
+  vendedor_id?: string | null
 }) {
   const check = await verificarPermissao()
   if ('erro' in check) return { erro: check.erro }
@@ -152,6 +163,11 @@ export async function editarTelhadoAction(telhadoId: string, patch: {
   if (patch.cliente_telefone !== undefined) update.cliente_telefone = patch.cliente_telefone?.replace(/\D/g, '') || null
   if (patch.cliente_email !== undefined) update.cliente_email = patch.cliente_email?.trim() || null
   if (patch.observacoes !== undefined) update.observacoes = patch.observacoes?.trim() || null
+
+  // Só admin pode reassociar; ignora silenciosamente se vier de vendedor
+  if (patch.vendedor_id !== undefined && check.role === 'admin' && patch.vendedor_id) {
+    update.vendedor_id = patch.vendedor_id
+  }
 
   const { error } = await supabase.from('telhados').update(update).eq('id', telhadoId)
   if (error) return { erro: error.message }

@@ -17,9 +17,20 @@ type Passo = 'escolha' | 'mapa' | 'imovel' | 'cliente' | 'manual'
  *     e anexa aqui). Usado enquanto o Google Maps não está configurado
  *     no Vercel; também serve pra casos rurais sem cobertura do Solar API.
  */
-export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
+type Vendedor = { id: string; nome_completo: string; role: string }
+
+export function NovoTelhadoModal({
+  onFechar, vendedores, ehAdmin, userIdAtual,
+}: {
+  onFechar: () => void
+  vendedores?: Vendedor[]
+  ehAdmin?: boolean
+  userIdAtual?: string
+}) {
   const router = useRouter()
   const [passo, setPasso] = useState<Passo>('escolha')
+  // Vendedor responsável (só admin escolhe; vendedor cai no próprio userId)
+  const [vendedorId, setVendedorId] = useState<string>(userIdAtual || '')
 
   // Dados do modo mapa
   const [ponto, setPonto] = useState<PontoTelhado | null>(null)
@@ -88,6 +99,7 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
         area_util_m2: ponto.solar?.areaUtilM2 ?? null,
         geracao_anual_kwh: ponto.solar?.geracaoAnualKwh ?? null,
         imagery_quality: ponto.solar?.qualidade ?? null,
+        vendedor_id_override: ehAdmin && vendedorId ? vendedorId : null,
       })
       if (r?.erro) { setErro(r.erro); return }
       router.refresh()
@@ -119,6 +131,7 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
         cliente_telefone: clienteTel || null,
         cliente_email: clienteEmail || null,
         observacoes: obs || null,
+        vendedor_id_override: ehAdmin && vendedorId ? vendedorId : null,
       })
       if (r?.erro) { setErro(r.erro); return }
       router.refresh()
@@ -255,6 +268,21 @@ export function NovoTelhadoModal({ onFechar }: { onFechar: () => void }) {
         {/* ── PASSO CLIENTE (fluxo mapa) ── */}
         {passo === 'cliente' && (
           <div className="p-5 space-y-4">
+            {ehAdmin && vendedores && vendedores.length > 0 && (
+              <Field label="Vendedor responsável" obrigatorio>
+                <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white">
+                  {vendedores.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.nome_completo}{v.role === 'vendedor_servicos' ? '' : ` (${v.role})`}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-white/40 mt-1">
+                  Quem vai cuidar desse telhado — os números aparecem no painel dessa pessoa.
+                </p>
+              </Field>
+            )}
             <p className="text-xs text-white/50 leading-relaxed">
               Se você já tem contato do dono, preenche agora. Se não, pula — dá pra completar depois no card.
             </p>

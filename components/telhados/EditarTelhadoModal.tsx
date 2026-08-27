@@ -15,6 +15,7 @@ import { EscolherCriativoModal } from '@/components/criativos/EscolherCriativoMo
  */
 export function EditarTelhadoModal({
   telhado, bucketPublicUrl, onFechar, parametrosLimpeza, cidades, propostaAnterior,
+  vendedores, ehAdmin,
 }: {
   telhado: TelhadoCard
   bucketPublicUrl: string
@@ -22,6 +23,8 @@ export function EditarTelhadoModal({
   parametrosLimpeza?: ParametrosLimpeza | null
   cidades?: CidadeOpcao[]
   propostaAnterior?: { entradas: any; resultado: { subtotal: number }; valor_final: number } | null
+  vendedores?: Array<{ id: string; nome_completo: string; role: string }>
+  ehAdmin?: boolean
 }) {
   const mostrarSimulador = (telhado.fase === 'proposta' || telhado.fase === 'fechado')
     && parametrosLimpeza != null
@@ -39,6 +42,7 @@ export function EditarTelhadoModal({
   // Campos que o Kanban não carregava (email, obs) ficam em branco pra edição — dá pra preencher
   const [clienteEmail, setClienteEmail] = useState('')
   const [obs, setObs] = useState('')
+  const [vendedorId, setVendedorId] = useState<string>((telhado as any).vendedor_id || '')
   const [erro, setErro] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -59,6 +63,7 @@ export function EditarTelhadoModal({
         cliente_telefone: clienteTel || null,
         cliente_email: clienteEmail.trim() || null,
         observacoes: obs.trim() || null,
+        vendedor_id: (ehAdmin && vendedorId) ? vendedorId : undefined,
       })
       if (r?.erro) { setErro(r.erro); return }
       router.refresh()
@@ -141,6 +146,23 @@ export function EditarTelhadoModal({
         )}
 
         <div className="p-5 space-y-4">
+          {ehAdmin && vendedores && vendedores.length > 0 && (
+            <Field label="Vendedor responsável">
+              <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)}
+                className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white">
+                <option value="">— não alterar —</option>
+                {vendedores.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.nome_completo}{v.role === 'vendedor_servicos' ? '' : ` (${v.role})`}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-white/40 mt-1">
+                Reassocia esse telhado a outro vendedor — as métricas dele passam a contar aqui.
+              </p>
+            </Field>
+          )}
+
           <Field label="Apelido do card">
             <input value={apelido} onChange={(e) => setApelido(e.target.value)}
               placeholder='Ex: "Padaria da esquina"'

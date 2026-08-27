@@ -84,6 +84,19 @@ export default async function CrmServicosPage() {
   const cidades = (cidadesRaw || []) as Array<{ id: string; cidade: string; uf: string; km: number }>
   const empresa = empresaRow || null
 
+  // Vendedores atribuíveis: admin + vendedor_servicos ativos (Kalebe pediu
+  // 2026-08-27: 'está associando a mim mas foi Maria quem fez' — precisamos
+  // conseguir atribuir o telhado ao vendedor certo mesmo quando admin cadastra).
+  const { data: vendedoresRaw } = await supabase
+    .from('profiles')
+    .select('id, nome_completo, role')
+    .in('role', ['admin', 'vendedor_servicos'])
+    .eq('ativo', true)
+    .order('nome_completo', { ascending: true })
+  const vendedores = (vendedoresRaw || []) as Array<{ id: string; nome_completo: string; role: string }>
+  const ehAdmin = perfil?.role === 'admin'
+  const userIdAtual = user.id
+
   const bucketPublicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/telhados-fotos`
 
   return (
@@ -98,6 +111,9 @@ export default async function CrmServicosPage() {
           parametrosLimpeza={parametrosLimpeza}
           cidades={cidades}
           empresa={empresa}
+          vendedores={vendedores}
+          ehAdmin={ehAdmin}
+          userIdAtual={userIdAtual}
         />
       </div>
     </main>
