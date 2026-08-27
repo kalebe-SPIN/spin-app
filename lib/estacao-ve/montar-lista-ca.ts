@@ -33,6 +33,20 @@ export type EntradaSugestao = {
   distancia_qgbt_m?: number // metros até o quadro geral (default 10)
 }
 
+/** Grupo de wallboxes com mesma potência — usado quando o kit tem
+ *  modelos diferentes e cada um precisa de proteção própria. */
+export type GrupoWallbox = {
+  potencia_kw: number
+  qtd: number
+  rotulo?: string  // ex: 'Wallbox 7.4 kW', 'Wallbox 22 kW'
+}
+
+export type EntradaSugestaoMulti = {
+  grupos: GrupoWallbox[]
+  fases: FasesRede
+  distancia_qgbt_m?: number
+}
+
 /**
  * Deduz o tipo de rede a partir da potência do wallbox.
  * Wallbox residencial 7.4 kW ~ monofásico 220V
@@ -85,67 +99,116 @@ const PRECO_REF = {
  *  5. Quadro de proteção CA + aterramento
  */
 export function sugerirListaCaVE(entrada: EntradaSugestao): LinhaSugerida[] {
-  const { potencia_wallbox_kw, qtd_wallboxes, fases, distancia_qgbt_m = 10 } = entrada
+  // Compat retroativa: 1 grupo com o wallbox único
+  return sugerirListaCaVEMulti({
+    grupos: [{
+      potencia_kw: entrada.potencia_wallbox_kw,
+      qtd: entrada.qtd_wallboxes,
+    }],
+    fases: entrada.fases,
+    distancia_qgbt_m: entrada.distancia_qgbt_m,
+  })
+}
 
-  const potTotalKw = potencia_wallbox_kw * qtd_wallboxes
+/**
+ * Sugere lista CA pra kit com MÚLTIPLOS modelos de wallbox.
+ * Kalebe 2026-08-27: 'quando os equipamentos são diferentes deve-se
+ * criar uma lista para cada' — cada grupo de potência ganha proteção
+ * própria (disjuntor individual + DPS + cabo ramal), compartilhando
+ * quadro central + aterramento + disjuntor geral.
+ *
+ * Regra pra escala:
+ *  - Disjuntor CA principal (QGBT) → 1, dimensionado pra corrente total
+ *  - Por grupo: N disjuntores + N conjuntos de DPS + N ramais de cabo
+ *  - Compartilhado: 1 quadro CA + 1 aterramento + 1 cabo principal
+ */
+export function sugerirListaCaVEMulti(entrada: EntradaSugestaoMulti): LinhaSugerida[] {
+  const { grupos, fases, distancia_qgbt_m = 10 } = entrada
+  const gruposValidos = grupos.filter((g) => g.potencia_kw > 0 && g.qtd > 0)
+  if (gruposValidos.length === 0) return []
+
   const isTri = fases === 'trifasico'
   const tensao = isTri ? 380 : 220
   const fatorFase = isTri ? Math.sqrt(3) : 1
-  const correnteA = (potTotalKw * 1000) / (tensao * fatorFase)
-  const disjuntorA = arredondarDisjuntor(correnteA * 1.25)
-  const bitola = bitolaCaSugerida(correnteA)
+  const qtdDpsPorRamal = isTri ? 4 : 2
+  const labelFase = isTri ? '3F+N' : 'F+N'
+  const numCondutores = isTri ? 5 : 3
+
+  // Totais pra dimensionar disjuntor principal + cabo principal
+  const potTotalKw = gruposValidos.reduce((s, g) => s + g.potencia_kw * g.qtd, 0)
+  const correnteTotalA = (potTotalKw * 1000) / (tensao * fatorFase)
+  const disjuntorPrincipalA = arredondarDisjuntor(correnteTotalA * 1.25)
+  const bitolaPrincipal = bitolaCaSugerida(correnteTotalA)
+
   const linhas: LinhaSugerida[] = []
 
-  // 1. Disjuntor CA principal
-  if (isTri) {
+  // 1. Disjuntor CA principal (QGBT → quadro da estação)
+  linhas.push({
+    produto_id: null,
+    codigo_weg: isTri ? `MDWH-C${disjuntorPrincipalA}-3` : `MDWP-C${disjuntorPrincipalA}-2`,
+    modelo: `Disjuntor CA principal ${isTri ? 'tripolar' : 'bipolar'} ${disjuntorPrincipalA}A curva C (proteção geral da estação)`,
+    categoria: 'disjuntor',
+    qtd: 1,
+    preco_unitario: isTri ? PRECO_REF.disjuntor_tripolar : PRECO_REF.disjuntor_bipolar,
+    origem: 'sugestao',
+  })
+
+  // 2. Por grupo: disjuntor individual + DPS ramal + cabo ramal
+  for (const g of gruposValidos) {
+    const correnteInd = (g.potencia_kw * 1000) / (tensao * fatorFase)
+    const disjuntorIndA = arredondarDisjuntor(correnteInd * 1.25)
+    const rotulo = g.rotulo || `wallbox ${g.potencia_kw}kW`
+    const codigoInd = isTri ? `MDWH-C${disjuntorIndA}-3` : `MDWP-C${disjuntorIndA}-2`
+
+    // Disjuntor individual — 1 por wallbox
     linhas.push({
       produto_id: null,
-      codigo_weg: `MDWH-C${disjuntorA}-3`,
-      modelo: `Disjuntor CA tripolar ${disjuntorA}A curva C (MDWH)`,
+      codigo_weg: codigoInd,
+      modelo: `Disjuntor CA ${isTri ? 'tripolar' : 'bipolar'} ${disjuntorIndA}A curva C — ${rotulo}`,
       categoria: 'disjuntor',
-      qtd: 1,
-      preco_unitario: PRECO_REF.disjuntor_tripolar,
+      qtd: g.qtd,
+      preco_unitario: isTri ? PRECO_REF.disjuntor_tripolar : PRECO_REF.disjuntor_bipolar,
       origem: 'sugestao',
     })
-  } else {
+
+    // DPS ramal — qtdDps por wallbox
     linhas.push({
       produto_id: null,
-      codigo_weg: `MDWP-C${disjuntorA}-2`,
-      modelo: `Disjuntor CA bipolar ${disjuntorA}A curva C (MDWP)`,
-      categoria: 'disjuntor',
-      qtd: 1,
-      preco_unitario: PRECO_REF.disjuntor_bipolar,
+      codigo_weg: 'DPS-CL2-275V-20KA',
+      modelo: `DPS classe II 275Vca 10kA/20kA ${labelFase} — ${rotulo}`,
+      categoria: 'dps',
+      qtd: qtdDpsPorRamal * g.qtd,
+      preco_unitario: PRECO_REF.dps_classe2,
+      origem: 'sugestao',
+    })
+
+    // Cabo ramal — do quadro central até cada wallbox (5m padrão × qtd × condutores × 1.15)
+    const bitolaInd = bitolaCaSugerida(correnteInd)
+    const metrosRamal = Math.ceil(5 * numCondutores * 1.15 * g.qtd)
+    linhas.push({
+      produto_id: null,
+      codigo_weg: `CABO-${bitolaInd.bitola_mm2}MM2`,
+      modelo: `Cabo CA ramal ${bitolaInd.codigo_faixa} mm² PVC (${metrosRamal}m aprox., ${g.qtd}× ramais) — ${rotulo}`,
+      categoria: 'cabo',
+      qtd: metrosRamal,
+      preco_unitario: PRECO_REF.cabo_por_metro,
       origem: 'sugestao',
     })
   }
 
-  // 2. DPS classe II — F+N mono ou 3F+N tri
-  const qtdDps = isTri ? 4 : 2
-  const labelFase = isTri ? '3F+N' : 'F+N'
+  // 3. Cabo principal — QGBT → quadro da estação (compartilhado)
+  const metrosCaboPrincipal = Math.ceil(distancia_qgbt_m * numCondutores * 1.15)
   linhas.push({
     produto_id: null,
-    codigo_weg: 'DPS-CL2-275V-20KA',
-    modelo: `DPS classe II 275Vca In 10kA Imax 20kA (${labelFase})`,
-    categoria: 'dps',
-    qtd: qtdDps,
-    preco_unitario: PRECO_REF.dps_classe2,
-    origem: 'sugestao',
-  })
-
-  // 3. Cabo CA — distância × qtd condutores × fator folga 15%
-  const numCondutores = isTri ? 5 : 3 // 3F+N+T ou F+N+T
-  const metrosCabo = Math.ceil(distancia_qgbt_m * numCondutores * 1.15)
-  linhas.push({
-    produto_id: null,
-    codigo_weg: `CABO-${bitola.bitola_mm2}MM2`,
-    modelo: `Cabo CA ${bitola.codigo_faixa} mm² PVC (${metrosCabo}m aprox.)`,
+    codigo_weg: `CABO-${bitolaPrincipal.bitola_mm2}MM2`,
+    modelo: `Cabo CA principal ${bitolaPrincipal.codigo_faixa} mm² PVC (${metrosCaboPrincipal}m aprox., QGBT → estação)`,
     categoria: 'cabo',
-    qtd: metrosCabo,
+    qtd: metrosCaboPrincipal,
     preco_unitario: PRECO_REF.cabo_por_metro,
     origem: 'sugestao',
   })
 
-  // 4. Quadro CA dedicado
+  // 4. Quadro CA (central)
   linhas.push({
     produto_id: null,
     codigo_weg: 'QCA-VE-MINI',
@@ -156,7 +219,7 @@ export function sugerirListaCaVE(entrada: EntradaSugestao): LinhaSugerida[] {
     origem: 'sugestao',
   })
 
-  // 5. Aterramento
+  // 5. Aterramento (compartilhado)
   linhas.push({
     produto_id: null,
     codigo_weg: 'ATERRAMENTO-KIT',

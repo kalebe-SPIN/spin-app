@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { salvarVeRecargaAction, type VeRecargaSelecionada } from '@/app/projetos/[id]/ve/actions'
 import {
   sugerirListaCaVE,
+  sugerirListaCaVEMulti,
   deduzirFasesPorPotencia,
   resumoDimensionamento,
   type FasesRede,
+  type GrupoWallbox,
 } from '@/lib/estacao-ve/montar-lista-ca'
 
 type Wallbox = {
@@ -183,9 +185,33 @@ export function EstacaoRecargaFluxoClient({
 
   function gerarSugestao(): LinhaCA[] {
     if (!podeDimensionar) return []
-    return sugerirListaCaVE({
-      potencia_wallbox_kw: potenciaEfetivaKw,
-      qtd_wallboxes: qtdWallboxesEfetiva,
+
+    // Se há wallboxes cadastrados com potência, agrupa por potência (cria
+    // uma sub-lista de proteção pra cada modelo diferente). Senão, cai no
+    // manual (1 grupo com a potência digitada × qtd).
+    const equipComPotencia = equipamentos.filter(e => e.potencia_kw > 0)
+    let grupos: GrupoWallbox[]
+    if (equipComPotencia.length > 0) {
+      // Consolida wallboxes de mesma potência num só grupo
+      const mapa = new Map<number, { potencia_kw: number; qtd: number; modelos: Set<string> }>()
+      for (const e of equipComPotencia) {
+        const key = e.potencia_kw
+        const g = mapa.get(key) || { potencia_kw: e.potencia_kw, qtd: 0, modelos: new Set() }
+        g.qtd += e.qtd
+        g.modelos.add(e.modelo)
+        mapa.set(key, g)
+      }
+      grupos = Array.from(mapa.values()).map(g => ({
+        potencia_kw: g.potencia_kw,
+        qtd: g.qtd,
+        rotulo: `${g.qtd}× ${Array.from(g.modelos)[0].split(' ')[0]} ${g.potencia_kw}kW`,
+      }))
+    } else {
+      grupos = [{ potencia_kw: potenciaEfetivaKw, qtd: qtdWallboxesEfetiva }]
+    }
+
+    return sugerirListaCaVEMulti({
+      grupos,
       fases: fasesEfetivas,
       distancia_qgbt_m: distanciaM,
     }).map(s => ({
