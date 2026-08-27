@@ -43,6 +43,11 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
     // Usa equipamentos_enriquecidos (com descricao_curta+specs vindas do catálogo)
     // se disponível; senão cai pra estrutura salva no projeto
     const equipamentos: any[] = selecao?.equipamentos_enriquecidos || selecao?.equipamentos || []
+    // Kalebe 2026-08-27: 'aparece 1 equipamento sendo que foram 4 selecionados'.
+    // equipamentos.length conta LINHAS; qtdTotalEquip soma as quantidades.
+    const qtdTotalEquip: number = equipamentos.reduce((s, e) => s + Number(e.qtd || 0), 0)
+    // Materiais CA totais (soma qtd de cada linha)
+    const qtdTotalCA: number = (selecao?.itens_ca || []).reduce((s: number, l: any) => s + Number(l.qtd || 0), 0)
     const prazoEntregaDias: number = Number(selecao?.prazo_entrega_dias || 45)
     const itensCA: any[] = selecao?.itens_ca || []
     const mao = selecao?.mao_obra || {}
@@ -125,7 +130,7 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <div>
                 <p style={E.rotuloMini}>Estação proposta</p>
                 <p style={E.nomeCliente}>
-                  <span>{equipamentos.length} equipamento{equipamentos.length === 1 ? '' : 's'} WEG</span>
+                  <span>{qtdTotalEquip} equipamento{qtdTotalEquip === 1 ? '' : 's'} WEG</span>
                   <br />
                   <span style={{ fontSize: 14, color: 'rgba(245,245,240,.7)', fontWeight: 500 }}>
                     <span>Linha WEMOB</span>
@@ -140,8 +145,8 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
 
             <div style={E.metricasGrid}>
               <MetricM label="Potência" valor={fmtNum(potenciaHeadline, 1)} unidade="kW" />
-              <MetricM label="Equipamentos" valor={String(equipamentos.length)} unidade="itens" cor="#F5B400" borda />
-              <MetricM label="Materiais CA" valor={String(itensCA.length)} unidade="itens" borda />
+              <MetricM label="Equipamentos" valor={String(qtdTotalEquip)} unidade="itens" cor="#F5B400" borda />
+              <MetricM label="Materiais CA" valor={String(qtdTotalCA)} unidade="itens" borda />
               <MetricM label="Investimento" valor={invHeadline.replace('R$ ', '')} unidade="chaves na mão" prefixo="R$" />
             </div>
 
@@ -279,19 +284,24 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
               </p>
             </div>
 
+            {/* Escopo detalhado SEM valor por item — Kalebe 2026-08-27:
+                regra Spin fixa é 'cliente vê só total consolidado', mas o
+                escopo entra descritivo pra dar transparência do que está
+                incluso sem quebrar a regra. */}
             <h3 style={E.subtituloSecao}>Escopo consolidado</h3>
             <div style={E.gridDados}>
-              <DadoLinha rot="Equipamentos WEG" val={`R$ ${fmt(Number(selecao?.preco_wallbox_total || 0))}`} />
-              <DadoLinha rot="Materiais CA" val={`R$ ${fmt(Number(selecao?.preco_acessorios_total || 0))}`} />
-              {precoEle > 0 && <DadoLinha rot="Elétrica predial" val={`R$ ${fmt(precoEle)}`} />}
-              {precoAlv > 0 && <DadoLinha rot="Alvenaria" val={`R$ ${fmt(precoAlv)}`} />}
-              {precoDesloc > 0 && <DadoLinha rot="Deslocamento" val={`R$ ${fmt(precoDesloc)}`} />}
+              <DadoLinha rot="Equipamentos WEG" val={`${qtdTotalEquip} item${qtdTotalEquip === 1 ? '' : 's'} · incluso`} />
+              <DadoLinha rot="Materiais CA" val={`${qtdTotalCA} item${qtdTotalCA === 1 ? '' : 's'} · incluso`} />
+              {precoEle > 0 && <DadoLinha rot="Elétrica predial" val="incluso" />}
+              {precoAlv > 0 && <DadoLinha rot="Alvenaria" val="incluso" />}
+              {precoDesloc > 0 && <DadoLinha rot="Deslocamento" val="incluso" />}
               {(incluiUni || incluiTri) && (
                 <DadoLinha
                   rot="Documentos técnicos"
-                  val={`R$ ${fmt((incluiUni ? valorUni : 0) + (incluiTri ? valorTri : 0))}`}
+                  val={`${incluiUni && incluiTri ? 'Unifilar + Trifilar' : incluiUni ? 'Unifilar' : 'Trifilar'} · incluso`}
                 />
               )}
+              <DadoLinha rot="Instalação e comissionamento" val="incluso" />
             </div>
 
             <div style={E.blocoGarantias}>
