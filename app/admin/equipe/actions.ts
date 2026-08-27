@@ -143,12 +143,13 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     .from('projetos')
     .select('id, consultor_id, status, pv_total, created_at, updated_at, status_atualizado_em')
 
-  const telhadosPromise = vendedoresServ.length > 0
-    ? supabase
-        .from('telhados')
-        .select('vendedor_id, fase, proposta_valor, created_at, updated_at')
-        .in('vendedor_id', vendedoresServ.map((p) => p.id))
-    : Promise.resolve({ data: [] as any[] })
+  // Kalebe 2026-08-27: painel mostrava 0 pra Maria Eduarda porque só
+  // buscava telhados de quem tem role vendedor_servicos. Como admins
+  // (Kalebe) também cadastram telhados, buscamos TODOS e agrupamos
+  // por quem realmente é o vendedor_id do registro.
+  const telhadosPromise = supabase
+    .from('telhados')
+    .select('vendedor_id, fase, proposta_valor, created_at, updated_at')
 
   const execPromise = profissionaisCampo.length > 0
     ? supabase
@@ -197,8 +198,20 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     }
   })
 
-  // ─── Agrega por vendedor_servicos ─────────────────────────────────────────
-  const metricasVend: MetricasVendedorServ[] = vendedoresServ.map((v) => {
+  // ─── Agrega por vendedor de serviços ──────────────────────────────────────
+  // Considera QUALQUER usuário que apareça como vendedor_id de telhado
+  // (não só quem tem role vendedor_servicos — admins também cadastram).
+  const idsQueCadastraramTelhado = new Set<string>(
+    (telhadosData || []).map((t: any) => t.vendedor_id).filter(Boolean),
+  )
+  // União: vendedores_servicos ativos + qualquer outro que apareça nos telhados
+  const vendedoresServAmpliados = [
+    ...vendedoresServ,
+    ...(perfis || []).filter((p) =>
+      idsQueCadastraramTelhado.has(p.id) && !vendedoresServ.some((v) => v.id === p.id)
+    ),
+  ]
+  const metricasVend: MetricasVendedorServ[] = vendedoresServAmpliados.map((v) => {
     const meus = (telhadosData || []).filter((t: any) => t.vendedor_id === v.id)
     return {
       id: v.id,
@@ -211,7 +224,11 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
         .filter((t: any) => ['proposta', 'fechado'].includes(t.fase))
         .reduce((s: number, t: any) => s + (Number(t.proposta_valor) || 0), 0),
     }
-  })
+  }).filter((m) =>
+    // Só mostra quem tem pelo menos 1 telhado OU tem role vendedor_servicos
+    m.telhados_prospectados + m.em_contato + m.em_proposta + m.fechados > 0 ||
+    vendedoresServ.some((v) => v.id === m.id)
+  )
 
   // ─── Agrega por profissional de campo (só mês corrente) ───────────────────
   const metricasCampo: MetricasProfissionalCampo[] = profissionaisCampo.map((c) => {
