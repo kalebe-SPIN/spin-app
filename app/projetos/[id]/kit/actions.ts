@@ -13,6 +13,7 @@ export type InversorNoKit = {
   potencia_kw: number
   preco_venda: number
   qtd: number
+  fases?: 'monofasico' | 'bifasico' | 'trifasico'
 }
 
 export type KitSelecionado = {

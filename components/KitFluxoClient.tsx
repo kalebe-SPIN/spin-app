@@ -98,7 +98,9 @@ export function KitFluxoClient({
   const [manualInversorId, setManualInversorId] = useState<string | null>(null)
   const [manualQtdInv, setManualQtdInv] = useState<number>(1)
   // NOVO: lista de invesores no kit manual (permite combos micro+string, potências diferentes)
-  const [manualInversores, setManualInversores] = useState<Array<{ id: string; qtd: number }>>([])
+  // Cada linha carrega qtd + fases (mono/bi/tri) — Kalebe 2026-08-27
+  type FaseInv = 'monofasico' | 'bifasico' | 'trifasico'
+  const [manualInversores, setManualInversores] = useState<Array<{ id: string; qtd: number; fases: FaseInv }>>([])
 
   // Filtro tipo de inversor pra kits sugeridos
   const [filtroTipoInversor, setFiltroTipoInversor] = useState<'todos' | 'micro' | 'string'>('todos')
@@ -207,9 +209,10 @@ export function KitFluxoClient({
         potencia_kw: inv.specs?.potencia_kw || 0,
         preco: precoDe(inv),
         qtd: linha.qtd,
+        fases: linha.fases,
       }
     })
-    .filter(Boolean) as Array<{ produto: ProdutoRow; potencia_kw: number; preco: number; qtd: number }>
+    .filter(Boolean) as Array<{ produto: ProdutoRow; potencia_kw: number; preco: number; qtd: number; fases: FaseInv }>
 
   const manualPotCa = manualInversoresResolvidos.reduce((s, x) => s + x.potencia_kw * x.qtd, 0)
   const manualFci = manualPotCa > 0 ? (manualPotCc / manualPotCa) * 100 : 0
@@ -218,6 +221,16 @@ export function KitFluxoClient({
     ? (precoDe(placaManual) * manualQtd) + manualPrecoInv
     : 0
 
+  /** Deduz fase padrão do inversor pelo modelo + specs. SIW100 é sempre
+   *  monofásico (regra fixa Spin). Outros: usa tensao_desc quando existir. */
+  function deduzirFasePadrao(inv: ProdutoRow): FaseInv {
+    if (/^SIW100/i.test(inv.modelo || '')) return 'monofasico'
+    const t = String(inv.specs?.tensao_desc || '').toLowerCase()
+    if (/tri/.test(t)) return 'trifasico'
+    if (/bi/.test(t)) return 'bifasico'
+    return 'monofasico'
+  }
+
   function adicionarInversorManual() {
     if (!manualInv) { setErro('Escolha um inversor no dropdown antes de adicionar.'); return }
     if (manualQtdInv < 1) { setErro('Qtd de inversores inválida.'); return }
@@ -225,10 +238,9 @@ export function KitFluxoClient({
     setManualInversores((prev) => {
       const existente = prev.find(l => l.id === manualInv.id)
       if (existente) {
-        // Já existe → soma qtd em vez de duplicar linha
         return prev.map(l => l.id === manualInv.id ? { ...l, qtd: l.qtd + manualQtdInv } : l)
       }
-      return [...prev, { id: manualInv.id, qtd: manualQtdInv }]
+      return [...prev, { id: manualInv.id, qtd: manualQtdInv, fases: deduzirFasePadrao(manualInv) }]
     })
     setManualInversorId(null)
     setManualQtdInv(1)
@@ -240,6 +252,10 @@ export function KitFluxoClient({
 
   function atualizarQtdInversorManual(id: string, qtd: number) {
     setManualInversores((prev) => prev.map(l => l.id === id ? { ...l, qtd: Math.max(1, qtd) } : l))
+  }
+
+  function atualizarFaseInversorManual(id: string, fases: FaseInv) {
+    setManualInversores((prev) => prev.map(l => l.id === id ? { ...l, fases } : l))
   }
 
   function handleConfirmarManual() {
@@ -278,6 +294,7 @@ export function KitFluxoClient({
         potencia_kw: x.potencia_kw,
         preco_venda: x.preco,
         qtd: x.qtd,
+        fases: x.fases,
       })),
       potencia_ca_kw: manualPotCa,
       fci_pct: manualFci,
@@ -490,12 +507,13 @@ export function KitFluxoClient({
                 manualInversores={manualInversores}
                 manualInversoresResolvidos={manualInversoresResolvidos.map(x => ({
                   id: x.produto.id, modelo: x.produto.modelo, codigo_weg: x.produto.codigo_weg,
-                  potencia_kw: x.potencia_kw, preco: x.preco, qtd: x.qtd,
+                  potencia_kw: x.potencia_kw, preco: x.preco, qtd: x.qtd, fases: x.fases,
                   isMicro: /^SIW100/i.test(x.produto.modelo || ''),
                 }))}
                 adicionarInversor={adicionarInversorManual}
                 removerInversor={removerInversorManual}
                 atualizarQtdInversor={atualizarQtdInversorManual}
+                atualizarFaseInversor={atualizarFaseInversorManual}
                 potCc={manualPotCc}
                 potCa={manualPotCa}
                 fci={manualFci}
@@ -754,7 +772,7 @@ function ModoManual({
   manualInversorId, setManualInversorId,
   manualQtdInv, setManualQtdInv,
   manualInversores, manualInversoresResolvidos,
-  adicionarInversor, removerInversor, atualizarQtdInversor,
+  adicionarInversor, removerInversor, atualizarQtdInversor, atualizarFaseInversor,
   potCc, potCa, fci, preco,
   tipoLigacao,
   onConfirmar, pending,
@@ -770,11 +788,12 @@ function ModoManual({
   setManualInversorId: (id: string | null) => void
   manualQtdInv: number
   setManualQtdInv: (n: number) => void
-  manualInversores: Array<{ id: string; qtd: number }>
-  manualInversoresResolvidos: Array<{ id: string; modelo: string; codigo_weg: string | null; potencia_kw: number; preco: number; qtd: number; isMicro: boolean }>
+  manualInversores: Array<{ id: string; qtd: number; fases: 'monofasico' | 'bifasico' | 'trifasico' }>
+  manualInversoresResolvidos: Array<{ id: string; modelo: string; codigo_weg: string | null; potencia_kw: number; preco: number; qtd: number; fases: 'monofasico' | 'bifasico' | 'trifasico'; isMicro: boolean }>
   adicionarInversor: () => void
   removerInversor: (id: string) => void
   atualizarQtdInversor: (id: string, qtd: number) => void
+  atualizarFaseInversor: (id: string, fases: 'monofasico' | 'bifasico' | 'trifasico') => void
   potCc: number
   potCa: number
   fci: number
@@ -794,11 +813,69 @@ function ModoManual({
 
   const inv = inversoresTodos.find(i => i.id === manualInversorId)
 
-  // Warnings — informativos, não bloqueiam
+  // ─── Balanceamento CELESC entre fases ──────────────────────────────────
+  // Regra: micros mono → distribuídos round-robin em F1/F2/F3 (sistema tri)
+  // ou F1/F2 (sistema bi). String bi → metade em F1, metade em F2. String
+  // tri → 1/3 em cada. Alerta se |Fmax - Fmin| > 8 kW (regra CELESC).
+  const cargaPorFase = (() => {
+    let F1 = 0, F2 = 0, F3 = 0
+    let idxMono = 0
+    const totalFasesRede = tipoLigacao === 'trifasico' ? 3 : tipoLigacao === 'bifasico' ? 2 : 1
+    for (const x of manualInversoresResolvidos) {
+      const potUnidade = x.potencia_kw
+      if (x.fases === 'monofasico') {
+        for (let i = 0; i < x.qtd; i++) {
+          const f = idxMono % totalFasesRede
+          if (f === 0) F1 += potUnidade
+          else if (f === 1) F2 += potUnidade
+          else F3 += potUnidade
+          idxMono++
+        }
+      } else if (x.fases === 'bifasico') {
+        F1 += (potUnidade * x.qtd) / 2
+        F2 += (potUnidade * x.qtd) / 2
+      } else {
+        F1 += (potUnidade * x.qtd) / 3
+        F2 += (potUnidade * x.qtd) / 3
+        F3 += (potUnidade * x.qtd) / 3
+      }
+    }
+    return { F1, F2, F3 }
+  })()
+  const fMax = Math.max(cargaPorFase.F1, cargaPorFase.F2, cargaPorFase.F3)
+  const fMin = tipoLigacao === 'monofasico'
+    ? cargaPorFase.F1
+    : tipoLigacao === 'bifasico'
+    ? Math.min(cargaPorFase.F1, cargaPorFase.F2)
+    : Math.min(cargaPorFase.F1, cargaPorFase.F2, cargaPorFase.F3)
+  const desbalanceamentoKw = fMax - fMin
+
+  // Warnings x erros bloqueantes CELESC
   const warnings: string[] = []
+  const errosCelesc: string[] = []
   if (fci > 0 && fci < 80) warnings.push(`FCI ${fmtNum(fci, 0)}% — inversor superdimensionado, geração vai desperdiçar potência CA.`)
   if (fci > 145) warnings.push(`FCI ${fmtNum(fci, 0)}% — inversor subdimensionado demais, vai clipar bastante em pico de sol.`)
-  if (tipoLigacao === 'monofasico' && potCa > 8) warnings.push(`Potência CA ${fmtNum(potCa, 1)} kW ultrapassa o limite CELESC monofásico de 8 kW.`)
+  // Limites CELESC de potência CA por tipo de ligação
+  if (tipoLigacao === 'monofasico' && potCa > 8) errosCelesc.push(`Potência CA ${fmtNum(potCa, 1)} kW ultrapassa o limite CELESC monofásico de 8 kW. Migre pra bifásico ou trifásico.`)
+  if (tipoLigacao === 'bifasico' && potCa > 15) errosCelesc.push(`Potência CA ${fmtNum(potCa, 1)} kW ultrapassa o limite CELESC bifásico de 15 kW. Migre pra trifásico.`)
+  // Balanceamento entre fases — CELESC exige Δ ≤ 8 kW
+  if (tipoLigacao === 'trifasico' && desbalanceamentoKw > 8) {
+    errosCelesc.push(`Desbalanceamento ${fmtNum(desbalanceamentoKw, 1)} kW entre fases (F1 ${fmtNum(cargaPorFase.F1, 1)} · F2 ${fmtNum(cargaPorFase.F2, 1)} · F3 ${fmtNum(cargaPorFase.F3, 1)}). CELESC exige Δ ≤ 8 kW.`)
+  }
+  if (tipoLigacao === 'bifasico' && desbalanceamentoKw > 8) {
+    errosCelesc.push(`Desbalanceamento ${fmtNum(desbalanceamentoKw, 1)} kW entre fases (F1 ${fmtNum(cargaPorFase.F1, 1)} · F2 ${fmtNum(cargaPorFase.F2, 1)}). CELESC exige Δ ≤ 8 kW.`)
+  }
+  // Micros mono precisam ser múltiplos do nº de fases da rede pra balancear
+  const totalMicrosMono = manualInversoresResolvidos
+    .filter(x => x.isMicro && x.fases === 'monofasico')
+    .reduce((s, x) => s + x.qtd, 0)
+  if (totalMicrosMono > 0 && tipoLigacao === 'trifasico' && totalMicrosMono % 3 !== 0) {
+    warnings.push(`${totalMicrosMono} micros monofásicos numa rede trifásica — pra balancear perfeitamente, use múltiplo de 3 micros.`)
+  }
+  if (totalMicrosMono > 0 && tipoLigacao === 'bifasico' && totalMicrosMono % 2 !== 0) {
+    warnings.push(`${totalMicrosMono} micros monofásicos numa rede bifásica — pra balancear, use múltiplo de 2 micros.`)
+  }
+
   if (placaEfetiva && (placaEfetiva.specs?.potencia_wp || 0) === 0) warnings.push('Essa placa está com potência 0 Wp no cadastro. Confere o produto em /admin/catalogo.')
   if (inv && (inv.specs?.potencia_kw || 0) === 0) warnings.push('Esse inversor está com potência 0 kW no cadastro. Confere o produto em /admin/catalogo.')
 
@@ -853,6 +930,15 @@ function ModoManual({
                   <span className="flex-1 min-w-0 truncate text-xs text-white">
                     {x.modelo} · {x.potencia_kw} kW
                   </span>
+                  <select value={x.fases}
+                    onChange={(e) => atualizarFaseInversor(x.id, e.target.value as 'monofasico' | 'bifasico' | 'trifasico')}
+                    disabled={x.isMicro}
+                    title={x.isMicro ? 'SIW100 é sempre monofásico' : 'Fase da rede que atende esse inversor'}
+                    className="px-2 py-0.5 bg-white/5 border border-white/15 rounded text-white text-[11px] disabled:opacity-60">
+                    <option value="monofasico" className="bg-noite">Mono 220V</option>
+                    <option value="bifasico" className="bg-noite">Bi 220V</option>
+                    <option value="trifasico" className="bg-noite">Tri 380V</option>
+                  </select>
                   <input type="number" min={1} max={100} value={x.qtd}
                     onChange={(e) => atualizarQtdInversor(x.id, parseInt(e.target.value) || 1)}
                     className="w-14 px-2 py-0.5 bg-white/5 border border-white/15 rounded text-white text-xs text-right" />
@@ -939,6 +1025,38 @@ function ModoManual({
         </div>
       </div>
 
+      {/* Distribuição por fase — só relevante em bi/tri */}
+      {tipoLigacao !== 'monofasico' && manualInversoresResolvidos.length > 0 && (
+        <div className="p-3 bg-white/[0.02] border border-white/10 rounded-lg">
+          <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold mb-2">
+            ⚖ Balanceamento por fase (rede {tipoLigacao})
+          </p>
+          <div className={`grid ${tipoLigacao === 'trifasico' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+            <FaseCard rotulo="F1" kw={cargaPorFase.F1} maior={cargaPorFase.F1 === fMax && desbalanceamentoKw > 0.1} />
+            <FaseCard rotulo="F2" kw={cargaPorFase.F2} maior={cargaPorFase.F2 === fMax && desbalanceamentoKw > 0.1} />
+            {tipoLigacao === 'trifasico' && (
+              <FaseCard rotulo="F3" kw={cargaPorFase.F3} maior={cargaPorFase.F3 === fMax && desbalanceamentoKw > 0.1} />
+            )}
+          </div>
+          <p className="text-[10px] text-white/50 mt-2">
+            Δ máx-mín = <strong className={desbalanceamentoKw > 8 ? 'text-coral' : 'text-verde'}>{fmtNum(desbalanceamentoKw, 1)} kW</strong>
+            <span className="text-white/40"> · limite CELESC = 8 kW</span>
+          </p>
+        </div>
+      )}
+
+      {/* Erros CELESC bloqueantes */}
+      {errosCelesc.length > 0 && (
+        <div className="p-3 bg-coral/10 border border-coral/40 rounded-lg space-y-1">
+          <p className="text-[10px] uppercase tracking-wider text-coral font-bold mb-1">
+            ⛔ Não conforme às normas CELESC
+          </p>
+          {errosCelesc.map((e, i) => (
+            <p key={i} className="text-xs text-coral">✕ {e}</p>
+          ))}
+        </div>
+      )}
+
       {warnings.length > 0 && (
         <div className="p-3 bg-sol/5 border border-sol/25 rounded-lg space-y-1">
           {warnings.map((w, i) => (
@@ -948,15 +1066,31 @@ function ModoManual({
       )}
 
       <div className="flex items-center justify-end pt-2 border-t border-white/10">
+        {errosCelesc.length > 0 && (
+          <p className="text-[11px] text-coral mr-3">
+            ⛔ Corrija os erros CELESC antes de continuar
+          </p>
+        )}
         <button
           type="button"
           onClick={onConfirmar}
-          disabled={pending || !podeSalvar}
+          disabled={pending || !podeSalvar || errosCelesc.length > 0}
           className="px-5 py-2.5 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40"
         >
           {pending ? 'Salvando...' : '✓ Confirmar kit manual → Lista CA'}
         </button>
       </div>
+    </div>
+  )
+}
+
+function FaseCard({ rotulo, kw, maior }: { rotulo: string; kw: number; maior: boolean }) {
+  return (
+    <div className={`p-2 rounded border ${maior ? 'bg-sol/10 border-sol/40' : 'bg-white/5 border-white/10'}`}>
+      <p className="text-[9px] uppercase tracking-wider text-white/50 font-bold">{rotulo}</p>
+      <p className={`text-sm font-black tabular-nums ${maior ? 'text-sol' : 'text-white'}`}>
+        {fmtNum(kw, 1)}<span className="text-[10px] text-white/40 font-normal"> kW</span>
+      </p>
     </div>
   )
 }
