@@ -130,14 +130,40 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
   }
 
   // 5. Preenche valor_estimado do projeto_item fv_ongrid com o total
-  //    Total = placas + inversor + lista CA (materiais complementares)
+  //    Total = placas + inversor + complementos CC + lista CA
   // Se veio invesores múltiplos, soma placa + soma(inversores × qtd cada)
   const precoInversoresTotal = kit.inversores && kit.inversores.length > 0
     ? kit.inversores.reduce((s, x) => s + x.preco_venda * x.qtd, 0)
     : kit.inversor.preco_venda * kit.qtd_inversores
   const precoKitWeg = kit.preco_total_kit_weg
     || (kit.placa.preco_venda * kit.qtd_placas) + precoInversoresTotal
-  const totalFvOnGrid = precoKitWeg + precoListaCA
+
+  // Kalebe pediu 2026-08-27: incluir cabo solar CC + estrutura + MC4
+  // puxando do /admin/catalogo (mesma lógica das outras categorias).
+  // Se algum produto não estiver cadastrado, o item entra com preço 0 e
+  // um alerta é registrado nas observações do kit — consultor sabe que
+  // precisa cadastrar em /admin/catalogo.
+  const complementosCC = await precificarComplementosCC(supabase, {
+    qtd_placas: kit.qtd_placas,
+    tipo_telhado: (telhadoSecoesData || [])[0]?.tipo_cobertura || null,
+    distancia_string_qgbt_m: (projetoAtual as any)?.padrao_entrada?.distancia_string_qgbt_m || 15,
+  })
+  const precoComplementosCC = complementosCC.total
+
+  // Grava composição CC no projeto pra ficar rastreável
+  await supabase
+    .from('projetos')
+    .update({
+      lista_complementos_cc: {
+        itens: complementosCC.itens,
+        total: precoComplementosCC,
+        avisos: complementosCC.avisos,
+        gerado_em: new Date().toISOString(),
+      },
+    })
+    .eq('id', projetoId)
+
+  const totalFvOnGrid = precoKitWeg + precoComplementosCC + precoListaCA
 
   if (totalFvOnGrid > 0) {
     await supabase
@@ -150,4 +176,133 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
 
   revalidatePath(`/projetos/${projetoId}`)
   redirect(`/projetos/${projetoId}`)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Complementos CC (cabo solar, estrutura, MC4) — puxa do /admin/catalogo
+// ═══════════════════════════════════════════════════════════════════════
+
+type EntradaComplementosCC = {
+  qtd_placas: number
+  tipo_telhado: string | null
+  distancia_string_qgbt_m: number
+}
+
+type ItemComplementoCC = {
+  categoria: 'cabo_cc' | 'estrutura' | 'conector'
+  produto_id: string | null
+  modelo: string
+  qtd: number
+  unidade: string
+  preco_unitario: number
+  subtotal: number
+}
+
+/**
+ * Calcula os complementos CC do kit (cabo solar 6mm², estrutura de
+ * fixação e MC4) buscando cada produto no catálogo pelo padrão
+ * categoria + palavra-chave, aplicando o preço vigente. Se algum não
+ * estiver cadastrado, retorna aviso pro consultor.
+ *
+ * Estimativas de qtd (aproximações padrão Spin):
+ * - Cabo solar: 2 × (distancia_qgbt_m + 30m folga por string) — soma
+ *   metros do positivo + negativo
+ * - Estrutura: 1 kit pra cada 4 placas (arredonda pra cima)
+ * - MC4: 2 pares por STRING (1 na saída da string, 1 na entrada do
+ *   inversor). Estimativa: 2 × ceil(qtd_placas / 12).
+ */
+async function precificarComplementosCC(
+  supabase: any,
+  entrada: EntradaComplementosCC,
+): Promise<{ total: number; itens: ItemComplementoCC[]; avisos: string[] }> {
+  const avisos: string[] = []
+  const itens: ItemComplementoCC[] = []
+  const hojeIso = new Date().toISOString().slice(0, 10)
+
+  async function buscarProdutoComPreco(
+    filtro: { categorias: string[]; contem?: string[]; naoContem?: string[] },
+  ): Promise<{ id: string; modelo: string; preco: number } | null> {
+    const { data: prods } = await supabase
+      .from('produtos')
+      .select('id, modelo, subcategoria, categoria')
+      .in('categoria', filtro.categorias)
+      .eq('ativo', true)
+      .limit(100)
+    const candidatos = (prods || []).filter((p: any) => {
+      const alvo = `${p.modelo || ''} ${p.subcategoria || ''}`.toLowerCase()
+      const ok = !filtro.contem || filtro.contem.every((k) => alvo.includes(k.toLowerCase()))
+      const proibido = !!(filtro.naoContem || []).find((k) => alvo.includes(k.toLowerCase()))
+      return ok && !proibido
+    })
+    if (candidatos.length === 0) return null
+    const escolhido = candidatos[0]
+    const { data: precos } = await supabase
+      .from('precos_produtos')
+      .select('preco_venda, vigente_de, vigente_ate')
+      .eq('produto_id', escolhido.id)
+      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+      .order('vigente_de', { ascending: false })
+      .limit(1)
+    const preco = Number((precos || [])[0]?.preco_venda) || 0
+    if (preco <= 0) return null
+    return { id: escolhido.id, modelo: escolhido.modelo, preco }
+  }
+
+  // 1. Cabo solar 6mm² — metragem = 2 × (distância + 30m folga)
+  const metrosCabo = Math.ceil(2 * (entrada.distancia_string_qgbt_m + 30))
+  const cabo = await buscarProdutoComPreco({
+    categorias: ['cabo_cc', 'cabo'],
+    contem: ['solar'],
+  })
+  if (cabo) {
+    itens.push({
+      categoria: 'cabo_cc', produto_id: cabo.id, modelo: cabo.modelo,
+      qtd: metrosCabo, unidade: 'm', preco_unitario: cabo.preco,
+      subtotal: metrosCabo * cabo.preco,
+    })
+  } else {
+    avisos.push(`Cabo solar 6mm² não encontrado no /admin/catalogo (categoria "cabo_cc" ou "cabo" contendo "solar"). ${metrosCabo}m estimados não entraram no preço.`)
+  }
+
+  // 2. Estrutura — 1 kit pra cada 4 placas. Filtro por tipo de telhado.
+  const qtdKitsEstrutura = Math.ceil(entrada.qtd_placas / 4)
+  const contemEstrut: string[] = []
+  const tipo = String(entrada.tipo_telhado || '').toLowerCase()
+  if (/fibro/.test(tipo)) contemEstrut.push('fibrocimento')
+  else if (/metal|zinco|alumin|telhado.metal/.test(tipo)) contemEstrut.push('metal')
+  else if (/ceram|barro|colonial/.test(tipo)) contemEstrut.push('ceram')
+  else if (/laje|concreto/.test(tipo)) contemEstrut.push('laje')
+  // Se não deu match, busca qualquer estrutura
+  const estrutura = await buscarProdutoComPreco({
+    categorias: ['estrutura'],
+    contem: contemEstrut,
+  })
+  if (estrutura) {
+    itens.push({
+      categoria: 'estrutura', produto_id: estrutura.id, modelo: estrutura.modelo,
+      qtd: qtdKitsEstrutura, unidade: 'kit', preco_unitario: estrutura.preco,
+      subtotal: qtdKitsEstrutura * estrutura.preco,
+    })
+  } else {
+    avisos.push(`Estrutura ${contemEstrut[0] || 'genérica'} não encontrada no /admin/catalogo (categoria "estrutura"). ${qtdKitsEstrutura} kit(s) estimado(s) não entraram no preço.`)
+  }
+
+  // 3. Conector MC4 — 2 pares por string (estimativa: 1 string ≈ 12 placas)
+  const qtdMc4 = 2 * Math.ceil(entrada.qtd_placas / 12)
+  const mc4 = await buscarProdutoComPreco({
+    categorias: ['conector'],
+    contem: ['mc4'],
+  })
+  if (mc4) {
+    itens.push({
+      categoria: 'conector', produto_id: mc4.id, modelo: mc4.modelo,
+      qtd: qtdMc4, unidade: 'par', preco_unitario: mc4.preco,
+      subtotal: qtdMc4 * mc4.preco,
+    })
+  } else {
+    avisos.push(`Conector MC4 não encontrado no /admin/catalogo (categoria "conector" contendo "mc4"). ${qtdMc4} par(es) estimado(s) não entraram no preço.`)
+  }
+
+  const total = itens.reduce((s, x) => s + x.subtotal, 0)
+  return { total, itens, avisos }
 }
