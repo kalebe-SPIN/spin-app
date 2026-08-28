@@ -40,6 +40,17 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
       || 'Tijucas'
     const ufInst = String(projeto.endereco_instalacao?.uf || projeto.cliente_endereco?.uf || 'SC').toUpperCase()
 
+    // Endereço do cliente pra capa (rua, nº, bairro, cidade/uf) — usa
+    // endereco_instalacao como fonte primária; cai pra cliente_endereco.
+    // Kalebe 2026-08-27: mostrar endereço + CPF/CNPJ no bloco Cliente.
+    const endObj = projeto.endereco_instalacao || projeto.cliente_endereco || {}
+    const enderecoLinhaCliente = [
+      [endObj.rua || endObj.logradouro, endObj.numero ? `${endObj.numero}` : null].filter(Boolean).join(', '),
+      endObj.bairro,
+      [endObj.cidade || endObj.municipio, endObj.uf].filter(Boolean).join('/'),
+      endObj.cep,
+    ].filter((s) => s && String(s).trim().length > 0).join(' · ')
+
     // Usa equipamentos_enriquecidos (com descricao_curta+specs vindas do catálogo)
     // se disponível; senão cai pra estrutura salva no projeto
     const equipamentos: any[] = selecao?.equipamentos_enriquecidos || selecao?.equipamentos || []
@@ -123,21 +134,37 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <div>
                 <p style={E.rotuloMini}>Cliente</p>
                 <p style={E.nomeCliente}>{projeto.cliente_razao_social || '—'}</p>
-                <p style={E.docCliente}>
-                  {projeto.cliente_cpf_cnpj ? `CPF/CNPJ ${formatarCpfCnpj(String(projeto.cliente_cpf_cnpj))}` : ''}
-                </p>
+                {projeto.cliente_cpf_cnpj && (
+                  <p style={E.docCliente}>
+                    CPF/CNPJ {formatarCpfCnpj(String(projeto.cliente_cpf_cnpj))}
+                  </p>
+                )}
+                {enderecoLinhaCliente && (
+                  <p style={{ ...E.docCliente, marginTop: 2 }}>{enderecoLinhaCliente}</p>
+                )}
               </div>
               <div>
                 <p style={E.rotuloMini}>Estação proposta</p>
-                <p style={E.nomeCliente}>
-                  <span>{qtdTotalEquip} equipamento{qtdTotalEquip === 1 ? '' : 's'} WEG</span>
-                  <br />
-                  <span style={{ fontSize: 14, color: 'rgba(245,245,240,.7)', fontWeight: 500 }}>
+                {/* Lista os equipamentos concretos em vez do texto genérico */}
+                <div style={{ marginTop: 4 }}>
+                  {equipamentos.length > 0 ? (
+                    equipamentos.slice(0, 4).map((e, i) => (
+                      <p key={i} style={{
+                        margin: '0 0 4px', fontFamily: E.font.display,
+                        fontSize: 14, fontWeight: 700, lineHeight: 1.3, color: '#F5F5F0',
+                      }}>
+                        {e.qtd}× <span style={{ color: '#F5B400' }}>{e.modelo}</span>
+                      </p>
+                    ))
+                  ) : (
+                    <p style={E.nomeCliente}>—</p>
+                  )}
+                  <p style={{ margin: '6px 0 0', fontSize: 11, color: 'rgba(245,245,240,.6)' }}>
                     <span>Linha WEMOB</span>
                     <span style={{ margin: '0 6px' }}>·</span>
                     <span>potência {fmtNum(potenciaHeadline, 1)} kW</span>
-                  </span>
-                </p>
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -146,7 +173,7 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
             <div style={E.metricasGrid}>
               <MetricM label="Potência" valor={fmtNum(potenciaHeadline, 1)} unidade="kW" />
               <MetricM label="Equipamentos" valor={String(qtdTotalEquip)} unidade="itens" cor="#F5B400" borda />
-              <MetricM label="Materiais CA" valor={String(qtdTotalCA)} unidade="itens" borda />
+              <MetricM label="Materiais CA" valor="✓" unidade="componentes inclusos" borda />
               <MetricM label="Investimento" valor={invHeadline.replace('R$ ', '')} unidade="chaves na mão" prefixo="R$" />
             </div>
 
@@ -229,7 +256,7 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
               )}
               {kmTotal > 0 && (
                 <ItemServ titulo="Deslocamento:">
-                  {fmtNum(kmTotal, 0)} km rodados a R$ {fmt(rsKm)}/km (ida + volta).
+                  {fmtNum(kmTotal, 0)} km rodados (ida + volta) da SPIN Solar até o local do cliente.
                 </ItemServ>
               )}
               {incluiUni && (
@@ -291,7 +318,7 @@ export const PropostaVEPDFTemplate = forwardRef<HTMLDivElement, Props>(
             <h3 style={E.subtituloSecao}>Escopo consolidado</h3>
             <div style={E.gridDados}>
               <DadoLinha rot="Equipamentos WEG" val={`${qtdTotalEquip} item${qtdTotalEquip === 1 ? '' : 's'} · incluso`} />
-              <DadoLinha rot="Materiais CA" val={`${qtdTotalCA} item${qtdTotalCA === 1 ? '' : 's'} · incluso`} />
+              <DadoLinha rot="Materiais CA" val="Componentes inclusos" />
               {precoEle > 0 && <DadoLinha rot="Elétrica predial" val="incluso" />}
               {precoAlv > 0 && <DadoLinha rot="Alvenaria" val="incluso" />}
               {precoDesloc > 0 && <DadoLinha rot="Deslocamento" val="incluso" />}
