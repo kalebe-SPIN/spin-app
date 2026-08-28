@@ -109,12 +109,28 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               </div>
               <div>
                 <p style={E.rotuloMini}>Sistema proposto</p>
-                <p style={E.nomeCliente}>
-                  {kit.qtd_placas || 0} × {(kit.placa?.potencia_wp || 0)} Wp<br />
-                  <span style={{ fontSize: 14, color: 'rgba(245,245,240,.7)', fontWeight: 500 }}>
-                    Inversor {kit.inversor?.modelo || '—'}
-                  </span>
+                {/* Potência CC total + composição da placa */}
+                <p style={{ margin: 0, fontFamily: E.font.display, fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#F5F5F0' }}>
+                  {fmtNum(kit.potencia_cc_kwp || 0, 2)} <span style={{ fontSize: 14, color: 'rgba(245,245,240,.6)', fontWeight: 500 }}>kWp CC</span>
                 </p>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(245,245,240,.75)', fontWeight: 500 }}>
+                  {kit.qtd_placas || 0}× {kit.placa?.modelo || 'placa'} ({(kit.placa?.potencia_wp || 0)} Wp)
+                </p>
+                {/* Potência CA total + composição do(s) inversor(es) */}
+                <p style={{ margin: '10px 0 0', fontFamily: E.font.display, fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#F5F5F0' }}>
+                  {fmtNum(kit.potencia_ca_kw || 0, 2)} <span style={{ fontSize: 14, color: 'rgba(245,245,240,.6)', fontWeight: 500 }}>kW CA</span>
+                </p>
+                {(Array.isArray(kit.inversores) && kit.inversores.length > 0)
+                  ? kit.inversores.map((inv: any, i: number) => (
+                      <p key={i} style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(245,245,240,.75)', fontWeight: 500 }}>
+                        {inv.qtd || 1}× {inv.modelo} ({inv.potencia_kw} kW)
+                      </p>
+                    ))
+                  : (
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(245,245,240,.75)', fontWeight: 500 }}>
+                      {kit.qtd_inversores || 1}× {kit.inversor?.modelo || 'inversor'} ({kit.inversor?.potencia_kw || 0} kW)
+                    </p>
+                  )}
               </div>
             </div>
 
@@ -157,16 +173,30 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <tbody>
                 <tr>
                   <td style={E.td}>Módulo fotovoltaico</td>
-                  <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700 }}>{kit.qtd_placas || 0}</td>
-                  <td style={E.td}>{kit.placa?.modelo || '—'}</td>
+                  <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700, paddingRight: 14 }}>{kit.qtd_placas || 0}</td>
+                  <td style={{ ...E.td, paddingLeft: 14 }}>{kit.placa?.modelo || '—'}</td>
                   <td style={{ ...E.td, textAlign: 'right' }}>{kit.placa?.potencia_wp || 0} Wp</td>
                 </tr>
-                <tr>
-                  <td style={E.td}>Inversor</td>
-                  <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700 }}>{kit.qtd_inversores || 0}</td>
-                  <td style={E.td}>{kit.inversor?.modelo || '—'}</td>
-                  <td style={{ ...E.td, textAlign: 'right' }}>{kit.inversor?.potencia_kw || 0} kW</td>
-                </tr>
+                {(Array.isArray(kit.inversores) && kit.inversores.length > 0)
+                  ? kit.inversores.map((inv: any, i: number) => {
+                      const isMicro = /^SIW100/i.test(inv.modelo || '')
+                      return (
+                        <tr key={i}>
+                          <td style={E.td}>{isMicro ? 'Microinversor' : 'Inversor'}{i > 0 ? '' : ''}</td>
+                          <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700, paddingRight: 14 }}>{inv.qtd || 1}</td>
+                          <td style={{ ...E.td, paddingLeft: 14 }}>{inv.modelo || '—'}</td>
+                          <td style={{ ...E.td, textAlign: 'right' }}>{inv.potencia_kw || 0} kW</td>
+                        </tr>
+                      )
+                    })
+                  : (
+                    <tr>
+                      <td style={E.td}>Inversor</td>
+                      <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700, paddingRight: 14 }}>{kit.qtd_inversores || 0}</td>
+                      <td style={{ ...E.td, paddingLeft: 14 }}>{kit.inversor?.modelo || '—'}</td>
+                      <td style={{ ...E.td, textAlign: 'right' }}>{kit.inversor?.potencia_kw || 0} kW</td>
+                    </tr>
+                  )}
               </tbody>
             </table>
 
