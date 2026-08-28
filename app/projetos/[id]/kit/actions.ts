@@ -6,12 +6,25 @@ import { redirect } from 'next/navigation'
 import { montarListaComplementarCA, type ItemKit } from '@/lib/kit-auto/montar-kit'
 import { precificarLista, calcularSubtotais } from '@/lib/kit-auto/precificar-lista'
 
+export type InversorNoKit = {
+  id: string
+  codigo_weg: string | null
+  modelo: string
+  potencia_kw: number
+  preco_venda: number
+  qtd: number
+}
+
 export type KitSelecionado = {
   placa: { id: string; codigo_weg: string; modelo: string; potencia_wp: number; preco_venda: number }
   qtd_placas: number
   potencia_cc_kwp: number
+  // Compat retro: 1º inversor da lista (ou único, se sistema legado)
   inversor: { id: string; codigo_weg: string; modelo: string; potencia_kw: number; preco_venda: number }
   qtd_inversores: number
+  // NOVO: array de inversores no kit (permite mixar string + micro + potências diferentes)
+  // Kalebe 2026-08-27: composição de invesores no modo manual do kit ongrid
+  inversores?: InversorNoKit[]
   potencia_ca_kw: number
   fci_pct: number
   preco_total_kit_weg?: number
@@ -88,7 +101,11 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
       },
       {
         qtd_placas: kit.qtd_placas,
-        qtd_inversores: kit.qtd_inversores,
+        // Se o kit tem invesores múltiplos (novo), soma todas as qtds pra o
+        // dimensionamento da lista CA (disjuntores individuais, etc).
+        qtd_inversores: kit.inversores && kit.inversores.length > 0
+          ? kit.inversores.reduce((s, x) => s + (x.qtd || 0), 0)
+          : kit.qtd_inversores,
         distancia_string_qgbt_m: padrao?.distancia_string_qgbt_m || 15,
         tipo_telhado: Array.isArray(telhadoSecoes) && telhadoSecoes[0]?.tipo_cobertura,
         potencia_ca_total_kw: kit.potencia_ca_kw,
@@ -113,8 +130,12 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
 
   // 5. Preenche valor_estimado do projeto_item fv_ongrid com o total
   //    Total = placas + inversor + lista CA (materiais complementares)
+  // Se veio invesores múltiplos, soma placa + soma(inversores × qtd cada)
+  const precoInversoresTotal = kit.inversores && kit.inversores.length > 0
+    ? kit.inversores.reduce((s, x) => s + x.preco_venda * x.qtd, 0)
+    : kit.inversor.preco_venda * kit.qtd_inversores
   const precoKitWeg = kit.preco_total_kit_weg
-    || (kit.placa.preco_venda * kit.qtd_placas) + (kit.inversor.preco_venda * kit.qtd_inversores)
+    || (kit.placa.preco_venda * kit.qtd_placas) + precoInversoresTotal
   const totalFvOnGrid = precoKitWeg + precoListaCA
 
   if (totalFvOnGrid > 0) {
