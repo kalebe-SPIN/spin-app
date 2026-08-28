@@ -24,11 +24,16 @@ export type Entradas = {
   // Kit
   placa: { qtd: number; preco_venda_unitario: number; modelo: string; potencia_wp: number }
   inversor: { qtd: number; preco_venda_unitario: number; modelo: string; potencia_kw: number }
-  // Lista CA
+  // Lista CA (materiais elétricos complementares tributáveis — base impostável)
   itens_ca: ItemLista[]
   // Contexto
   potencia_kwp: number
   distancia_km_extra?: number
+  /** Se passado, usa esse valor bruto WEG (placa+inversor+cabo+estrutura+MC4+…)
+   *  em vez de recalcular com placa+inversor. Necessário pra que os
+   *  complementos CC (cabo solar / estrutura / MC4) levem o fator 0,4182
+   *  junto com placa+inversor — todos vêm da planilha WEG. */
+  subtotal_kit_weg_bruto_override?: number
 }
 
 export type PropostaCalculada = {
@@ -79,11 +84,16 @@ export function getNum(params: ParametrosVigentes, chave: string, fallback = 0):
  * Calcula preço final da proposta.
  */
 export function calcularProposta(entradas: Entradas, params: ParametrosVigentes): PropostaCalculada {
-  const { placa, inversor, itens_ca, potencia_kwp, distancia_km_extra = 0 } = entradas
+  const { placa, inversor, itens_ca, potencia_kwp, distancia_km_extra = 0,
+    subtotal_kit_weg_bruto_override } = entradas
   const numeroPlacas = placa.qtd
 
   // 1. KIT WEG (não paga imposto Simples porque é revenda WEG)
-  const subtotalKitBruto = (placa.preco_venda_unitario * placa.qtd) + (inversor.preco_venda_unitario * inversor.qtd)
+  //    Inclui placa+inversor+cabo+estrutura+MC4 quando o override é passado.
+  const subtotalKitBrutoCalc = (placa.preco_venda_unitario * placa.qtd) + (inversor.preco_venda_unitario * inversor.qtd)
+  const subtotalKitBruto = subtotal_kit_weg_bruto_override && subtotal_kit_weg_bruto_override > 0
+    ? subtotal_kit_weg_bruto_override
+    : subtotalKitBrutoCalc
   const kitWegComFator = subtotalKitBruto * FATOR_KIT_WEG
 
   // 2. LISTA CA (subtotal dos materiais complementares)

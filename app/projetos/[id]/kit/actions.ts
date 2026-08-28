@@ -135,35 +135,39 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
   const precoInversoresTotal = kit.inversores && kit.inversores.length > 0
     ? kit.inversores.reduce((s, x) => s + x.preco_venda * x.qtd, 0)
     : kit.inversor.preco_venda * kit.qtd_inversores
-  const precoKitWeg = kit.preco_total_kit_weg
+  const precoKitPlacaInversor = kit.preco_total_kit_weg
     || (kit.placa.preco_venda * kit.qtd_placas) + precoInversoresTotal
 
-  // Kalebe pediu 2026-08-27: incluir cabo solar CC + estrutura + MC4
-  // puxando do /admin/catalogo (mesma lógica das outras categorias).
-  // Se algum produto não estiver cadastrado, o item entra com preço 0 e
-  // um alerta é registrado nas observações do kit — consultor sabe que
-  // precisa cadastrar em /admin/catalogo.
+  // Kalebe 2026-08-27: TODOS os itens do kit (cabo, estrutura, MC4,
+  // protetor surto, conector) estão cadastrados na planilha WEG com
+  // preço TABELA. Somamos aqui pro subtotal BRUTO — o fator 0,4182
+  // aplica sobre TUDO (kit WEG completo).
   const complementosCC = await precificarComplementosCC(supabase, {
     qtd_placas: kit.qtd_placas,
     tipo_telhado: (telhadoSecoesData || [])[0]?.tipo_cobertura || null,
     distancia_string_qgbt_m: (projetoAtual as any)?.padrao_entrada?.distancia_string_qgbt_m || 15,
   })
-  const precoComplementosCC = complementosCC.total
+  const precoComplementosCCbruto = complementosCC.total
+  const kitWegBrutoTotal = precoKitPlacaInversor + precoComplementosCCbruto
 
-  // Grava composição CC no projeto pra ficar rastreável
+  // Persiste kit WEG bruto total no projeto (com complementos incluídos)
+  // pra o /orcamento aplicar o fator 0,4182 sobre TUDO.
   await supabase
     .from('projetos')
     .update({
       lista_complementos_cc: {
         itens: complementosCC.itens,
-        total: precoComplementosCC,
+        total: precoComplementosCCbruto,
         avisos: complementosCC.avisos,
         gerado_em: new Date().toISOString(),
       },
+      kit_weg_bruto_total: kitWegBrutoTotal,
     })
     .eq('id', projetoId)
 
-  const totalFvOnGrid = precoKitWeg + precoComplementosCC + precoListaCA
+  // valor_estimado do projeto_item = kit WEG bruto (será refinado com fator +
+  // margem no /orcamento). Aqui só destrava a proposta consolidada.
+  const totalFvOnGrid = kitWegBrutoTotal + precoListaCA
 
   if (totalFvOnGrid > 0) {
     await supabase
@@ -198,16 +202,15 @@ type ItemComplementoCC = {
 }
 
 /**
- * Calcula os complementos CC do kit usando parâmetros pré-estabelecidos
- * em parametros_precificacao (grupo 'complementos_cc') editados no
- * /admin/precificacao. Kalebe 2026-08-27: 'sistema calcule sozinho
- * baseado em parâmetros pré-estabelecidos'.
+ * Puxa cabo solar, estrutura de fixação e MC4 do CATÁLOGO WEG (produtos)
+ * com preço tabela vigente. Kalebe 2026-08-28: 'todos os itens estão na
+ * tabela cadastrada no catálogo WEG'. O subtotal desses complementos vai
+ * pro kit WEG BRUTO — leva o fator 0,4182 junto com placa+inversor.
  *
- * Estimativas de qtd (regras Spin):
+ * Regras de qtd (Spin):
  * - Cabo solar 6mm²: 2 × (distancia_qgbt_m + 30m folga por string)
  * - Estrutura: 1 kit pra cada 4 placas (tipo escolhido pelo telhado)
- * - MC4: 2 pares por STRING (1 na saída, 1 na entrada do inversor).
- *   Estimativa: 2 × ceil(qtd_placas / 12).
+ * - MC4: 2 pares por STRING (≈ 1 string cada 12 placas)
  */
 async function precificarComplementosCC(
   supabase: any,
@@ -215,69 +218,88 @@ async function precificarComplementosCC(
 ): Promise<{ total: number; itens: ItemComplementoCC[]; avisos: string[] }> {
   const avisos: string[] = []
   const itens: ItemComplementoCC[] = []
+  const hojeIso = new Date().toISOString().slice(0, 10)
 
-  // Busca todos os parâmetros de complementos_cc numa query
-  const { data: paramsRows } = await supabase
-    .from('parametros_precificacao')
-    .select('chave, valor_numero')
-    .eq('grupo', 'complementos_cc')
-    .eq('ativo', true)
-  const params: Record<string, number> = {}
-  for (const p of paramsRows || []) {
-    if (p.valor_numero != null) params[p.chave] = Number(p.valor_numero)
-  }
-
-  // Fallbacks razoáveis quando a migration 090 ainda não rodou
-  const precoCaboMetro = params.preco_metro_cabo_solar_6mm2 || 12
-  const precoMc4Par = params.preco_par_mc4 || 25
-  const precoEstruturaPorTipo: Record<string, { chave: string; preco: number; label: string }> = {
-    fibrocimento: { chave: 'preco_kit_estrutura_fibrocimento', preco: params.preco_kit_estrutura_fibrocimento || 320, label: 'Fibrocimento' },
-    metal:        { chave: 'preco_kit_estrutura_metal',         preco: params.preco_kit_estrutura_metal || 380,         label: 'Metálico' },
-    ceramica:     { chave: 'preco_kit_estrutura_ceramica',      preco: params.preco_kit_estrutura_ceramica || 350,      label: 'Cerâmica' },
-    laje:         { chave: 'preco_kit_estrutura_laje',          preco: params.preco_kit_estrutura_laje || 420,          label: 'Laje/Concreto' },
-  }
-
-  // Se algum parâmetro não veio, avisa
-  const faltando: string[] = []
-  if (!('preco_metro_cabo_solar_6mm2' in params)) faltando.push('preco_metro_cabo_solar_6mm2')
-  if (!('preco_par_mc4' in params)) faltando.push('preco_par_mc4')
-  if (faltando.length > 0) {
-    avisos.push(`Parâmetros de complementos CC não cadastrados: ${faltando.join(', ')}. Rode a migration 090 e ajuste em /admin/precificacao. Valores fallback foram aplicados.`)
+  async function buscarProdutoComPreco(
+    filtro: { categorias: string[]; contem?: string[] },
+  ): Promise<{ id: string; modelo: string; preco: number } | null> {
+    const { data: prods } = await supabase
+      .from('produtos')
+      .select('id, modelo, subcategoria, categoria')
+      .in('categoria', filtro.categorias)
+      .eq('ativo', true)
+      .limit(200)
+    const candidatos = (prods || []).filter((p: any) => {
+      const alvo = `${p.modelo || ''} ${p.subcategoria || ''}`.toLowerCase()
+      return !filtro.contem || filtro.contem.every((k) => alvo.includes(k.toLowerCase()))
+    })
+    if (candidatos.length === 0) return null
+    const escolhido = candidatos[0]
+    const { data: precos } = await supabase
+      .from('precos_produtos')
+      .select('preco_venda, vigente_de, vigente_ate')
+      .eq('produto_id', escolhido.id)
+      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+      .order('vigente_de', { ascending: false })
+      .limit(1)
+    const preco = Number((precos || [])[0]?.preco_venda) || 0
+    if (preco <= 0) return null
+    return { id: escolhido.id, modelo: escolhido.modelo, preco }
   }
 
   // 1. Cabo solar 6mm² — metragem = 2 × (distância + 30m folga)
   const metrosCabo = Math.ceil(2 * (entrada.distancia_string_qgbt_m + 30))
-  itens.push({
-    categoria: 'cabo_cc',
-    modelo: `Cabo solar 6mm² (preto + vermelho) — ${metrosCabo}m`,
-    qtd: metrosCabo, unidade: 'm', preco_unitario: precoCaboMetro,
-    subtotal: metrosCabo * precoCaboMetro,
+  const cabo = await buscarProdutoComPreco({
+    categorias: ['cabo_cc', 'cabo'],
+    contem: ['6mm'],
   })
+  if (cabo) {
+    itens.push({
+      categoria: 'cabo_cc', modelo: cabo.modelo,
+      qtd: metrosCabo, unidade: 'm', preco_unitario: cabo.preco,
+      subtotal: metrosCabo * cabo.preco,
+    })
+  } else {
+    avisos.push(`Cabo solar 6mm² não achado no /admin/catalogo. ${metrosCabo}m estimados NÃO entraram no preço do kit.`)
+  }
 
-  // 2. Estrutura — decide tipo pelo telhado
-  const tipo = String(entrada.tipo_telhado || '').toLowerCase()
-  let chaveTipo: keyof typeof precoEstruturaPorTipo = 'fibrocimento'
-  if (/fibro/.test(tipo)) chaveTipo = 'fibrocimento'
-  else if (/metal|zinco|alumin/.test(tipo)) chaveTipo = 'metal'
-  else if (/ceram|barro|colonial/.test(tipo)) chaveTipo = 'ceramica'
-  else if (/laje|concreto/.test(tipo)) chaveTipo = 'laje'
-  const estrut = precoEstruturaPorTipo[chaveTipo]
+  // 2. Estrutura — 1 kit pra cada 4 placas, tipo pelo telhado
   const qtdKitsEstrutura = Math.ceil(entrada.qtd_placas / 4)
-  itens.push({
-    categoria: 'estrutura',
-    modelo: `Kit estrutura ${estrut.label} (4 placas por kit)`,
-    qtd: qtdKitsEstrutura, unidade: 'kit', preco_unitario: estrut.preco,
-    subtotal: qtdKitsEstrutura * estrut.preco,
+  const tipo = String(entrada.tipo_telhado || '').toLowerCase()
+  let contemEstrut: string[] = []
+  if (/fibro/.test(tipo)) contemEstrut = ['fibro']
+  else if (/metal|zinco|alumin/.test(tipo)) contemEstrut = ['metal']
+  else if (/ceram|barro|colonial/.test(tipo)) contemEstrut = ['ceram']
+  else if (/laje|concreto/.test(tipo)) contemEstrut = ['laje']
+  const estrutura = await buscarProdutoComPreco({
+    categorias: ['estrutura'],
+    contem: contemEstrut,
   })
+  if (estrutura) {
+    itens.push({
+      categoria: 'estrutura', modelo: estrutura.modelo,
+      qtd: qtdKitsEstrutura, unidade: 'kit', preco_unitario: estrutura.preco,
+      subtotal: qtdKitsEstrutura * estrutura.preco,
+    })
+  } else {
+    avisos.push(`Estrutura ${contemEstrut[0] || 'genérica'} não achada no /admin/catalogo. ${qtdKitsEstrutura} kit(s) NÃO entraram no preço.`)
+  }
 
-  // 3. Conector MC4 — 2 pares por string (1 string ≈ 12 placas)
+  // 3. MC4 — 2 pares por string (1 string ≈ 12 placas)
   const qtdMc4 = 2 * Math.ceil(entrada.qtd_placas / 12)
-  itens.push({
-    categoria: 'conector',
-    modelo: 'Par MC4 (macho + fêmea)',
-    qtd: qtdMc4, unidade: 'par', preco_unitario: precoMc4Par,
-    subtotal: qtdMc4 * precoMc4Par,
+  const mc4 = await buscarProdutoComPreco({
+    categorias: ['conector'],
+    contem: ['mc4'],
   })
+  if (mc4) {
+    itens.push({
+      categoria: 'conector', modelo: mc4.modelo,
+      qtd: qtdMc4, unidade: 'par', preco_unitario: mc4.preco,
+      subtotal: qtdMc4 * mc4.preco,
+    })
+  } else {
+    avisos.push(`Conector MC4 não achado no /admin/catalogo. ${qtdMc4} par(es) NÃO entraram no preço.`)
+  }
 
   const total = itens.reduce((s, x) => s + x.subtotal, 0)
   return { total, itens, avisos }
