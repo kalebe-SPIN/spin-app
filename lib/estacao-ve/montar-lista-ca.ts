@@ -128,11 +128,16 @@ export function sugerirListaCaVEMulti(entrada: EntradaSugestaoMulti): LinhaSuger
   if (gruposValidos.length === 0) return []
 
   const isTri = fases === 'trifasico'
+  const isBi = fases === 'bifasico'
+  // 220V pra mono/bi (residencial predial); 380V pra tri (fase-fase = 380, fase-neutro = 220)
   const tensao = isTri ? 380 : 220
-  const fatorFase = isTri ? Math.sqrt(3) : 1
-  const qtdDpsPorRamal = isTri ? 4 : 2
-  const labelFase = isTri ? '3F+N' : 'F+N'
-  const numCondutores = isTri ? 5 : 3
+  // Fator de fase pra P = V × I × fator: 1 (mono), 2 (bi 2F+N), sqrt(3) (tri 3F+N)
+  const fatorFase = isTri ? Math.sqrt(3) : (isBi ? 2 : 1)
+  // DPS: 1 por fase + 1 pro neutro
+  const qtdDpsPorRamal = isTri ? 4 : (isBi ? 3 : 2)
+  const labelFase = isTri ? '3F+N' : (isBi ? '2F+N' : 'F+N')
+  // Condutores: F+N+T (3), 2F+N+T (4), 3F+N+T (5)
+  const numCondutores = isTri ? 5 : (isBi ? 4 : 3)
 
   // Totais pra dimensionar disjuntor principal + cabo principal
   const potTotalKw = gruposValidos.reduce((s, g) => s + g.potencia_kw * g.qtd, 0)

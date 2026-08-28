@@ -15,7 +15,7 @@ export async function mudarEtapaProjetoAction(
 
   const { data: projeto } = await supabase
     .from('projetos')
-    .select('id, status, cliente_id, consultor_id, cliente_razao_social')
+    .select('id, codigo, status, cliente_id, consultor_id, cliente_razao_social, cliente_telefone')
     .eq('id', projetoId)
     .single()
 
@@ -23,26 +23,36 @@ export async function mudarEtapaProjetoAction(
 
   const statusAnterior = projeto.status
 
-  // Update projeto
+  // Update projeto — trigger trg_projetos_status_touch (migration 085/088)
+  // seta status_atualizado_em e insere em projeto_status_historico
+  // automaticamente. NÃO duplicar o INSERT aqui.
   const { error: erroUpd } = await supabase
     .from('projetos')
     .update({
       status: novoStatus,
-      status_atualizado_em: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq('id', projetoId)
 
   if (erroUpd) return { erro: erroUpd.message }
 
-  // Log no histórico
-  await supabase.from('projeto_status_historico').insert({
-    projeto_id: projetoId,
-    status_anterior: statusAnterior,
-    status_novo: novoStatus,
-    usuario_id: user.id,
-    observacoes: observacoes || null,
-  })
+  // Se veio observação, anexa no registro que o trigger acabou de criar
+  if (observacoes?.trim()) {
+    const { data: ultimo } = await supabase
+      .from('projeto_status_historico')
+      .select('id')
+      .eq('projeto_id', projetoId)
+      .eq('status_novo', novoStatus)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (ultimo?.id) {
+      await supabase
+        .from('projeto_status_historico')
+        .update({ observacoes: observacoes.trim() })
+        .eq('id', ultimo.id)
+    }
+  }
 
   // AUTOMAÇÕES por transição
   await disparoAutomacoes(supabase, {

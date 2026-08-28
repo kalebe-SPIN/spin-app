@@ -48,8 +48,20 @@ export default async function PropostaVEPage({ params }: { params: { id: string 
     .eq('singleton', true)
     .single()
 
-  // Enriquece equipamentos com descrição/spec do catálogo (busca por ID)
-  const equipIds = (selecao?.equipamentos || []).map((e: any) => e.produto_id).filter(Boolean)
+  // Enriquece equipamentos com descrição/spec do catálogo (busca por ID).
+  // Compat: projetos LEGADOS têm só selecao.wallbox (sem selecao.equipamentos).
+  // Migra pra estrutura nova em memória pra o template renderizar.
+  const equipamentosBase = (selecao?.equipamentos && selecao.equipamentos.length > 0)
+    ? selecao.equipamentos
+    : (selecao?.wallbox?.id ? [{
+        produto_id: selecao.wallbox.id,
+        codigo_weg: selecao.wallbox.codigo_weg,
+        modelo: selecao.wallbox.modelo,
+        potencia_kw: selecao.wallbox.potencia_kw || 0,
+        qtd: selecao.qtd || 1,
+        preco_unitario: selecao.wallbox.preco_unitario || 0,
+      }] : [])
+  const equipIds = equipamentosBase.map((e: any) => e.produto_id).filter(Boolean)
   let descPorProduto: Record<string, { descricao_curta?: string; specs?: any; url_datasheet?: string | null }> = {}
   if (equipIds.length > 0) {
     const { data: prods } = await supabase
@@ -64,7 +76,7 @@ export default async function PropostaVEPage({ params }: { params: { id: string 
       }
     }
   }
-  const equipamentosEnriquecidos = (selecao?.equipamentos || []).map((e: any) => ({
+  const equipamentosEnriquecidos = equipamentosBase.map((e: any) => ({
     ...e,
     descricao_curta: descPorProduto[e.produto_id]?.descricao_curta || '',
     specs: descPorProduto[e.produto_id]?.specs || {},

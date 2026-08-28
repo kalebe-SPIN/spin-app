@@ -882,7 +882,13 @@ export function EstacaoRecargaFluxoClient({
               Equipamentos WEG (revenda) não pagam Simples.
             </p>
             <div className="pt-2 border-t border-white/10">
-              <Linha label="TOTAL AO CLIENTE" valor={fmtR$(calc.precoFinal)} destaque="sol" grande />
+              {(margemPct + comissaoPct + impostosPct) >= 90 && (
+              <p className="text-[10px] text-coral italic pt-1 border-t border-coral/20">
+                ⚠ Soma margem + comissão + impostos = {fmtNum(margemPct + comissaoPct + impostosPct, 1)}%.
+                Acima de 90% o cálculo satura (limite matemático 99%) — reduza um dos valores pra o preço refletir corretamente o que você pediu.
+              </p>
+            )}
+            <Linha label="TOTAL AO CLIENTE" valor={fmtR$(calc.precoFinal)} destaque="sol" grande />
             </div>
           </div>
 

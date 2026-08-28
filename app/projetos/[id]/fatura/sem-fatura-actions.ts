@@ -97,12 +97,17 @@ export async function salvarSemFaturaAction(projetoId: string, input: Input) {
     const retry = await supabase.from('projetos').update(payload).eq('id', projetoId)
     error = retry.error
     if (!error) {
-      return { erro: 'ATENÇÃO: dados salvos parcialmente. Migration 024 não rodou — os campos específicos do modo rápido serão perdidos. Rode o SQL no Supabase.' }
+      // Retry funcionou — salvou parcial. Continua o fluxo normal (revalidate +
+      // redirect) em vez de retornar erro (que era o bug reportado).
+      // Aviso opcional pode ficar em log; UI segue funcionando.
+      console.warn('[sem-fatura] dados salvos parciais — migration 024 não rodou')
     }
   }
 
   if (error) return { erro: error.message }
 
   revalidatePath(`/projetos/${projetoId}`)
+  revalidatePath('/projetos')
+  revalidatePath('/crm/pipeline')
   redirect(`/projetos/${projetoId}`)
 }

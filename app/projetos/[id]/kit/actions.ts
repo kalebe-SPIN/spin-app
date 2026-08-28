@@ -44,11 +44,20 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
   }
   if (tipoProjeto) patch.tipo_projeto = tipoProjeto
 
+  // Só colunas que existem em projetos. tipo_ligacao e
+  // distancia_string_qgbt_m ficam DENTRO do JSONB padrao_entrada; seções
+  // de telhado ficam em projetos_telhado_secoes (tabela separada).
   const { data: projetoAtual } = await supabase
     .from('projetos')
-    .select('padrao_entrada, tipo_ligacao, telhado_secoes, distancia_string_qgbt_m')
+    .select('padrao_entrada')
     .eq('id', projetoId)
     .maybeSingle()
+
+  const { data: telhadoSecoesData } = await supabase
+    .from('projetos_telhado_secoes')
+    .select('tipo_cobertura')
+    .eq('projeto_id', projetoId)
+    .limit(1)
 
   const { error: erroKit } = await supabase
     .from('projetos')
@@ -61,8 +70,10 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
   let precoListaCA = 0
   try {
     const padrao = (projetoAtual as any)?.padrao_entrada || {}
-    const tipoLigacao = (projetoAtual as any)?.tipo_ligacao || padrao?.tipo_ligacao || 'monofasico'
-    const telhadoSecoes = (projetoAtual as any)?.telhado_secoes || []
+    // tipo_ligacao vive dentro de padrao_entrada.tipo_ligacao (JSONB)
+    const tipoLigacao = padrao?.tipo_ligacao || 'monofasico'
+    // telhado_secoes é tabela separada — usamos a 1ª seção pro tipo de cobertura
+    const telhadoSecoes = telhadoSecoesData || []
 
     const itensBrutos = montarListaComplementarCA(
       {
@@ -78,7 +89,7 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
       {
         qtd_placas: kit.qtd_placas,
         qtd_inversores: kit.qtd_inversores,
-        distancia_string_qgbt_m: (projetoAtual as any)?.distancia_string_qgbt_m || 15,
+        distancia_string_qgbt_m: padrao?.distancia_string_qgbt_m || 15,
         tipo_telhado: Array.isArray(telhadoSecoes) && telhadoSecoes[0]?.tipo_cobertura,
         potencia_ca_total_kw: kit.potencia_ca_kw,
         tipo_ligacao: tipoLigacao,
