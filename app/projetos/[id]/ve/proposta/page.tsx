@@ -48,6 +48,28 @@ export default async function PropostaVEPage({ params }: { params: { id: string 
     .eq('singleton', true)
     .single()
 
+  // Enriquece dados do cliente (endereço mora em clientes.endereco JSONB,
+  // não no projeto — snapshot no projeto costuma ficar vazio se o consultor
+  // não preencheu endereco_instalacao manualmente).
+  let clienteFull: any = null
+  if (projeto.cliente_id) {
+    const { data: c } = await supabase
+      .from('clientes')
+      .select('razao_social, nome_fantasia, cpf_cnpj, tipo, email, telefone, whatsapp, endereco')
+      .eq('id', projeto.cliente_id)
+      .maybeSingle()
+    if (c) clienteFull = c
+  }
+  const projetoEnriquecido = {
+    ...projeto,
+    // Preserva o que o consultor eventualmente preencheu no projeto;
+    // cai pro cadastro do cliente quando o snapshot está vazio.
+    cliente_razao_social: projeto.cliente_razao_social || clienteFull?.razao_social,
+    cliente_cpf_cnpj: projeto.cliente_cpf_cnpj || clienteFull?.cpf_cnpj,
+    cliente_telefone: projeto.cliente_telefone || clienteFull?.telefone || clienteFull?.whatsapp,
+    cliente_endereco: projeto.cliente_endereco || clienteFull?.endereco || null,
+  }
+
   // Enriquece equipamentos com descrição/spec do catálogo (busca por ID).
   // Compat: projetos LEGADOS têm só selecao.wallbox (sem selecao.equipamentos).
   // Migra pra estrutura nova em memória pra o template renderizar.
@@ -105,7 +127,7 @@ export default async function PropostaVEPage({ params }: { params: { id: string 
         </header>
 
         <PropostaVEClient
-          projeto={projeto}
+          projeto={projetoEnriquecido}
           selecao={{ ...selecao, equipamentos_enriquecidos: equipamentosEnriquecidos }}
           configEmpresa={configEmpresa}
         />
