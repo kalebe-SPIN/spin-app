@@ -1116,6 +1116,7 @@ function ProdutoRow({
             disponivel_estoque: (produto as any).disponivel_estoque ?? true,
             specs: produto.specs,
             preco_venda_atual: (produto as any).preco_venda,
+            url_imagem: (produto as any).url_imagem || null,
           } as ProdutoParaEdicao}
           onFechar={() => setEditando(false)}
         />

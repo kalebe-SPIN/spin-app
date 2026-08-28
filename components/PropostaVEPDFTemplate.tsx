@@ -439,6 +439,15 @@ function FichaEquipamento({ equip }: { equip: any }) {
   return (
     <div style={{ marginBottom: 16, border: '1px solid rgba(245,180,0,.2)', borderRadius: 4, overflow: 'hidden' as const }}>
       <div style={{ background: 'rgba(245,180,0,.08)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between' as const, alignItems: 'center' as const, gap: 12 }}>
+        {/* Imagem do equipamento — só aparece quando o admin subiu um PNG
+            no catálogo. Fundo branco + object-contain pra PNGs com transparência. */}
+        {equip.url_imagem && (
+          <div style={{ width: 60, height: 60, flexShrink: 0, background: '#F5F5F0', borderRadius: 4, overflow: 'hidden' as const, display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'center' as const }}>
+            <img src={equip.url_imagem} alt={equip.modelo}
+              style={{ maxWidth: '90%', maxHeight: '90%', objectFit: 'contain' as const }}
+              crossOrigin="anonymous" />
+          </div>
+        )}
         <div style={{ minWidth: 0, flex: 1 }}>
           <p style={{ margin: 0, fontFamily: E.font.display, fontSize: 13, fontWeight: 700, color: '#F5F5F0', letterSpacing: '-0.01em' }}>
             {equip.modelo}

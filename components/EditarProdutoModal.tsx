@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { fmtNum } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
+import { createBrowserClient } from '@supabase/ssr'
 import { editarProdutoAction } from '@/app/admin/catalogo/actions'
 import type { CategoriaProduto } from '@/app/admin/catalogo/actions'
 
@@ -20,6 +21,7 @@ export type ProdutoParaEdicao = {
   disponivel_estoque: boolean
   specs: Record<string, any> | null
   preco_venda_atual?: number | null
+  url_imagem?: string | null
 }
 
 const CATEGORIAS: CategoriaProduto[] = [
@@ -54,6 +56,32 @@ export function EditarProdutoModal({
   const [ativo, setAtivo] = useState(produto.ativo)
   const [disponivel, setDisponivel] = useState(produto.disponivel_estoque)
   const [precoVenda, setPrecoVenda] = useState<number>(produto.preco_venda_atual || 0)
+  const [urlImagem, setUrlImagem] = useState<string>(produto.url_imagem || '')
+  const [uploadando, setUploadando] = useState(false)
+
+  const supabaseBrowser = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+
+  async function uploadImagem(file: File) {
+    setUploadando(true)
+    setErro(null)
+    try {
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+      const path = `produtos/${produto.id}-${Date.now()}.${ext}`
+      const { error: upErr } = await supabaseBrowser.storage
+        .from('weg-catalogo')
+        .upload(path, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'image/png' })
+      if (upErr) throw upErr
+      const { data } = supabaseBrowser.storage.from('weg-catalogo').getPublicUrl(path)
+      setUrlImagem(data.publicUrl)
+    } catch (e: any) {
+      setErro(`Falha no upload: ${e.message || e}`)
+    } finally {
+      setUploadando(false)
+    }
+  }
 
   const specs = produto.specs || {}
   // Placa
@@ -94,6 +122,7 @@ export function EditarProdutoModal({
         entradas_mppt: entradasMppt > 0 ? entradasMppt : undefined,
         capacidade_kwh: capacidadeKwh > 0 ? capacidadeKwh : undefined,
         preco_venda: precoVenda > 0 ? precoVenda : undefined,
+        url_imagem: urlImagem || undefined,
       })
       if ('erro' in r) { setErro(r.erro); return }
       router.refresh()
@@ -113,6 +142,36 @@ export function EditarProdutoModal({
         </div>
 
         <div className="p-5 space-y-4">
+          {/* Imagem do equipamento */}
+          <Sec titulo="Imagem do equipamento">
+            <div className="flex items-start gap-3">
+              <div className="w-24 h-24 shrink-0 bg-white/5 border border-white/15 rounded-lg overflow-hidden flex items-center justify-center">
+                {urlImagem ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={urlImagem} alt="Produto" className="w-full h-full object-contain" />
+                ) : (
+                  <span className="text-white/30 text-xs text-center px-2">sem imagem</span>
+                )}
+              </div>
+              <div className="flex-1 space-y-2">
+                <label className="block">
+                  <span className="text-[11px] text-white/60 block mb-1">Upload de PNG/JPG</span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImagem(f) }}
+                    disabled={uploadando}
+                    className="text-xs text-white/70 file:mr-2 file:px-2 file:py-1 file:bg-sol/20 file:text-sol file:border-0 file:rounded file:text-xs file:font-bold" />
+                </label>
+                {uploadando && <p className="text-[11px] text-sol">⏳ Enviando…</p>}
+                {urlImagem && (
+                  <button type="button" onClick={() => setUrlImagem('')}
+                    className="text-[11px] text-coral hover:underline">
+                    ✕ Remover imagem
+                  </button>
+                )}
+              </div>
+            </div>
+          </Sec>
+
           {/* Identificação */}
           <Sec titulo="Identificação">
             <div className="grid grid-cols-2 gap-3">

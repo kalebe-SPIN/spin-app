@@ -84,17 +84,18 @@ export default async function PropostaVEPage({ params }: { params: { id: string 
         preco_unitario: selecao.wallbox.preco_unitario || 0,
       }] : [])
   const equipIds = equipamentosBase.map((e: any) => e.produto_id).filter(Boolean)
-  let descPorProduto: Record<string, { descricao_curta?: string; specs?: any; url_datasheet?: string | null }> = {}
+  let descPorProduto: Record<string, { descricao_curta?: string; specs?: any; url_datasheet?: string | null; url_imagem?: string | null }> = {}
   if (equipIds.length > 0) {
     const { data: prods } = await supabase
       .from('produtos')
-      .select('id, descricao_curta, specs, url_datasheet')
+      .select('id, descricao_curta, specs, url_datasheet, url_imagem')
       .in('id', equipIds)
     for (const p of prods || []) {
       descPorProduto[p.id] = {
         descricao_curta: p.descricao_curta || '',
         specs: p.specs || {},
         url_datasheet: p.url_datasheet,
+        url_imagem: p.url_imagem,
       }
     }
   }
@@ -103,6 +104,7 @@ export default async function PropostaVEPage({ params }: { params: { id: string 
     descricao_curta: descPorProduto[e.produto_id]?.descricao_curta || '',
     specs: descPorProduto[e.produto_id]?.specs || {},
     url_datasheet: descPorProduto[e.produto_id]?.url_datasheet || null,
+    url_imagem: descPorProduto[e.produto_id]?.url_imagem || null,
   }))
 
   return (

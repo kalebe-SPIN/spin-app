@@ -62,6 +62,7 @@ export type NovoProdutoInput = {
   preco_venda?: number             // R$ — preço tabela / cliente
   ativo?: boolean
   disponivel_estoque?: boolean
+  url_imagem?: string              // foto do produto (upload manual no admin)
 }
 
 /**
@@ -303,6 +304,7 @@ export async function editarProdutoAction(
   if (patch.codigo_interno_spin !== undefined) update.codigo_interno_spin = patch.codigo_interno_spin?.trim() || null
   if (patch.ativo !== undefined) update.ativo = patch.ativo
   if (patch.disponivel_estoque !== undefined) update.disponivel_estoque = patch.disponivel_estoque
+  if (patch.url_imagem !== undefined) update.url_imagem = patch.url_imagem?.trim() || null
 
   const { error } = await supabase.from('produtos').update(update).eq('id', produtoId)
   if (error) {
