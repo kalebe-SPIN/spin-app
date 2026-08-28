@@ -146,12 +146,24 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
         modelo: kit.inversor?.modelo || '—',
         potencia_kw: kit.inversor?.potencia_kw || 0,
       },
-      itens_ca: listaCa.map((i: any) => ({
-        descricao: i.descricao,
-        qtd: i.qtd || 0,
-        preco_unitario: i.preco_unitario || 0,
-        categoria: i.categoria,
-      })),
+      itens_ca: [
+        // Materiais complementares (Lista CA)
+        ...listaCa.map((i: any) => ({
+          descricao: i.descricao,
+          qtd: i.qtd || 0,
+          preco_unitario: i.preco_unitario || 0,
+          categoria: i.categoria,
+        })),
+        // Complementos CC (cabo solar + estrutura + MC4) — salvos pelo
+        // salvarKitAction em projetos.lista_complementos_cc. Se não entrarem
+        // aqui, o cabo/estrutura ficam de fora da base impostável e do PV.
+        ...((projeto.lista_complementos_cc?.itens || []).map((c: any) => ({
+          descricao: c.modelo,
+          qtd: c.qtd || 0,
+          preco_unitario: c.preco_unitario || 0,
+          categoria: c.categoria || 'complemento_cc',
+        }))),
+      ],
       potencia_kwp: kit.potencia_cc_kwp || 0,
       distancia_km_extra: 0,
     },
