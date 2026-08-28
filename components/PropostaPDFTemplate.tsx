@@ -200,6 +200,9 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               </tbody>
             </table>
 
+            {/* Perfil de consumo (histórico da fatura CELESC + gráfico) */}
+            <PerfilConsumo analise={projeto.analise_fatura} />
+
             {/* Geração estimada */}
             <h3 style={{ ...E.subtituloSecao, marginTop: 40 }}>Geração estimada</h3>
             <div style={E.gridDados}>
@@ -357,6 +360,143 @@ function MetricManifesto({ label, valor, unidade, cor, prefixo, borda }: {
         {prefixo && <span style={{ fontSize: 16, marginRight: 4 }}>{prefixo}</span>}
         {valor}
         <span style={{ fontSize: 14, color: 'rgba(245,245,240,.6)', fontWeight: 500 }}> {unidade}</span>
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Bloco "Perfil de consumo" da proposta — resumo dos números da fatura
+ * CELESC (média, total anual, mês pico/vale) + gráfico SVG dos 12 meses
+ * com linha da média. Kalebe 2026-08-27: mostra o consumo pra reforçar
+ * o dimensionamento na hora da venda.
+ *
+ * Só renderiza se analise_fatura tem histórico com ≥ 1 mês de dados.
+ */
+function PerfilConsumo({ analise }: { analise: any }) {
+  const historico: Array<{ mes_ano: string; consumo_kwh: number | string }> =
+    Array.isArray(analise?.historico_12_meses) ? analise.historico_12_meses : []
+  const pontos = historico
+    .map((h) => ({ mes_ano: h.mes_ano, consumo_kwh: Number(h.consumo_kwh) || 0 }))
+    .filter((p) => p.consumo_kwh > 0)
+
+  if (pontos.length === 0) return null
+
+  const media = Number(analise?.consumo_medio_kwh) || (pontos.reduce((s, p) => s + p.consumo_kwh, 0) / pontos.length)
+  const maxReal = Math.max(...pontos.map((p) => p.consumo_kwh))
+  const minReal = Math.min(...pontos.map((p) => p.consumo_kwh))
+  const totalAno = pontos.reduce((s, p) => s + p.consumo_kwh, 0)
+  const pico = pontos.find((p) => p.consumo_kwh === maxReal)
+  const vale = pontos.find((p) => p.consumo_kwh === minReal)
+
+  // Dimensões SVG compactas pra caber no A4
+  const W = 640, H = 200
+  const pL = 40, pR = 12, pT = 16, pB = 32
+  const plotW = W - pL - pR
+  const plotH = H - pT - pB
+  const maxKwh = Math.max(maxReal, media) * 1.1
+  const yPx = (kwh: number) => pT + plotH - (kwh / maxKwh) * plotH
+  const xPx = (idx: number) => pL + (pontos.length > 1 ? (idx / (pontos.length - 1)) * plotW : plotW / 2)
+  const linha = pontos.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xPx(i)} ${yPx(p.consumo_kwh)}`).join(' ')
+  const yTicks = [0, 0.33, 0.66, 1].map((f) => Math.round(maxKwh * f))
+
+  return (
+    <div style={{ marginTop: 40 }}>
+      <h3 style={E.subtituloSecao}>Perfil de consumo</h3>
+      <p style={{ margin: '0 0 12px', fontSize: 11, color: 'rgba(245,245,240,.7)', lineHeight: 1.5 }}>
+        Base pra dimensionar o sistema. Extraído do histórico dos últimos {pontos.length} meses da fatura CELESC.
+      </p>
+
+      {/* 4 números-chave em grid */}
+      <div style={{ display: 'grid' as const, gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+        <NumConsumo label="Média/mês" valor={Math.round(media)} unidade="kWh" destaque />
+        <NumConsumo label="Total anual" valor={Math.round(totalAno)} unidade="kWh" />
+        <NumConsumo label={`Pico · ${pico?.mes_ano || ''}`} valor={Math.round(maxReal)} unidade="kWh" />
+        <NumConsumo label={`Vale · ${vale?.mes_ano || ''}`} valor={Math.round(minReal)} unidade="kWh" />
+      </div>
+
+      {/* Gráfico SVG puro do consumo mês a mês com linha da média */}
+      <div style={{ background: 'rgba(245,245,240,.03)', border: '1px solid rgba(245,245,240,.08)', borderRadius: 4, padding: 10 }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
+          {/* Grid horizontal */}
+          {yTicks.map((tick, i) => (
+            <g key={i}>
+              <line x1={pL} y1={yPx(tick)} x2={W - pR} y2={yPx(tick)}
+                stroke="rgba(245,245,240,0.08)" strokeWidth={1} />
+              <text x={pL - 6} y={yPx(tick) + 3} fontSize={9}
+                fill="rgba(245,245,240,0.5)" textAnchor="end"
+                fontFamily='"Inter", system-ui, sans-serif'>
+                {tick}
+              </text>
+            </g>
+          ))}
+
+          {/* Área sob a curva */}
+          <path d={`${linha} L ${xPx(pontos.length - 1)} ${yPx(0)} L ${xPx(0)} ${yPx(0)} Z`}
+            fill="rgba(88,127,255,0.10)" />
+
+          {/* Linha da média */}
+          <line x1={pL} y1={yPx(media)} x2={W - pR} y2={yPx(media)}
+            stroke="#F5B400" strokeWidth={1.5} strokeDasharray="5 3" />
+          <text x={W - pR - 4} y={yPx(media) - 4} fontSize={9}
+            fill="#F5B400" textAnchor="end" fontWeight={700}
+            fontFamily='"Inter", system-ui, sans-serif'>
+            Média {Math.round(media)} kWh
+          </text>
+
+          {/* Linha do consumo */}
+          <path d={linha} fill="none" stroke="#587FFF" strokeWidth={2}
+            strokeLinejoin="round" strokeLinecap="round" />
+
+          {/* Pontos + valores */}
+          {pontos.map((p, i) => {
+            const cx = xPx(i)
+            const cy = yPx(p.consumo_kwh)
+            const acima = p.consumo_kwh > media
+            return (
+              <g key={i}>
+                <circle cx={cx} cy={cy} r={2.5} fill="#587FFF" />
+                <text x={cx} y={acima ? cy - 6 : cy + 12} fontSize={8}
+                  fill="rgba(245,245,240,0.75)" textAnchor="middle"
+                  fontFamily='"Inter", system-ui, sans-serif'>
+                  {Math.round(p.consumo_kwh)}
+                </text>
+              </g>
+            )
+          })}
+
+          {/* Rótulos do eixo X */}
+          {pontos.map((p, i) => (
+            <text key={i} x={xPx(i)} y={H - pB + 14} fontSize={8}
+              fill="rgba(245,245,240,0.5)" textAnchor="middle"
+              fontFamily='"Inter", system-ui, sans-serif'>
+              {p.mes_ano}
+            </text>
+          ))}
+        </svg>
+      </div>
+    </div>
+  )
+}
+
+function NumConsumo({ label, valor, unidade, destaque }: {
+  label: string; valor: number; unidade: string; destaque?: boolean
+}) {
+  return (
+    <div style={{
+      padding: '10px 12px', borderRadius: 4,
+      background: destaque ? 'rgba(245,180,0,.08)' : 'rgba(245,245,240,.03)',
+      border: `1px solid ${destaque ? 'rgba(245,180,0,.3)' : 'rgba(245,245,240,.08)'}`,
+    }}>
+      <p style={{ margin: '0 0 4px', fontSize: 8, letterSpacing: 1.5,
+        color: destaque ? '#F5B400' : 'rgba(245,245,240,.5)',
+        textTransform: 'uppercase' as const, fontWeight: 700 }}>
+        {label}
+      </p>
+      <p style={{ margin: 0, fontFamily: '"Space Grotesk", sans-serif',
+        fontSize: 18, fontWeight: 700, color: '#F5F5F0', letterSpacing: '-0.01em' }}>
+        {valor.toLocaleString('pt-BR')}
+        <span style={{ fontSize: 10, color: 'rgba(245,245,240,.6)', fontWeight: 500 }}> {unidade}</span>
       </p>
     </div>
   )
