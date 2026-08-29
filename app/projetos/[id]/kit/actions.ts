@@ -143,13 +143,36 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
     || (kit.placa.preco_venda * kit.qtd_placas) + precoInversoresTotal
 
   // Kalebe 2026-08-27: TODOS os itens do kit (cabo, estrutura, MC4,
-  // protetor surto, conector) estão cadastrados na planilha WEG com
-  // preço TABELA. Somamos aqui pro subtotal BRUTO — o fator 0,4182
-  // aplica sobre TUDO (kit WEG completo).
+  // protetor surto, conector, disjuntor CA + DPS CA) estão cadastrados na
+  // planilha WEG com preço TABELA. Somamos aqui pro subtotal BRUTO — o
+  // fator 0,4182 aplica sobre TUDO (kit WEG completo).
+  // Kalebe 2026-08-29: disjuntor CA + DPS CA agora dimensionados por
+  // inversor + tipo de ligação e puxados do catálogo. TODO kit tem essas
+  // proteções — inclusive ampliação, onde a Spin precisa reforçar o QGBT
+  // do cliente pra a nova potência. Se for ampliação, sintetiza um
+  // inversor virtual com a potência CC final e a ligação do cliente.
+  const ligacaoCliente = (projetoAtual as any)?.padrao_entrada?.tipo_ligacao || 'monofasico'
+  const inversoresParaProtecao = kit.inversores && kit.inversores.length > 0
+    ? kit.inversores.map(x => ({
+        modelo: x.modelo, potencia_kw: x.potencia_kw, fases: x.fases, qtd: x.qtd,
+      }))
+    : kit.modo_ampliacao
+      ? [{
+          modelo: `Ampliação ${kit.potencia_cc_kwp.toFixed(2)}kWp`,
+          potencia_kw: kit.potencia_cc_kwp,
+          fases: ligacaoCliente as FaseInvKit,
+          qtd: 1,
+        }]
+      : [{
+          modelo: kit.inversor.modelo, potencia_kw: kit.inversor.potencia_kw,
+          fases: undefined, qtd: kit.qtd_inversores,
+        }]
   const complementosCC = await precificarComplementosCC(supabase, {
     qtd_placas: kit.qtd_placas,
     tipo_telhado: (telhadoSecoesData || [])[0]?.tipo_cobertura || null,
     distancia_string_qgbt_m: (projetoAtual as any)?.padrao_entrada?.distancia_string_qgbt_m || 15,
+    inversores: inversoresParaProtecao,
+    tipo_ligacao_cliente: ligacaoCliente,
   })
   const precoComplementosCCbruto = complementosCC.total
   const kitWegBrutoTotal = precoKitPlacaInversor + precoComplementosCCbruto
@@ -187,17 +210,31 @@ export async function salvarKitAction(projetoId: string, kit: KitSelecionado, ti
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Complementos CC (cabo solar, estrutura, MC4) — puxa do /admin/catalogo
+// Complementos WEG (cabo solar, estrutura, MC4, disjuntor CA, DPS CA)
+// puxa do /admin/catalogo — TODOS levam fator 0,4182 no /orcamento.
 // ═══════════════════════════════════════════════════════════════════════
+
+type FaseInvKit = 'monofasico' | 'bifasico' | 'trifasico' | undefined
 
 type EntradaComplementosCC = {
   qtd_placas: number
   tipo_telhado: string | null
   distancia_string_qgbt_m: number
+  /** Inversores do kit — dimensiona disjuntor CA por modelo. Vazio em
+   *  modo ampliação (cliente já tem QGBT com proteção pro inversor). */
+  inversores: Array<{
+    modelo: string
+    potencia_kw: number
+    fases?: FaseInvKit
+    qtd: number
+  }>
+  /** Tipo de ligação do padrão CELESC — dimensiona DPS CA e fallback
+   *  quando o inversor não trouxer fases. */
+  tipo_ligacao_cliente: string
 }
 
 type ItemComplementoCC = {
-  categoria: 'cabo_cc' | 'estrutura' | 'conector'
+  categoria: 'cabo_cc' | 'estrutura' | 'conector' | 'disjuntor' | 'dps'
   modelo: string
   qtd: number
   unidade: string
@@ -305,6 +342,128 @@ async function precificarComplementosCC(
     avisos.push(`Conector MC4 não achado no /admin/catalogo. ${qtdMc4} par(es) NÃO entraram no preço.`)
   }
 
+  // 4. Disjuntor CA — 1 disjuntor POR MODELO de inversor (agrupa qtd),
+  //    dimensionado pela corrente do inversor + polos = fases.
+  //    Ampliação passa 1 inversor virtual com a potência CC ampliada.
+  const grupos = new Map<string, { in_a: number; polos: number; qtd: number; modeloInv: string }>()
+  for (const inv of entrada.inversores) {
+    const fases: FaseInvKit = inv.fases || inferirFasesDoModelo(inv.modelo) || (entrada.tipo_ligacao_cliente as FaseInvKit)
+    const { in_a, polos } = calcularInDisjuntor(inv.potencia_kw, fases || 'monofasico')
+    const chave = `${in_a}A-${polos}P`
+    const existente = grupos.get(chave)
+    if (existente) {
+      existente.qtd += inv.qtd
+    } else {
+      grupos.set(chave, { in_a, polos, qtd: inv.qtd, modeloInv: inv.modelo })
+    }
+  }
+  for (const [, g] of grupos) {
+    const disj = await buscarDisjuntorCompativel(supabase, g.in_a, g.polos, hojeIso)
+    if (disj) {
+      itens.push({
+        categoria: 'disjuntor', modelo: disj.modelo,
+        qtd: g.qtd, unidade: 'un', preco_unitario: disj.preco,
+        subtotal: g.qtd * disj.preco,
+      })
+    } else {
+      avisos.push(`Disjuntor ${g.in_a}A ${g.polos}P (pra ${g.modeloInv}) não achado no /admin/catalogo. ${g.qtd} un NÃO entraram no preço.`)
+    }
+  }
+
+  // 5. DPS CA — 1 por fase + 1 no neutro, classe II 20kA. Dimensionado
+  //    pelo tipo de ligação do QGBT do cliente (não pelo inversor).
+  if (entrada.inversores.length > 0) {
+    const numFasesQgbt = fasesDoTipoLigacao(entrada.tipo_ligacao_cliente)
+    const qtdDps = numFasesQgbt + 1
+    const dps = await buscarProdutoComPreco({
+      categorias: ['dps', 'protecao'],
+      contem: ['dps'],
+    })
+    if (dps) {
+      itens.push({
+        categoria: 'dps', modelo: dps.modelo,
+        qtd: qtdDps, unidade: 'un', preco_unitario: dps.preco,
+        subtotal: qtdDps * dps.preco,
+      })
+    } else {
+      avisos.push(`DPS CA classe II não achado no /admin/catalogo. ${qtdDps} un NÃO entraram no preço.`)
+    }
+  }
+
   const total = itens.reduce((s, x) => s + x.subtotal, 0)
   return { total, itens, avisos }
+}
+
+// ─── Helpers de dimensionamento ─────────────────────────────────────────
+
+function fasesDoTipoLigacao(t: string): number {
+  const s = String(t || '').toLowerCase()
+  if (/tri/.test(s)) return 3
+  if (/bi/.test(s)) return 2
+  return 1
+}
+
+function inferirFasesDoModelo(modelo: string): FaseInvKit {
+  const m = String(modelo || '').toUpperCase()
+  if (/^SIW100/.test(m)) return 'monofasico'      // microinversor
+  if (/^SIW[45]0\d/.test(m)) return 'trifasico'
+  if (/^SIW[123]0\d/.test(m)) return 'monofasico'
+  return undefined
+}
+
+function calcularInDisjuntor(potenciaKw: number, fases: 'monofasico' | 'bifasico' | 'trifasico'): { in_a: number; polos: number } {
+  const tensao = fases === 'trifasico' ? 380 : 220
+  const factor = fases === 'trifasico' ? Math.sqrt(3) : 1
+  const correnteNominal = (potenciaKw * 1000) / (tensao * factor)
+  const correnteProjeto = correnteNominal * 1.15
+  const escala = [10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125]
+  const in_a = escala.find(x => x >= correnteProjeto) || 125
+  const polos = fases === 'monofasico' ? 1 : fases === 'bifasico' ? 2 : 3
+  return { in_a, polos }
+}
+
+async function buscarDisjuntorCompativel(
+  supabase: any,
+  inMinA: number,
+  polos: number,
+  hojeIso: string,
+): Promise<{ modelo: string; preco: number } | null> {
+  const { data: prods } = await supabase
+    .from('produtos')
+    .select('id, modelo, specs')
+    .eq('categoria', 'disjuntor')
+    .eq('ativo', true)
+    .limit(500)
+
+  const candidatos = ((prods || []) as any[])
+    .map((p) => {
+      const modelo = String(p.modelo || '')
+      const specsCorrente = Number(p.specs?.corrente_nominal_a)
+      const matchC = modelo.match(/C(\d+)/i)
+      const corrente = Number.isFinite(specsCorrente) && specsCorrente > 0
+        ? specsCorrente
+        : (matchC ? Number(matchC[1]) : 0)
+      const specsPolos = Number(p.specs?.polos)
+      const polosProd = Number.isFinite(specsPolos) && specsPolos > 0
+        ? specsPolos
+        : (/3D|3P/i.test(modelo) ? 3 : /2D|2P/i.test(modelo) ? 2 : 1)
+      return { produto: p, corrente, polos: polosProd }
+    })
+    .filter((c) => c.polos === polos && c.corrente >= inMinA)
+    .sort((a, b) => a.corrente - b.corrente)
+
+  const escolhido = candidatos[0]?.produto
+  if (!escolhido) return null
+
+  const { data: precos } = await supabase
+    .from('precos_produtos')
+    .select('preco_venda, vigente_de, vigente_ate')
+    .eq('produto_id', escolhido.id)
+    .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+    .order('vigente_de', { ascending: false })
+    .limit(1)
+  const preco = Number((precos || [])[0]?.preco_venda) || 0
+  if (preco <= 0) return null
+
+  return { modelo: escolhido.modelo, preco }
 }
