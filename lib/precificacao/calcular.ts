@@ -115,14 +115,12 @@ export function calcularProposta(entradas: Entradas, params: ParametrosVigentes)
     : 0
   const frete = freteBase + freteKmExtra
 
-  // 4. PROJETO + ART
-  //    Modo ampliação: valor próprio (envolve redimensionamento + ART nova
-  //    considerando o sistema existente + adição). Kalebe 2026-08-28.
+  // 4. PROJETO + ART (mesmo cálculo pra ampliação ou sistema completo —
+  //    Kalebe 2026-08-28: 'não muda os valores, só quero que sejam
+  //    adicionados na precificação' — antes o modo ampliação não zerava
+  //    esses campos, comportamento agora idêntico ao normal.)
   let projetoArt = 0
-  if (!aplicar_fator_weg) {
-    // Ampliação: projeto de expansão
-    projetoArt = getNum(params, 'projeto_valor_ampliacao', 800)
-  } else if (potencia_kwp <= 30) {
+  if (potencia_kwp <= 30) {
     projetoArt = getNum(params, 'projeto_valor_fixo_ate_30kwp', 400)
   } else {
     const base = getNum(params, 'projeto_valor_fixo_ate_30kwp', 400)
@@ -130,25 +128,16 @@ export function calcularProposta(entradas: Entradas, params: ParametrosVigentes)
     projetoArt = base + extra
   }
 
-  // 5. INSTALAÇÃO
-  //    Modo ampliação: R$/placa dedicado (envolve mexer no sistema existente,
-  //    reconfigurar strings, ajustar MPPT — mais caro por placa que instalação
-  //    de sistema novo). Kalebe 2026-08-28.
-  let instalacao = 0
-  if (!aplicar_fator_weg) {
-    const rsPorPlacaAmpl = getNum(params, 'instalacao_ampliacao_rs_por_placa', 200)
-    instalacao = numeroPlacas * rsPorPlacaAmpl
-  } else {
-    const tabelaInstalacao = params['tabela_instalacao_rs_placa']?.valor_json || []
-    let rsPorPlaca = 80
-    for (const faixa of tabelaInstalacao) {
-      if (numeroPlacas >= faixa.placas_min && numeroPlacas <= faixa.placas_max) {
-        rsPorPlaca = faixa.rs_por_placa
-        break
-      }
+  // 5. INSTALAÇÃO (mesma tabela por faixa de placas nos dois modos)
+  const tabelaInstalacao = params['tabela_instalacao_rs_placa']?.valor_json || []
+  let rsPorPlaca = 80
+  for (const faixa of tabelaInstalacao) {
+    if (numeroPlacas >= faixa.placas_min && numeroPlacas <= faixa.placas_max) {
+      rsPorPlaca = faixa.rs_por_placa
+      break
     }
-    instalacao = numeroPlacas * rsPorPlaca
   }
+  const instalacao = numeroPlacas * rsPorPlaca
 
   // 6. BASE IMPOSTAVEL (tudo menos kit WEG)
   const baseImpostavel = subtotalListaCa + frete + projetoArt + instalacao
