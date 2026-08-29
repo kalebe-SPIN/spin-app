@@ -154,11 +154,12 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
       })),
       // Complementos CC (cabo, estrutura, MC4) somam ao subtotal WEG bruto
       // pra levar fator 0,4182 também (todos vêm da planilha WEG, não são
-      // materiais complementares tributáveis). Kalebe 2026-08-27.
-      subtotal_kit_weg_bruto_override: kit.preco_total_kit_weg,
-      // Modo ampliação: Spin não compra inversor pra esse projeto (cliente
-      // já tem). Sem fator WEG revenda — preço vai direto pra Spin.
-      aplicar_fator_weg: !kit.modo_ampliacao,
+      // materiais complementares tributáveis). No modo ampliação o inversor
+      // sai do bruto (cliente já tem) mas o resto segue com fator WEG.
+      // Kalebe 2026-08-29.
+      // projeto.kit_weg_bruto_total já inclui placa+inversor+complementos CC —
+      // fallback pra kit.preco_total_kit_weg pra projetos antigos.
+      subtotal_kit_weg_bruto_override: (projeto as any).kit_weg_bruto_total || kit.preco_total_kit_weg,
       potencia_kwp: kit.potencia_cc_kwp || 0,
       distancia_km_extra: 0,
     },
