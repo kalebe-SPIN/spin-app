@@ -92,6 +92,9 @@ export function KitFluxoClient({
   // Escolha da placa no manual é independente da etapa 2 acima —
   // permite trocar sem sair do modo.
   const [modoManual, setModoManual] = useState<boolean>(false)
+  // Modo ampliação = cliente já tem inversor; Spin cota só placas + estrutura
+  // + cabo. Não aplica fator WEG 0,4182 (não é kit revenda).
+  const [modoAmpliacao, setModoAmpliacao] = useState<boolean>(false)
   const [manualPlacaId, setManualPlacaId] = useState<string | null>(null)
   const [manualQtdPlacas, setManualQtdPlacas] = useState<number>(0)
   // Legado (mantido pro botão "adicionar" reaproveitar o dropdown)
@@ -260,12 +263,15 @@ export function KitFluxoClient({
 
   function handleConfirmarManual() {
     if (!placaManual) { setErro('Escolha uma placa antes.'); return }
-    if (manualInversoresResolvidos.length === 0) { setErro('Adicione pelo menos 1 inversor ao kit.'); return }
+    if (!modoAmpliacao && manualInversoresResolvidos.length === 0) {
+      setErro('Adicione pelo menos 1 inversor ao kit — ou marque o toggle "Ampliação (sem inversor)".')
+      return
+    }
     if (manualQtd < 1) { setErro('Qtd de placas inválida.'); return }
 
     const invPrincipal = manualInversoresResolvidos[0]
     // Categoria = 'microinversor' se TODOS forem micros; senão 'string' (kit misto/string)
-    const todosMicros = manualInversoresResolvidos.every(x => /^SIW100/i.test(x.produto.modelo || ''))
+    const todosMicros = !modoAmpliacao && manualInversoresResolvidos.every(x => /^SIW100/i.test(x.produto.modelo || ''))
 
     const payload: any = {
       placa: {
@@ -277,17 +283,21 @@ export function KitFluxoClient({
       },
       qtd_placas: manualQtd,
       potencia_cc_kwp: manualPotCc,
-      // Compat: o 1º inversor da lista continua sendo o "principal" pro código legado
-      inversor: {
+      // Compat: 1º inversor "principal". Em modo ampliação vai vazio.
+      inversor: modoAmpliacao ? {
+        id: '', codigo_weg: '', modelo: 'AMPLIAÇÃO — sem inversor',
+        potencia_kw: 0, preco_venda: 0,
+      } : {
         id: invPrincipal.produto.id,
         codigo_weg: invPrincipal.produto.codigo_weg,
         modelo: invPrincipal.produto.modelo,
         potencia_kw: invPrincipal.potencia_kw,
         preco_venda: invPrincipal.preco,
       },
-      qtd_inversores: invPrincipal.qtd,
-      // NOVO: array completo de inversores no kit (o que a proposta/PDF vai ler)
-      inversores: manualInversoresResolvidos.map((x) => ({
+      qtd_inversores: modoAmpliacao ? 0 : invPrincipal.qtd,
+      modo_ampliacao: modoAmpliacao,
+      // NOVO: array completo de inversores no kit (vazio em ampliação)
+      inversores: modoAmpliacao ? [] : manualInversoresResolvidos.map((x) => ({
         id: x.produto.id,
         codigo_weg: x.produto.codigo_weg,
         modelo: x.produto.modelo,
@@ -296,8 +306,8 @@ export function KitFluxoClient({
         qtd: x.qtd,
         fases: x.fases,
       })),
-      potencia_ca_kw: manualPotCa,
-      fci_pct: manualFci,
+      potencia_ca_kw: modoAmpliacao ? 0 : manualPotCa,
+      fci_pct: modoAmpliacao ? 0 : manualFci,
       desbalanceamento_kw: 0,
       preco_total_kit_weg: manualPreco,
       kit_id_sugerido: 'manual',
@@ -504,6 +514,8 @@ export function KitFluxoClient({
                 setManualInversorId={setManualInversorId}
                 manualQtdInv={manualQtdInv}
                 setManualQtdInv={setManualQtdInv}
+                modoAmpliacao={modoAmpliacao}
+                setModoAmpliacao={setModoAmpliacao}
                 manualInversores={manualInversores}
                 manualInversoresResolvidos={manualInversoresResolvidos.map(x => ({
                   id: x.produto.id, modelo: x.produto.modelo, codigo_weg: x.produto.codigo_weg,
@@ -773,6 +785,7 @@ function ModoManual({
   manualQtdInv, setManualQtdInv,
   manualInversores, manualInversoresResolvidos,
   adicionarInversor, removerInversor, atualizarQtdInversor, atualizarFaseInversor,
+  modoAmpliacao, setModoAmpliacao,
   potCc, potCa, fci, preco,
   tipoLigacao,
   onConfirmar, pending,
@@ -794,6 +807,8 @@ function ModoManual({
   removerInversor: (id: string) => void
   atualizarQtdInversor: (id: string, qtd: number) => void
   atualizarFaseInversor: (id: string, fases: 'monofasico' | 'bifasico' | 'trifasico') => void
+  modoAmpliacao: boolean
+  setModoAmpliacao: (v: boolean) => void
   potCc: number
   potCa: number
   fci: number
@@ -879,10 +894,42 @@ function ModoManual({
   if (placaEfetiva && (placaEfetiva.specs?.potencia_wp || 0) === 0) warnings.push('Essa placa está com potência 0 Wp no cadastro. Confere o produto em /admin/catalogo.')
   if (inv && (inv.specs?.potencia_kw || 0) === 0) warnings.push('Esse inversor está com potência 0 kW no cadastro. Confere o produto em /admin/catalogo.')
 
-  const podeSalvar = !!placaEfetiva && manualInversoresResolvidos.length > 0 && manualQtdPlacas >= 1
+  const podeSalvar = !!placaEfetiva && manualQtdPlacas >= 1
+    && (modoAmpliacao || manualInversoresResolvidos.length > 0)
 
   return (
     <div className="mt-4 p-4 bg-white/[0.02] border border-sol/25 rounded-lg space-y-4">
+      {/* Toggle modo ampliação — cliente já tem inversor */}
+      <button
+        type="button"
+        onClick={() => setModoAmpliacao(!modoAmpliacao)}
+        className={`w-full p-3 rounded-lg border-2 transition text-left ${
+          modoAmpliacao
+            ? 'bg-weg-azul/10 border-weg-azul/60'
+            : 'bg-white/[0.02] border-white/10 hover:border-white/25'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className={`text-sm font-bold ${modoAmpliacao ? 'text-weg-azul' : 'text-white/80'}`}>
+              {modoAmpliacao ? '🔧 Modo ampliação ATIVO' : '🔧 Ampliação (sem inversor)'}
+            </p>
+            <p className="text-[11px] text-white/60 mt-0.5">
+              {modoAmpliacao
+                ? 'Sistema calcula placa + estrutura + cabo. Não aplica fator WEG (0,4182) — vai direto pra precificação Spin.'
+                : 'Cliente já tem inversor — só cotamos placas, estrutura e cabo. Ative pra usar.'}
+            </p>
+          </div>
+          <div className={`w-10 h-6 rounded-full border-2 relative shrink-0 ${
+            modoAmpliacao ? 'bg-weg-azul border-weg-azul' : 'bg-transparent border-white/25'
+          }`}>
+            <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition ${
+              modoAmpliacao ? 'right-0.5' : 'left-0.5'
+            }`} />
+          </div>
+        </div>
+      </button>
+
       <p className="text-xs text-sol/80 leading-relaxed">
         💡 Itens fora de estoque continuam disponíveis pra escolha — pode acontecer do material sair do estoque
         entre o cadastro do projeto e a montagem do kit, mas ele já foi reservado pra essa venda.
@@ -915,9 +962,10 @@ function ModoManual({
           )}
         </label>
 
-        <div className="block">
+        <div className={`block ${modoAmpliacao ? 'opacity-40 pointer-events-none' : ''}`}>
           <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">
             Invesores no kit ({manualInversoresResolvidos.length} adicionado{manualInversoresResolvidos.length === 1 ? '' : 's'})
+            {modoAmpliacao && <span className="ml-2 text-weg-azul normal-case">— desativado (modo ampliação)</span>}
           </span>
           {/* Lista dos inversores JÁ adicionados */}
           {manualInversoresResolvidos.length > 0 && (

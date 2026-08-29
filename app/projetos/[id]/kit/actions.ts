@@ -30,6 +30,10 @@ export type KitSelecionado = {
   fci_pct: number
   preco_total_kit_weg?: number
   observacoes?: string | null
+  // Kalebe 2026-08-28: modo ampliação = cliente já tem inversor,
+  // Spin compra só placas+estrutura+cabo. Não aplica fator WEG 0,4182 —
+  // preço vai direto pra precificação Spin (margem+comissão+impostos).
+  modo_ampliacao?: boolean
 }
 
 /**

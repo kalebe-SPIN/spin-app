@@ -156,6 +156,9 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
       // pra levar fator 0,4182 também (todos vêm da planilha WEG, não são
       // materiais complementares tributáveis). Kalebe 2026-08-27.
       subtotal_kit_weg_bruto_override: kit.preco_total_kit_weg,
+      // Modo ampliação: Spin não compra inversor pra esse projeto (cliente
+      // já tem). Sem fator WEG revenda — preço vai direto pra Spin.
+      aplicar_fator_weg: !kit.modo_ampliacao,
       potencia_kwp: kit.potencia_cc_kwp || 0,
       distancia_km_extra: 0,
     },

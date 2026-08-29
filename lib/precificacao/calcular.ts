@@ -34,6 +34,10 @@ export type Entradas = {
    *  complementos CC (cabo solar / estrutura / MC4) levem o fator 0,4182
    *  junto com placa+inversor — todos vêm da planilha WEG. */
   subtotal_kit_weg_bruto_override?: number
+  /** Kalebe 2026-08-28: modo ampliação. Se false, pula o fator 0,4182 —
+   *  Spin não compra da WEG com desconto revenda (cliente já tem inversor).
+   *  Default true (comportamento normal). */
+  aplicar_fator_weg?: boolean
 }
 
 export type PropostaCalculada = {
@@ -85,16 +89,19 @@ export function getNum(params: ParametrosVigentes, chave: string, fallback = 0):
  */
 export function calcularProposta(entradas: Entradas, params: ParametrosVigentes): PropostaCalculada {
   const { placa, inversor, itens_ca, potencia_kwp, distancia_km_extra = 0,
-    subtotal_kit_weg_bruto_override } = entradas
+    subtotal_kit_weg_bruto_override, aplicar_fator_weg = true } = entradas
   const numeroPlacas = placa.qtd
 
   // 1. KIT WEG (não paga imposto Simples porque é revenda WEG)
   //    Inclui placa+inversor+cabo+estrutura+MC4 quando o override é passado.
+  //    Modo ampliação (aplicar_fator_weg=false) pula o desconto — cliente
+  //    já tem inversor, Spin compra sem tratamento revenda.
   const subtotalKitBrutoCalc = (placa.preco_venda_unitario * placa.qtd) + (inversor.preco_venda_unitario * inversor.qtd)
   const subtotalKitBruto = subtotal_kit_weg_bruto_override && subtotal_kit_weg_bruto_override > 0
     ? subtotal_kit_weg_bruto_override
     : subtotalKitBrutoCalc
-  const kitWegComFator = subtotalKitBruto * FATOR_KIT_WEG
+  const fatorEfetivo = aplicar_fator_weg ? FATOR_KIT_WEG : 1
+  const kitWegComFator = subtotalKitBruto * fatorEfetivo
 
   // 2. LISTA CA (subtotal dos materiais complementares)
   const subtotalListaCa = itens_ca.reduce((sum, it) => sum + (it.preco_unitario || 0) * it.qtd, 0)
@@ -177,7 +184,7 @@ export function calcularProposta(entradas: Entradas, params: ParametrosVigentes)
     pv_total: pvTotal,
     desconto_max_negociacao: descontoMaxNegociacao,
     memoria_calculo: {
-      fator_kit_weg_aplicado: FATOR_KIT_WEG,
+      fator_kit_weg_aplicado: fatorEfetivo,
       margem_pct: margemPct,
       comissao_pct: comissaoPct,
       impostos_pct: impostosPct,
