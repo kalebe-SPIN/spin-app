@@ -133,7 +133,23 @@ export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa }: P
             🔧 Ver composição do preço (detalhamento)
           </summary>
           <div className="mt-4 space-y-2 text-xs text-white/70">
-            <Linha label="Kit WEG bruto (placas + inversor)" valor={fmt(proposta.subtotal_kit_weg_bruto)} />
+            <Linha label="Kit WEG bruto (placa + inversor + cabo + estrutura + MC4 + disjuntor + DPS)" valor={fmt(proposta.subtotal_kit_weg_bruto)} />
+            {projeto.lista_complementos_cc?.itens?.length > 0 && (
+              <div className="pl-3 border-l border-white/10 ml-1 space-y-1">
+                <div className="text-[10px] uppercase tracking-wider text-white/40">Detalhamento dos complementos WEG (preço tabela, antes do fator)</div>
+                {projeto.lista_complementos_cc.itens.map((it: any, i: number) => (
+                  <div key={i} className="flex justify-between text-[11px] text-white/50">
+                    <span>· {it.modelo} <span className="text-white/30">({it.qtd} {it.unidade} × R$ {fmt(it.preco_unitario)})</span></span>
+                    <span>R$ {fmt(it.subtotal)}</span>
+                  </div>
+                ))}
+                {projeto.lista_complementos_cc.avisos?.length > 0 && (
+                  <div className="text-[10px] text-coral/80 pt-1">
+                    ⚠ {projeto.lista_complementos_cc.avisos.join(' · ')}
+                  </div>
+                )}
+              </div>
+            )}
             <Linha label="× Fator WEG 0,4182" valor={fmt(proposta.kit_weg_com_fator)} destaque />
             <Linha label="Subtotal Lista CA (materiais)" valor={fmt(proposta.subtotal_lista_ca)} />
             <Linha label="Frete regional" valor={fmt(proposta.frete)} />
