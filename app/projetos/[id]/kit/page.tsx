@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { KitFluxoClient } from '@/components/KitFluxoClient'
+import { KitPorUcClient } from '@/components/KitPorUcClient'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -104,15 +104,32 @@ export default async function KitPage({ params }: { params: { id: string } }) {
           </p>
         </header>
 
-        <KitFluxoClient
+        <KitPorUcClient
           projetoId={projeto.id}
+          projetoCodigo={projeto.codigo}
           placas={(placas || []) as any}
           inversores={(inversores || []) as any}
-          padrao={padrao}
-          potCcAlvoAuto={potCcAlvoAuto}
-          consumoMedio={consumoMedio}
-          kitSalvo={projeto.kit_selecionado}
-          tipoTelhado={projeto.telhado_secoes?.[0]?.tipo_cobertura}
+          padraoPrincipal={padrao}
+          tipoTelhadoPrincipal={projeto.telhado_secoes?.[0]?.tipo_cobertura}
+          potCcAlvoAutoCentralizado={potCcAlvoAuto}
+          consumoMedioCentralizado={consumoMedio}
+          kitSalvoCentralizado={projeto.kit_selecionado}
+          modoComposicao={(projeto.modo_composicao as any) || 'centralizado'}
+          ucs={[
+            {
+              uc_ref: 'principal',
+              label: 'UC principal',
+              titular: projeto.analise_fatura?.titular || projeto.cliente_razao_social || '—',
+              consumo_kwh_mes: consumoPrincipal,
+            },
+            ...(projeto.beneficiarias || []).map((b: any) => ({
+              uc_ref: String(b.uc || b.ordem || Math.random()),
+              label: `UC ${b.uc || ''}`,
+              titular: b.titular || '—',
+              consumo_kwh_mes: b.analise?.consumo_medio_12m_kwh || b.analise?.consumo_mes_kwh || 0,
+            })),
+          ]}
+          kitsPorUc={(projeto.kits_por_uc as any) || []}
         />
       </div>
     </main>

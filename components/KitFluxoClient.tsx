@@ -26,6 +26,13 @@ type Props = {
   potCcAlvoAuto: number
   consumoMedio: number
   kitSalvo: any | null
+  /** Kit por UC — quando presente, o kit vai pra kits_por_uc[ucRef]
+   *  em vez do kit_selecionado global. */
+  ucRef?: string
+  ucLabel?: string
+  enderecoProprio?: boolean
+  padraoEntradaProprio?: any
+  telhadoSecoesProprio?: any[]
 }
 
 function precoDe(p: ProdutoRow): number {
@@ -75,7 +82,20 @@ export function KitFluxoClient({
   consumoMedio,
   kitSalvo,
   tipoTelhado,
+  ucRef,
+  ucLabel,
+  enderecoProprio,
+  padraoEntradaProprio,
+  telhadoSecoesProprio,
 }: Props & { tipoTelhado?: string }) {
+  // Opts passadas ao salvarKitAction quando é kit-por-UC
+  const opts = ucRef ? {
+    uc_ref: ucRef,
+    endereco_label: ucLabel,
+    endereco_proprio: !!enderecoProprio,
+    padrao_entrada_proprio: padraoEntradaProprio,
+    telhado_secoes_proprio: telhadoSecoesProprio,
+  } : undefined
   const [isPending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
 
@@ -186,7 +206,7 @@ export function KitFluxoClient({
     }
 
     startTransition(async () => {
-      const result = await salvarKitAction(projetoId, payload, categoria || undefined)
+      const result = await salvarKitAction(projetoId, payload, categoria || undefined, opts)
       if (result && !result.sucesso) setErro(result.erro || 'Erro ao salvar')
     })
   }
@@ -315,7 +335,7 @@ export function KitFluxoClient({
     }
 
     startTransition(async () => {
-      const result = await salvarKitAction(projetoId, payload, categoria || undefined)
+      const result = await salvarKitAction(projetoId, payload, categoria || undefined, opts)
       if (result && !result.sucesso) setErro(result.erro || 'Erro ao salvar')
     })
   }

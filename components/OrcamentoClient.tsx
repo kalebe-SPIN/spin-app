@@ -8,18 +8,58 @@ import { PropostaPDFTemplate } from './PropostaPDFTemplate'
 import { nomearArquivo } from '@/lib/downloads'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
 
+type PropostaUc = {
+  uc_ref: string
+  label: string
+  endereco_label?: string | null
+  endereco_proprio?: boolean
+  kit: any
+  listaCa: any[]
+  complementosCc: any
+  proposta: PropostaCalculada
+}
+
 type Props = {
   projeto: any
-  proposta: PropostaCalculada
+  proposta: PropostaCalculada | null
   configEmpresa: any
   listaCa: any[]
   ehAdmin?: boolean
+  modoComposicao?: 'centralizado' | 'por_uc'
+  propostasPorUc?: PropostaUc[] | null
 }
 
 const BUCKET_PROPOSTAS = 'propostas-pdf'
 const FATOR_WEG = 0.4182
 
-export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa, ehAdmin = false }: Props) {
+export function OrcamentoClient({
+  projeto, proposta, configEmpresa, listaCa, ehAdmin = false,
+  modoComposicao = 'centralizado', propostasPorUc = null,
+}: Props) {
+  // No modo por_uc, escolhe a UC ativa (default: primeira). Todo o
+  // dashboard/composição usa a proposta da UC ativa; o PDF unifica.
+  const [ucAtivaRef, setUcAtivaRef] = useState<string>(
+    propostasPorUc?.[0]?.uc_ref || ''
+  )
+  const ucAtiva = modoComposicao === 'por_uc'
+    ? (propostasPorUc?.find(u => u.uc_ref === ucAtivaRef) || propostasPorUc?.[0])
+    : null
+
+  // Proposta+listaCa efetivas (rota A ou B)
+  const propostaEfetiva: PropostaCalculada = modoComposicao === 'por_uc'
+    ? (ucAtiva?.proposta as PropostaCalculada)
+    : (proposta as PropostaCalculada)
+  const listaCaEfetiva: any[] = modoComposicao === 'por_uc'
+    ? (ucAtiva?.listaCa || [])
+    : listaCa
+
+  // Totais consolidados (soma de todas as UCs no modo por_uc)
+  const totalConsolidado = modoComposicao === 'por_uc' && propostasPorUc
+    ? propostasPorUc.reduce((s, u) => s + (u.proposta?.pv_total || 0), 0)
+    : (proposta?.pv_total || 0)
+  const potenciaCcConsolidada = modoComposicao === 'por_uc' && propostasPorUc
+    ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
+    : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [gerando, setGerando] = useState(false)
@@ -77,7 +117,7 @@ export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa, ehA
 
       // 3) Salvar no banco
       startTransition(async () => {
-        const result = await salvarOrcamentoAction(projeto.id, proposta, publicUrl)
+        const result = await salvarOrcamentoAction(projeto.id, propostaEfetiva, publicUrl)
         if (result.sucesso) {
           setUrlPdf(publicUrl)
           router.refresh()
@@ -103,7 +143,12 @@ export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa, ehA
     }
     const telWithDDI = telefone.startsWith('55') ? telefone : `55${telefone}`
     const nomeCliente = (projeto.cliente_razao_social || 'cliente').split(' ')[0]
-    const mensagem = `Olá ${nomeCliente}! 🌞\n\nSegue a proposta do seu sistema fotovoltaico Spin Solar de ${(projeto.kit_selecionado?.potencia_cc_kwp || 0).toFixed(2)} kWp.\n\n📄 PDF completo: ${urlPdf}\n\nQualquer dúvida estou à disposição!`
+    const potenciaTotal = modoComposicao === 'por_uc' && propostasPorUc
+      ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
+      : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
+    const suffixUcs = modoComposicao === 'por_uc' && propostasPorUc
+      ? ` (${propostasPorUc.length} UCs contempladas)` : ''
+    const mensagem = `Olá ${nomeCliente}! 🌞\n\nSegue a proposta do seu sistema fotovoltaico Spin Solar de ${potenciaTotal.toFixed(2)} kWp${suffixUcs}.\n\n📄 PDF completo: ${urlPdf}\n\nQualquer dúvida estou à disposição!`
 
     const url = `https://wa.me/${telWithDDI}?text=${encodeURIComponent(mensagem)}`
     window.open(url, '_blank')
@@ -117,23 +162,82 @@ export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa, ehA
 
   return (
     <div className="space-y-6">
-      {/* Resumo da proposta */}
+      {/* Consolidado (só modo por_uc) */}
+      {modoComposicao === 'por_uc' && propostasPorUc && propostasPorUc.length > 0 && (
+        <section className="bg-verde/5 border border-verde/40 rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-verde/15 text-verde">
+              Consolidado
+            </span>
+            <h2 className="text-lg font-bold text-white">
+              {propostasPorUc.length} kits (um por UC)
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Metric label="UCs contempladas" value={String(propostasPorUc.length)} highlight />
+            <Metric label="Potência CC total" value={`${potenciaCcConsolidada.toFixed(2)} kWp`} />
+            <Metric label="PV TOTAL (todas UCs)" value={`R$ ${fmt(totalConsolidado)}`} highlight verde />
+          </div>
+        </section>
+      )}
+
+      {/* Seletor de UC (só modo por_uc) */}
+      {modoComposicao === 'por_uc' && propostasPorUc && propostasPorUc.length > 0 && (
+        <section className="bg-white/[0.02] border border-white/10 rounded-xl p-4">
+          <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold mb-2">
+            Ver detalhamento da UC
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {propostasPorUc.map((u) => (
+              <button
+                key={u.uc_ref}
+                type="button"
+                onClick={() => setUcAtivaRef(u.uc_ref)}
+                className={`text-xs font-bold px-3 py-1.5 rounded-full border transition ${
+                  ucAtivaRef === u.uc_ref
+                    ? 'bg-sol text-noite border-sol'
+                    : 'bg-white/[0.03] text-white/70 border-white/15 hover:border-white/30'
+                }`}
+              >
+                {u.label}
+                {u.endereco_proprio && ' 📍'}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Resumo da UC ativa (ou proposta central) */}
       <section className="bg-white/[0.03] border border-white/10 rounded-xl p-6">
-        <h2 className="text-lg font-bold text-white mb-4">Resumo da proposta calculada</h2>
+        <h2 className="text-lg font-bold text-white mb-4">
+          {modoComposicao === 'por_uc' && ucAtiva
+            ? `Resumo — ${ucAtiva.label}${ucAtiva.endereco_label ? ` · ${ucAtiva.endereco_label}` : ''}`
+            : 'Resumo da proposta calculada'}
+        </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Metric label="Potência CC" value={`${(projeto.kit_selecionado?.potencia_cc_kwp || 0).toFixed(2)} kWp`} highlight />
-          <Metric label="Kit WEG (com fator)" value={`R$ ${fmt(proposta.kit_weg_com_fator)}`} />
-          <Metric label="Lista CA + serviços" value={`R$ ${fmt(proposta.subtotal_lista_ca + proposta.frete + proposta.projeto_art + proposta.instalacao)}`} />
-          <Metric label="PV FINAL" value={`R$ ${fmt(proposta.pv_total)}`} highlight verde />
+          <Metric
+            label="Potência CC"
+            value={`${((modoComposicao === 'por_uc' ? ucAtiva?.kit : projeto.kit_selecionado)?.potencia_cc_kwp || 0).toFixed(2)} kWp`}
+            highlight
+          />
+          <Metric label="Kit WEG (com fator)" value={`R$ ${fmt(propostaEfetiva.kit_weg_com_fator)}`} />
+          <Metric label="Lista CA + serviços" value={`R$ ${fmt(propostaEfetiva.subtotal_lista_ca + propostaEfetiva.frete + propostaEfetiva.projeto_art + propostaEfetiva.instalacao)}`} />
+          <Metric label={modoComposicao === 'por_uc' ? 'PV desta UC' : 'PV FINAL'} value={`R$ ${fmt(propostaEfetiva.pv_total)}`} highlight verde />
         </div>
       </section>
 
-      {/* Composição de custos + precificação — SÓ ADMIN */}
+      {/* Composição de custos + precificação — SÓ ADMIN. Usa UC ativa. */}
       {ehAdmin && (
         <ComposicaoCustosAdmin
-          projeto={projeto}
-          proposta={proposta}
-          listaCa={listaCa}
+          projeto={{
+            ...projeto,
+            // No modo por_uc, o ComposicaoCustosAdmin lê kit_selecionado
+            // e lista_complementos_cc da UC ativa em vez do global.
+            kit_selecionado: modoComposicao === 'por_uc' ? ucAtiva?.kit : projeto.kit_selecionado,
+            lista_complementos_cc: modoComposicao === 'por_uc' ? ucAtiva?.complementosCc : projeto.lista_complementos_cc,
+          }}
+          proposta={propostaEfetiva}
+          listaCa={listaCaEfetiva}
           fmt={fmt}
         />
       )}
@@ -183,9 +287,11 @@ export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa, ehA
         <PropostaPDFTemplate
           ref={templateRef}
           projeto={projeto}
-          proposta={proposta}
+          proposta={propostaEfetiva}
           configEmpresa={configEmpresa}
-          listaCa={listaCa}
+          listaCa={listaCaEfetiva}
+          modoComposicao={modoComposicao}
+          propostasPorUc={propostasPorUc || undefined}
         />
       </div>
     </div>

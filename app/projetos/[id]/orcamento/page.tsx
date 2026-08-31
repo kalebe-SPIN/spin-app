@@ -86,27 +86,48 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
     )
   }
 
+  const modoComposicao: 'centralizado' | 'por_uc' = (projeto.modo_composicao === 'por_uc') ? 'por_uc' : 'centralizado'
+  const kitsPorUcRaw: any[] = Array.isArray(projeto.kits_por_uc) ? projeto.kits_por_uc : []
+
   const kit = projeto.kit_selecionado
   const listaCa = projeto.lista_ca_confirmada
 
-  if (!kit || !Array.isArray(listaCa) || listaCa.length === 0) {
+  // Validação: modo por_uc precisa de pelo menos 1 kit definido; modo
+  // centralizado precisa de kit_selecionado + lista_ca_confirmada.
+  const semKitCentralizado = modoComposicao === 'centralizado'
+    && (!kit || !Array.isArray(listaCa) || listaCa.length === 0)
+  const semKitPorUc = modoComposicao === 'por_uc'
+    && (kitsPorUcRaw.length === 0 || !kitsPorUcRaw.some(k => k?.kit_selecionado))
+
+  if (semKitCentralizado || semKitPorUc) {
     return (
       <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
         <div className="max-w-3xl mx-auto bg-sol/10 border border-sol/30 rounded-xl p-6">
           <h1 className="text-xl font-bold text-sol mb-2">⚠️ Dados incompletos</h1>
-          <p className="text-white/70 text-sm mb-4">Antes de gerar orçamento, complete:</p>
+          <p className="text-white/70 text-sm mb-4">
+            {modoComposicao === 'por_uc'
+              ? 'Modo kit por UC: defina pelo menos 1 kit em /kit antes de gerar orçamento.'
+              : 'Antes de gerar orçamento, complete:'}
+          </p>
           <ul className="space-y-2 mb-4">
-            {!kit && (
+            {modoComposicao === 'centralizado' && !kit && (
               <li className="text-sm">
                 <Link href={`/projetos/${projetoId}/kit`} className="text-sol hover:underline">
                   ✗ Passo 6 — Escolher kit
                 </Link>
               </li>
             )}
-            {(!Array.isArray(listaCa) || listaCa.length === 0) && (
+            {modoComposicao === 'centralizado' && (!Array.isArray(listaCa) || listaCa.length === 0) && (
               <li className="text-sm">
                 <Link href={`/projetos/${projetoId}/lista-ca`} className="text-sol hover:underline">
                   ✗ Passo 7 — Confirmar Lista CA
+                </Link>
+              </li>
+            )}
+            {modoComposicao === 'por_uc' && (
+              <li className="text-sm">
+                <Link href={`/projetos/${projetoId}/kit`} className="text-sol hover:underline">
+                  → Ir pra /kit e configurar cada UC
                 </Link>
               </li>
             )}
@@ -136,39 +157,56 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
 
   const params = paramsToRecord(paramsRows || [])
 
-  const proposta = calcularProposta(
-    {
-      placa: {
-        qtd: kit.qtd_placas || 1,
-        preco_venda_unitario: kit.placa?.preco_venda || 0,
-        modelo: kit.placa?.modelo || '—',
-        potencia_wp: kit.placa?.potencia_wp || 0,
+  // Helper: calcula proposta pra um par (kit, listaCa, brutoTotal)
+  function calcProposta(k: any, lca: any[], brutoTotal?: number) {
+    return calcularProposta(
+      {
+        placa: {
+          qtd: k.qtd_placas || 1,
+          preco_venda_unitario: k.placa?.preco_venda || 0,
+          modelo: k.placa?.modelo || '—',
+          potencia_wp: k.placa?.potencia_wp || 0,
+        },
+        inversor: {
+          qtd: k.qtd_inversores || 1,
+          preco_venda_unitario: k.inversor?.preco_venda || 0,
+          modelo: k.inversor?.modelo || '—',
+          potencia_kw: k.inversor?.potencia_kw || 0,
+        },
+        itens_ca: (lca || []).map((i: any) => ({
+          descricao: i.descricao,
+          qtd: i.qtd || 0,
+          preco_unitario: i.preco_unitario || 0,
+          categoria: i.categoria,
+        })),
+        subtotal_kit_weg_bruto_override: brutoTotal || k.preco_total_kit_weg,
+        potencia_kwp: k.potencia_cc_kwp || 0,
+        distancia_km_extra: 0,
       },
-      inversor: {
-        qtd: kit.qtd_inversores || 1,
-        preco_venda_unitario: kit.inversor?.preco_venda || 0,
-        modelo: kit.inversor?.modelo || '—',
-        potencia_kw: kit.inversor?.potencia_kw || 0,
-      },
-      itens_ca: listaCa.map((i: any) => ({
-        descricao: i.descricao,
-        qtd: i.qtd || 0,
-        preco_unitario: i.preco_unitario || 0,
-        categoria: i.categoria,
-      })),
-      // Complementos CC (cabo, estrutura, MC4) somam ao subtotal WEG bruto
-      // pra levar fator 0,4182 também (todos vêm da planilha WEG, não são
-      // materiais complementares tributáveis). No modo ampliação o inversor
-      // sai do bruto (cliente já tem) mas o resto segue com fator WEG.
-      // Kalebe 2026-08-29.
-      // projeto.kit_weg_bruto_total já inclui placa+inversor+complementos CC —
-      // fallback pra kit.preco_total_kit_weg pra projetos antigos.
-      subtotal_kit_weg_bruto_override: (projeto as any).kit_weg_bruto_total || kit.preco_total_kit_weg,
-      potencia_kwp: kit.potencia_cc_kwp || 0,
-      distancia_km_extra: 0,
-    },
-    params
-  )
+      params,
+    )
+  }
+
+  // Rota A — centralizado: 1 proposta única
+  const proposta = modoComposicao === 'centralizado'
+    ? calcProposta(kit, listaCa as any[], (projeto as any).kit_weg_bruto_total)
+    : null
+
+  // Rota B — por_uc: 1 proposta por UC + label
+  const propostasPorUc = modoComposicao === 'por_uc'
+    ? kitsPorUcRaw
+        .filter(k => k?.kit_selecionado)
+        .map((item: any) => ({
+          uc_ref: item.uc_ref,
+          label: item.uc_ref === 'principal' ? 'UC principal' : `UC ${item.uc_ref}`,
+          endereco_label: item.endereco_label || null,
+          endereco_proprio: !!item.endereco_proprio,
+          kit: item.kit_selecionado,
+          listaCa: (item.lista_ca_confirmada || []) as any[],
+          complementosCc: item.lista_complementos_cc || null,
+          proposta: calcProposta(item.kit_selecionado, item.lista_ca_confirmada || [], item.kit_weg_bruto_total),
+        }))
+    : null
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -195,8 +233,10 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
           projeto={projeto}
           proposta={proposta as any}
           configEmpresa={configEmpresa}
-          listaCa={listaCa as any}
+          listaCa={(listaCa || []) as any}
           ehAdmin={ehAdmin}
+          modoComposicao={modoComposicao}
+          propostasPorUc={propostasPorUc as any}
         />
       </div>
     </main>

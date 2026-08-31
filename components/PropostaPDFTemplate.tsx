@@ -9,6 +9,19 @@ type Props = {
   proposta: PropostaCalculada
   configEmpresa: any
   listaCa: any[]
+  /** Kalebe 2026-08-29: modo kit-por-UC. Se presente, o template ganha
+   *  uma seção adicional "Mapa de kits por UC" mostrando todas as UCs
+   *  contempladas. O resto do PDF descreve a UC ativa (que o admin
+   *  seleciona no OrcamentoClient). */
+  modoComposicao?: 'centralizado' | 'por_uc'
+  propostasPorUc?: Array<{
+    uc_ref: string
+    label: string
+    endereco_label?: string | null
+    endereco_proprio?: boolean
+    kit: any
+    proposta: PropostaCalculada
+  }>
 }
 
 /**
@@ -26,7 +39,8 @@ type Props = {
  * Dimensões A4 em px @ 96 DPI: 794 × 1123.
  */
 export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
-  ({ projeto, proposta, configEmpresa }, ref) => {
+  ({ projeto, proposta, configEmpresa, modoComposicao, propostasPorUc }, ref) => {
+    const ehPorUc = modoComposicao === 'por_uc' && !!propostasPorUc?.length
     const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     const fmtInt = (v: number) => Math.round(v).toLocaleString('pt-BR')
     const kit = projeto.kit_selecionado || {}
@@ -48,8 +62,77 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
       ? `R$ ${fmtNum(invMil / 1000, 2)} mi`
       : `R$ ${fmtNum(invMil, 1)} mil`
 
+    // Totais consolidados quando por_uc
+    const totalPvUcs = ehPorUc ? (propostasPorUc || []).reduce((s, u) => s + (u.proposta?.pv_total || 0), 0) : 0
+    const totalPotenciaUcs = ehPorUc ? (propostasPorUc || []).reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0) : 0
+
     return (
       <div ref={ref} style={{ background: '#050B16', color: '#F5F5F0', fontFamily: E.font.body }}>
+        {/* ============ PÁGINA EXTRA — MAPA DE KITS POR UC (modo por_uc) ============ */}
+        {ehPorUc && (
+          <section style={E.pagina}>
+            <div style={E.haloCanto} />
+            <div style={E.conteudoRel}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
+                <div>
+                  <p style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: '#D4AF37', margin: 0 }}>
+                    Sistema modular · {propostasPorUc?.length} UCs
+                  </p>
+                  <h1 style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.05, margin: '8px 0 4px', color: '#F5F5F0' }}>
+                    Um sistema<br/>por unidade
+                  </h1>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 11, color: '#F5F5F0AA' }}>
+                  <p style={{ margin: 0 }}>{projeto.codigo}</p>
+                  <p style={{ margin: '4px 0 0' }}>{dataHoje}</p>
+                </div>
+              </div>
+
+              <p style={{ fontSize: 14, color: '#F5F5F0BB', lineHeight: 1.5, marginBottom: 24 }}>
+                {projeto.cliente_razao_social}, o sistema foi dimensionado com um kit dedicado
+                pra cada uma das {propostasPorUc?.length} unidades consumidoras. Cada UC tem
+                sua própria capacidade, projeto e proteções — abaixo o mapa consolidado.
+              </p>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #D4AF3760' }}>
+                    <th style={{ textAlign: 'left', padding: '10px 8px', color: '#D4AF37', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>UC</th>
+                    <th style={{ textAlign: 'left', padding: '10px 8px', color: '#D4AF37', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Endereço</th>
+                    <th style={{ textAlign: 'right', padding: '10px 8px', color: '#D4AF37', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Placas</th>
+                    <th style={{ textAlign: 'right', padding: '10px 8px', color: '#D4AF37', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Potência</th>
+                    <th style={{ textAlign: 'right', padding: '10px 8px', color: '#D4AF37', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Investimento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(propostasPorUc || []).map((u) => (
+                    <tr key={u.uc_ref} style={{ borderBottom: '1px solid #F5F5F015' }}>
+                      <td style={{ padding: '12px 8px', color: '#F5F5F0' }}>{u.label}</td>
+                      <td style={{ padding: '12px 8px', color: '#F5F5F0AA' }}>
+                        {u.endereco_proprio && u.endereco_label ? u.endereco_label : 'Mesmo endereço da UC principal'}
+                      </td>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', color: '#F5F5F0' }}>{u.kit?.qtd_placas || 0}</td>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', color: '#F5F5F0' }}>{fmtNum(u.kit?.potencia_cc_kwp || 0, 2)} kWp</td>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', color: '#D4AF37', fontWeight: 700 }}>R$ {fmt(u.proposta?.pv_total || 0)}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ borderTop: '2px solid #D4AF37' }}>
+                    <td style={{ padding: '16px 8px', color: '#F5F5F0', fontWeight: 800, fontSize: 13 }} colSpan={3}>TOTAL</td>
+                    <td style={{ padding: '16px 8px', textAlign: 'right', color: '#F5F5F0', fontWeight: 800, fontSize: 13 }}>{fmtNum(totalPotenciaUcs, 2)} kWp</td>
+                    <td style={{ padding: '16px 8px', textAlign: 'right', color: '#D4AF37', fontWeight: 900, fontSize: 15 }}>R$ {fmt(totalPvUcs)}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <p style={{ fontSize: 11, color: '#F5F5F088', marginTop: 32, lineHeight: 1.6 }}>
+                As páginas a seguir descrevem em detalhe o sistema da UC principal.
+                Para o detalhamento técnico de cada UC secundária, entre em contato — o
+                projeto executivo é individualizado.
+              </p>
+            </div>
+          </section>
+        )}
+
         {/* ============ PÁGINA 1 — MANIFESTO ============ */}
         <section style={E.pagina}>
           {/* Halo dourado no canto sup direito */}

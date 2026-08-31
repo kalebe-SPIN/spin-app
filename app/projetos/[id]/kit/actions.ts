@@ -145,10 +145,9 @@ export async function salvarKitAction(
   let itensListaComPreco: ItemKit[] = []
   let precoListaCA = 0
   try {
-    const padrao = (projetoAtual as any)?.padrao_entrada || {}
-    // tipo_ligacao vive dentro de padrao_entrada.tipo_ligacao (JSONB)
+    // padraoEfetivo respeita endereço próprio da UC quando aplicável
+    const padrao = padraoEfetivo
     const tipoLigacao = padrao?.tipo_ligacao || 'monofasico'
-    // telhado_secoes é tabela separada — usamos a 1ª seção pro tipo de cobertura
     const telhadoSecoes = telhadoSecoesData || []
 
     const itensBrutos = montarListaComplementarCA(
@@ -181,11 +180,14 @@ export async function salvarKitAction(
     const subtotais = calcularSubtotais(itensListaComPreco)
     precoListaCA = subtotais.totalGeral
 
-    // 4. Grava lista CA no projeto
-    await supabase
-      .from('projetos')
-      .update({ lista_ca_confirmada: itensListaComPreco })
-      .eq('id', projetoId)
+    // 4. Grava lista CA — modoPorUc adia (grava tudo junto no bloco final);
+    //    modo centralizado grava direto no projeto.
+    if (!modoPorUc) {
+      await supabase
+        .from('projetos')
+        .update({ lista_ca_confirmada: itensListaComPreco })
+        .eq('id', projetoId)
+    }
   } catch (e: any) {
     // Falha na lista CA não deve bloquear salvar o kit — só loga
     console.error('[salvarKitAction] lista CA falhou:', e?.message || e)
@@ -209,7 +211,7 @@ export async function salvarKitAction(
   // proteções — inclusive ampliação, onde a Spin precisa reforçar o QGBT
   // do cliente pra a nova potência. Se for ampliação, sintetiza um
   // inversor virtual com a potência CC final e a ligação do cliente.
-  const ligacaoCliente = (projetoAtual as any)?.padrao_entrada?.tipo_ligacao || 'monofasico'
+  const ligacaoCliente = padraoEfetivo?.tipo_ligacao || 'monofasico'
   const inversoresParaProtecao = kit.inversores && kit.inversores.length > 0
     ? kit.inversores.map(x => ({
         modelo: x.modelo, potencia_kw: x.potencia_kw, fases: x.fases, qtd: x.qtd,
@@ -228,43 +230,84 @@ export async function salvarKitAction(
   const complementosCC = await precificarComplementosCC(supabase, {
     qtd_placas: kit.qtd_placas,
     tipo_telhado: (telhadoSecoesData || [])[0]?.tipo_cobertura || null,
-    distancia_string_qgbt_m: (projetoAtual as any)?.padrao_entrada?.distancia_string_qgbt_m || 15,
+    distancia_string_qgbt_m: padraoEfetivo?.distancia_string_qgbt_m || 15,
     inversores: inversoresParaProtecao,
     tipo_ligacao_cliente: ligacaoCliente,
   })
   const precoComplementosCCbruto = complementosCC.total
   const kitWegBrutoTotal = precoKitPlacaInversor + precoComplementosCCbruto
+  const listaComplementosCcObj = {
+    itens: complementosCC.itens,
+    total: precoComplementosCCbruto,
+    avisos: complementosCC.avisos,
+    gerado_em: new Date().toISOString(),
+  }
 
-  // Persiste kit WEG bruto total no projeto (com complementos incluídos)
-  // pra o /orcamento aplicar o fator 0,4182 sobre TUDO.
-  await supabase
-    .from('projetos')
-    .update({
-      lista_complementos_cc: {
-        itens: complementosCC.itens,
-        total: precoComplementosCCbruto,
-        avisos: complementosCC.avisos,
-        gerado_em: new Date().toISOString(),
-      },
-      kit_weg_bruto_total: kitWegBrutoTotal,
-    })
-    .eq('id', projetoId)
-
-  // valor_estimado do projeto_item = kit WEG bruto (será refinado com fator +
-  // margem no /orcamento). Aqui só destrava a proposta consolidada.
-  const totalFvOnGrid = kitWegBrutoTotal + precoListaCA
-
-  if (totalFvOnGrid > 0) {
+  if (modoPorUc) {
+    // Merge dos derivados no item da UC dentro de kits_por_uc.
+    // Releitura pra pegar o array com o item já upserted acima.
+    const { data: projRow } = await supabase
+      .from('projetos').select('kits_por_uc').eq('id', projetoId).maybeSingle()
+    const arr: any[] = Array.isArray((projRow as any)?.kits_por_uc) ? (projRow as any).kits_por_uc : []
+    const idx = arr.findIndex(x => x?.uc_ref === ucRef)
+    if (idx >= 0) {
+      arr[idx] = {
+        ...arr[idx],
+        lista_ca_confirmada: itensListaComPreco,
+        lista_complementos_cc: listaComplementosCcObj,
+        kit_weg_bruto_total: kitWegBrutoTotal,
+      }
+      await supabase.from('projetos').update({ kits_por_uc: arr }).eq('id', projetoId)
+    }
+  } else {
+    // Persiste kit WEG bruto total no projeto (com complementos incluídos)
+    // pra o /orcamento aplicar o fator 0,4182 sobre TUDO.
     await supabase
-      .from('projeto_itens')
-      .update({ valor_estimado: totalFvOnGrid })
-      .eq('projeto_id', projetoId)
-      .in('tipo', ['fv_ongrid', 'fv_hibrido', 'expansao_ongrid', 'expansao_hibrido'])
-      .neq('status', 'removido')
+      .from('projetos')
+      .update({
+        lista_complementos_cc: listaComplementosCcObj,
+        kit_weg_bruto_total: kitWegBrutoTotal,
+      })
+      .eq('id', projetoId)
+
+    // valor_estimado do projeto_item = kit WEG bruto (será refinado com fator +
+    // margem no /orcamento). Aqui só destrava a proposta consolidada.
+    const totalFvOnGrid = kitWegBrutoTotal + precoListaCA
+    if (totalFvOnGrid > 0) {
+      await supabase
+        .from('projeto_itens')
+        .update({ valor_estimado: totalFvOnGrid })
+        .eq('projeto_id', projetoId)
+        .in('tipo', ['fv_ongrid', 'fv_hibrido', 'expansao_ongrid', 'expansao_hibrido'])
+        .neq('status', 'removido')
+    }
   }
 
   revalidatePath(`/projetos/${projetoId}`)
+  if (modoPorUc) {
+    // Fica no /kit pra escolher próxima UC
+    revalidatePath(`/projetos/${projetoId}/kit`)
+    return { sucesso: true }
+  }
   redirect(`/projetos/${projetoId}`)
+}
+
+// ─── Nova action: atualiza modo_composicao (centralizado ↔ por_uc) ────
+export async function atualizarModoComposicaoAction(
+  projetoId: string,
+  modo: 'centralizado' | 'por_uc',
+) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { sucesso: false, erro: 'Não autenticado' }
+  const { error } = await supabase
+    .from('projetos')
+    .update({ modo_composicao: modo })
+    .eq('id', projetoId)
+  if (error) return { sucesso: false, erro: error.message }
+  revalidatePath(`/projetos/${projetoId}/kit`)
+  revalidatePath(`/projetos/${projetoId}`)
+  return { sucesso: true }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
