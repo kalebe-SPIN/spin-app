@@ -379,7 +379,14 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
       <section>
         <div className="flex items-center justify-between gap-3 mb-3">
           <h2 className="text-lg font-bold text-white">📄 Produtos do catálogo</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <a
+              href="/admin/catalogo/pente-fino"
+              className="px-3 py-2 bg-white/5 border border-white/10 text-white/80 text-xs font-bold rounded-lg hover:bg-white/10 transition"
+              title="Auditoria + normalização em massa (fabricante, categoria, preço, etc.)"
+            >
+              🔍 Pente fino
+            </a>
             <button
               onClick={() => setAbrindoDatasheet(true)}
               className="px-3 py-2 bg-weg-azul text-white text-xs font-bold rounded-lg hover:bg-weg-azul/90 transition"
