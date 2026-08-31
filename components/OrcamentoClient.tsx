@@ -414,9 +414,33 @@ function ComposicaoCustosAdmin({
         <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-sol/10 text-sol">Admin</span>
         <h2 className="text-lg font-bold text-white">Composição de custos e precificação</h2>
       </div>
-      <p className="text-xs text-white/50 mb-6">
+      <p className="text-xs text-white/50 mb-4">
         Detalhamento item-a-item para revisão gerencial. Não vai para o cliente.
       </p>
+
+      {/* Banner de avisos — visível ANTES da tabela pra o admin ver na hora */}
+      {avisos.length > 0 && (
+        <div className="mb-6 p-3 bg-coral/10 border border-coral/40 rounded-lg">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <p className="text-xs font-bold text-coral mb-2">
+                ⚠ {avisos.length} item(s) do kit WEG não entraram no preço:
+              </p>
+              <ul className="space-y-1 text-[11px] text-coral/90">
+                {avisos.map((a: string, i: number) => (
+                  <li key={i}>· {a}</li>
+                ))}
+              </ul>
+            </div>
+            <a
+              href="/admin/diagnostico-catalogo"
+              className="text-[10px] font-bold text-sol hover:underline whitespace-nowrap"
+            >
+              🔍 Diagnosticar catálogo →
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Bloco 1 — Kit WEG */}
       <div className="mb-6">
@@ -450,11 +474,6 @@ function ComposicaoCustosAdmin({
             </tbody>
           </table>
         </div>
-        {avisos.length > 0 && (
-          <div className="mt-2 text-[11px] text-coral/80">
-            ⚠ {avisos.join(' · ')}
-          </div>
-        )}
       </div>
 
       {/* Bloco 2 — Lista CA */}
