@@ -212,3 +212,104 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
   if (clienteId) revalidatePath(`/crm/clientes/${clienteId}`)
   redirect(`/projetos/${novoProjeto.id}`)
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Nova proposta pro mesmo cliente — herda dados cadastrais do tronco
+// Kalebe 2026-08-29: 'para cada cliente deve ter só uma trilha que pode
+// se bifurcar em várias propostas — o que muda é kit em diante, o
+// restante permanece num só cadastro'.
+// Cria projeto novo com cliente_id + snapshot inicial preenchido dos
+// dados cadastrais que ficam em clientes (analise_fatura, padrao_entrada,
+// beneficiarias, telhado_secoes). Salta direto pra escolha do kit.
+// ═══════════════════════════════════════════════════════════════════════
+export async function criarNovaPropostaMesmoClienteAction(clienteId: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  if (!clienteId) return { erro: 'cliente_id obrigatório' }
+
+  // 1. Busca o tronco de dados cadastrais (do cliente ou da última proposta)
+  const { data: cliente } = await supabase
+    .from('clientes')
+    .select('id, razao_social, cpf_cnpj, email, telefone, whatsapp, endereco, analise_fatura, padrao_entrada, beneficiarias, telhado_secoes')
+    .eq('id', clienteId)
+    .maybeSingle()
+  if (!cliente) return { erro: 'Cliente não encontrado' }
+
+  // 2. Se o cliente ainda não tem os campos preenchidos (projetos antigos
+  //    que rodaram antes da migration 094), busca da proposta mais recente
+  //    como fallback.
+  const { data: ultimaProposta } = await supabase
+    .from('projetos')
+    .select('analise_fatura, padrao_entrada, beneficiarias, tipo_projeto, uc_geradora, conta_contrato, endereco_instalacao, endereco_igual_titular, titular_cliente_id, titular_igual_cliente')
+    .eq('cliente_id', clienteId)
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const analiseFatura = (cliente as any).analise_fatura || ultimaProposta?.analise_fatura || null
+  const padraoEntrada = (cliente as any).padrao_entrada || ultimaProposta?.padrao_entrada || null
+  const beneficiarias = (cliente as any).beneficiarias?.length > 0
+    ? (cliente as any).beneficiarias
+    : (ultimaProposta?.beneficiarias || [])
+
+  // 3. Cria a nova proposta
+  const { data: novoProjeto, error } = await supabase
+    .from('projetos')
+    .insert({
+      consultor_id: user.id,
+      cliente_id: cliente.id,
+      titular_cliente_id: ultimaProposta?.titular_cliente_id || cliente.id,
+      titular_igual_cliente: ultimaProposta?.titular_igual_cliente ?? true,
+      endereco_igual_titular: ultimaProposta?.endereco_igual_titular ?? true,
+      endereco_instalacao: ultimaProposta?.endereco_instalacao || null,
+      // Snapshot cliente (denormalização — mantém compat)
+      cliente_razao_social: cliente.razao_social,
+      cliente_cpf_cnpj: cliente.cpf_cnpj,
+      cliente_email: cliente.email,
+      cliente_telefone: cliente.telefone,
+      // Dados cadastrais herdados do tronco
+      analise_fatura: analiseFatura,
+      padrao_entrada: padraoEntrada,
+      beneficiarias: beneficiarias,
+      tipo_projeto: ultimaProposta?.tipo_projeto || null,
+      uc_geradora: ultimaProposta?.uc_geradora || null,
+      conta_contrato: ultimaProposta?.conta_contrato || null,
+      status: 'dimensionado',   // pula fatura/telhado/padrão — vai direto pra kit
+    })
+    .select('id')
+    .single()
+
+  if (error || !novoProjeto) {
+    return { erro: 'Erro ao criar nova proposta: ' + (error?.message || '') }
+  }
+
+  // 4. Copia seções de telhado da última proposta (tabela separada)
+  const telhadoSecoesCli = Array.isArray((cliente as any).telhado_secoes)
+    ? (cliente as any).telhado_secoes
+    : []
+  let secoesPraCopiar: any[] = telhadoSecoesCli
+  if (secoesPraCopiar.length === 0 && ultimaProposta) {
+    // Fallback: pega da última proposta
+    const { data: sec } = await supabase
+      .from('projetos_telhado_secoes')
+      .select('*')
+      .eq('projeto_id', (ultimaProposta as any).id || '')
+    secoesPraCopiar = sec || []
+  }
+  if (secoesPraCopiar.length > 0) {
+    const linhas = secoesPraCopiar.map((s: any) => ({
+      ...s,
+      id: undefined,               // deixa o banco gerar
+      projeto_id: novoProjeto.id,
+      created_at: undefined,
+      updated_at: undefined,
+    }))
+    await supabase.from('projetos_telhado_secoes').insert(linhas)
+  }
+
+  revalidatePath('/projetos')
+  revalidatePath(`/crm/clientes/${clienteId}`)
+  redirect(`/projetos/${novoProjeto.id}/kit`)
+}

@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
+import { criarNovaPropostaMesmoClienteAction } from '@/app/projetos/actions'
 
 type Projeto = {
   id: string
@@ -32,6 +33,40 @@ const TIPO_PROJETO_LABEL: Record<string, string> = {
   hibrido_bess: 'Híbrido c/ BESS',
   expansao_ongrid: 'Expansão on-grid',
   expansao_hibrido: 'Expansão híbrido',
+}
+
+/** Botão "+ Nova proposta" — cria projeto novo pro mesmo cliente com
+ *  dados cadastrais (fatura/padrão/beneficiárias/telhado) já herdados;
+ *  redireciona direto pra /kit pra escolher configuração nova.
+ *  Kalebe pode acessar a etapa Fatura pra add/remover beneficiárias
+ *  específicas dessa proposta sem mexer nas outras. */
+function BotaoNovaProposta({ clienteId }: { clienteId: string }) {
+  const [isPending, startTransition] = useTransition()
+  const [erro, setErro] = useState<string | null>(null)
+
+  function criar() {
+    setErro(null)
+    startTransition(async () => {
+      const r = await criarNovaPropostaMesmoClienteAction(clienteId)
+      if (r && 'erro' in r && r.erro) setErro(r.erro)
+      // Sucesso: server redirect leva pra /kit automaticamente
+    })
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={criar}
+        disabled={isPending}
+        className="text-[10px] font-bold text-verde hover:text-verde/80 disabled:opacity-40"
+        title="Cria proposta nova herdando fatura + padrão + telhado + beneficiárias. Vai direto pra escolha do kit."
+      >
+        {isPending ? '⏳ Criando...' : '+ Nova proposta'}
+      </button>
+      {erro && <p className="text-[9px] text-coral mt-1">⚠ {erro}</p>}
+    </>
+  )
 }
 
 /** Normaliza pra busca — tira acento, lowercase, tira não-alfanumérico do doc */
@@ -163,16 +198,19 @@ function ClienteBloco({ grupo }: { grupo: Grupo }) {
               <p className="text-[11px] text-white/40">CPF/CNPJ {formatarCpfCnpj(String(cpf))}</p>
             )}
           </div>
-          <div className="text-right shrink-0">
+          <div className="text-right shrink-0 space-y-1">
             {grupo.cliente_id && (
-              <Link
-                href={`/crm/clientes/${grupo.cliente_id}`}
-                className="text-[10px] text-sol hover:underline"
-              >
-                Ver cadastro →
-              </Link>
+              <>
+                <BotaoNovaProposta clienteId={grupo.cliente_id} />
+                <Link
+                  href={`/crm/clientes/${grupo.cliente_id}`}
+                  className="block text-[10px] text-sol hover:underline"
+                >
+                  Ver cadastro →
+                </Link>
+              </>
             )}
-            <p className="text-[10px] text-white/30 mt-1">último: {dataMaisRecente}</p>
+            <p className="text-[10px] text-white/30">último: {dataMaisRecente}</p>
           </div>
         </div>
 
