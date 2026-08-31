@@ -71,20 +71,27 @@ type Props = {
 export function DocumentosObrigatoriosCard({
   homologacaoId, ehPJ, urls, socios, documentosCompletosEm, faturaOk, projetoId,
 }: Props) {
+  // Defesa: props podem chegar null/undefined em edge cases (JSON.parse
+  // eliminou undefined, coluna migration nova ainda não aplicada, etc).
+  // Normaliza antes de qualquer acesso.
+  const urlsSafe: any = urls || {}
+  const sociosSafe: any[] = Array.isArray(socios) ? socios : []
+  const ehPjSafe = !!ehPJ
+
   // Contagem total (inclui fatura como slot informativo, contada se ok)
   const totalEnviados =
-    SLOTS_INFRA.filter((s) => urls[s.chave]).length +
+    SLOTS_INFRA.filter((s) => urlsSafe[s.chave]).length +
     (faturaOk ? 1 : 0) +
-    SLOTS_COMERCIAL.filter((s) => urls[s.chave]).length +
-    SLOTS_CLIENTE.filter((s) => urls[s.chave]).length +
-    (ehPJ ? SLOTS_PJ.filter((s) => urls[s.chave]).length : 0) +
-    (ehPJ ? (socios || []).reduce((n, s) => n + (s?.cnh_url ? 1 : 0) + (s?.procuracao_url ? 1 : 0), 0) : 0)
+    SLOTS_COMERCIAL.filter((s) => urlsSafe[s.chave]).length +
+    SLOTS_CLIENTE.filter((s) => urlsSafe[s.chave]).length +
+    (ehPjSafe ? SLOTS_PJ.filter((s) => urlsSafe[s.chave]).length : 0) +
+    (ehPjSafe ? sociosSafe.reduce((n, s) => n + (s?.cnh_url ? 1 : 0) + (s?.procuracao_url ? 1 : 0), 0) : 0)
 
   const totalRequeridos =
     SLOTS_INFRA.length + 1 + // +1 = fatura (obrigatória, vem do Passo 2)
     SLOTS_COMERCIAL.length +
     SLOTS_CLIENTE.length +
-    (ehPJ ? SLOTS_PJ.length + (socios || []).length * 2 : 0)
+    (ehPjSafe ? SLOTS_PJ.length + sociosSafe.length * 2 : 0)
 
   const completos = !!documentosCompletosEm
   const progresso = totalRequeridos > 0 ? (totalEnviados / totalRequeridos) * 100 : 0
@@ -99,7 +106,7 @@ export function DocumentosObrigatoriosCard({
           <p className="text-[10px] text-white/50 mt-0.5">
             {completos
               ? `✓ Completo — arquivos das etapas gerados automaticamente`
-              : `Envie tudo pra liberar geração · Cliente ${ehPJ ? 'PJ' : 'PF'}`}
+              : `Envie tudo pra liberar geração · Cliente ${ehPjSafe ? 'PJ' : 'PF'}`}
           </p>
         </div>
         <div className="text-right">
@@ -120,7 +127,7 @@ export function DocumentosObrigatoriosCard({
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {SLOTS_INFRA.map((slot) => (
-            <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urls[slot.chave] || null} />
+            <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urlsSafe[slot.chave] || null} />
           ))}
           {/* Fatura CELESC — informativo (vem do Passo 2 do projeto) */}
           <div className={`p-3 rounded-lg border ${faturaOk ? 'bg-verde/5 border-verde/30' : 'bg-coral/5 border-coral/30 border-dashed'}`}>
@@ -155,25 +162,25 @@ export function DocumentosObrigatoriosCard({
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {SLOTS_COMERCIAL.map((slot) => (
-            <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urls[slot.chave] || null} />
+            <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urlsSafe[slot.chave] || null} />
           ))}
         </div>
       </SecaoDocs>
 
       {/* Seção 3: Cliente */}
       <SecaoDocs
-        titulo={ehPJ ? '🪪 Documentos do representante' : '🪪 Documentos do cliente'}
-        subtitulo={ehPJ ? 'Pessoa que assinará pela empresa' : 'CNH + procuração assinada digital'}
+        titulo={ehPjSafe ? '🪪 Documentos do representante' : '🪪 Documentos do cliente'}
+        subtitulo={ehPjSafe ? 'Pessoa que assinará pela empresa' : 'CNH + procuração assinada digital'}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {SLOTS_CLIENTE.map((slot) => (
-            <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urls[slot.chave] || null} />
+            <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urlsSafe[slot.chave] || null} />
           ))}
         </div>
       </SecaoDocs>
 
       {/* Seção 3: PJ (só se cliente for PJ) */}
-      {ehPJ && (
+      {ehPjSafe && (
         <>
           <SecaoDocs
             titulo="🏢 Documentos da empresa"
@@ -181,7 +188,7 @@ export function DocumentosObrigatoriosCard({
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {SLOTS_PJ.map((slot) => (
-                <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urls[slot.chave] || null} />
+                <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urlsSafe[slot.chave] || null} />
               ))}
             </div>
           </SecaoDocs>
@@ -192,7 +199,7 @@ export function DocumentosObrigatoriosCard({
           >
             <SociosGerenciador
               homologacaoId={homologacaoId}
-              socios={socios}
+              socios={sociosSafe}
             />
           </SecaoDocs>
         </>
@@ -327,7 +334,7 @@ function SociosGerenciador({ homologacaoId, socios }: {
   return (
     <div className="space-y-3">
       {/* Lista dos sócios */}
-      {socios.length === 0 && (
+      {(socios || []).length === 0 && (
         <p className="text-xs text-white/40 italic text-center py-4 bg-noite/40 border border-dashed border-white/10 rounded">
           Nenhum sócio adicionado. Adicione pelo menos 1 abaixo.
         </p>
