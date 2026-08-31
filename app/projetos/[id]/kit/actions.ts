@@ -478,24 +478,53 @@ async function precificarComplementosCC(
     return { ok: false, motivo: detalhes }
   }
 
-  // 1. Cabo solar 6mm² — metragem = 2 × (distância + 30m folga)
-  const metrosCabo = Math.ceil(2 * (entrada.distancia_string_qgbt_m + 30))
+  // Pré-cálculo comum: busca specs dos inversores pra pegar entradas_mppt
+  // e detectar se todos são microinversores. Kalebe 2026-08-29:
+  //   - Cabo: 25m fixo se micro; senão distancia × totalMPPT (default 20m)
+  //   - MC4: pares = número TOTAL de entradas MPPT dos inversores
+  //   - Estrutura: qtd = módulos ÷ N (N do modelo escolhido, default 4)
+  const idsInversores = entrada.inversores.map(i => i.id).filter(Boolean) as string[]
+  const specsInversores: Record<string, any> = {}
+  if (idsInversores.length > 0) {
+    const { data: prodsInv } = await supabase
+      .from('produtos').select('id, specs').in('id', idsInversores)
+    for (const p of (prodsInv || [])) specsInversores[p.id] = p.specs || {}
+  }
+
+  let totalEntradasMppt = 0
+  for (const inv of entrada.inversores) {
+    const mpptSpec = inv.id ? Number(specsInversores[inv.id]?.entradas_mppt) : NaN
+    const mppt = Number.isFinite(mpptSpec) && mpptSpec > 0 ? mpptSpec : 1
+    totalEntradasMppt += mppt * (inv.qtd || 0)
+  }
+  const ehMicroinversor = entrada.inversores.length > 0
+    && entrada.inversores.every(x => /^SIW100/i.test(x.modelo || ''))
+
+  // 1. Cabo solar 6mm² —
+  //    Micro: 25m fixo (Spin)
+  //    String: distancia_string_qgbt × totalMPPT (default 20m/entrada quando distância não cadastrada)
+  const distEfetiva = entrada.distancia_string_qgbt_m > 0 ? entrada.distancia_string_qgbt_m : 20
+  const metrosCabo = ehMicroinversor
+    ? 25
+    : Math.ceil(distEfetiva * Math.max(1, totalEntradasMppt))
+  const memoriaCabo = ehMicroinversor
+    ? '25m fixo (microinversor)'
+    : `${distEfetiva}m × ${Math.max(1, totalEntradasMppt)} entradas MPPT`
   const cabo = await buscarProdutoComPreco({
     categorias: ['cabo_cc', 'cabo'],
     contem: ['6mm'],
   })
   if (cabo.ok) {
     itens.push({
-      categoria: 'cabo_cc', modelo: cabo.modelo,
+      categoria: 'cabo_cc', modelo: `${cabo.modelo} · ${memoriaCabo}`,
       qtd: metrosCabo, unidade: 'm', preco_unitario: cabo.preco,
       subtotal: metrosCabo * cabo.preco,
     })
   } else {
-    avisos.push(`Cabo solar 6mm² (${metrosCabo}m) — ${cabo.motivo}`)
+    avisos.push(`Cabo solar 6mm² (${metrosCabo}m · ${memoriaCabo}) — ${cabo.motivo}`)
   }
 
-  // 2. Estrutura — 1 kit pra cada 4 placas, tipo pelo telhado
-  const qtdKitsEstrutura = Math.ceil(entrada.qtd_placas / 4)
+  // 2. Estrutura — 1 kit pra cada N módulos (N vem do modelo escolhido)
   const tipo = String(entrada.tipo_telhado || '').toLowerCase()
   let contemEstrut: string[] = []
   if (/fibro/.test(tipo)) contemEstrut = ['fibro']
@@ -510,9 +539,13 @@ async function precificarComplementosCC(
     // pelo MAIOR preço — margem de segurança.
     pegarMaiorPreco: true,
   })
+  // Extrai N do modelo escolhido — 'Fibromadeira kit p/ 4 módulos' -> 4
+  const matchModulos = estrutura.ok ? String(estrutura.modelo).match(/p\/\s*(\d+)\s*m[oó]dulos?/i) : null
+  const modulosPorKit = matchModulos ? Number(matchModulos[1]) : 4
+  const qtdKitsEstrutura = Math.ceil(entrada.qtd_placas / modulosPorKit)
   if (estrutura.ok) {
     itens.push({
-      categoria: 'estrutura', modelo: estrutura.modelo,
+      categoria: 'estrutura', modelo: `${estrutura.modelo} · ${entrada.qtd_placas} módulos ÷ ${modulosPorKit}`,
       qtd: qtdKitsEstrutura, unidade: 'kit', preco_unitario: estrutura.preco,
       subtotal: qtdKitsEstrutura * estrutura.preco,
     })
@@ -520,20 +553,21 @@ async function precificarComplementosCC(
     avisos.push(`Estrutura ${contemEstrut[0] || 'genérica'} (${qtdKitsEstrutura} kit) — ${estrutura.motivo}`)
   }
 
-  // 3. MC4 — 2 pares por string (1 string ≈ 12 placas)
-  const qtdMc4 = 2 * Math.ceil(entrada.qtd_placas / 12)
+  // 3. MC4 — 1 par por entrada MPPT total dos inversores (Kalebe 2026-08-29)
+  const qtdMc4 = Math.max(1, totalEntradasMppt)
+  const memoriaMc4 = `${qtdMc4} par(es) = ${totalEntradasMppt} entradas MPPT`
   const mc4 = await buscarProdutoComPreco({
     categorias: ['conector'],
     contem: ['mc4'],
   })
   if (mc4.ok) {
     itens.push({
-      categoria: 'conector', modelo: mc4.modelo,
+      categoria: 'conector', modelo: `${mc4.modelo} · ${memoriaMc4}`,
       qtd: qtdMc4, unidade: 'par', preco_unitario: mc4.preco,
       subtotal: qtdMc4 * mc4.preco,
     })
   } else {
-    avisos.push(`Conector MC4 (${qtdMc4} par) — ${mc4.motivo}`)
+    avisos.push(`Conector MC4 (${qtdMc4} par · ${memoriaMc4}) — ${mc4.motivo}`)
   }
 
   // 4. Disjuntor CA — 1 disjuntor POR MODELO de inversor (agrupa qtd).
@@ -543,16 +577,8 @@ async function precificarComplementosCC(
   //    corrente se o campo estiver vazio.
   //    Ampliação passa 1 inversor virtual sem id.
 
-  // Busca specs dos inversores em batch
-  const idsInv = entrada.inversores.map(i => i.id).filter(Boolean) as string[]
-  const specsPorId: Record<string, any> = {}
-  if (idsInv.length > 0) {
-    const { data: prodsInv } = await supabase
-      .from('produtos').select('id, specs').in('id', idsInv)
-    for (const p of (prodsInv || [])) {
-      specsPorId[p.id] = p.specs || {}
-    }
-  }
+  // Specs dos inversores já lidas acima (specsInversores) — reutiliza
+  const specsPorId = specsInversores
 
   type GrupoDisj = {
     ref?: string          // 'MDWP-C50-2' — modelo cadastrado pelo projetista
