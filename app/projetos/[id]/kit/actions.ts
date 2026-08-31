@@ -367,7 +367,16 @@ async function precificarComplementosCC(
     | { ok: false; motivo: string }
 
   async function buscarProdutoComPreco(
-    filtro: { categorias: string[]; contem?: string[] },
+    filtro: {
+      categorias: string[]
+      contem?: string[]
+      /** Se true, entre TODOS os candidatos da categoria (após aplicar
+       *  filtro contem), escolhe o de MAIOR preço vigente. Usado pra
+       *  estrutura: a planilha WEG tem vários kits do mesmo tipo pra
+       *  diferentes velocidades de vento — a Spin cota pelo mais caro
+       *  pra não subprecificar. Kalebe 2026-08-29. */
+      pegarMaiorPreco?: boolean
+    },
   ): Promise<BuscaResult> {
     // Passo 1: busca produtos ATIVOS na categoria
     const { data: ativos } = await supabase
@@ -403,7 +412,11 @@ async function precificarComplementosCC(
     })
     const candidatos = preferidos.length > 0 ? preferidos : lista
 
-    // Passo 3: procura o 1º candidato com preço vigente > 0
+    // Passo 3: busca preço vigente pra cada candidato. Estratégia depende
+    // de pegarMaiorPreco:
+    //   - false (default): retorna o 1º candidato com preço > 0
+    //   - true (estrutura): coleta TODOS com preço vigente e retorna o mais caro
+    const cotacoes: Array<{ id: string; modelo: string; preco: number }> = []
     for (const escolhido of candidatos) {
       const { data: precos } = await supabase
         .from('precos_produtos')
@@ -414,16 +427,23 @@ async function precificarComplementosCC(
         .limit(1)
       const preco = Number((precos || [])[0]?.preco_venda) || 0
       if (preco > 0) {
-        return {
-          ok: true,
-          id: escolhido.id,
-          modelo: usandoInativos ? `${escolhido.modelo} (inativo)` : escolhido.modelo,
-          preco,
+        const modelo = usandoInativos ? `${escolhido.modelo} (inativo)` : escolhido.modelo
+        if (!filtro.pegarMaiorPreco) {
+          return { ok: true, id: escolhido.id, modelo, preco }
         }
+        cotacoes.push({ id: escolhido.id, modelo, preco })
       }
     }
+    if (cotacoes.length > 0) {
+      // Pega o de maior preço vigente entre os candidatos (Spin: margem
+      // de segurança na estrutura, cotamos pelo pior caso).
+      const escolhida = cotacoes.reduce((a, b) => (a.preco >= b.preco ? a : b))
+      return { ok: true, ...escolhida }
+    }
 
-    // Passo 4: fallback pra QUALQUER preço (mesmo vencido)
+    // Passo 4: fallback pra QUALQUER preço (mesmo vencido) — mesma
+    // estratégia do passo 3 (1º ou maior)
+    const cotacoesVencidas: Array<{ id: string; modelo: string; preco: number }> = []
     for (const escolhido of candidatos) {
       const { data: precos } = await supabase
         .from('precos_produtos')
@@ -434,13 +454,16 @@ async function precificarComplementosCC(
       const preco = Number((precos || [])[0]?.preco_venda) || 0
       if (preco > 0) {
         const suffixInat = usandoInativos ? ' (inativo)' : ''
-        return {
-          ok: true,
-          id: escolhido.id,
-          modelo: `${escolhido.modelo}${suffixInat} · ⚠ preço vencido`,
-          preco,
+        const modelo = `${escolhido.modelo}${suffixInat} · ⚠ preço vencido`
+        if (!filtro.pegarMaiorPreco) {
+          return { ok: true, id: escolhido.id, modelo, preco }
         }
+        cotacoesVencidas.push({ id: escolhido.id, modelo, preco })
       }
+    }
+    if (cotacoesVencidas.length > 0) {
+      const escolhida = cotacoesVencidas.reduce((a, b) => (a.preco >= b.preco ? a : b))
+      return { ok: true, ...escolhida }
     }
 
     // Passo 5: sem preço em nenhum candidato
@@ -476,6 +499,10 @@ async function precificarComplementosCC(
   const estrutura = await buscarProdutoComPreco({
     categorias: ['estrutura'],
     contem: contemEstrut,
+    // Kalebe 2026-08-29: quando tem múltiplos kits do mesmo tipo (ex:
+    // Fibromadeira p/ 4 módulos em várias velocidades de vento), cota
+    // pelo MAIOR preço — margem de segurança.
+    pegarMaiorPreco: true,
   })
   if (estrutura.ok) {
     itens.push({
