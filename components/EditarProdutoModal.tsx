@@ -218,80 +218,41 @@ export function EditarProdutoModal({
           {/* Anexos do produto — imagem + datasheet */}
           <Sec titulo="Anexos do produto">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Imagem */}
-              <div className="p-3 bg-white/[0.02] border border-white/10 rounded-lg">
-                <p className="text-[11px] uppercase font-bold text-white/60 mb-2">📸 Imagem</p>
-                <div className="flex items-start gap-3">
-                  <div className="w-20 h-20 shrink-0 bg-white/5 border border-white/15 rounded-lg overflow-hidden flex items-center justify-center">
-                    {urlImagem ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={urlImagem} alt="Produto" className="w-full h-full object-contain" />
-                    ) : (
-                      <span className="text-white/30 text-[10px] text-center px-1">sem imagem</span>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <label className="block">
-                      <input type="file" accept="image/png,image/jpeg,image/webp"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImagem(f) }}
-                        disabled={uploadando}
-                        className="text-[11px] text-white/70 file:mr-2 file:px-2 file:py-1 file:bg-sol/20 file:text-sol file:border-0 file:rounded file:text-[11px] file:font-bold" />
-                    </label>
-                    {uploadando && <p className="text-[11px] text-sol">⏳ Enviando…</p>}
-                    {urlImagem && (
-                      <div className="flex gap-2 items-center">
-                        <a href={urlImagem} target="_blank" rel="noreferrer" className="text-[10px] text-sol hover:underline">
-                          ver
-                        </a>
-                        <button type="button" onClick={() => setUrlImagem('')}
-                          className="text-[10px] text-coral hover:underline">
-                          ✕ remover
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Datasheet PDF */}
-              <div className="p-3 bg-white/[0.02] border border-white/10 rounded-lg">
-                <p className="text-[11px] uppercase font-bold text-white/60 mb-2">📄 Datasheet PDF</p>
-                <div className="flex items-start gap-3">
-                  <div className="w-20 h-20 shrink-0 bg-white/5 border border-white/15 rounded-lg flex items-center justify-center">
-                    {urlDatasheet ? (
-                      <span className="text-3xl">📄</span>
-                    ) : (
-                      <span className="text-white/30 text-[10px] text-center px-1">sem PDF</span>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <label className="block">
-                      <input type="file" accept="application/pdf"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadDatasheet(f) }}
-                        disabled={uploadandoPdf}
-                        className="text-[11px] text-white/70 file:mr-2 file:px-2 file:py-1 file:bg-weg-azul/20 file:text-weg-azul file:border-0 file:rounded file:text-[11px] file:font-bold" />
-                    </label>
-                    {uploadandoPdf && <p className="text-[11px] text-sol">⏳ Enviando PDF…</p>}
-                    {extraindoSpecs && <p className="text-[11px] text-sol">🤖 IA lendo specs do datasheet…</p>}
-                    {avisoIa && (
-                      <p className={`text-[10px] ${avisoIa.startsWith('✓') ? 'text-verde' : 'text-coral'}`}>
-                        {avisoIa}
-                      </p>
-                    )}
-                    {urlDatasheet && (
-                      <div className="flex gap-2 items-center">
-                        <a href={urlDatasheet} target="_blank" rel="noreferrer" className="text-[10px] text-sol hover:underline">
-                          abrir
-                        </a>
-                        <button type="button" onClick={() => setUrlDatasheet('')}
-                          className="text-[10px] text-coral hover:underline">
-                          ✕ remover
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <SlotAnexo
+                titulo="Imagem do produto"
+                emoji="📸"
+                accept="image/png,image/jpeg,image/webp"
+                url={urlImagem}
+                enviando={uploadando}
+                onArquivo={uploadImagem}
+                onRemover={() => setUrlImagem('')}
+                mensagemVazio="Nenhuma imagem"
+                cta="Anexar PNG/JPG"
+                cor="sol"
+                preview={urlImagem ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={urlImagem} alt="Produto" className="w-full h-full object-contain" />
+                ) : null}
+              />
+              <SlotAnexo
+                titulo="Datasheet PDF"
+                emoji="📄"
+                accept="application/pdf"
+                url={urlDatasheet}
+                enviando={uploadandoPdf || extraindoSpecs}
+                onArquivo={uploadDatasheet}
+                onRemover={() => setUrlDatasheet('')}
+                mensagemVazio="Sem PDF"
+                cta="Anexar PDF"
+                cor="weg-azul"
+                dica={extraindoSpecs
+                  ? '🤖 IA lendo specs…'
+                  : (avisoIa || 'A IA extrai as specs após o upload')}
+                dicaCor={extraindoSpecs
+                  ? 'sol'
+                  : avisoIa?.startsWith('✓') ? 'verde' : avisoIa ? 'coral' : 'white/50'}
+                preview={urlDatasheet ? <span className="text-3xl">📄</span> : null}
+              />
             </div>
           </Sec>
 
@@ -464,6 +425,69 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="block text-xs text-white/60 mb-1">{label}</label>
       {children}
+    </div>
+  )
+}
+
+/**
+ * Slot de anexo unificado — thumbnail em cima, botão custom embaixo,
+ * sem o texto nativo feio 'Nenhum arquivo escolhido'. Kalebe 2026-08-31.
+ */
+function SlotAnexo({
+  titulo, emoji, accept, url, enviando, onArquivo, onRemover, mensagemVazio,
+  cta, cor, preview, dica, dicaCor,
+}: {
+  titulo: string
+  emoji: string
+  accept: string
+  url: string
+  enviando: boolean
+  onArquivo: (f: File) => void | Promise<void>
+  onRemover: () => void
+  mensagemVazio: string
+  cta: string
+  cor: 'sol' | 'weg-azul'
+  preview: React.ReactNode
+  dica?: string | null
+  dicaCor?: string
+}) {
+  const corBtn = cor === 'sol'
+    ? 'bg-sol/15 border-sol/40 text-sol hover:bg-sol/25'
+    : 'bg-weg-azul/15 border-weg-azul/40 text-weg-azul hover:bg-weg-azul/25'
+  const corDica = dicaCor === 'sol' ? 'text-sol'
+    : dicaCor === 'verde' ? 'text-verde'
+    : dicaCor === 'coral' ? 'text-coral'
+    : 'text-white/50'
+
+  return (
+    <div className="p-3 bg-white/[0.02] border border-white/10 rounded-lg">
+      <p className="text-[11px] uppercase font-bold text-white/60 mb-3">{emoji} {titulo}</p>
+      <div className="flex items-start gap-3">
+        <div className="w-20 h-20 shrink-0 bg-white/5 border border-white/15 rounded-lg overflow-hidden flex items-center justify-center">
+          {preview || <span className="text-white/30 text-[10px] text-center px-1">{mensagemVazio}</span>}
+        </div>
+        <div className="flex-1 min-w-0 space-y-2">
+          <label className={`inline-flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded border text-[11px] font-bold transition ${corBtn} ${enviando ? 'opacity-40 cursor-wait' : ''}`}>
+            {enviando ? '⏳ Enviando…' : `+ ${cta}`}
+            <input type="file" accept={accept} disabled={enviando}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) onArquivo(f); e.currentTarget.value = '' }}
+              className="hidden" />
+          </label>
+          {url && (
+            <div className="flex gap-3 items-center text-[10px]">
+              <a href={url} target="_blank" rel="noreferrer" className="text-sol hover:underline">
+                📥 abrir
+              </a>
+              <button type="button" onClick={onRemover} className="text-coral hover:underline">
+                ✕ remover
+              </button>
+            </div>
+          )}
+          {dica && !enviando && (
+            <p className={`text-[10px] ${corDica}`}>{dica}</p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
