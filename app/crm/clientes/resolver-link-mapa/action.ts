@@ -71,6 +71,9 @@ async function seguirRedirectsManual(url: string, maxHops = 10): Promise<{ final
           'User-Agent': UA_BROWSER,
           'Accept-Language': 'pt-BR,pt;q=0.9',
           'Accept': 'text/html,application/xhtml+xml',
+          // Cookie CONSENT pula a tela de aceite do Google (evita
+          // redirect pra consent.google.com que quebra a extração)
+          'Cookie': 'CONSENT=YES+cb.pt-BR+FX+000; NID=511=abc',
         },
       })
       if (res.status >= 300 && res.status < 400) {

@@ -96,8 +96,25 @@ export function ColarLinkMapaBotao({
             </div>
 
             {erro && (
-              <div className="mt-3 p-2 bg-coral/10 border border-coral/30 rounded text-[11px] text-coral">
-                ⚠ {erro}
+              <div className="mt-3 p-3 bg-coral/10 border border-coral/30 rounded text-[11px] text-coral space-y-2">
+                <p>⚠ {erro}</p>
+                {/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl|g\.co)/i.test(texto.trim()) && (
+                  <div className="pt-2 border-t border-coral/20 text-white/70 space-y-1.5">
+                    <p className="font-bold text-white">💡 Como resolver:</p>
+                    <ol className="list-decimal pl-4 space-y-1 text-[10px]">
+                      <li>
+                        Abra o link no navegador:{' '}
+                        <a href={texto.trim()} target="_blank" rel="noreferrer"
+                          className="text-sol hover:underline">
+                          {texto.trim().slice(0, 40)}… ↗
+                        </a>
+                      </li>
+                      <li>Aguarde carregar (aparece o pino no mapa)</li>
+                      <li>Copie a URL da barra do navegador (agora tem coordenadas)</li>
+                      <li>Cole aqui de novo — vai extrair certo</li>
+                    </ol>
+                  </div>
+                )}
               </div>
             )}
             {ok && (
