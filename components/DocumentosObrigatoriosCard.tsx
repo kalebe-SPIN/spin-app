@@ -23,21 +23,31 @@ import type { Socio } from '@/lib/homologacao/utils'
 
 // ═══════════════════ DEFINIÇÕES DE SLOTS ═══════════════════
 
+// Accept aceita HEIC/HEIF (iPhone) + JPG/PNG/WebP/GIF via image/*.
+// Deixamos explícito só pra o file picker do iOS listar as fotos direito.
+const IMAGENS = 'image/*,image/heic,image/heif'
+const PDF_OU_IMG = 'application/pdf,image/*,image/heic,image/heif'
+
 // Fatura NÃO está aqui — vem do Passo 2 do projeto (analise_fatura)
 const SLOTS_INFRA: Array<SlotDef> = [
-  { chave: 'foto_disjuntor',      emoji: '⚡', label: 'Foto do disjuntor geral',    desc: 'Padrão de entrada, amperagem visível', accept: 'image/*' },
-  { chave: 'foto_padrao_entrada', emoji: '🔌', label: 'Foto do padrão de entrada',  desc: 'Completo, caixa + entrada da rede',    accept: 'image/*' },
-  { chave: 'foto_fachada',        emoji: '🏠', label: 'Foto da fachada do imóvel', desc: 'Vista frontal — pra homologação',      accept: 'image/*' },
+  { chave: 'foto_disjuntor',      emoji: '⚡', label: 'Foto do disjuntor geral',    desc: 'Padrão de entrada, amperagem visível', accept: IMAGENS },
+  { chave: 'foto_padrao_entrada', emoji: '🔌', label: 'Foto do padrão de entrada',  desc: 'Completo, caixa + entrada da rede',    accept: IMAGENS },
+  { chave: 'foto_fachada',        emoji: '🏠', label: 'Foto da fachada do imóvel', desc: 'Vista frontal — pra homologação',      accept: IMAGENS },
 ]
 
 const SLOTS_CLIENTE: Array<SlotDef> = [
-  { chave: 'cnh_cliente',        emoji: '🪪', label: 'CNH ou RG do cliente/representante', desc: 'Foto ou PDF do documento',      accept: 'application/pdf,image/*' },
+  { chave: 'cnh_cliente',        emoji: '🪪', label: 'CNH ou RG do cliente/representante', desc: 'Foto ou PDF do documento',      accept: PDF_OU_IMG },
   { chave: 'procuracao_cliente', emoji: '✍️', label: 'Procuração assinada digitalmente',   desc: 'PDF com assinatura eletrônica', accept: 'application/pdf' },
 ]
 
 const SLOTS_PJ: Array<SlotDef> = [
   { chave: 'cartao_cnpj',     emoji: '🏢', label: 'Cartão CNPJ',                        desc: 'Emitido pela Receita Federal', accept: 'application/pdf' },
   { chave: 'contrato_social', emoji: '📜', label: 'Contrato Social (última alteração)', desc: 'Ata mais recente registrada',  accept: 'application/pdf' },
+]
+
+// Comercial — Kalebe 2026-08-29
+const SLOTS_COMERCIAL: Array<SlotDef> = [
+  { chave: 'orcamento_weg', emoji: '📋', label: 'Orçamento WEG', desc: 'PDF ou foto do orçamento enviado pela WEG', accept: PDF_OU_IMG },
 ]
 
 type SlotDef = {
@@ -65,14 +75,16 @@ export function DocumentosObrigatoriosCard({
   const totalEnviados =
     SLOTS_INFRA.filter((s) => urls[s.chave]).length +
     (faturaOk ? 1 : 0) +
+    SLOTS_COMERCIAL.filter((s) => urls[s.chave]).length +
     SLOTS_CLIENTE.filter((s) => urls[s.chave]).length +
     (ehPJ ? SLOTS_PJ.filter((s) => urls[s.chave]).length : 0) +
-    (ehPJ ? socios.reduce((n, s) => n + (s.cnh_url ? 1 : 0) + (s.procuracao_url ? 1 : 0), 0) : 0)
+    (ehPJ ? (socios || []).reduce((n, s) => n + (s?.cnh_url ? 1 : 0) + (s?.procuracao_url ? 1 : 0), 0) : 0)
 
   const totalRequeridos =
     SLOTS_INFRA.length + 1 + // +1 = fatura (obrigatória, vem do Passo 2)
+    SLOTS_COMERCIAL.length +
     SLOTS_CLIENTE.length +
-    (ehPJ ? SLOTS_PJ.length + socios.length * 2 : 0)
+    (ehPJ ? SLOTS_PJ.length + (socios || []).length * 2 : 0)
 
   const completos = !!documentosCompletosEm
   const progresso = totalRequeridos > 0 ? (totalEnviados / totalRequeridos) * 100 : 0
@@ -136,7 +148,19 @@ export function DocumentosObrigatoriosCard({
         </div>
       </SecaoDocs>
 
-      {/* Seção 2: Cliente */}
+      {/* Seção 2: Comercial (orçamento WEG) */}
+      <SecaoDocs
+        titulo="📋 Documentos comerciais"
+        subtitulo="Orçamento WEG que originou o kit"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {SLOTS_COMERCIAL.map((slot) => (
+            <SlotUpload key={slot.chave} homologacaoId={homologacaoId} slot={slot} urlAtual={urls[slot.chave] || null} />
+          ))}
+        </div>
+      </SecaoDocs>
+
+      {/* Seção 3: Cliente */}
       <SecaoDocs
         titulo={ehPJ ? '🪪 Documentos do representante' : '🪪 Documentos do cliente'}
         subtitulo={ehPJ ? 'Pessoa que assinará pela empresa' : 'CNH + procuração assinada digital'}
@@ -245,11 +269,7 @@ function SlotUpload({
 
       {enviado ? (
         <div className="mt-3 space-y-2">
-          {(eImagem || ePdfOuImg) && urlAtual?.match(/\.(jpg|jpeg|png|webp|heic)/i) && (
-            <a href={urlAtual} target="_blank" rel="noreferrer" className="block">
-              <img src={urlAtual} alt={slot.label} className="w-full h-32 object-cover rounded border border-white/10 hover:border-verde/40" />
-            </a>
-          )}
+          {(eImagem || ePdfOuImg) && <PreviewSeguro url={urlAtual!} alt={slot.label} />}
           <div className="flex gap-2 text-[10px]">
             <a href={urlAtual!} target="_blank" rel="noreferrer"
               className="flex-1 text-center px-2 py-1 bg-verde/20 border border-verde/40 rounded text-verde font-bold hover:bg-verde/30">
@@ -412,6 +432,52 @@ function SlotSocio({ homologacaoId, socioId, campo, label, urlAtual, accept }: {
       )}
       {erro && <p className="text-[9px] text-coral mt-1">⚠️ {erro}</p>}
     </div>
+  )
+}
+
+// ═══════════════════ PREVIEW SEGURO ═══════════════════
+/** Renderiza a thumbnail se for imagem raster suportada pelo browser
+ *  (JPG/PNG/WebP/GIF). PDF e HEIC/HEIF viram card genérico "abrir
+ *  arquivo" — o Chrome não decodifica HEIC nativo, `<img>` estoura
+ *  onError e o placeholder aparece. Kalebe 2026-08-29. */
+function PreviewSeguro({ url, alt }: { url: string; alt: string }) {
+  const [erro, setErro] = useState(false)
+
+  // Detecta HEIC/HEIF na URL — mesmo com signed url e query params
+  const ehHeic = /\.(heic|heif)(\?|$|#)/i.test(url)
+  const ehPdf = /\.pdf(\?|$|#)/i.test(url)
+  const ehImgWeb = /\.(jpg|jpeg|png|webp|gif)(\?|$|#)/i.test(url)
+
+  if (ehPdf || ehHeic || erro) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer"
+        className="flex items-center justify-center h-32 rounded border border-white/10 bg-noite/60 hover:border-verde/40 text-white/60 text-xs gap-2">
+        <span className="text-2xl">{ehPdf ? '📄' : ehHeic ? '📷' : '📎'}</span>
+        <span>{ehPdf ? 'Abrir PDF' : ehHeic ? 'HEIC — abrir foto' : 'Abrir arquivo'}</span>
+      </a>
+    )
+  }
+
+  if (!ehImgWeb) {
+    // Extensão desconhecida: mostra placeholder genérico em vez de tentar <img>
+    return (
+      <a href={url} target="_blank" rel="noreferrer"
+        className="flex items-center justify-center h-32 rounded border border-white/10 bg-noite/60 hover:border-verde/40 text-white/60 text-xs gap-2">
+        <span className="text-2xl">📎</span>
+        <span>Abrir arquivo</span>
+      </a>
+    )
+  }
+
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="block">
+      <img
+        src={url}
+        alt={alt}
+        onError={() => setErro(true)}
+        className="w-full h-32 object-cover rounded border border-white/10 hover:border-verde/40"
+      />
+    </a>
   )
 }
 

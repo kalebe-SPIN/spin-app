@@ -115,6 +115,8 @@ export default async function HomologacaoDetalhePage({
     // 043: grupo tarifário do padrão
     padrao_novo_grupo_tarifa: hom.padrao_novo_grupo_tarifa ?? null,
     padrao_novo_tensao_v: hom.padrao_novo_tensao_v ?? null,
+    // 093: orçamento WEG
+    orcamento_weg_url: hom.orcamento_weg_url ?? null,
   }
 
   // Documentos completos — try/catch pra não travar a página se algo estourar
@@ -135,7 +137,7 @@ export default async function HomologacaoDetalhePage({
     urls: {
       foto_disjuntor: null, foto_padrao_entrada: null, foto_fachada: null,
       pdf_fatura_instalacao: null, cnh_cliente: null, procuracao_cliente: null,
-      cartao_cnpj: null, contrato_social: null,
+      cartao_cnpj: null, contrato_social: null, orcamento_weg: null,
     },
     socios: [] as any[],
     documentosCompletosEm: null as string | null,
@@ -157,6 +159,7 @@ export default async function HomologacaoDetalhePage({
         procuracao_cliente: homSafe.procuracao_cliente_url,
         cartao_cnpj: homSafe.cartao_cnpj_url,
         contrato_social: homSafe.contrato_social_url,
+        orcamento_weg: homSafe.orcamento_weg_url,
       },
       socios: homSafe.docs_socios,
       documentosCompletosEm: homSafe.documentos_completos_em,

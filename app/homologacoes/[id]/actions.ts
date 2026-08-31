@@ -124,6 +124,15 @@ export const TIPOS_DOC = {
     emoji: '📜',
     grupo: 'pj' as const,
   },
+  // ─── COMERCIAL (sempre) — Kalebe 2026-08-29 ───
+  orcamento_weg: {
+    coluna: 'orcamento_weg_url',
+    coluna_at: 'orcamento_weg_updated_at',
+    label: 'Orçamento WEG (PDF)',
+    accept: 'application/pdf,image/*',
+    emoji: '📋',
+    grupo: 'comercial' as const,
+  },
 } as const
 
 export type TipoDoc = keyof typeof TIPOS_DOC
@@ -159,10 +168,20 @@ export async function uploadDocumentoHomologacaoAction(input: {
   const hom = await buscarHomologacaoParaChecagem(supabaseAdmin, input.homologacaoId)
   if (!hom) return { erro: 'Homologação não encontrada' }
 
-  // Extensão a partir do MIME
+  // Extensão a partir do MIME. Kalebe 2026-08-29: iPhones exportam
+  // .heic/.heif por padrão — mapear os dois pra não gerar 'bin' e travar
+  // preview. Também aceita gif/bmp/tif como bin-fallback conhecido.
   const extensoes: Record<string, string> = {
-    'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
-    'image/heic': 'heic', 'application/pdf': 'pdf',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/heic': 'heic',
+    'image/heif': 'heic',
+    'image/gif': 'gif',
+    'image/bmp': 'bmp',
+    'image/tiff': 'tif',
+    'application/pdf': 'pdf',
   }
   const ext = extensoes[mimeType] || 'bin'
   const caminho = `${hom.projeto_id}/${input.homologacaoId}/${input.tipo}.${ext}`
