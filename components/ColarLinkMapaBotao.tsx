@@ -65,7 +65,7 @@ export function ColarLinkMapaBotao({
       {aberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
           onClick={() => setAberto(false)}>
-          <div className="bg-noite border border-verde/40 rounded-2xl w-full max-w-md p-5"
+          <div className="bg-noite border border-verde/40 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5"
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -100,12 +100,40 @@ export function ColarLinkMapaBotao({
               </div>
             )}
             {ok && (
-              <div className="mt-3 p-3 bg-verde/10 border border-verde/40 rounded text-[11px] text-verde space-y-1">
-                <p className="font-bold">✓ Endereço encontrado</p>
-                {ok.descricao_completa && <p className="text-white/80">{ok.descricao_completa}</p>}
-                <p className="text-white/40">
-                  Lat {ok.lat.toFixed(6)} · Lng {ok.lng.toFixed(6)}
-                </p>
+              <div className="mt-3 space-y-2">
+                <div className="p-3 bg-verde/10 border border-verde/40 rounded text-[11px] text-verde space-y-1">
+                  <p className="font-bold">✓ Localização encontrada</p>
+                  {ok.descricao_completa && <p className="text-white/80">{ok.descricao_completa}</p>}
+                  <p className="text-white/40">
+                    Lat {ok.lat.toFixed(6)} · Lng {ok.lng.toFixed(6)}
+                  </p>
+                  {(!ok.logradouro && !ok.descricao_completa) && (
+                    <p className="text-sol">⚠ Endereço estruturado não veio (área rural ou API sem chave server). Coordenadas foram salvas — complete rua/bairro/cidade manualmente.</p>
+                  )}
+                </div>
+
+                {/* Preview visual — Google Maps embed (sem key necessária) */}
+                <iframe
+                  title="Mapa da localização"
+                  className="w-full h-56 rounded border border-white/10"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://www.google.com/maps?q=${ok.lat},${ok.lng}&hl=pt-BR&z=18&output=embed`}
+                />
+
+                <div className="flex gap-2 justify-end">
+                  <a
+                    href={`https://www.google.com/maps?q=${ok.lat},${ok.lng}`}
+                    target="_blank" rel="noreferrer"
+                    className="text-[10px] font-bold text-sol hover:underline"
+                  >
+                    📍 Abrir no Google Maps
+                  </a>
+                  <button type="button" onClick={() => setAberto(false)}
+                    className="text-[10px] font-bold text-verde hover:underline">
+                    Aplicar e fechar
+                  </button>
+                </div>
               </div>
             )}
           </div>
