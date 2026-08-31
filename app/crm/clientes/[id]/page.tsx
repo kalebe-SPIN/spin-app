@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ClienteForm } from '@/components/ClienteForm'
 import { TimelineInteracoes } from '@/components/TimelineInteracoes'
 import { FichaClienteCard } from '@/components/FichaClienteCard'
+import { TelhadoClienteCard } from '@/components/TelhadoClienteCard'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -126,6 +127,16 @@ export default async function ClienteDetalhePage({ params }: { params: { id: str
             ucGeradora={propostaRecente?.uc_geradora || null}
             contaContrato={propostaRecente?.conta_contrato || null}
             beneficiarias={beneficiariasFicha}
+          />
+        </div>
+
+        {/* Telhado do imóvel — Kalebe 2026-08-31: fica no cliente,
+            não no projeto. Toda proposta futura herda. */}
+        <div className="mb-6">
+          <TelhadoClienteCard
+            clienteId={cliente.id}
+            clienteEnderecoOk={!!(cliente.endereco && Object.keys(cliente.endereco).length > 0)}
+            secoesIniciais={Array.isArray((cliente as any).telhado_secoes) ? (cliente as any).telhado_secoes : []}
           />
         </div>
 

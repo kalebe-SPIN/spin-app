@@ -72,12 +72,23 @@ export default async function TelhadoPage({ params }: { params: { id: string } }
           </p>
         </header>
 
-        <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-xl p-4 mb-4">
-          <p className="text-sm text-white/80">
-            <strong className="text-white">Telhado pode ter múltiplas seções</strong> com tipos
-            diferentes (ex: parte fibrocimento + parte metálico). Cadastre cada seção separadamente
-            com sua área, orientação e características.
+        <div className="bg-verde/5 border border-verde/40 rounded-xl p-4 mb-4">
+          <p className="text-sm text-white mb-1 font-bold">
+            🏠 Telhado agora vive no perfil do cliente
           </p>
+          <p className="text-xs text-white/70 mb-2">
+            Kalebe 2026-08-31: o telhado é atributo do <strong className="text-white">imóvel do cliente</strong>,
+            não da proposta. Cadastre uma vez no perfil e todas as propostas
+            futuras vão herdar automaticamente.
+          </p>
+          {projeto.cliente_id && (
+            <Link
+              href={`/crm/clientes/${projeto.cliente_id}`}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-sol hover:underline"
+            >
+              → Ir pra o perfil do cliente e cadastrar/editar o telhado
+            </Link>
+          )}
         </div>
 
         {enderecoIncompleto && (

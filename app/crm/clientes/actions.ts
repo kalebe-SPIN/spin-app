@@ -134,3 +134,55 @@ export async function registrarInteracaoAction(
   revalidatePath(`/crm/clientes/${clienteId}`)
   return { sucesso: true }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Telhado do cliente (Kalebe 2026-08-31)
+// Movida do fluxo do projeto pra o perfil do cliente — cada cliente
+// tem seu imóvel; toda proposta futura herda o mesmo telhado.
+// Persiste em clientes.telhado_secoes (jsonb array).
+// ═══════════════════════════════════════════════════════════════════════
+
+export type SecaoTelhadoCliente = {
+  id: string                          // uuid gerado no client
+  identificador: string               // "Telhado principal", "Anexo dos fundos"...
+  tipo_cobertura: string              // fibrocimento / metálico / cerâmico / laje / solo
+  area_m2: number
+  orientacao: string                  // Norte / NE / Leste / SE / Sul / SO / Oeste / NO
+  inclinacao_graus: number | null
+  material_estrutura?: string | null  // madeira, metal, concreto...
+  altura_telhado_m?: number | null
+  tem_sombreamento?: boolean
+  sombreamento_descricao?: string | null
+  sombreamento_severidade?: string | null
+  idade_anos?: number | null
+  observacoes?: string | null
+  // Google Solar / Maps enrichment
+  url_satelite?: string | null
+  google_max_placas?: number | null
+  geracao_kwh_ano_estimada?: number | null
+}
+
+export async function salvarTelhadoClienteAction(
+  clienteId: string,
+  secoes: SecaoTelhadoCliente[],
+) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  if (!clienteId) return { erro: 'cliente_id obrigatório' }
+
+  const arr = (secoes || []).map((s) => ({
+    ...s,
+    area_m2: Number(s.area_m2) || 0,
+    inclinacao_graus: s.inclinacao_graus != null ? Number(s.inclinacao_graus) : null,
+  }))
+
+  const { error } = await supabase
+    .from('clientes')
+    .update({ telhado_secoes: arr, updated_at: new Date().toISOString() })
+    .eq('id', clienteId)
+  if (error) return { erro: error.message }
+
+  revalidatePath(`/crm/clientes/${clienteId}`)
+  return { sucesso: true }
+}

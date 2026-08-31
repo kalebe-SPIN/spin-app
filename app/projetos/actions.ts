@@ -216,7 +216,7 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
   // tem endereço ainda (não pisa em edição manual anterior).
   if (clienteId && enderecoInstalacao) {
     const { data: cliAtual } = await supabase
-      .from('clientes').select('endereco').eq('id', clienteId).maybeSingle()
+      .from('clientes').select('endereco, telhado_secoes').eq('id', clienteId).maybeSingle()
     const enderecoExistente = (cliAtual as any)?.endereco
     const semEndereco = !enderecoExistente
       || (typeof enderecoExistente === 'object' && Object.keys(enderecoExistente).length === 0)
@@ -225,6 +225,33 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
         .from('clientes')
         .update({ endereco: enderecoInstalacao })
         .eq('id', clienteId)
+    }
+
+    // Kalebe 2026-08-31: telhado agora vive no cliente (tronco).
+    // Se o cliente já tem seções cadastradas no perfil, copia pra
+    // projetos_telhado_secoes — assim ferramentas downstream (kit,
+    // orçamento, homologação) continuam lendo do projeto sem mudança.
+    const secoesCliente = Array.isArray((cliAtual as any)?.telhado_secoes)
+      ? (cliAtual as any).telhado_secoes : []
+    if (secoesCliente.length > 0) {
+      const linhas = secoesCliente.map((s: any, i: number) => ({
+        projeto_id: novoProjeto.id,
+        ordem: i + 1,
+        identificador: s.identificador || `Seção ${i + 1}`,
+        tipo_cobertura: s.tipo_cobertura || 'fibrocimento',
+        idade_anos: s.idade_anos ?? null,
+        area_m2: Number(s.area_m2) || 0,
+        orientacao: s.orientacao || 'Norte',
+        inclinacao_graus: s.inclinacao_graus ?? null,
+        tem_sombreamento: !!s.tem_sombreamento,
+        sombreamento_descricao: s.sombreamento_descricao || null,
+        sombreamento_severidade: s.sombreamento_severidade || null,
+        material_estrutura: s.material_estrutura || null,
+        altura_telhado_m: s.altura_telhado_m ?? null,
+        observacoes: s.observacoes || null,
+        url_satelite: s.url_satelite || null,
+      }))
+      await supabase.from('projetos_telhado_secoes').insert(linhas)
     }
   }
 
