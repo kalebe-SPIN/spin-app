@@ -48,6 +48,23 @@ export async function gerarDiagramaAction(
 
   if (projErr || !projeto) return { sucesso: false, erro: 'Projeto não encontrado' }
 
+  // Kalebe 2026-08-29: fallback pro cadastro do cliente quando o snapshot
+  // no projeto está vazio (consultor só linkou cliente_id).
+  if (projeto.cliente_id) {
+    const { data: c } = await supabaseAdmin
+      .from('clientes')
+      .select('razao_social, cpf_cnpj, telefone, whatsapp, email, endereco')
+      .eq('id', projeto.cliente_id)
+      .maybeSingle()
+    if (c) {
+      projeto.cliente_razao_social = projeto.cliente_razao_social || c.razao_social
+      projeto.cliente_cpf_cnpj = projeto.cliente_cpf_cnpj || c.cpf_cnpj
+      projeto.cliente_telefone = projeto.cliente_telefone || c.telefone || c.whatsapp
+      projeto.cliente_email = projeto.cliente_email || c.email
+      projeto.cliente_endereco = projeto.cliente_endereco || c.endereco
+    }
+  }
+
   // Status: permite qualquer status "avançado" (proposta em diante)
   // Rascunho / fatura_analisada / telhado / dimensionado / kit não bloqueia SE for admin,
   // mas por padrão pedimos que esteja em pipeline comercial ou depois
@@ -425,6 +442,25 @@ export async function montarPromptDiagramaAction(
   const { data: projeto } = await supabaseAdmin
     .from('projetos').select('*').eq('id', projetoId).maybeSingle()
   if (!projeto) return { erro: 'Projeto não encontrado' }
+
+  // Kalebe 2026-08-29: se o snapshot no projeto estiver vazio, busca do
+  // cadastro do cliente. O gerador de prompt do diagrama estava puxando
+  // CPF/CNPJ vazio quando o consultor só linkou cliente_id sem copiar
+  // o snapshot. Mesmo padrão já usado em /ve/proposta/page.tsx.
+  if (projeto.cliente_id) {
+    const { data: c } = await supabaseAdmin
+      .from('clientes')
+      .select('razao_social, cpf_cnpj, telefone, whatsapp, email, endereco')
+      .eq('id', projeto.cliente_id)
+      .maybeSingle()
+    if (c) {
+      projeto.cliente_razao_social = projeto.cliente_razao_social || c.razao_social
+      projeto.cliente_cpf_cnpj = projeto.cliente_cpf_cnpj || c.cpf_cnpj
+      projeto.cliente_telefone = projeto.cliente_telefone || c.telefone || c.whatsapp
+      projeto.cliente_email = projeto.cliente_email || c.email
+      projeto.cliente_endereco = projeto.cliente_endereco || c.endereco
+    }
+  }
 
   const { data: telhadoSecoes } = await supabaseAdmin
     .from('projetos_telhado_secoes').select('*').eq('projeto_id', projetoId)
