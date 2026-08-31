@@ -183,6 +183,8 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
     titularId = novoTit?.id || null
   }
 
+  const enderecoInstalacao = input.endereco_instalacao || null
+
   const { data: novoProjeto, error } = await supabase
     .from('projetos')
     .insert({
@@ -190,13 +192,14 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
       cliente_id: clienteId,
       titular_cliente_id: titularId,
       titular_igual_cliente: titularIgual,
-      endereco_igual_titular: input.endereco_igual_titular !== false,
-      endereco_instalacao: input.endereco_igual_titular === false ? input.endereco_instalacao || null : null,
+      endereco_igual_titular: false,
+      endereco_instalacao: enderecoInstalacao,
       // Denormalização — mantém pra compat com código existente
       cliente_razao_social: dadosCliente!.razao_social,
       cliente_cpf_cnpj: dadosCliente!.cpf_cnpj,
       cliente_email: dadosCliente!.email,
       cliente_telefone: dadosCliente!.telefone,
+      cliente_endereco: enderecoInstalacao,
       observacoes_consultor: input.observacoes || null,
       status: 'rascunho',
     })
@@ -205,6 +208,24 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
 
   if (error || !novoProjeto) {
     return { erro: 'Erro ao criar projeto: ' + (error?.message || '') }
+  }
+
+  // Kalebe 2026-08-31: também grava/atualiza o endereço no cadastro do
+  // cliente pra reuso em propostas futuras + Google Solar identificar
+  // o telhado no /crm/clientes/{id}. Só sobrescreve se o cliente não
+  // tem endereço ainda (não pisa em edição manual anterior).
+  if (clienteId && enderecoInstalacao) {
+    const { data: cliAtual } = await supabase
+      .from('clientes').select('endereco').eq('id', clienteId).maybeSingle()
+    const enderecoExistente = (cliAtual as any)?.endereco
+    const semEndereco = !enderecoExistente
+      || (typeof enderecoExistente === 'object' && Object.keys(enderecoExistente).length === 0)
+    if (semEndereco) {
+      await supabase
+        .from('clientes')
+        .update({ endereco: enderecoInstalacao })
+        .eq('id', clienteId)
+    }
   }
 
   revalidatePath('/projetos')

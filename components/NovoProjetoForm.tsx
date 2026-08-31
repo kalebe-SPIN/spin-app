@@ -154,8 +154,11 @@ export function NovoProjetoForm({
             cpf_cnpj: novoTitular.cpf_cnpj || null,
             tipo: novoTitular.tipo,
           } : undefined,
-          endereco_igual_titular: enderecoIgual,
-          endereco_instalacao: !enderecoIgual ? enderecoInst : undefined,
+          // Kalebe 2026-08-31: sempre manda o endereço da instalação
+          // (não usa mais o toggle). É o endereço confiável — vai pro
+          // projeto E pra clientes.endereco.
+          endereco_igual_titular: false,
+          endereco_instalacao: enderecoInst,
           observacoes: observacoes.trim() || null,
         })
         if (result && 'erro' in result) setErro(result.erro)
@@ -196,8 +199,11 @@ export function NovoProjetoForm({
             cpf_cnpj: novoTitular.cpf_cnpj || null,
             tipo: novoTitular.tipo,
           } : undefined,
-          endereco_igual_titular: enderecoIgual,
-          endereco_instalacao: !enderecoIgual ? enderecoInst : undefined,
+          // Kalebe 2026-08-31: sempre manda o endereço da instalação
+          // (não usa mais o toggle). É o endereço confiável — vai pro
+          // projeto E pra clientes.endereco.
+          endereco_igual_titular: false,
+          endereco_instalacao: enderecoInst,
           observacoes: observacoes.trim() || null,
         })
         if (result && 'erro' in result) setErro(result.erro)
@@ -474,22 +480,56 @@ export function NovoProjetoForm({
         </section>
       )}
 
-      {/* Endereço da instalação — 100% do cadastro do cliente.
-          Kalebe 2026-08-31: 'vamos tirar a opção de endereço diferente,
-          o único endereço que nos interessa é o de onde será instalado
-          o projeto'. Sempre 'igual ao titular' (que na prática é o
-          endereço do perfil do cliente). Sem toggle, sem form aqui. */}
+      {/* Endereço da instalação — Kalebe 2026-08-31: cadastro fica aqui.
+          Vai pra o projeto E pra clientes.endereco pra reuso em propostas
+          futuras + Google Solar identifica o telhado no /crm/clientes. */}
       {!isEdit && (
         <section className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
-          <h3 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
+          <h3 className="text-xs uppercase tracking-wider font-bold text-sol mb-1">
             📍 Endereço da instalação
           </h3>
-          <p className="text-xs text-white/70">
-            Vai ser <strong className="text-white">o endereço cadastrado no perfil do cliente</strong>.
-            Se ainda não estiver preenchido lá, faça isso antes da etapa Telhado — o Google Maps
-            precisa dele pra localizar o imóvel.
+          <p className="text-[11px] text-white/50 mb-3">
+            Onde o sistema vai ser instalado. Também vira o endereço do cliente pra reusar em propostas futuras e identificar o telhado no Google Solar.
           </p>
 
+          <div className="space-y-2 p-3 bg-noite/40 border border-white/5 rounded">
+            <div className="flex gap-2">
+              <input type="text" placeholder="CEP" value={enderecoInst.cep}
+                onChange={(e) => setEnderecoInst((s) => ({ ...s, cep: formatarCep(e.target.value) }))}
+                onBlur={buscarCepInstalacao}
+                className="w-32 px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
+              <button type="button" onClick={buscarCepInstalacao}
+                className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10">
+                🔍 Buscar CEP
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <input type="text" placeholder="Rua" value={enderecoInst.rua}
+                onChange={(e) => setEnderecoInst((s) => ({ ...s, rua: e.target.value }))}
+                className="col-span-2 px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
+              <input type="text" placeholder="Nº" value={enderecoInst.numero}
+                onChange={(e) => setEnderecoInst((s) => ({ ...s, numero: e.target.value }))}
+                className="px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="text" placeholder="Complemento" value={enderecoInst.complemento}
+                onChange={(e) => setEnderecoInst((s) => ({ ...s, complemento: e.target.value }))}
+                className="px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
+              <input type="text" placeholder="Bairro" value={enderecoInst.bairro}
+                onChange={(e) => setEnderecoInst((s) => ({ ...s, bairro: e.target.value }))}
+                className="px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <input type="text" placeholder="Cidade" value={enderecoInst.cidade}
+                onChange={(e) => setEnderecoInst((s) => ({ ...s, cidade: e.target.value }))}
+                className="col-span-2 px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
+              <select value={enderecoInst.uf}
+                onChange={(e) => setEnderecoInst((s) => ({ ...s, uf: e.target.value }))}
+                className="px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white">
+                {UFS.map(uf => <option key={uf}>{uf}</option>)}
+              </select>
+            </div>
+          </div>
         </section>
       )}
 
