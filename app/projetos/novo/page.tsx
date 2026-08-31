@@ -29,7 +29,7 @@ export default async function NovoProjetoPage() {
             Novo projeto
           </h1>
           <p className="text-white/60 mt-1 text-sm">
-            Passo 1 de 8 — Dados do cliente
+            Passo 1 de 7 — Cliente + endereço + telhado
           </p>
         </header>
 
@@ -46,15 +46,17 @@ export default async function NovoProjetoPage() {
 }
 
 function Stepper({ passoAtual }: { passoAtual: number }) {
+  // Kalebe 2026-08-31: etapa Telhado saiu da trilha — foi fundida
+  // com a etapa Cliente (endereço + telhado no perfil). Wizard agora
+  // tem 7 passos em vez de 8.
   const passos = [
-    { n: 1, label: 'Cliente' },
+    { n: 1, label: 'Cliente + Telhado' },
     { n: 2, label: 'Fatura' },
-    { n: 3, label: 'Telhado' },
-    { n: 4, label: 'Padrão' },
-    { n: 5, label: 'Dimensionar' },
-    { n: 6, label: 'Kit' },
-    { n: 7, label: 'Lista CA' },
-    { n: 8, label: 'Orçamento' },
+    { n: 3, label: 'Padrão' },
+    { n: 4, label: 'Dimensionar' },
+    { n: 5, label: 'Kit' },
+    { n: 6, label: 'Lista CA' },
+    { n: 7, label: 'Orçamento' },
   ]
 
   return (

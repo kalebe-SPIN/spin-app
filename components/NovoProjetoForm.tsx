@@ -7,6 +7,7 @@ import { atualizarProjetoAction } from '@/app/projetos/[id]/editar/actions'
 import { criarProjetoAction } from '@/app/projetos/actions'
 import { SeletorCliente } from '@/components/SeletorCliente'
 import { ColarLinkMapaBotao } from '@/components/ColarLinkMapaBotao'
+import { VisualizadorMapaMini } from '@/components/VisualizadorMapaMini'
 import {
   maskCpfCnpj,
   maskTelefone,
@@ -586,6 +587,35 @@ export function NovoProjetoForm({
               </select>
             </div>
           </div>
+
+          {/* Visualizador do mapa satélite — sempre visível quando tem
+              lat/lng no state (não mais popup). Kalebe 2026-08-31.
+              Aparece após colar link do Maps ou buscar CEP com sucesso. */}
+          {enderecoInst.lat != null && enderecoInst.lng != null && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-white/60">
+                  🗺 Localização no mapa satélite
+                </p>
+                <a
+                  href={`https://www.google.com/maps?q=${enderecoInst.lat},${enderecoInst.lng}`}
+                  target="_blank" rel="noreferrer"
+                  className="text-[10px] font-bold text-sol hover:underline"
+                >
+                  Abrir no Google Maps ↗
+                </a>
+              </div>
+              <VisualizadorMapaMini
+                lat={enderecoInst.lat}
+                lng={enderecoInst.lng}
+                altura={260}
+                zoom={20}
+              />
+              <p className="text-[10px] text-white/40 mt-1">
+                Coord: {enderecoInst.lat.toFixed(6)}, {enderecoInst.lng.toFixed(6)}
+              </p>
+            </div>
+          )}
         </section>
       )}
 
