@@ -255,43 +255,86 @@ function ProjetoLinha({ projeto }: { projeto: Projeto }) {
   const valor = kit.preco_total_kit_weg ? Number(kit.preco_total_kit_weg) : null
 
   return (
-    <Link
-      href={`/projetos/${projeto.id}`}
-      className="block px-5 py-3 hover:bg-white/[0.03] transition-colors"
-    >
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
-          {potCc && (
-            <>
-              <span className="text-white/20">·</span>
-              <span className="text-xs font-bold text-sol tabular-nums">
-                {fmtNum(Number(potCc), 2).replace('.', ',')} kWp
+    <div className="relative group">
+      <Link
+        href={`/projetos/${projeto.id}`}
+        className="block px-5 py-3 hover:bg-white/[0.03] transition-colors"
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
+            {potCc && (
+              <>
+                <span className="text-white/20">·</span>
+                <span className="text-xs font-bold text-sol tabular-nums">
+                  {fmtNum(Number(potCc), 2).replace('.', ',')} kWp
+                </span>
+              </>
+            )}
+            {(qtdPlacas || modeloPlaca) && (
+              <>
+                <span className="text-white/20">·</span>
+                <span className="text-xs text-white/70">
+                  {qtdPlacas ? `${qtdPlacas}× ` : ''}
+                  {modeloPlaca || 'placas'}
+                  {modeloInv ? ` + ${modeloInv}` : ''}
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {valor && valor > 0 && (
+              <span className="text-xs font-bold text-verde tabular-nums">
+                R$ {valor.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
               </span>
-            </>
-          )}
-          {(qtdPlacas || modeloPlaca) && (
-            <>
-              <span className="text-white/20">·</span>
-              <span className="text-xs text-white/70">
-                {qtdPlacas ? `${qtdPlacas}× ` : ''}
-                {modeloPlaca || 'placas'}
-                {modeloInv ? ` + ${modeloInv}` : ''}
-              </span>
-            </>
-          )}
+            )}
+            <span className="text-[10px] text-white/30">{dataFmt}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {valor && valor > 0 && (
-            <span className="text-xs font-bold text-verde tabular-nums">
-              R$ {valor.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-            </span>
-          )}
-          <span className="text-[10px] text-white/30">{dataFmt}</span>
-        </div>
+        <TimelineProjeto status={projeto.status} />
+      </Link>
+      {/* Botão excluir — aparece só no hover, canto sup direito */}
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <BotaoExcluirProposta projetoId={projeto.id} codigo={projeto.codigo} />
       </div>
-      <TimelineProjeto status={projeto.status} />
-    </Link>
+    </div>
+  )
+}
+
+/** Botão discreto de excluir (soft-delete). Confirma antes de disparar. */
+function BotaoExcluirProposta({ projetoId, codigo }: { projetoId: string; codigo: string }) {
+  const [isPending, startTransition] = useTransition()
+  const [erro, setErro] = useState<string | null>(null)
+
+  function excluir(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!window.confirm(`Excluir a proposta ${codigo}? Ela some das listas mas fica no banco pra auditoria.`)) return
+    setErro(null)
+    startTransition(async () => {
+      const { excluirPropostaAction } = await import('@/app/projetos/actions')
+      const r = await excluirPropostaAction(projetoId, 'manual')
+      if (r && 'erro' in r && r.erro) setErro(r.erro)
+    })
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={excluir}
+        disabled={isPending}
+        title="Excluir proposta"
+        className="text-xs text-coral/60 hover:text-coral hover:bg-coral/10 rounded p-1 disabled:opacity-40"
+      >
+        {isPending ? '⏳' : '🗑'}
+      </button>
+      {erro && (
+        <div className="absolute top-full right-0 mt-1 text-[10px] text-coral bg-noite border border-coral/30 rounded p-1 whitespace-nowrap">
+          ⚠ {erro}
+        </div>
+      )}
+    </>
   )
 }
 

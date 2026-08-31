@@ -313,3 +313,90 @@ export async function criarNovaPropostaMesmoClienteAction(clienteId: string) {
   revalidatePath(`/crm/clientes/${clienteId}`)
   redirect(`/projetos/${novoProjeto.id}/kit`)
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Soft-delete de proposta (Kalebe 2026-08-29)
+// Marca excluida_em = now(). A proposta some das listas mas fica no
+// banco pra auditoria. Reverter é só limpar excluida_em manual.
+// ═══════════════════════════════════════════════════════════════════════
+export async function excluirPropostaAction(
+  projetoId: string,
+  motivo: 'manual' | 'auto_aceita' = 'manual',
+) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  if (!projetoId) return { erro: 'projeto_id obrigatório' }
+
+  const { data: proj } = await supabase
+    .from('projetos').select('id, cliente_id, excluida_em').eq('id', projetoId).maybeSingle()
+  if (!proj) return { erro: 'Projeto não encontrado' }
+  if ((proj as any).excluida_em) return { erro: 'Proposta já está excluída' }
+
+  const { error } = await supabase
+    .from('projetos')
+    .update({
+      excluida_em: new Date().toISOString(),
+      excluida_motivo: motivo,
+      excluida_por: user.id,
+    })
+    .eq('id', projetoId)
+  if (error) return { erro: 'Erro ao excluir: ' + error.message }
+
+  revalidatePath('/projetos')
+  if ((proj as any).cliente_id) revalidatePath(`/crm/clientes/${(proj as any).cliente_id}`)
+  return { sucesso: true }
+}
+
+/**
+ * Marca as outras propostas ATIVAS do mesmo cliente como excluídas
+ * quando uma é aceita. Kalebe 2026-08-29.
+ * Ignora propostas que já estão em pós-venda (vendido/homologação/etc)
+ * — só apaga as que ainda estavam em prospecção.
+ */
+export async function excluirOutrasPropostasDoClienteAction(
+  projetoAceitoId: string,
+) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const { data: aceito } = await supabase
+    .from('projetos').select('cliente_id, codigo').eq('id', projetoAceitoId).maybeSingle()
+  if (!aceito?.cliente_id) return { sucesso: true, excluidas: 0 }
+
+  // Status que representam "proposta em andamento" (não fechada). Só essas
+  // podem ser excluídas automaticamente. Vendido/aceito/homologação/etc
+  // ficam intocáveis pra proteger histórico.
+  const STATUS_EM_ANDAMENTO = [
+    'rascunho', 'fatura_analisada', 'telhado', 'dimensionado',
+    'kit_selecionado', 'lista_ca', 'orcamento', 'proposta_enviada',
+    'em_negociacao',
+  ]
+
+  const { data: outras, error: errBusca } = await supabase
+    .from('projetos')
+    .select('id, codigo')
+    .eq('cliente_id', aceito.cliente_id)
+    .neq('id', projetoAceitoId)
+    .is('excluida_em', null)
+    .in('status', STATUS_EM_ANDAMENTO)
+  if (errBusca) return { erro: 'Erro ao buscar outras: ' + errBusca.message }
+
+  const ids = (outras || []).map(o => o.id)
+  if (ids.length === 0) return { sucesso: true, excluidas: 0 }
+
+  const motivo = `auto_aceita: ${(aceito as any).codigo} vendida`
+  await supabase
+    .from('projetos')
+    .update({
+      excluida_em: new Date().toISOString(),
+      excluida_motivo: motivo,
+      excluida_por: user.id,
+    })
+    .in('id', ids)
+
+  revalidatePath('/projetos')
+  revalidatePath(`/crm/clientes/${aceito.cliente_id}`)
+  return { sucesso: true, excluidas: ids.length }
+}

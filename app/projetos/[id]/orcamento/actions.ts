@@ -102,7 +102,18 @@ export async function marcarPropostaAceitaAction(projetoId: string, observacoes?
     'vendido',
     observacoes || 'Cliente aceitou a proposta — venda fechada',
   )
-  return 'erro' in res && res.erro
-    ? { sucesso: false, erro: res.erro }
-    : { sucesso: true }
+  if ('erro' in res && res.erro) return { sucesso: false, erro: res.erro }
+
+  // Kalebe 2026-08-29: ao aceitar, exclui automaticamente as outras
+  // propostas em andamento do mesmo cliente. Preserva as que já estão
+  // em pós-venda pra não apagar histórico contratual.
+  let excluidas = 0
+  try {
+    const { excluirOutrasPropostasDoClienteAction } = await import('@/app/projetos/actions')
+    const r = await excluirOutrasPropostasDoClienteAction(projetoId)
+    if ('excluidas' in r && typeof r.excluidas === 'number') excluidas = r.excluidas
+  } catch (e: any) {
+    console.error('[marcarPropostaAceitaAction] falha auto-exclusão:', e?.message)
+  }
+  return { sucesso: true, outras_excluidas: excluidas }
 }

@@ -35,6 +35,7 @@ export default async function ProjetosPage() {
       kit_selecionado,
       created_at, updated_at, status_atualizado_em
     `)
+    .is('excluida_em', null)
     .order('created_at', { ascending: false })
 
   const grupos = new Map<string, { cliente_id: string | null; nome: string; projetos: any[] }>()
