@@ -51,25 +51,46 @@ function extrairCoord(url: string): { lat: number; lng: number } | null {
   return null
 }
 
-/** Se for shortlink (maps.app.goo.gl / goo.gl), segue o redirect com
- *  User-Agent de browser real. Google serve HTML diferente pra
- *  requests sem UA de browser. */
+/** Segue redirects HTTP MANUALMENTE (não deixa o fetch resolver) —
+ *  assim pega a URL exata do 'Location' header, sem o Google servir
+ *  HTML default do datacenter Vercel (EUA) que polui a extração.
+ *  Kalebe 2026-08-31: sem isso link BR resolvia coord dos EUA. */
 const UA_BROWSER =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
 
-async function expandirShortlink(url: string): Promise<{ finalUrl: string; html?: string }> {
-  if (!/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl|g\.co)/i.test(url)) return { finalUrl: url }
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: { 'User-Agent': UA_BROWSER, 'Accept-Language': 'pt-BR' },
-    })
-    const html = await res.text()
-    return { finalUrl: res.url || url, html }
-  } catch {
-    return { finalUrl: url }
+async function seguirRedirectsManual(url: string, maxHops = 10): Promise<{ finalUrl: string; html?: string }> {
+  const isShort = /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl|g\.co)/i.test(url)
+  if (!isShort) return { finalUrl: url }
+  let atual = url
+  for (let i = 0; i < maxHops; i++) {
+    try {
+      const res = await fetch(atual, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: {
+          'User-Agent': UA_BROWSER,
+          'Accept-Language': 'pt-BR,pt;q=0.9',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+      })
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location')
+        if (!loc) break
+        // Se a próxima URL já tem coordenada visível, para aqui
+        atual = loc.startsWith('http') ? loc : new URL(loc, atual).toString()
+        if (/[@!]3d/.test(atual) || /[@]-?\d+\.\d+,-?\d+\.\d+/.test(atual)) {
+          return { finalUrl: atual }
+        }
+        continue
+      }
+      // 200 (ou similar) — lê corpo pra fallback HTML
+      const html = await res.text()
+      return { finalUrl: res.url || atual, html }
+    } catch {
+      break
+    }
   }
+  return { finalUrl: atual }
 }
 
 /** Extrai lat/lng do HTML do Google Maps.
@@ -139,7 +160,7 @@ export async function resolverLinkGoogleMapsAction(input: string): Promise<
   let url = bruto
   let htmlDaExpansao: string | undefined
   if (/^https?:\/\//i.test(url)) {
-    const r = await expandirShortlink(url)
+    const r = await seguirRedirectsManual(url)
     url = r.finalUrl
     htmlDaExpansao = r.html
   }
