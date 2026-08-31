@@ -118,11 +118,22 @@ export default async function ClienteDetalhePage({ params }: { params: { id: str
           </div>
         </header>
 
+        {/* Ficha em modo visualização — sempre em cima (mobile + desktop),
+            enxuta e com superlinks pra email/whatsapp/telefone. */}
+        <div className="mb-6">
+          <FichaClienteCard
+            cliente={cliente}
+            ucGeradora={propostaRecente?.uc_geradora || null}
+            contaContrato={propostaRecente?.conta_contrato || null}
+            beneficiarias={beneficiariasFicha}
+          />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Coluna esquerda: form editar */}
           <div>
             <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-3">
-              Dados do cliente
+              Editar dados
             </h2>
             <ClienteForm clienteExistente={cliente} />
           </div>
