@@ -565,9 +565,11 @@ async function precificarComplementosCC(
     const qtdDps = numFasesQgbt + 1
     // DPS: prefere modelo com 'dps' no nome; se não achar (modelos WEG
     // costumam ser MPW/SPW/DPW), cai pra qualquer produto ativo em
-    // categoria='dps'. O buscarProdutoComPreco já faz esse fallback.
+    // categoria='dps'. Kalebe 2026-08-29: cota pelo MAIOR preço da
+    // categoria — margem de segurança.
     const dps = await buscarProdutoComPreco({
       categorias: ['dps', 'protecao'],
+      pegarMaiorPreco: true,
     })
     if (dps.ok) {
       itens.push({
@@ -667,7 +669,9 @@ async function buscarDisjuntorCompativel(
                     : todos
   const sufInat = usandoInativos ? ' (inativo)' : ''
 
-  // Tenta cada um até achar preço vigente
+  // Kalebe 2026-08-29: entre todos os candidatos compatíveis, escolhe
+  // o de MAIOR preço vigente. Margem de segurança pra proteção elétrica.
+  const cotacoes: Array<{ modelo: string; preco: number }> = []
   for (const { produto } of candidatos) {
     const { data: precos } = await supabase
       .from('precos_produtos')
@@ -677,9 +681,15 @@ async function buscarDisjuntorCompativel(
       .order('vigente_de', { ascending: false })
       .limit(1)
     const preco = Number((precos || [])[0]?.preco_venda) || 0
-    if (preco > 0) return { ok: true, modelo: `${produto.modelo}${sufInat}`, preco }
+    if (preco > 0) cotacoes.push({ modelo: `${produto.modelo}${sufInat}`, preco })
   }
-  // Fallback: qualquer preço, mesmo vencido
+  if (cotacoes.length > 0) {
+    const escolhida = cotacoes.reduce((a, b) => (a.preco >= b.preco ? a : b))
+    return { ok: true, ...escolhida }
+  }
+
+  // Fallback: qualquer preço, mesmo vencido — também escolhe o maior
+  const cotacoesVencidas: Array<{ modelo: string; preco: number }> = []
   for (const { produto } of candidatos) {
     const { data: precos } = await supabase
       .from('precos_produtos')
@@ -688,7 +698,11 @@ async function buscarDisjuntorCompativel(
       .order('vigente_de', { ascending: false })
       .limit(1)
     const preco = Number((precos || [])[0]?.preco_venda) || 0
-    if (preco > 0) return { ok: true, modelo: `${produto.modelo}${sufInat} · ⚠ preço vencido`, preco }
+    if (preco > 0) cotacoesVencidas.push({ modelo: `${produto.modelo}${sufInat} · ⚠ preço vencido`, preco })
+  }
+  if (cotacoesVencidas.length > 0) {
+    const escolhida = cotacoesVencidas.reduce((a, b) => (a.preco >= b.preco ? a : b))
+    return { ok: true, ...escolhida }
   }
   const detalhe = `${prods.length} disjuntor(es) na categoria mas nenhum com preço em precos_produtos`
   return { ok: false, motivo: usandoInativos ? `só INATIVOS · ${detalhe}` : detalhe }
