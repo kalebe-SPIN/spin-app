@@ -29,6 +29,10 @@ type Props = {
 export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20, onArrastar }: Props) {
   const mapaRef = useRef<HTMLDivElement>(null)
   const markerRef = useRef<any>(null)
+  const onArrastarRef = useRef(onArrastar)
+  // Mantém a closure sempre atualizada — o listener registrado na
+  // primeira load usa a ref, então mudanças no callback são respeitadas.
+  useEffect(() => { onArrastarRef.current = onArrastar }, [onArrastar])
   const [erro, setErro] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
 
@@ -61,28 +65,27 @@ export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20
         streetViewControl: true,   // habilita pegman pra street view
         mapTypeControl: true,
       })
+      // Marker padrão do Google (ícone vermelho de gota) — mais confiável
+      // pra draggable que o Symbol vetorial. optimized:false garante que
+      // o marker fique em canvas próprio (interações + drag funcionam
+      // corretamente em qualquer mapa satélite/zoom alto).
       const marker = new google.maps.Marker({
         position: { lat, lng },
         map,
         draggable: !!onArrastar,
         cursor: onArrastar ? 'move' : 'pointer',
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: '#f4d000',
-          fillOpacity: 0.95,
-          strokeColor: '#000',
-          strokeWeight: 2,
-        },
-        title: onArrastar ? 'Arraste pra ajustar o ponto exato do imóvel' : '',
+        optimized: false,
+        zIndex: 9999,
+        title: onArrastar ? '✋ Arraste pra ajustar o ponto exato do imóvel' : '',
+        animation: google.maps.Animation.DROP,
       })
       markerRef.current = marker
-      if (onArrastar) {
-        marker.addListener('dragend', () => {
-          const p = marker.getPosition()
-          if (p) onArrastar(p.lat(), p.lng())
-        })
-      }
+      // dragend usa a ref pra pegar a versão MAIS RECENTE do callback
+      // (evita closure stale quando o parent re-renderiza).
+      marker.addListener('dragend', () => {
+        const p = marker.getPosition()
+        if (p && onArrastarRef.current) onArrastarRef.current(p.lat(), p.lng())
+      })
       setCarregando(false)
     }).catch((e: any) => {
       if (!cancelado) {
