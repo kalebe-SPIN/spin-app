@@ -232,7 +232,9 @@ export async function salvarKitAction(
   const complementosCC = await precificarComplementosCC(supabase, {
     qtd_placas: kit.qtd_placas,
     tipo_telhado: (telhadoSecoesData || [])[0]?.tipo_cobertura || null,
-    distancia_string_qgbt_m: padraoEfetivo?.distancia_string_qgbt_m || 15,
+    // Passa 0 quando distância não cadastrada — precificarComplementosCC
+    // aplica o fallback correto (20m/entrada MPPT). Kalebe 2026-08-29.
+    distancia_string_qgbt_m: Number(padraoEfetivo?.distancia_string_qgbt_m) || 0,
     inversores: inversoresParaProtecao,
     tipo_ligacao_cliente: ligacaoCliente,
   })
