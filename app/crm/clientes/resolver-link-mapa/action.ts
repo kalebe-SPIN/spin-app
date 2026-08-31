@@ -51,15 +51,52 @@ function extrairCoord(url: string): { lat: number; lng: number } | null {
   return null
 }
 
-/** Se for shortlink (maps.app.goo.gl / goo.gl), segue o redirect. */
-async function expandirShortlink(url: string): Promise<string> {
-  if (!/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl|g\.co)/i.test(url)) return url
+/** Se for shortlink (maps.app.goo.gl / goo.gl), segue o redirect com
+ *  User-Agent de browser real. Google serve HTML diferente pra
+ *  requests sem UA de browser. */
+const UA_BROWSER =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
+
+async function expandirShortlink(url: string): Promise<{ finalUrl: string; html?: string }> {
+  if (!/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl|g\.co)/i.test(url)) return { finalUrl: url }
   try {
-    const res = await fetch(url, { method: 'GET', redirect: 'follow' })
-    return res.url || url
+    const res = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: { 'User-Agent': UA_BROWSER, 'Accept-Language': 'pt-BR' },
+    })
+    const html = await res.text()
+    return { finalUrl: res.url || url, html }
   } catch {
-    return url
+    return { finalUrl: url }
   }
+}
+
+/** Extrai lat/lng do HTML do Google Maps (várias regex — o layout
+ *  muda com frequência). Retorna null se não achou. */
+function extrairCoordDoHtml(html: string): { lat: number; lng: number } | null {
+  const padroes = [
+    /"latlng":\s*\{\s*"lat":\s*(-?\d+\.\d+),\s*"lng":\s*(-?\d+\.\d+)/,
+    /"latitude":\s*(-?\d+\.\d+),\s*"longitude":\s*(-?\d+\.\d+)/,
+    /APP_INITIALIZATION_STATE=.*?\[\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)/s,
+    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+    /"@type":\s*"GeoCoordinates".*?"latitude":\s*"?(-?\d+\.\d+)"?.*?"longitude":\s*"?(-?\d+\.\d+)"?/s,
+    /center=(-?\d+\.\d+)(?:%2C|,)(-?\d+\.\d+)/,
+    /q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+  ]
+  for (const rx of padroes) {
+    const m = html.match(rx)
+    if (m) {
+      const lat = Number(m[1])
+      const lng = Number(m[2])
+      // Sanidade: BR fica entre lat -34..5, lng -74..-34; mundo -90..90 / -180..180
+      if (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+        return { lat, lng }
+      }
+    }
+  }
+  return null
 }
 
 async function reverseGeocode(lat: number, lng: number): Promise<Partial<EnderecoResolvido>> {
@@ -93,14 +130,22 @@ export async function resolverLinkGoogleMapsAction(input: string): Promise<
   const bruto = (input || '').trim()
   if (!bruto) return { ok: false, erro: 'Cole um link ou coordenada' }
 
-  // 1. Expande shortlink se necessário
+  // 1. Expande shortlink se necessário (com User-Agent de browser real)
   let url = bruto
+  let htmlDaExpansao: string | undefined
   if (/^https?:\/\//i.test(url)) {
-    url = await expandirShortlink(url)
+    const r = await expandirShortlink(url)
+    url = r.finalUrl
+    htmlDaExpansao = r.html
   }
 
-  // 2. Tenta extrair lat/lng
-  const coord = extrairCoord(url) || extrairCoord(bruto)
+  // 2. Tenta extrair lat/lng em ordem: URL final → URL bruta → HTML do
+  //    Google (o shortlink às vezes redireciona pra uma URL sem
+  //    coordenadas na querystring, mas com elas dentro do HTML).
+  let coord = extrairCoord(url) || extrairCoord(bruto)
+  if (!coord && htmlDaExpansao) {
+    coord = extrairCoordDoHtml(htmlDaExpansao)
+  }
   if (!coord) {
     return {
       ok: false,
