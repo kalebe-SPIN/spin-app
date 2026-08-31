@@ -21,10 +21,14 @@ type Props = {
   apiKey?: string
   altura?: number     // em px, default 260
   zoom?: number       // default 20
+  /** Kalebe 2026-08-31: marker arrastável — ao soltar, callback com
+   *  nova lat/lng. Se ausente, marker fica fixo. */
+  onArrastar?: (lat: number, lng: number) => void
 }
 
-export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20 }: Props) {
+export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20, onArrastar }: Props) {
   const mapaRef = useRef<HTMLDivElement>(null)
+  const markerRef = useRef<any>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
 
@@ -54,12 +58,14 @@ export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20
         tilt: 0,
         disableDefaultUI: false,
         fullscreenControl: true,
-        streetViewControl: false,
+        streetViewControl: true,   // habilita pegman pra street view
         mapTypeControl: true,
       })
-      new google.maps.Marker({
+      const marker = new google.maps.Marker({
         position: { lat, lng },
         map,
+        draggable: !!onArrastar,
+        cursor: onArrastar ? 'move' : 'pointer',
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 10,
@@ -68,7 +74,15 @@ export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20
           strokeColor: '#000',
           strokeWeight: 2,
         },
+        title: onArrastar ? 'Arraste pra ajustar o ponto exato do imóvel' : '',
       })
+      markerRef.current = marker
+      if (onArrastar) {
+        marker.addListener('dragend', () => {
+          const p = marker.getPosition()
+          if (p) onArrastar(p.lat(), p.lng())
+        })
+      }
       setCarregando(false)
     }).catch((e: any) => {
       if (!cancelado) {
@@ -78,7 +92,17 @@ export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20
     })
 
     return () => { cancelado = true }
-  }, [lat, lng, apiKey, zoom])
+  // Recarrega SÓ quando apiKey/zoom mudam. lat/lng dinâmico é tratado
+  // via marker.setPosition abaixo pra não recriar o mapa a cada arraste.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey, zoom, !!onArrastar])
+
+  // Atualiza marker quando lat/lng mudam externamente (ex: parent alterou)
+  useEffect(() => {
+    if (markerRef.current) {
+      markerRef.current.setPosition({ lat, lng })
+    }
+  }, [lat, lng])
 
   // Fallback: se não tem chave (ou falhou), usa iframe embed simples
   if (erro && !apiKey && !process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {

@@ -589,27 +589,59 @@ export function NovoProjetoForm({
           </div>
 
           {/* Visualizador do mapa satélite — sempre visível quando tem
-              lat/lng no state (não mais popup). Kalebe 2026-08-31.
-              Aparece após colar link do Maps ou buscar CEP com sucesso. */}
+              lat/lng no state. Marker arrastável ajusta o ponto exato
+              e dispara reverse geocode. Kalebe 2026-08-31. */}
           {enderecoInst.lat != null && enderecoInst.lng != null && (
             <div className="mt-3">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                 <p className="text-[10px] uppercase tracking-wider font-bold text-white/60">
                   🗺 Localização no mapa satélite
                 </p>
-                <a
-                  href={`https://www.google.com/maps?q=${enderecoInst.lat},${enderecoInst.lng}`}
-                  target="_blank" rel="noreferrer"
-                  className="text-[10px] font-bold text-sol hover:underline"
-                >
-                  Abrir no Google Maps ↗
-                </a>
+                <div className="flex gap-3 items-center">
+                  <a
+                    href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${enderecoInst.lat},${enderecoInst.lng}`}
+                    target="_blank" rel="noreferrer"
+                    className="text-[10px] font-bold text-verde hover:underline"
+                    title="Ver imagem da rua"
+                  >
+                    🎥 Street View ↗
+                  </a>
+                  <a
+                    href={`https://www.google.com/maps?q=${enderecoInst.lat},${enderecoInst.lng}`}
+                    target="_blank" rel="noreferrer"
+                    className="text-[10px] font-bold text-sol hover:underline"
+                  >
+                    📍 Abrir no Maps ↗
+                  </a>
+                </div>
               </div>
+              <p className="text-[10px] text-sol mb-2">
+                💡 Arraste o pino amarelo até ficar em cima do telhado. O endereço se ajusta.
+              </p>
               <VisualizadorMapaMini
                 lat={enderecoInst.lat}
                 lng={enderecoInst.lng}
-                altura={260}
+                altura={280}
                 zoom={20}
+                onArrastar={async (novoLat, novoLng) => {
+                  // Atualiza state + reverse geocode via server action
+                  setEnderecoInst((s) => ({ ...s, lat: novoLat, lng: novoLng }))
+                  try {
+                    const { resolverLinkGoogleMapsAction } = await import('@/app/crm/clientes/resolver-link-mapa/action')
+                    const r = await resolverLinkGoogleMapsAction(`${novoLat},${novoLng}`)
+                    if (r.ok) {
+                      setEnderecoInst((s) => ({
+                        ...s,
+                        cep: r.endereco.cep ? formatarCep(r.endereco.cep) : s.cep,
+                        rua: r.endereco.logradouro || s.rua,
+                        numero: r.endereco.numero || s.numero,
+                        bairro: r.endereco.bairro || s.bairro,
+                        cidade: r.endereco.cidade || s.cidade,
+                        uf: r.endereco.uf || s.uf,
+                      }))
+                    }
+                  } catch { /* ignora falha silenciosa */ }
+                }}
               />
               <p className="text-[10px] text-white/40 mt-1">
                 Coord: {enderecoInst.lat.toFixed(6)}, {enderecoInst.lng.toFixed(6)}
