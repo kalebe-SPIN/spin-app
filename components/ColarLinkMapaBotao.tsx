@@ -14,6 +14,7 @@ import {
   resolverLinkGoogleMapsAction,
   type EnderecoResolvido,
 } from '@/app/crm/clientes/resolver-link-mapa/action'
+import { VisualizadorMapaMini } from '@/components/VisualizadorMapaMini'
 
 export function ColarLinkMapaBotao({
   onResolvido,
@@ -112,14 +113,10 @@ export function ColarLinkMapaBotao({
                   )}
                 </div>
 
-                {/* Preview visual — Google Maps embed (sem key necessária) */}
-                <iframe
-                  title="Mapa da localização"
-                  className="w-full h-56 rounded border border-white/10"
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                  src={`https://www.google.com/maps?q=${ok.lat},${ok.lng}&hl=pt-BR&z=18&output=embed`}
-                />
+                {/* Preview visual satélite — Google Maps JS API (mesma
+                    tech do MapaTelhadoEditor). Mostra pino em zoom
+                    agressivo (20) pra ver o telhado do imóvel. */}
+                <VisualizadorMapaMini lat={ok.lat} lng={ok.lng} altura={280} zoom={20} />
 
                 <div className="flex gap-2 justify-end">
                   <a
