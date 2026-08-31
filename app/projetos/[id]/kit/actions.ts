@@ -50,32 +50,90 @@ export type KitSelecionado = {
  * pelo sistema com os parâmetros que já estabelecemos na montagem de kits
  * padrão, e os valores sejam usados como padrão na precificação".
  */
-export async function salvarKitAction(projetoId: string, kit: KitSelecionado, tipoProjeto?: string) {
+export type SalvarKitOpts = {
+  /** Quando presente + projeto em modo_composicao=por_uc, salva o kit
+   *  DENTRO de kits_por_uc[uc_ref] em vez do kit_selecionado global.
+   *  'principal' = UC da fatura principal; senão = beneficiarias[i].uc. */
+  uc_ref?: string
+  /** UC tem endereço próprio (diferente do principal)? */
+  endereco_proprio?: boolean
+  /** Se endereco_proprio=true, o padrão CELESC dessa UC. */
+  padrao_entrada_proprio?: any
+  /** Se endereco_proprio=true, seções de telhado dessa UC. */
+  telhado_secoes_proprio?: any[]
+  /** Etiqueta descritiva do endereço da UC (usada só pro rótulo). */
+  endereco_label?: string
+}
+
+export async function salvarKitAction(
+  projetoId: string,
+  kit: KitSelecionado,
+  tipoProjeto?: string,
+  opts?: SalvarKitOpts,
+) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { sucesso: false, erro: 'Não autenticado' }
 
-  // 1. Grava kit
-  const patch: any = {
-    kit_selecionado: kit,
-    status: 'kit_selecionado',
-  }
+  const ucRef = opts?.uc_ref
+  const modoPorUc = !!ucRef
+
+  // 1. Grava kit — global (kit_selecionado) OU dentro de kits_por_uc[uc_ref]
+  const patch: any = { status: 'kit_selecionado' }
   if (tipoProjeto) patch.tipo_projeto = tipoProjeto
+
+  if (modoPorUc) {
+    // Lê array atual, faz upsert do item da UC
+    const { data: projetoRow } = await supabase
+      .from('projetos').select('kits_por_uc, modo_composicao').eq('id', projetoId).maybeSingle()
+    const arr: any[] = Array.isArray((projetoRow as any)?.kits_por_uc) ? (projetoRow as any).kits_por_uc : []
+    const idx = arr.findIndex(x => x?.uc_ref === ucRef)
+    const novoItem: any = {
+      uc_ref: ucRef,
+      endereco_label: opts?.endereco_label || null,
+      endereco_proprio: !!opts?.endereco_proprio,
+      padrao_entrada_proprio: opts?.endereco_proprio ? (opts?.padrao_entrada_proprio || null) : null,
+      telhado_secoes_proprio: opts?.endereco_proprio ? (opts?.telhado_secoes_proprio || []) : [],
+      kit_selecionado: kit,
+      // lista_ca_confirmada / lista_complementos_cc / kit_weg_bruto_total preenchidos abaixo
+    }
+    if (idx >= 0) arr[idx] = { ...arr[idx], ...novoItem }
+    else arr.push(novoItem)
+    patch.kits_por_uc = arr
+    // Se ainda estava centralizado, promove
+    if ((projetoRow as any)?.modo_composicao !== 'por_uc') patch.modo_composicao = 'por_uc'
+  } else {
+    patch.kit_selecionado = kit
+  }
 
   // Só colunas que existem em projetos. tipo_ligacao e
   // distancia_string_qgbt_m ficam DENTRO do JSONB padrao_entrada; seções
   // de telhado ficam em projetos_telhado_secoes (tabela separada).
+  //
+  // Quando a UC tem endereço próprio (kit por UC), usa o padrão/telhado
+  // dessa UC em vez do principal — assim disjuntor/DPS/estrutura saem
+  // dimensionados corretamente.
   const { data: projetoAtual } = await supabase
     .from('projetos')
     .select('padrao_entrada')
     .eq('id', projetoId)
     .maybeSingle()
 
-  const { data: telhadoSecoesData } = await supabase
-    .from('projetos_telhado_secoes')
-    .select('tipo_cobertura')
-    .eq('projeto_id', projetoId)
-    .limit(1)
+  const padraoEfetivo = (opts?.endereco_proprio && opts?.padrao_entrada_proprio)
+    ? opts.padrao_entrada_proprio
+    : ((projetoAtual as any)?.padrao_entrada || {})
+
+  let telhadoSecoesData: any[] | null = null
+  if (opts?.endereco_proprio && Array.isArray(opts?.telhado_secoes_proprio)) {
+    telhadoSecoesData = opts.telhado_secoes_proprio
+  } else {
+    const { data } = await supabase
+      .from('projetos_telhado_secoes')
+      .select('tipo_cobertura')
+      .eq('projeto_id', projetoId)
+      .limit(1)
+    telhadoSecoesData = data || []
+  }
 
   const { error: erroKit } = await supabase
     .from('projetos')
@@ -270,22 +328,34 @@ async function precificarComplementosCC(
       .in('categoria', filtro.categorias)
       .eq('ativo', true)
       .limit(200)
-    const candidatos = (prods || []).filter((p: any) => {
+    const todos = (prods || []) as any[]
+
+    // Match preferido: aplica filtro `contem` (palavras que devem
+    // aparecer no modelo/subcategoria).
+    const preferidos = todos.filter((p: any) => {
       const alvo = `${p.modelo || ''} ${p.subcategoria || ''}`.toLowerCase()
       return !filtro.contem || filtro.contem.every((k) => alvo.includes(k.toLowerCase()))
     })
+
+    // Fallback: se o filtro `contem` não achou nada mas EXISTE algo
+    // ativo na categoria, usa qualquer um. Melhor cotar com o produto
+    // 'errado' do que perder o item da conta. Kalebe 2026-08-29.
+    const candidatos = preferidos.length > 0 ? preferidos : todos
     if (candidatos.length === 0) return null
-    const escolhido = candidatos[0]
-    const { data: precos } = await supabase
-      .from('precos_produtos')
-      .select('preco_venda, vigente_de, vigente_ate')
-      .eq('produto_id', escolhido.id)
-      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
-      .order('vigente_de', { ascending: false })
-      .limit(1)
-    const preco = Number((precos || [])[0]?.preco_venda) || 0
-    if (preco <= 0) return null
-    return { id: escolhido.id, modelo: escolhido.modelo, preco }
+
+    // Tenta cada candidato até achar um com preço vigente > 0.
+    for (const escolhido of candidatos) {
+      const { data: precos } = await supabase
+        .from('precos_produtos')
+        .select('preco_venda, vigente_de, vigente_ate')
+        .eq('produto_id', escolhido.id)
+        .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+        .order('vigente_de', { ascending: false })
+        .limit(1)
+      const preco = Number((precos || [])[0]?.preco_venda) || 0
+      if (preco > 0) return { id: escolhido.id, modelo: escolhido.modelo, preco }
+    }
+    return null
   }
 
   // 1. Cabo solar 6mm² — metragem = 2 × (distância + 30m folga)
@@ -375,9 +445,11 @@ async function precificarComplementosCC(
   if (entrada.inversores.length > 0) {
     const numFasesQgbt = fasesDoTipoLigacao(entrada.tipo_ligacao_cliente)
     const qtdDps = numFasesQgbt + 1
+    // DPS: prefere modelo com 'dps' no nome; se não achar (modelos WEG
+    // costumam ser MPW/SPW/DPW), cai pra qualquer produto ativo em
+    // categoria='dps'. O buscarProdutoComPreco já faz esse fallback.
     const dps = await buscarProdutoComPreco({
       categorias: ['dps', 'protecao'],
-      contem: ['dps'],
     })
     if (dps) {
       itens.push({
@@ -435,35 +507,46 @@ async function buscarDisjuntorCompativel(
     .eq('ativo', true)
     .limit(500)
 
-  const candidatos = ((prods || []) as any[])
-    .map((p) => {
-      const modelo = String(p.modelo || '')
-      const specsCorrente = Number(p.specs?.corrente_nominal_a)
-      const matchC = modelo.match(/C(\d+)/i)
-      const corrente = Number.isFinite(specsCorrente) && specsCorrente > 0
-        ? specsCorrente
-        : (matchC ? Number(matchC[1]) : 0)
-      const specsPolos = Number(p.specs?.polos)
-      const polosProd = Number.isFinite(specsPolos) && specsPolos > 0
-        ? specsPolos
-        : (/3D|3P/i.test(modelo) ? 3 : /2D|2P/i.test(modelo) ? 2 : 1)
-      return { produto: p, corrente, polos: polosProd }
-    })
+  const todos = ((prods || []) as any[]).map((p) => {
+    const modelo = String(p.modelo || '')
+    const specsCorrente = Number(p.specs?.corrente_nominal_a)
+    const matchC = modelo.match(/C(\d+)/i)
+    const corrente = Number.isFinite(specsCorrente) && specsCorrente > 0
+      ? specsCorrente
+      : (matchC ? Number(matchC[1]) : 0)
+    const specsPolos = Number(p.specs?.polos)
+    const polosProd = Number.isFinite(specsPolos) && specsPolos > 0
+      ? specsPolos
+      : (/3D|3P/i.test(modelo) ? 3 : /2D|2P/i.test(modelo) ? 2 : 1)
+    return { produto: p, corrente, polos: polosProd }
+  })
+
+  // Match ideal: polos exatos + corrente >= exigida (menor viável).
+  const ideais = todos
     .filter((c) => c.polos === polos && c.corrente >= inMinA)
     .sort((a, b) => a.corrente - b.corrente)
 
-  const escolhido = candidatos[0]?.produto
-  if (!escolhido) return null
+  // Fallback 1: polos exatos, qualquer corrente (aceita superdimensionado
+  // ou desconhecido, melhor que zerar).
+  const soPolos = todos.filter((c) => c.polos === polos)
 
-  const { data: precos } = await supabase
-    .from('precos_produtos')
-    .select('preco_venda, vigente_de, vigente_ate')
-    .eq('produto_id', escolhido.id)
-    .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
-    .order('vigente_de', { ascending: false })
-    .limit(1)
-  const preco = Number((precos || [])[0]?.preco_venda) || 0
-  if (preco <= 0) return null
+  // Fallback 2: qualquer disjuntor ativo — pelo menos entra na conta.
+  const candidatos = ideais.length > 0 ? ideais
+                    : soPolos.length > 0 ? soPolos
+                    : todos.map(t => ({ ...t }))
+  if (candidatos.length === 0) return null
 
-  return { modelo: escolhido.modelo, preco }
+  // Tenta cada um até achar preço vigente
+  for (const { produto } of candidatos) {
+    const { data: precos } = await supabase
+      .from('precos_produtos')
+      .select('preco_venda, vigente_de, vigente_ate')
+      .eq('produto_id', produto.id)
+      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+      .order('vigente_de', { ascending: false })
+      .limit(1)
+    const preco = Number((precos || [])[0]?.preco_venda) || 0
+    if (preco > 0) return { modelo: produto.modelo, preco }
+  }
+  return null
 }
