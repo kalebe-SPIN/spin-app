@@ -362,31 +362,48 @@ async function precificarComplementosCC(
   const itens: ItemComplementoCC[] = []
   const hojeIso = new Date().toISOString().slice(0, 10)
 
+  type BuscaResult =
+    | { ok: true; id: string; modelo: string; preco: number }
+    | { ok: false; motivo: string }
+
   async function buscarProdutoComPreco(
     filtro: { categorias: string[]; contem?: string[] },
-  ): Promise<{ id: string; modelo: string; preco: number } | null> {
-    const { data: prods } = await supabase
+  ): Promise<BuscaResult> {
+    // Passo 1: busca produtos ATIVOS na categoria
+    const { data: ativos } = await supabase
       .from('produtos')
       .select('id, modelo, subcategoria, categoria')
       .in('categoria', filtro.categorias)
       .eq('ativo', true)
-      .limit(200)
-    const todos = (prods || []) as any[]
+      .limit(500)
+    const listaAtivos = (ativos || []) as any[]
 
-    // Match preferido: aplica filtro `contem` (palavras que devem
-    // aparecer no modelo/subcategoria).
-    const preferidos = todos.filter((p: any) => {
+    // Se zero ativos, tenta inativos pra diagnosticar melhor
+    let usandoInativos = false
+    let lista = listaAtivos
+    if (listaAtivos.length === 0) {
+      const { data: inativos } = await supabase
+        .from('produtos')
+        .select('id, modelo, subcategoria, categoria')
+        .in('categoria', filtro.categorias)
+        .eq('ativo', false)
+        .limit(500)
+      const listaInativos = (inativos || []) as any[]
+      if (listaInativos.length === 0) {
+        return { ok: false, motivo: `nenhum produto cadastrado em categoria ${filtro.categorias.join('/')}` }
+      }
+      lista = listaInativos
+      usandoInativos = true
+    }
+
+    // Passo 2: aplica filtro `contem` (preferido) com fallback
+    const preferidos = lista.filter((p: any) => {
       const alvo = `${p.modelo || ''} ${p.subcategoria || ''}`.toLowerCase()
       return !filtro.contem || filtro.contem.every((k) => alvo.includes(k.toLowerCase()))
     })
+    const candidatos = preferidos.length > 0 ? preferidos : lista
 
-    // Fallback: se o filtro `contem` não achou nada mas EXISTE algo
-    // ativo na categoria, usa qualquer um. Melhor cotar com o produto
-    // 'errado' do que perder o item da conta. Kalebe 2026-08-29.
-    const candidatos = preferidos.length > 0 ? preferidos : todos
-    if (candidatos.length === 0) return null
-
-    // Tenta cada candidato até achar um com preço vigente > 0.
+    // Passo 3: procura o 1º candidato com preço vigente > 0
     for (const escolhido of candidatos) {
       const { data: precos } = await supabase
         .from('precos_produtos')
@@ -396,9 +413,40 @@ async function precificarComplementosCC(
         .order('vigente_de', { ascending: false })
         .limit(1)
       const preco = Number((precos || [])[0]?.preco_venda) || 0
-      if (preco > 0) return { id: escolhido.id, modelo: escolhido.modelo, preco }
+      if (preco > 0) {
+        return {
+          ok: true,
+          id: escolhido.id,
+          modelo: usandoInativos ? `${escolhido.modelo} (inativo)` : escolhido.modelo,
+          preco,
+        }
+      }
     }
-    return null
+
+    // Passo 4: fallback pra QUALQUER preço (mesmo vencido)
+    for (const escolhido of candidatos) {
+      const { data: precos } = await supabase
+        .from('precos_produtos')
+        .select('preco_venda, vigente_de, vigente_ate')
+        .eq('produto_id', escolhido.id)
+        .order('vigente_de', { ascending: false })
+        .limit(1)
+      const preco = Number((precos || [])[0]?.preco_venda) || 0
+      if (preco > 0) {
+        const suffixInat = usandoInativos ? ' (inativo)' : ''
+        return {
+          ok: true,
+          id: escolhido.id,
+          modelo: `${escolhido.modelo}${suffixInat} · ⚠ preço vencido`,
+          preco,
+        }
+      }
+    }
+
+    // Passo 5: sem preço em nenhum candidato
+    const detalhes = `${candidatos.length} produto(s) encontrado(s) mas SEM preço em precos_produtos`
+    if (usandoInativos) return { ok: false, motivo: `só produtos INATIVOS na categoria + ${detalhes}` }
+    return { ok: false, motivo: detalhes }
   }
 
   // 1. Cabo solar 6mm² — metragem = 2 × (distância + 30m folga)
@@ -407,14 +455,14 @@ async function precificarComplementosCC(
     categorias: ['cabo_cc', 'cabo'],
     contem: ['6mm'],
   })
-  if (cabo) {
+  if (cabo.ok) {
     itens.push({
       categoria: 'cabo_cc', modelo: cabo.modelo,
       qtd: metrosCabo, unidade: 'm', preco_unitario: cabo.preco,
       subtotal: metrosCabo * cabo.preco,
     })
   } else {
-    avisos.push(`Cabo solar 6mm² não achado no /admin/catalogo. ${metrosCabo}m estimados NÃO entraram no preço do kit.`)
+    avisos.push(`Cabo solar 6mm² (${metrosCabo}m) — ${cabo.motivo}`)
   }
 
   // 2. Estrutura — 1 kit pra cada 4 placas, tipo pelo telhado
@@ -429,14 +477,14 @@ async function precificarComplementosCC(
     categorias: ['estrutura'],
     contem: contemEstrut,
   })
-  if (estrutura) {
+  if (estrutura.ok) {
     itens.push({
       categoria: 'estrutura', modelo: estrutura.modelo,
       qtd: qtdKitsEstrutura, unidade: 'kit', preco_unitario: estrutura.preco,
       subtotal: qtdKitsEstrutura * estrutura.preco,
     })
   } else {
-    avisos.push(`Estrutura ${contemEstrut[0] || 'genérica'} não achada no /admin/catalogo. ${qtdKitsEstrutura} kit(s) NÃO entraram no preço.`)
+    avisos.push(`Estrutura ${contemEstrut[0] || 'genérica'} (${qtdKitsEstrutura} kit) — ${estrutura.motivo}`)
   }
 
   // 3. MC4 — 2 pares por string (1 string ≈ 12 placas)
@@ -445,14 +493,14 @@ async function precificarComplementosCC(
     categorias: ['conector'],
     contem: ['mc4'],
   })
-  if (mc4) {
+  if (mc4.ok) {
     itens.push({
       categoria: 'conector', modelo: mc4.modelo,
       qtd: qtdMc4, unidade: 'par', preco_unitario: mc4.preco,
       subtotal: qtdMc4 * mc4.preco,
     })
   } else {
-    avisos.push(`Conector MC4 não achado no /admin/catalogo. ${qtdMc4} par(es) NÃO entraram no preço.`)
+    avisos.push(`Conector MC4 (${qtdMc4} par) — ${mc4.motivo}`)
   }
 
   // 4. Disjuntor CA — 1 disjuntor POR MODELO de inversor (agrupa qtd),
@@ -472,14 +520,14 @@ async function precificarComplementosCC(
   }
   for (const [, g] of grupos) {
     const disj = await buscarDisjuntorCompativel(supabase, g.in_a, g.polos, hojeIso)
-    if (disj) {
+    if (disj.ok) {
       itens.push({
         categoria: 'disjuntor', modelo: disj.modelo,
         qtd: g.qtd, unidade: 'un', preco_unitario: disj.preco,
         subtotal: g.qtd * disj.preco,
       })
     } else {
-      avisos.push(`Disjuntor ${g.in_a}A ${g.polos}P (pra ${g.modeloInv}) não achado no /admin/catalogo. ${g.qtd} un NÃO entraram no preço.`)
+      avisos.push(`Disjuntor ${g.in_a}A ${g.polos}P (${g.modeloInv}, ${g.qtd} un) — ${disj.motivo}`)
     }
   }
 
@@ -494,14 +542,14 @@ async function precificarComplementosCC(
     const dps = await buscarProdutoComPreco({
       categorias: ['dps', 'protecao'],
     })
-    if (dps) {
+    if (dps.ok) {
       itens.push({
         categoria: 'dps', modelo: dps.modelo,
         qtd: qtdDps, unidade: 'un', preco_unitario: dps.preco,
         subtotal: qtdDps * dps.preco,
       })
     } else {
-      avisos.push(`DPS CA classe II não achado no /admin/catalogo. ${qtdDps} un NÃO entraram no preço.`)
+      avisos.push(`DPS CA (${qtdDps} un) — ${dps.motivo}`)
     }
   }
 
@@ -542,15 +590,28 @@ async function buscarDisjuntorCompativel(
   inMinA: number,
   polos: number,
   hojeIso: string,
-): Promise<{ modelo: string; preco: number } | null> {
-  const { data: prods } = await supabase
+): Promise<{ ok: true; modelo: string; preco: number } | { ok: false; motivo: string }> {
+  const { data: ativos } = await supabase
     .from('produtos')
     .select('id, modelo, specs')
     .eq('categoria', 'disjuntor')
     .eq('ativo', true)
     .limit(500)
+  let prods: any[] = (ativos || []) as any[]
+  let usandoInativos = false
+  if (prods.length === 0) {
+    const { data: inat } = await supabase
+      .from('produtos')
+      .select('id, modelo, specs')
+      .eq('categoria', 'disjuntor')
+      .eq('ativo', false)
+      .limit(500)
+    prods = (inat || []) as any[]
+    if (prods.length === 0) return { ok: false, motivo: 'nenhum disjuntor cadastrado' }
+    usandoInativos = true
+  }
 
-  const todos = ((prods || []) as any[]).map((p) => {
+  const todos = prods.map((p) => {
     const modelo = String(p.modelo || '')
     const specsCorrente = Number(p.specs?.corrente_nominal_a)
     const matchC = modelo.match(/C(\d+)/i)
@@ -576,8 +637,8 @@ async function buscarDisjuntorCompativel(
   // Fallback 2: qualquer disjuntor ativo — pelo menos entra na conta.
   const candidatos = ideais.length > 0 ? ideais
                     : soPolos.length > 0 ? soPolos
-                    : todos.map(t => ({ ...t }))
-  if (candidatos.length === 0) return null
+                    : todos
+  const sufInat = usandoInativos ? ' (inativo)' : ''
 
   // Tenta cada um até achar preço vigente
   for (const { produto } of candidatos) {
@@ -589,7 +650,19 @@ async function buscarDisjuntorCompativel(
       .order('vigente_de', { ascending: false })
       .limit(1)
     const preco = Number((precos || [])[0]?.preco_venda) || 0
-    if (preco > 0) return { modelo: produto.modelo, preco }
+    if (preco > 0) return { ok: true, modelo: `${produto.modelo}${sufInat}`, preco }
   }
-  return null
+  // Fallback: qualquer preço, mesmo vencido
+  for (const { produto } of candidatos) {
+    const { data: precos } = await supabase
+      .from('precos_produtos')
+      .select('preco_venda, vigente_de, vigente_ate')
+      .eq('produto_id', produto.id)
+      .order('vigente_de', { ascending: false })
+      .limit(1)
+    const preco = Number((precos || [])[0]?.preco_venda) || 0
+    if (preco > 0) return { ok: true, modelo: `${produto.modelo}${sufInat} · ⚠ preço vencido`, preco }
+  }
+  const detalhe = `${prods.length} disjuntor(es) na categoria mas nenhum com preço em precos_produtos`
+  return { ok: false, motivo: usandoInativos ? `só INATIVOS · ${detalhe}` : detalhe }
 }
