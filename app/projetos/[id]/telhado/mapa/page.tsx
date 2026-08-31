@@ -13,15 +13,25 @@ export default async function MapaTelhadoPage({ params }: { params: { id: string
 
   const { data: projeto, error } = await supabase
     .from('projetos')
-    .select('id, codigo, cliente_razao_social, cliente_endereco')
+    .select('id, codigo, cliente_id, cliente_razao_social, cliente_endereco')
     .eq('id', params.id)
     .single()
 
   if (error || !projeto) notFound()
 
-  const end = projeto.cliente_endereco || {}
+  // Kalebe 2026-08-31: endereço do CLIENTE (cadastro confiável) tem
+  // prioridade sobre snapshot do projeto (que pode vir quebrado da fatura).
+  let enderecoFonte: any = projeto.cliente_endereco || {}
+  if (projeto.cliente_id) {
+    const { data: cli } = await supabase
+      .from('clientes').select('endereco').eq('id', projeto.cliente_id).maybeSingle()
+    if (cli?.endereco && Object.keys(cli.endereco).length > 0) {
+      enderecoFonte = cli.endereco
+    }
+  }
+  const end = enderecoFonte
   const enderecoCompleto = [
-    end.logradouro, end.numero, end.bairro, end.cidade, end.uf, end.cep, 'Brasil',
+    end.logradouro || end.rua, end.numero, end.bairro, end.cidade, end.uf, end.cep, 'Brasil',
   ].filter(Boolean).join(', ')
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''

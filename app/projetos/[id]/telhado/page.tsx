@@ -16,22 +16,34 @@ export default async function TelhadoPage({ params }: { params: { id: string } }
 
   const { data: projeto, error } = await supabase
     .from('projetos')
-    .select('id, codigo, cliente_razao_social, cliente_endereco')
+    .select('id, codigo, cliente_id, cliente_razao_social, cliente_endereco')
     .eq('id', params.id)
     .single()
 
   if (error || !projeto) notFound()
 
-  // Monta string de endereço pra geocoding
-  const end = projeto.cliente_endereco || {}
+  // Kalebe 2026-08-31: endereço do CLIENTE (fonte confiável) é prioridade
+  // sobre o snapshot no projeto (que pode vir quebrado da extração de fatura).
+  // O consultor cadastra/confere no perfil do cliente antes de vir aqui.
+  let enderecoFonte: any = projeto.cliente_endereco || {}
+  if (projeto.cliente_id) {
+    const { data: cli } = await supabase
+      .from('clientes').select('endereco').eq('id', projeto.cliente_id).maybeSingle()
+    if (cli?.endereco && Object.keys(cli.endereco).length > 0) {
+      enderecoFonte = cli.endereco
+    }
+  }
+  const end = enderecoFonte
   const enderecoCompleto = [
-    end.logradouro,
+    end.logradouro || end.rua,
+    end.numero,
     end.bairro,
     end.cidade,
     end.uf,
     end.cep,
     'Brasil',
   ].filter(Boolean).join(', ')
+  const enderecoIncompleto = !end.cidade || !(end.logradouro || end.rua)
 
   const { data: secoes } = await supabase
     .from('projetos_telhado_secoes')
@@ -67,6 +79,42 @@ export default async function TelhadoPage({ params }: { params: { id: string } }
             com sua área, orientação e características.
           </p>
         </div>
+
+        {enderecoIncompleto && (
+          <div className="bg-coral/10 border border-coral/40 rounded-xl p-4 mb-4">
+            <p className="text-sm text-white font-bold mb-1">⚠ Endereço incompleto no cadastro do cliente</p>
+            <p className="text-xs text-white/70 mb-2">
+              O Google Maps precisa de rua + cidade pra achar o telhado. Complete no perfil do cliente
+              antes de continuar — assim garante que o mapa vai localizar certo (extração de fatura
+              costuma quebrar o endereço).
+            </p>
+            {projeto.cliente_id && (
+              <Link
+                href={`/crm/clientes/${projeto.cliente_id}`}
+                className="inline-block text-xs font-bold text-sol hover:underline"
+              >
+                → Editar endereço no perfil do cliente
+              </Link>
+            )}
+          </div>
+        )}
+
+        {!enderecoIncompleto && enderecoCompleto && (
+          <div className="bg-white/[0.02] border border-white/10 rounded-xl p-3 mb-4 flex items-start justify-between gap-3">
+            <p className="text-xs text-white/60">
+              <span className="text-white/40 uppercase tracking-wider text-[10px] mr-2">Endereço p/ mapa:</span>
+              {enderecoCompleto}
+            </p>
+            {projeto.cliente_id && (
+              <Link
+                href={`/crm/clientes/${projeto.cliente_id}`}
+                className="text-[10px] text-sol hover:underline whitespace-nowrap"
+              >
+                editar →
+              </Link>
+            )}
+          </div>
+        )}
 
         <Link
           href={`/projetos/${projeto.id}/telhado/mapa`}
