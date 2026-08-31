@@ -33,9 +33,18 @@ export function ColarLinkMapaBotao({
     startTransition(async () => {
       const r = await resolverLinkGoogleMapsAction(texto)
       if (r.ok) {
-        setOk(r.endereco)
-        onResolvido(r.endereco)
-        setTimeout(() => setAberto(false), 1200)
+        // Fallback: se não veio logradouro estruturado (área rural,
+        // API sem key etc), copia a descrição completa pra o campo Rua
+        // pra o consultor pelo menos ter uma base pra editar.
+        const enderecoParaAplicar = { ...r.endereco }
+        if (!enderecoParaAplicar.logradouro && enderecoParaAplicar.descricao_completa) {
+          // Extrai só a parte antes da primeira vírgula (normalmente é a rua)
+          enderecoParaAplicar.logradouro = enderecoParaAplicar.descricao_completa
+            .split(' - ')[0].split(',')[0].trim()
+        }
+        setOk(enderecoParaAplicar)
+        onResolvido(enderecoParaAplicar)
+        // Não fecha automático — deixa admin ver o que veio antes de fechar
       } else {
         setErro(r.erro)
       }

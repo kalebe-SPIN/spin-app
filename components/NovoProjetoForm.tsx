@@ -82,7 +82,44 @@ export function NovoProjetoForm({
     bairro: '',
     cidade: '',
     uf: 'SC',
+    lat: null as number | null,
+    lng: null as number | null,
   })
+
+  // Telhado — Kalebe 2026-08-31: cadastro no perfil (aqui) em vez
+  // da etapa antiga. Salva em clientes.telhado_secoes E copia pra
+  // projetos_telhado_secoes ao criar o projeto.
+  type SecaoLocal = {
+    id: string
+    identificador: string
+    tipo_cobertura: string
+    area_m2: number
+    orientacao: string
+    inclinacao_graus: number | null
+    material_estrutura: string | null
+    tem_sombreamento: boolean
+    sombreamento_descricao: string | null
+  }
+  const [telhadoSecoes, setTelhadoSecoes] = useState<SecaoLocal[]>([])
+  function addSecaoTelhado() {
+    setTelhadoSecoes((prev) => [...prev, {
+      id: Math.random().toString(36).slice(2),
+      identificador: prev.length === 0 ? 'Telhado principal' : `Seção ${prev.length + 1}`,
+      tipo_cobertura: 'fibrocimento',
+      area_m2: 0,
+      orientacao: 'Norte',
+      inclinacao_graus: 15,
+      material_estrutura: 'madeira',
+      tem_sombreamento: false,
+      sombreamento_descricao: null,
+    }])
+  }
+  function updSecaoTelhado<K extends keyof SecaoLocal>(id: string, campo: K, valor: SecaoLocal[K]) {
+    setTelhadoSecoes((prev) => prev.map(s => s.id === id ? { ...s, [campo]: valor } : s))
+  }
+  function delSecaoTelhado(id: string) {
+    setTelhadoSecoes((prev) => prev.filter(s => s.id !== id))
+  }
 
   async function buscarCepInstalacao() {
     const cep = enderecoInst.cep.replace(/\D/g, '')
@@ -160,6 +197,7 @@ export function NovoProjetoForm({
           // projeto E pra clientes.endereco.
           endereco_igual_titular: false,
           endereco_instalacao: enderecoInst,
+          telhado_secoes: telhadoSecoes.length > 0 ? telhadoSecoes : undefined,
           observacoes: observacoes.trim() || null,
         })
         if (result && 'erro' in result) setErro(result.erro)
@@ -205,6 +243,7 @@ export function NovoProjetoForm({
           // projeto E pra clientes.endereco.
           endereco_igual_titular: false,
           endereco_instalacao: enderecoInst,
+          telhado_secoes: telhadoSecoes.length > 0 ? telhadoSecoes : undefined,
           observacoes: observacoes.trim() || null,
         })
         if (result && 'erro' in result) setErro(result.erro)
@@ -513,6 +552,7 @@ export function NovoProjetoForm({
                   bairro: e.bairro || s.bairro,
                   cidade: e.cidade || s.cidade,
                   uf: e.uf || s.uf,
+                  lat: e.lat, lng: e.lng,
                 }))}
               />
             </div>
@@ -546,6 +586,76 @@ export function NovoProjetoForm({
               </select>
             </div>
           </div>
+        </section>
+      )}
+
+      {/* Telhado — Kalebe 2026-08-31: cadastro do imóvel aqui mesmo,
+          antes de ir pro wizard. Alimenta clientes.telhado_secoes +
+          projetos_telhado_secoes ao criar. */}
+      {!isEdit && (
+        <section className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+          <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+            <div>
+              <h3 className="text-xs uppercase tracking-wider font-bold text-sol mb-1">
+                🏠 Telhado do imóvel <span className="normal-case text-white/40">(opcional)</span>
+              </h3>
+              <p className="text-[11px] text-white/50">
+                Cadastre agora ou depois no perfil do cliente. Toda proposta futura vai herdar.
+              </p>
+            </div>
+            <button type="button" onClick={addSecaoTelhado}
+              className="text-[10px] font-bold px-3 py-1.5 rounded bg-sol/15 border border-sol/40 text-sol hover:bg-sol/25">
+              + Adicionar seção
+            </button>
+          </div>
+
+          {telhadoSecoes.length === 0 ? (
+            <div className="p-4 border border-dashed border-white/15 rounded text-center text-[11px] text-white/40">
+              Sem seções. Pode adicionar aqui ou depois no perfil do cliente.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {telhadoSecoes.map((s, i) => (
+                <div key={s.id} className="p-3 bg-noite/40 border border-white/10 rounded">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <input type="text" value={s.identificador}
+                      onChange={(e) => updSecaoTelhado(s.id, 'identificador', e.target.value)}
+                      placeholder={`Seção ${i + 1}`}
+                      className="flex-1 px-2 py-1 bg-transparent border-0 text-sm text-white focus:outline-none" />
+                    <button type="button" onClick={() => delSecaoTelhado(s.id)}
+                      className="text-coral/60 hover:text-coral text-xs">✕</button>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <select value={s.tipo_cobertura}
+                      onChange={(e) => updSecaoTelhado(s.id, 'tipo_cobertura', e.target.value)}
+                      className="px-2 py-1 bg-white/[0.03] border border-white/10 rounded text-xs text-white">
+                      <option value="fibrocimento">Fibrocimento</option>
+                      <option value="metalico">Metálico</option>
+                      <option value="ceramico">Cerâmico</option>
+                      <option value="laje">Laje</option>
+                      <option value="solo">Solo</option>
+                    </select>
+                    <input type="number" step={1} value={s.area_m2 || ''}
+                      onChange={(e) => updSecaoTelhado(s.id, 'area_m2', Number(e.target.value))}
+                      placeholder="Área (m²)"
+                      className="px-2 py-1 bg-white/[0.03] border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
+                    <select value={s.orientacao}
+                      onChange={(e) => updSecaoTelhado(s.id, 'orientacao', e.target.value)}
+                      className="px-2 py-1 bg-white/[0.03] border border-white/10 rounded text-xs text-white">
+                      {['Norte', 'NE', 'Leste', 'SE', 'Sul', 'SO', 'Oeste', 'NO'].map(o => <option key={o}>{o}</option>)}
+                    </select>
+                    <input type="number" step={1} value={s.inclinacao_graus ?? ''}
+                      onChange={(e) => updSecaoTelhado(s.id, 'inclinacao_graus', e.target.value ? Number(e.target.value) : null)}
+                      placeholder="Inclinação (°)"
+                      className="px-2 py-1 bg-white/[0.03] border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
+                  </div>
+                </div>
+              ))}
+              <p className="text-[10px] text-white/40 mt-1">
+                💡 Depois de salvar, você pode refinar (adicionar sombreamento, altura, idade) no perfil do cliente.
+              </p>
+            </div>
+          )}
         </section>
       )}
 

@@ -37,6 +37,19 @@ export type NovoProjetoInput = {
   endereco_igual_titular?: boolean
   endereco_instalacao?: EnderecoInstalacao
   observacoes?: string | null
+  // Kalebe 2026-08-31: telhado do imóvel cadastrado direto no form
+  // do novo projeto. Grava em clientes.telhado_secoes + copia pra
+  // projetos_telhado_secoes automaticamente.
+  telhado_secoes?: Array<{
+    identificador?: string
+    tipo_cobertura?: string
+    area_m2?: number
+    orientacao?: string
+    inclinacao_graus?: number | null
+    material_estrutura?: string | null
+    tem_sombreamento?: boolean
+    sombreamento_descricao?: string | null
+  }>
 }
 
 export async function criarProjetoAction(input: NovoProjetoInput) {
@@ -228,11 +241,20 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
     }
 
     // Kalebe 2026-08-31: telhado agora vive no cliente (tronco).
-    // Se o cliente já tem seções cadastradas no perfil, copia pra
-    // projetos_telhado_secoes — assim ferramentas downstream (kit,
-    // orçamento, homologação) continuam lendo do projeto sem mudança.
-    const secoesCliente = Array.isArray((cliAtual as any)?.telhado_secoes)
-      ? (cliAtual as any).telhado_secoes : []
+    // Prioridade: (1) seções vindas do form novo projeto (input.telhado_secoes)
+    // — se veio, atualiza clientes.telhado_secoes; (2) senão herda o
+    // que já tinha em clientes.telhado_secoes. Copia pra
+    // projetos_telhado_secoes em ambos os casos.
+    let secoesCliente: any[] = Array.isArray(input.telhado_secoes) && input.telhado_secoes.length > 0
+      ? input.telhado_secoes
+      : (Array.isArray((cliAtual as any)?.telhado_secoes) ? (cliAtual as any).telhado_secoes : [])
+    // Se veio do input, atualiza o tronco (não sobrescreve se ausente)
+    if (Array.isArray(input.telhado_secoes) && input.telhado_secoes.length > 0) {
+      await supabase
+        .from('clientes')
+        .update({ telhado_secoes: input.telhado_secoes, updated_at: new Date().toISOString() })
+        .eq('id', clienteId)
+    }
     if (secoesCliente.length > 0) {
       const linhas = secoesCliente.map((s: any, i: number) => ({
         projeto_id: novoProjeto.id,
