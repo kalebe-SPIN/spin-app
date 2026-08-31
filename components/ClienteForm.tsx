@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { criarClienteAction, atualizarClienteAction, type ClienteFormData } from '@/app/crm/clientes/actions'
 import { formatarCpfCnpj, formatarCpf, formatarCnpj, formatarTelefone, formatarCep } from '@/lib/formatters'
+import { ColarLinkMapaBotao } from '@/components/ColarLinkMapaBotao'
 
 type Props = {
   clienteExistente?: any
@@ -177,16 +178,36 @@ export function ClienteForm({ clienteExistente }: Props) {
               inputMode="numeric"
             />
           </div>
-          <div className="col-span-2 flex items-end">
+          <div className="col-span-2 flex items-end gap-2">
             <button
               type="button"
               onClick={buscarCep}
-              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-white/70 hover:bg-white/10"
+              className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-white/70 hover:bg-white/10"
             >
-              🔍 Buscar endereço pelo CEP
+              🔍 Buscar pelo CEP
             </button>
+            <ColarLinkMapaBotao
+              className="px-3 py-2 rounded-lg text-xs font-bold bg-verde/15 border border-verde/40 text-verde hover:bg-verde/25 whitespace-nowrap"
+              onResolvido={(e) => {
+                setForm((f) => ({
+                  ...f,
+                  endereco: {
+                    ...(f.endereco || {}),
+                    cep: e.cep ? formatarCep(e.cep) : (f.endereco?.cep || ''),
+                    rua: e.logradouro || f.endereco?.rua || '',
+                    numero: e.numero || f.endereco?.numero || '',
+                    bairro: e.bairro || f.endereco?.bairro || '',
+                    cidade: e.cidade || f.endereco?.cidade || '',
+                    uf: e.uf || f.endereco?.uf || 'SC',
+                  },
+                }))
+              }}
+            />
           </div>
         </div>
+        <p className="text-[10px] text-white/40 mt-1">
+          💡 Sem número no imóvel? Peça a localização pelo WhatsApp e cole o link.
+        </p>
         <div className="grid grid-cols-3 gap-3 mt-3">
           <div className="col-span-2">
             <Input label="Rua" value={form.endereco?.rua || ''} onChange={(v) => setEnd('rua', v)} />

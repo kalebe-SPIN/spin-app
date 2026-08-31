@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { atualizarProjetoAction } from '@/app/projetos/[id]/editar/actions'
 import { criarProjetoAction } from '@/app/projetos/actions'
 import { SeletorCliente } from '@/components/SeletorCliente'
+import { ColarLinkMapaBotao } from '@/components/ColarLinkMapaBotao'
 import {
   maskCpfCnpj,
   maskTelefone,
@@ -493,16 +494,31 @@ export function NovoProjetoForm({
           </p>
 
           <div className="space-y-2 p-3 bg-noite/40 border border-white/5 rounded">
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <input type="text" placeholder="CEP" value={enderecoInst.cep}
                 onChange={(e) => setEnderecoInst((s) => ({ ...s, cep: formatarCep(e.target.value) }))}
                 onBlur={buscarCepInstalacao}
                 className="w-32 px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
               <button type="button" onClick={buscarCepInstalacao}
-                className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10">
+                className="flex-1 min-w-[120px] px-3 py-2 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10">
                 🔍 Buscar CEP
               </button>
+              <ColarLinkMapaBotao
+                className="px-3 py-2 rounded text-xs font-bold bg-verde/15 border border-verde/40 text-verde hover:bg-verde/25 whitespace-nowrap"
+                onResolvido={(e) => setEnderecoInst((s) => ({
+                  ...s,
+                  cep: e.cep ? formatarCep(e.cep) : s.cep,
+                  rua: e.logradouro || s.rua,
+                  numero: e.numero || s.numero,
+                  bairro: e.bairro || s.bairro,
+                  cidade: e.cidade || s.cidade,
+                  uf: e.uf || s.uf,
+                }))}
+              />
             </div>
+            <p className="text-[10px] text-white/40">
+              💡 Cliente sem número? Peça a localização por WhatsApp e cole o link.
+            </p>
             <div className="grid grid-cols-3 gap-2">
               <input type="text" placeholder="Rua" value={enderecoInst.rua}
                 onChange={(e) => setEnderecoInst((s) => ({ ...s, rua: e.target.value }))}
