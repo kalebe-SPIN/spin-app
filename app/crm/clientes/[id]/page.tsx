@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { ClienteForm } from '@/components/ClienteForm'
 import { TimelineInteracoes } from '@/components/TimelineInteracoes'
+import { FichaClienteCard } from '@/components/FichaClienteCard'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -56,9 +57,18 @@ export default async function ClienteDetalhePage({ params }: { params: { id: str
   // Projetos vinculados: FK cliente_id (preferido) OU match por razão social (compat)
   const { data: projetosPorFk } = await supabase
     .from('projetos')
-    .select('id, codigo, status, tipo_projeto, created_at')
+    .select('id, codigo, status, tipo_projeto, created_at, uc_geradora, conta_contrato, beneficiarias')
     .eq('cliente_id', cliente.id)
     .order('created_at', { ascending: false })
+
+  // Enriquecimento da ficha: pega UC/beneficiárias/conta da proposta mais recente
+  const propostaRecente = projetosPorFk?.[0] as any
+  const beneficiariasDoCliente = (cliente as any).beneficiarias?.length > 0
+    ? (cliente as any).beneficiarias
+    : (propostaRecente?.beneficiarias || [])
+  const beneficiariasFicha = (beneficiariasDoCliente || []).map((b: any) => ({
+    uc: String(b?.uc || ''), titular: b?.titular || null,
+  })).filter((b: any) => b.uc)
 
   const { data: projetosPorNome } = await supabase
     .from('projetos')

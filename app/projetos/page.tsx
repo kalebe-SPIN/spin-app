@@ -26,17 +26,37 @@ export default async function ProjetosPage() {
   if (modo === 'vendedor_servicos') redirect('/crm/servicos')
   if (modo === 'profissional_campo') redirect('/agenda')
 
-  const { data: projetos } = await supabase
+  // Query tolerante: tenta filtrar excluída_em (migration 095); se a
+  // coluna não existir ainda, cai pra query sem filtro. Assim a listagem
+  // continua funcionando mesmo antes da migration rodar.
+  const primeira = await supabase
     .from('projetos')
     .select(`
       id, codigo, status, tipo_projeto,
       cliente_id, cliente_razao_social, cliente_cpf_cnpj,
       uc_geradora, data_inicio,
       kit_selecionado,
-      created_at, updated_at, status_atualizado_em
+      created_at, updated_at, status_atualizado_em,
+      excluida_em
     `)
     .is('excluida_em', null)
     .order('created_at', { ascending: false })
+
+  let projetos: any[] | null = primeira.data as any[] | null
+  if (primeira.error) {
+    console.warn('[projetos/page] filtro excluida_em falhou, fallback sem filtro:', primeira.error.message)
+    const segunda = await supabase
+      .from('projetos')
+      .select(`
+        id, codigo, status, tipo_projeto,
+        cliente_id, cliente_razao_social, cliente_cpf_cnpj,
+        uc_geradora, data_inicio,
+        kit_selecionado,
+        created_at, updated_at, status_atualizado_em
+      `)
+      .order('created_at', { ascending: false })
+    projetos = segunda.data
+  }
 
   const grupos = new Map<string, { cliente_id: string | null; nome: string; projetos: any[] }>()
   for (const p of projetos || []) {
