@@ -214,16 +214,18 @@ export async function salvarKitAction(
   const ligacaoCliente = padraoEfetivo?.tipo_ligacao || 'monofasico'
   const inversoresParaProtecao = kit.inversores && kit.inversores.length > 0
     ? kit.inversores.map(x => ({
-        modelo: x.modelo, potencia_kw: x.potencia_kw, fases: x.fases, qtd: x.qtd,
+        id: x.id, modelo: x.modelo, potencia_kw: x.potencia_kw, fases: x.fases, qtd: x.qtd,
       }))
     : kit.modo_ampliacao
       ? [{
+          id: undefined,
           modelo: `Ampliação ${kit.potencia_cc_kwp.toFixed(2)}kWp`,
           potencia_kw: kit.potencia_cc_kwp,
           fases: ligacaoCliente as FaseInvKit,
           qtd: 1,
         }]
       : [{
+          id: kit.inversor.id,
           modelo: kit.inversor.modelo, potencia_kw: kit.inversor.potencia_kw,
           fases: undefined, qtd: kit.qtd_inversores,
         }]
@@ -322,8 +324,12 @@ type EntradaComplementosCC = {
   tipo_telhado: string | null
   distancia_string_qgbt_m: number
   /** Inversores do kit — dimensiona disjuntor CA por modelo. Vazio em
-   *  modo ampliação (cliente já tem QGBT com proteção pro inversor). */
+   *  modo ampliação (cliente já tem QGBT com proteção pro inversor).
+   *  Se `id` presente, o server lê specs.disjuntor_equivalente do
+   *  cadastro pra usar a referência do projetista antes de recorrer
+   *  ao cálculo por corrente. */
   inversores: Array<{
+    id?: string
     modelo: string
     potencia_kw: number
     fases?: FaseInvKit
@@ -530,23 +536,62 @@ async function precificarComplementosCC(
     avisos.push(`Conector MC4 (${qtdMc4} par) — ${mc4.motivo}`)
   }
 
-  // 4. Disjuntor CA — 1 disjuntor POR MODELO de inversor (agrupa qtd),
-  //    dimensionado pela corrente do inversor + polos = fases.
-  //    Ampliação passa 1 inversor virtual com a potência CC ampliada.
-  const grupos = new Map<string, { in_a: number; polos: number; qtd: number; modeloInv: string }>()
+  // 4. Disjuntor CA — 1 disjuntor POR MODELO de inversor (agrupa qtd).
+  //    Kalebe 2026-08-29: PRIMEIRO tenta usar a referência que o
+  //    projetista cadastrou em specs.disjuntor_equivalente do inversor
+  //    (foi definida em função da potência dele). Só cai no cálculo por
+  //    corrente se o campo estiver vazio.
+  //    Ampliação passa 1 inversor virtual sem id.
+
+  // Busca specs dos inversores em batch
+  const idsInv = entrada.inversores.map(i => i.id).filter(Boolean) as string[]
+  const specsPorId: Record<string, any> = {}
+  if (idsInv.length > 0) {
+    const { data: prodsInv } = await supabase
+      .from('produtos').select('id, specs').in('id', idsInv)
+    for (const p of (prodsInv || [])) {
+      specsPorId[p.id] = p.specs || {}
+    }
+  }
+
+  type GrupoDisj = {
+    ref?: string          // 'MDWP-C50-2' — modelo cadastrado pelo projetista
+    in_a: number
+    polos: number
+    qtd: number
+    modeloInv: string
+  }
+  const grupos = new Map<string, GrupoDisj>()
   for (const inv of entrada.inversores) {
     const fases: FaseInvKit = inv.fases || inferirFasesDoModelo(inv.modelo) || (entrada.tipo_ligacao_cliente as FaseInvKit)
     const { in_a, polos } = calcularInDisjuntor(inv.potencia_kw, fases || 'monofasico')
-    const chave = `${in_a}A-${polos}P`
+    const refProjetista = inv.id ? String(specsPorId[inv.id]?.disjuntor_equivalente || '').trim() : ''
+    const chave = refProjetista ? `ref:${refProjetista.toLowerCase()}` : `calc:${in_a}A-${polos}P`
     const existente = grupos.get(chave)
     if (existente) {
       existente.qtd += inv.qtd
     } else {
-      grupos.set(chave, { in_a, polos, qtd: inv.qtd, modeloInv: inv.modelo })
+      grupos.set(chave, {
+        ref: refProjetista || undefined,
+        in_a, polos, qtd: inv.qtd, modeloInv: inv.modelo,
+      })
     }
   }
   for (const [, g] of grupos) {
-    const disj = await buscarDisjuntorCompativel(supabase, g.in_a, g.polos, hojeIso)
+    let disj: { ok: true; modelo: string; preco: number } | { ok: false; motivo: string } | null = null
+
+    // Tenta primeiro a referência do projetista
+    if (g.ref) {
+      const porRef = await buscarProdutoPorRef(supabase, g.ref, hojeIso)
+      if (porRef.ok) {
+        disj = { ...porRef, modelo: `${porRef.modelo} · ref. projetista` }
+      }
+    }
+    // Se não achou (ou não tem ref), cai no dimensionamento por corrente
+    if (!disj || !disj.ok) {
+      disj = await buscarDisjuntorCompativel(supabase, g.in_a, g.polos, hojeIso)
+    }
+
     if (disj.ok) {
       itens.push({
         categoria: 'disjuntor', modelo: disj.modelo,
@@ -554,23 +599,44 @@ async function precificarComplementosCC(
         subtotal: g.qtd * disj.preco,
       })
     } else {
-      avisos.push(`Disjuntor ${g.in_a}A ${g.polos}P (${g.modeloInv}, ${g.qtd} un) — ${disj.motivo}`)
+      const rotulo = g.ref ? `Disjuntor ${g.ref} (ref. projetista)` : `Disjuntor ${g.in_a}A ${g.polos}P`
+      avisos.push(`${rotulo} (${g.modeloInv}, ${g.qtd} un) — ${disj.motivo}`)
     }
   }
 
-  // 5. DPS CA — 1 por fase + 1 no neutro, classe II 20kA. Dimensionado
-  //    pelo tipo de ligação do QGBT do cliente (não pelo inversor).
+  // 5. DPS CA — 1 por fase + 1 no neutro, classe II 20kA.
+  //    Kalebe 2026-08-29: se o projetista salvou specs.dps_equivalente
+  //    no inversor (referência baseada na potência dele), usa esse.
+  //    Senão dimensiona pelo tipo de ligação do QGBT do cliente.
   if (entrada.inversores.length > 0) {
     const numFasesQgbt = fasesDoTipoLigacao(entrada.tipo_ligacao_cliente)
     const qtdDps = numFasesQgbt + 1
-    // DPS: prefere modelo com 'dps' no nome; se não achar (modelos WEG
-    // costumam ser MPW/SPW/DPW), cai pra qualquer produto ativo em
-    // categoria='dps'. Kalebe 2026-08-29: cota pelo MAIOR preço da
-    // categoria — margem de segurança.
-    const dps = await buscarProdutoComPreco({
-      categorias: ['dps', 'protecao'],
-      pegarMaiorPreco: true,
-    })
+
+    // Coleta refs de DPS únicas dos inversores (normalmente 1)
+    const refsDps = Array.from(new Set(
+      entrada.inversores
+        .map(i => i.id ? String(specsPorId[i.id]?.dps_equivalente || '').trim() : '')
+        .filter(Boolean),
+    ))
+
+    let dps: { ok: true; modelo: string; preco: number } | { ok: false; motivo: string } | null = null
+    if (refsDps.length > 0) {
+      for (const ref of refsDps) {
+        const porRef = await buscarProdutoPorRef(supabase, ref, hojeIso)
+        if (porRef.ok) {
+          dps = { ...porRef, modelo: `${porRef.modelo} · ref. projetista` }
+          break
+        }
+      }
+    }
+    if (!dps || !dps.ok) {
+      // Fallback: qualquer DPS ativo, cota pelo maior preço
+      dps = await buscarProdutoComPreco({
+        categorias: ['dps', 'protecao'],
+        pegarMaiorPreco: true,
+      })
+    }
+
     if (dps.ok) {
       itens.push({
         categoria: 'dps', modelo: dps.modelo,
@@ -584,6 +650,56 @@ async function precificarComplementosCC(
 
   const total = itens.reduce((s, x) => s + x.subtotal, 0)
   return { total, itens, avisos }
+}
+
+// ─── Busca produto no catálogo pela referência do projetista ───────────
+// Dado 'MDWP-C50-2' (modelo/código que o projetista salvou na spec),
+// procura no catálogo por modelo OU codigo_weg que contenha esse texto
+// (case-insensitive). Devolve preço vigente > vencido; ativo > inativo.
+
+async function buscarProdutoPorRef(
+  supabase: any,
+  ref: string,
+  hojeIso: string,
+): Promise<{ ok: true; modelo: string; preco: number } | { ok: false; motivo: string }> {
+  const termo = ref.trim()
+  if (!termo) return { ok: false, motivo: 'referência vazia' }
+
+  // Busca por modelo ou codigo_weg contendo o termo (ilike). Ativos primeiro.
+  const { data: prods } = await supabase
+    .from('produtos')
+    .select('id, modelo, codigo_weg, ativo')
+    .or(`modelo.ilike.%${termo}%,codigo_weg.ilike.%${termo}%`)
+    .order('ativo', { ascending: false })
+    .limit(20)
+  const lista = (prods || []) as any[]
+  if (lista.length === 0) return { ok: false, motivo: `referência '${termo}' não achada no /admin/catalogo` }
+
+  for (const p of lista) {
+    const suf = p.ativo === false ? ' (inativo)' : ''
+    const { data: precosV } = await supabase
+      .from('precos_produtos')
+      .select('preco_venda, vigente_de, vigente_ate')
+      .eq('produto_id', p.id)
+      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+      .order('vigente_de', { ascending: false })
+      .limit(1)
+    const preco = Number((precosV || [])[0]?.preco_venda) || 0
+    if (preco > 0) return { ok: true, modelo: `${p.modelo}${suf}`, preco }
+  }
+  // Fallback: qualquer preço, mesmo vencido
+  for (const p of lista) {
+    const suf = p.ativo === false ? ' (inativo)' : ''
+    const { data: precosV } = await supabase
+      .from('precos_produtos')
+      .select('preco_venda, vigente_de, vigente_ate')
+      .eq('produto_id', p.id)
+      .order('vigente_de', { ascending: false })
+      .limit(1)
+    const preco = Number((precosV || [])[0]?.preco_venda) || 0
+    if (preco > 0) return { ok: true, modelo: `${p.modelo}${suf} · ⚠ preço vencido`, preco }
+  }
+  return { ok: false, motivo: `referência '${termo}' achada (${lista.length}) mas sem preço em precos_produtos` }
 }
 
 // ─── Helpers de dimensionamento ─────────────────────────────────────────
