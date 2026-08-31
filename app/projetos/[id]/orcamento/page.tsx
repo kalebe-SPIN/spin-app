@@ -15,6 +15,10 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const { data: perfil } = await supabase
+    .from('profiles').select('role').eq('id', user.id).maybeSingle()
+  const ehAdmin = perfil?.role === 'admin'
+
   const { data: projeto, error } = await supabase
     .from('projetos')
     .select('*')
@@ -192,6 +196,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
           proposta={proposta as any}
           configEmpresa={configEmpresa}
           listaCa={listaCa as any}
+          ehAdmin={ehAdmin}
         />
       </div>
     </main>

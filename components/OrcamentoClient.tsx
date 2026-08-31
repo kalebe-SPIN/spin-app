@@ -13,11 +13,13 @@ type Props = {
   proposta: PropostaCalculada
   configEmpresa: any
   listaCa: any[]
+  ehAdmin?: boolean
 }
 
 const BUCKET_PROPOSTAS = 'propostas-pdf'
+const FATOR_WEG = 0.4182
 
-export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa }: Props) {
+export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa, ehAdmin = false }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [gerando, setGerando] = useState(false)
@@ -126,46 +128,15 @@ export function OrcamentoClient({ projeto, proposta, configEmpresa, listaCa }: P
         </div>
       </section>
 
-      {/* Detalhamento */}
-      <section className="bg-white/[0.03] border border-white/10 rounded-xl p-6">
-        <details className="text-sm">
-          <summary className="cursor-pointer text-xs font-bold uppercase text-white/50 tracking-wider">
-            🔧 Ver composição do preço (detalhamento)
-          </summary>
-          <div className="mt-4 space-y-2 text-xs text-white/70">
-            <Linha label="Kit WEG bruto (placa + inversor + cabo + estrutura + MC4 + disjuntor + DPS)" valor={fmt(proposta.subtotal_kit_weg_bruto)} />
-            {projeto.lista_complementos_cc?.itens?.length > 0 && (
-              <div className="pl-3 border-l border-white/10 ml-1 space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-white/40">Detalhamento dos complementos WEG (preço tabela, antes do fator)</div>
-                {projeto.lista_complementos_cc.itens.map((it: any, i: number) => (
-                  <div key={i} className="flex justify-between text-[11px] text-white/50">
-                    <span>· {it.modelo} <span className="text-white/30">({it.qtd} {it.unidade} × R$ {fmt(it.preco_unitario)})</span></span>
-                    <span>R$ {fmt(it.subtotal)}</span>
-                  </div>
-                ))}
-                {projeto.lista_complementos_cc.avisos?.length > 0 && (
-                  <div className="text-[10px] text-coral/80 pt-1">
-                    ⚠ {projeto.lista_complementos_cc.avisos.join(' · ')}
-                  </div>
-                )}
-              </div>
-            )}
-            <Linha label="× Fator WEG 0,4182" valor={fmt(proposta.kit_weg_com_fator)} destaque />
-            <Linha label="Subtotal Lista CA (materiais)" valor={fmt(proposta.subtotal_lista_ca)} />
-            <Linha label="Frete regional" valor={fmt(proposta.frete)} />
-            <Linha label="Projeto + ART" valor={fmt(proposta.projeto_art)} />
-            <Linha label="Instalação (mão de obra)" valor={fmt(proposta.instalacao)} />
-            <Linha label="Base impostável (tudo menos kit WEG)" valor={fmt(proposta.base_impostavel)} destaque />
-            <Linha label={`Margem (${proposta.memoria_calculo.margem_pct}%)`} valor={fmt(proposta.margem)} />
-            <Linha label={`Comissão vendedor (${proposta.memoria_calculo.comissao_pct}%)`} valor={fmt(proposta.comissao_vendedor)} />
-            <Linha label={`Impostos Simples (${proposta.memoria_calculo.impostos_pct}%)`} valor={fmt(proposta.impostos_simples)} />
-            <div className="pt-2 border-t border-white/10 mt-2">
-              <Linha label="PV FINAL" valor={fmt(proposta.pv_total)} destaque />
-              <Linha label="Desconto máx. negociação (mantém margem mínima)" valor={fmt(proposta.desconto_max_negociacao)} />
-            </div>
-          </div>
-        </details>
-      </section>
+      {/* Composição de custos + precificação — SÓ ADMIN */}
+      {ehAdmin && (
+        <ComposicaoCustosAdmin
+          projeto={projeto}
+          proposta={proposta}
+          listaCa={listaCa}
+          fmt={fmt}
+        />
+      )}
 
       {/* Ações principais */}
       <section className="bg-verde/10 border border-verde/30 rounded-xl p-6">
@@ -238,4 +209,200 @@ function Linha({ label, valor, destaque }: { label: string; valor: string; desta
       <span className={destaque ? 'text-sol font-bold' : 'text-white/80'}>R$ {valor}</span>
     </div>
   )
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Composição de custos + precificação — ADMIN ONLY
+// Kalebe 2026-08-29: 'quero cada item descrito um a um com o preço WEG e
+// ao lado o preço com o fator e a quantidade de cada item da proposta.
+// A Lista CA também abaixo. E o restante da precificação. Só acessível
+// ao admin.'
+// ═══════════════════════════════════════════════════════════════════════
+
+function ComposicaoCustosAdmin({
+  projeto, proposta, listaCa, fmt,
+}: {
+  projeto: any
+  proposta: PropostaCalculada
+  listaCa: any[]
+  fmt: (v: number) => string
+}) {
+  const kit = projeto.kit_selecionado || {}
+  const complementos = projeto.lista_complementos_cc?.itens || []
+  const avisos = projeto.lista_complementos_cc?.avisos || []
+
+  // Monta linhas do kit WEG: placa + inversor(es) + complementos
+  type LinhaWeg = { descricao: string; qtd: number; unidade: string; precoUnit: number; subtotal: number; comFator: number }
+  const linhasWeg: LinhaWeg[] = []
+
+  // Placa
+  if (kit.placa) {
+    const sub = (kit.placa.preco_venda || 0) * (kit.qtd_placas || 0)
+    linhasWeg.push({
+      descricao: `Placa ${kit.placa.modelo}${kit.placa.potencia_wp ? ` (${kit.placa.potencia_wp}Wp)` : ''}`,
+      qtd: kit.qtd_placas || 0,
+      unidade: 'un',
+      precoUnit: kit.placa.preco_venda || 0,
+      subtotal: sub,
+      comFator: sub * FATOR_WEG,
+    })
+  }
+
+  // Inversor(es) — pode ser array novo ou objeto único legado
+  const invs: any[] = kit.inversores && kit.inversores.length > 0
+    ? kit.inversores
+    : (kit.inversor && !kit.modo_ampliacao ? [{ ...kit.inversor, qtd: kit.qtd_inversores || 1 }] : [])
+  for (const inv of invs) {
+    if (!inv?.modelo || inv.modelo === 'AMPLIAÇÃO — sem inversor') continue
+    const sub = (inv.preco_venda || 0) * (inv.qtd || 0)
+    linhasWeg.push({
+      descricao: `Inversor ${inv.modelo}${inv.potencia_kw ? ` (${inv.potencia_kw}kW)` : ''}${inv.fases ? ` · ${inv.fases}` : ''}`,
+      qtd: inv.qtd || 0,
+      unidade: 'un',
+      precoUnit: inv.preco_venda || 0,
+      subtotal: sub,
+      comFator: sub * FATOR_WEG,
+    })
+  }
+
+  // Complementos (cabo, estrutura, MC4, disjuntor, DPS)
+  for (const c of complementos) {
+    linhasWeg.push({
+      descricao: `${rotuloCategoria(c.categoria)} ${c.modelo}`,
+      qtd: c.qtd || 0,
+      unidade: c.unidade || 'un',
+      precoUnit: c.preco_unitario || 0,
+      subtotal: c.subtotal || 0,
+      comFator: (c.subtotal || 0) * FATOR_WEG,
+    })
+  }
+
+  const totalWegBruto = linhasWeg.reduce((s, l) => s + l.subtotal, 0)
+  const totalWegComFator = linhasWeg.reduce((s, l) => s + l.comFator, 0)
+  const totalListaCa = (listaCa || []).reduce((s: number, i: any) => s + (i.preco_unitario || 0) * (i.qtd || 0), 0)
+
+  return (
+    <section className="bg-white/[0.03] border border-sol/30 rounded-xl p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-sol/10 text-sol">Admin</span>
+        <h2 className="text-lg font-bold text-white">Composição de custos e precificação</h2>
+      </div>
+      <p className="text-xs text-white/50 mb-6">
+        Detalhamento item-a-item para revisão gerencial. Não vai para o cliente.
+      </p>
+
+      {/* Bloco 1 — Kit WEG */}
+      <div className="mb-6">
+        <h3 className="text-xs uppercase tracking-wider font-bold text-white/60 mb-2">1. Kit WEG (revenda × fator 0,4182)</h3>
+        <div className="overflow-x-auto -mx-2 sm:mx-0">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-white/40 uppercase tracking-wider text-[10px] border-b border-white/10">
+                <th className="text-left py-2 px-2 font-normal">Item</th>
+                <th className="text-right py-2 px-2 font-normal">Qtd</th>
+                <th className="text-right py-2 px-2 font-normal">R$ WEG unit.</th>
+                <th className="text-right py-2 px-2 font-normal">Subtotal WEG</th>
+                <th className="text-right py-2 px-2 font-normal text-sol">× Fator</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {linhasWeg.map((l, i) => (
+                <tr key={i} className="text-white/70">
+                  <td className="py-1.5 px-2">{l.descricao}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">{l.qtd} {l.unidade}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(l.precoUnit)}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(l.subtotal)}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap text-sol">R$ {fmt(l.comFator)}</td>
+                </tr>
+              ))}
+              <tr className="text-white font-bold border-t border-white/20">
+                <td className="py-2 px-2" colSpan={3}>Total Kit WEG</td>
+                <td className="py-2 px-2 text-right whitespace-nowrap">R$ {fmt(totalWegBruto)}</td>
+                <td className="py-2 px-2 text-right whitespace-nowrap text-sol">R$ {fmt(totalWegComFator)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {avisos.length > 0 && (
+          <div className="mt-2 text-[11px] text-coral/80">
+            ⚠ {avisos.join(' · ')}
+          </div>
+        )}
+      </div>
+
+      {/* Bloco 2 — Lista CA */}
+      <div className="mb-6">
+        <h3 className="text-xs uppercase tracking-wider font-bold text-white/60 mb-2">
+          2. Lista CA (materiais complementares tributáveis)
+        </h3>
+        <div className="overflow-x-auto -mx-2 sm:mx-0">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-white/40 uppercase tracking-wider text-[10px] border-b border-white/10">
+                <th className="text-left py-2 px-2 font-normal">Item</th>
+                <th className="text-right py-2 px-2 font-normal">Qtd</th>
+                <th className="text-right py-2 px-2 font-normal">R$ unit.</th>
+                <th className="text-right py-2 px-2 font-normal">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {(listaCa || []).map((it: any, i: number) => (
+                <tr key={i} className="text-white/70">
+                  <td className="py-1.5 px-2">{it.descricao}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">{it.qtd} {it.unidade || 'un'}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(it.preco_unitario || 0)}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt((it.preco_unitario || 0) * (it.qtd || 0))}</td>
+                </tr>
+              ))}
+              <tr className="text-white font-bold border-t border-white/20">
+                <td className="py-2 px-2" colSpan={3}>Total Lista CA</td>
+                <td className="py-2 px-2 text-right whitespace-nowrap">R$ {fmt(totalListaCa)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Bloco 3 — Serviços & logística */}
+      <div className="mb-6">
+        <h3 className="text-xs uppercase tracking-wider font-bold text-white/60 mb-2">3. Serviços e logística (também tributáveis)</h3>
+        <div className="space-y-1 text-xs text-white/70">
+          <Linha label="Frete regional" valor={fmt(proposta.frete)} />
+          <Linha label="Projeto + ART" valor={fmt(proposta.projeto_art)} />
+          <Linha label="Instalação (mão de obra)" valor={fmt(proposta.instalacao)} />
+          <div className="pt-2 mt-2 border-t border-white/10">
+            <Linha label="Base impostável (Lista CA + serviços)" valor={fmt(proposta.base_impostavel)} destaque />
+          </div>
+        </div>
+      </div>
+
+      {/* Bloco 4 — Acréscimos comerciais */}
+      <div className="mb-6">
+        <h3 className="text-xs uppercase tracking-wider font-bold text-white/60 mb-2">4. Acréscimos comerciais (método invertido)</h3>
+        <div className="space-y-1 text-xs text-white/70">
+          <Linha label={`Margem (${proposta.memoria_calculo.margem_pct}%)`} valor={fmt(proposta.margem)} />
+          <Linha label={`Comissão vendedor (${proposta.memoria_calculo.comissao_pct}%)`} valor={fmt(proposta.comissao_vendedor)} />
+          <Linha label={`Impostos Simples (${proposta.memoria_calculo.impostos_pct}% — só sobre base impostável)`} valor={fmt(proposta.impostos_simples)} />
+        </div>
+      </div>
+
+      {/* Fechamento */}
+      <div className="pt-4 border-t border-sol/30 space-y-1 text-sm">
+        <Linha label="Custo total antes de acréscimos" valor={fmt(proposta.kit_weg_com_fator + proposta.base_impostavel)} />
+        <Linha label="PV FINAL" valor={fmt(proposta.pv_total)} destaque />
+        <Linha label="Desconto máx. negociação (mantém margem mínima)" valor={fmt(proposta.desconto_max_negociacao)} />
+      </div>
+    </section>
+  )
+}
+
+function rotuloCategoria(cat: string): string {
+  switch (cat) {
+    case 'cabo_cc': return 'Cabo solar'
+    case 'estrutura': return 'Estrutura'
+    case 'conector': return 'Conector'
+    case 'disjuntor': return 'Disjuntor CA'
+    case 'dps': return 'DPS CA'
+    default: return cat
+  }
 }
