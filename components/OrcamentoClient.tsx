@@ -265,16 +265,37 @@ function ComposicaoCustosAdmin({
     })
   }
 
-  // Complementos (cabo, estrutura, MC4, disjuntor, DPS)
-  for (const c of complementos) {
-    linhasWeg.push({
-      descricao: `${rotuloCategoria(c.categoria)} ${c.modelo}`,
-      qtd: c.qtd || 0,
-      unidade: c.unidade || 'un',
-      precoUnit: c.preco_unitario || 0,
-      subtotal: c.subtotal || 0,
-      comFator: (c.subtotal || 0) * FATOR_WEG,
-    })
+  // Complementos WEG — sempre exibe uma linha POR CATEGORIA na ordem
+  // fixa (cabo, estrutura, conector, disjuntor, DPS), agrupando os
+  // itens quando o catálogo devolveu mais de um da mesma categoria.
+  // Se a categoria não tem item no catálogo, aparece uma linha
+  // '— não cadastrado' pra o admin não pensar que o sistema esqueceu.
+  const CATEGORIAS_WEG: Array<{ categoria: string; label: string }> = [
+    { categoria: 'cabo_cc', label: 'Cabo solar' },
+    { categoria: 'estrutura', label: 'Estrutura' },
+    { categoria: 'conector', label: 'Conector MC4' },
+    { categoria: 'disjuntor', label: 'Disjuntor CA' },
+    { categoria: 'dps', label: 'DPS CA' },
+  ]
+  for (const cat of CATEGORIAS_WEG) {
+    const doGrupo = complementos.filter((c: any) => c.categoria === cat.categoria)
+    if (doGrupo.length === 0) {
+      linhasWeg.push({
+        descricao: `${cat.label} — ⚠ não cadastrado no catálogo`,
+        qtd: 0, unidade: '—', precoUnit: 0, subtotal: 0, comFator: 0,
+      })
+      continue
+    }
+    for (const c of doGrupo) {
+      linhasWeg.push({
+        descricao: `${cat.label} · ${c.modelo}`,
+        qtd: c.qtd || 0,
+        unidade: c.unidade || 'un',
+        precoUnit: c.preco_unitario || 0,
+        subtotal: c.subtotal || 0,
+        comFator: (c.subtotal || 0) * FATOR_WEG,
+      })
+    }
   }
 
   const totalWegBruto = linhasWeg.reduce((s, l) => s + l.subtotal, 0)
@@ -396,13 +417,3 @@ function ComposicaoCustosAdmin({
   )
 }
 
-function rotuloCategoria(cat: string): string {
-  switch (cat) {
-    case 'cabo_cc': return 'Cabo solar'
-    case 'estrutura': return 'Estrutura'
-    case 'conector': return 'Conector'
-    case 'disjuntor': return 'Disjuntor CA'
-    case 'dps': return 'DPS CA'
-    default: return cat
-  }
-}
