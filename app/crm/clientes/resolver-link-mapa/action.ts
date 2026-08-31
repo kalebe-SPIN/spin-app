@@ -72,31 +72,36 @@ async function expandirShortlink(url: string): Promise<{ finalUrl: string; html?
   }
 }
 
-/** Extrai lat/lng do HTML do Google Maps (várias regex — o layout
- *  muda com frequência). Retorna null se não achou. */
+/** Extrai lat/lng do HTML do Google Maps.
+ *  Só usa !3d!4d — que só aparece no marker exato do place resolvido
+ *  (não em POIs adjacentes / centro do mapa default). Outros padrões
+ *  como 'latitude'/'APP_INITIALIZATION_STATE' pegam qualquer coord no
+ *  HTML e retornam falso positivo (bug reportado 2026-08-31: link BR
+ *  resolvia coord dos EUA por causa disso). */
 function extrairCoordDoHtml(html: string): { lat: number; lng: number } | null {
-  const padroes = [
-    /"latlng":\s*\{\s*"lat":\s*(-?\d+\.\d+),\s*"lng":\s*(-?\d+\.\d+)/,
-    /"latitude":\s*(-?\d+\.\d+),\s*"longitude":\s*(-?\d+\.\d+)/,
-    /APP_INITIALIZATION_STATE=.*?\[\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)/s,
-    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
-    /"@type":\s*"GeoCoordinates".*?"latitude":\s*"?(-?\d+\.\d+)"?.*?"longitude":\s*"?(-?\d+\.\d+)"?/s,
-    /center=(-?\d+\.\d+)(?:%2C|,)(-?\d+\.\d+)/,
-    /q=(-?\d+\.\d+),(-?\d+\.\d+)/,
-    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
-  ]
-  for (const rx of padroes) {
-    const m = html.match(rx)
-    if (m) {
-      const lat = Number(m[1])
-      const lng = Number(m[2])
-      // Sanidade: BR fica entre lat -34..5, lng -74..-34; mundo -90..90 / -180..180
-      if (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
-        return { lat, lng }
-      }
+  // !3d!4d é o formato ligado ao place_id específico. Se aparecer
+  // MÚLTIPLAS vezes com valores diferentes, pega a mais frequente
+  // (o marker principal costuma repetir várias vezes na página).
+  const rx = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/g
+  const contagem = new Map<string, { lat: number; lng: number; qtd: number }>()
+  let m: RegExpExecArray | null
+  while ((m = rx.exec(html)) !== null) {
+    const lat = Number(m[1])
+    const lng = Number(m[2])
+    if (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      const chave = `${lat.toFixed(5)},${lng.toFixed(5)}`
+      const atual = contagem.get(chave)
+      if (atual) atual.qtd++
+      else contagem.set(chave, { lat, lng, qtd: 1 })
     }
   }
-  return null
+  if (contagem.size === 0) return null
+  // Escolhe a coord que aparece mais vezes (marker principal)
+  let vencedor: { lat: number; lng: number; qtd: number } | null = null
+  for (const c of contagem.values()) {
+    if (!vencedor || c.qtd > vencedor.qtd) vencedor = c
+  }
+  return vencedor ? { lat: vencedor.lat, lng: vencedor.lng } : null
 }
 
 async function reverseGeocode(lat: number, lng: number): Promise<Partial<EnderecoResolvido>> {
