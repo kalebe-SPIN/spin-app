@@ -67,15 +67,31 @@ export default async function CatalogoAdminPage() {
       .limit(10))
 
   // Traz todos produtos (ativos + inativos) — cliente decide filtro.
-  // Limit alto pra cobrir todo o catálogo (~500 hoje) — o filtro é
-  // feito 100% no cliente, se o limit corta antes categorias inteiras
-  // somem do dropdown "de X" mesmo aparecendo nos cards de contagem.
-  const produtosSemDatasheet = await safeData(() =>
+  // Limit alto pra cobrir todo o catálogo (~500 hoje). Kalebe 2026-08-31:
+  // JOIN com precos_produtos pra que o modal de edição já venha com preço
+  // vigente, fabricante, descrição e códigos preenchidos.
+  const produtosRaw = await safeData(() =>
     supabase.from('produtos')
-      .select('id, codigo_weg, modelo, categoria, subcategoria, url_datasheet, url_imagem, ativo, specs')
+      .select(`
+        id, codigo_weg, codigo_interno_spin, modelo, fabricante,
+        categoria, subcategoria, descricao_curta, descricao_tecnica,
+        url_datasheet, url_imagem, ativo, disponivel_estoque, specs,
+        precos_produtos(preco_venda, vigente_de, vigente_ate)
+      `)
       .order('categoria')
       .order('modelo')
       .limit(2000))
+
+  // Achata: escolhe o preço vigente (vigente_ate null OU futuro).
+  const hojeIso = new Date().toISOString().slice(0, 10)
+  const produtosSemDatasheet = (produtosRaw as any[]).map((p) => {
+    const precos = Array.isArray(p.precos_produtos) ? p.precos_produtos : []
+    const vigentes = precos.filter((pr: any) => !pr.vigente_ate || pr.vigente_ate >= hojeIso)
+    // Pega o mais recente entre os vigentes
+    vigentes.sort((a: any, b: any) => (b.vigente_de || '').localeCompare(a.vigente_de || ''))
+    const preco = Number(vigentes[0]?.preco_venda) || 0
+    return { ...p, preco_venda: preco, precos_produtos: undefined }
+  })
 
   const migrationPendente = totalProdutos > 0 && produtosSemDatasheet.length === 0
 
