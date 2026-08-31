@@ -1124,6 +1124,7 @@ function ProdutoRow({
             specs: produto.specs,
             preco_venda_atual: (produto as any).preco_venda,
             url_imagem: (produto as any).url_imagem || null,
+            url_datasheet: (produto as any).url_datasheet || null,
           } as ProdutoParaEdicao}
           onFechar={() => setEditando(false)}
         />

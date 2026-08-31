@@ -75,21 +75,46 @@ export async function normalizarDescricaoCurtaAction() {
   return { sucesso: true, atualizados: atualizacoes.length }
 }
 
-/** Gera codigo_interno_spin = 'SPIN-' + codigo_weg pra quem não tem. */
+/** Gera codigo_interno_spin aleatório único ('SPIN-XXXXXX') pra quem não tem.
+ *  Kalebe 2026-08-31: 'código interno SPIN pode criar aleatório'.
+ *  6 caracteres alfanuméricos sem I/O/0/1 (evita ambiguidade visual). */
+function gerarCodigoSpin(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let s = ''
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)]
+  return `SPIN-${s}`
+}
+
 export async function normalizarCodigoInternoAction() {
   const g = await assertAdmin(); if (g.erro) return { erro: g.erro }
   const { data: prods, error } = await g.supabaseAdmin!
     .from('produtos')
-    .select('id, codigo_weg, codigo_interno_spin')
+    .select('id, codigo_interno_spin')
     .or('codigo_interno_spin.is.null,codigo_interno_spin.eq.')
     .limit(2000)
   if (error) return { erro: error.message }
-  const alvos = (prods || []).filter(p => p.codigo_weg)
+  const alvos = prods || []
   if (alvos.length === 0) return { sucesso: true, atualizados: 0 }
+
+  // Pra evitar colisão, checa códigos já existentes e reroteia se cair
+  // em um duplicado. 32^6 = 1 bilhão de combinações — colisão em 2mil
+  // é praticamente 0, mas o retry blindar.
+  const { data: existentes } = await g.supabaseAdmin!
+    .from('produtos')
+    .select('codigo_interno_spin')
+    .not('codigo_interno_spin', 'is', null)
+  const usados = new Set((existentes || []).map(x => x.codigo_interno_spin).filter(Boolean))
+
   for (const p of alvos) {
+    let novo = gerarCodigoSpin()
+    let tentativas = 0
+    while (usados.has(novo) && tentativas < 10) {
+      novo = gerarCodigoSpin(); tentativas++
+    }
+    usados.add(novo)
     await g.supabaseAdmin!
       .from('produtos')
-      .update({ codigo_interno_spin: `SPIN-${p.codigo_weg}` })
+      .update({ codigo_interno_spin: novo })
       .eq('id', p.id)
   }
   revalidatePath('/admin/catalogo/pente-fino')

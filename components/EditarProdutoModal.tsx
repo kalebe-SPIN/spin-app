@@ -22,6 +22,7 @@ export type ProdutoParaEdicao = {
   specs: Record<string, any> | null
   preco_venda_atual?: number | null
   url_imagem?: string | null
+  url_datasheet?: string | null
 }
 
 const CATEGORIAS: CategoriaProduto[] = [
@@ -57,7 +58,9 @@ export function EditarProdutoModal({
   const [disponivel, setDisponivel] = useState(produto.disponivel_estoque)
   const [precoVenda, setPrecoVenda] = useState<number>(produto.preco_venda_atual || 0)
   const [urlImagem, setUrlImagem] = useState<string>(produto.url_imagem || '')
+  const [urlDatasheet, setUrlDatasheet] = useState<string>(produto.url_datasheet || '')
   const [uploadando, setUploadando] = useState(false)
+  const [uploadandoPdf, setUploadandoPdf] = useState(false)
 
   const supabaseBrowser = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -80,6 +83,75 @@ export function EditarProdutoModal({
       setErro(`Falha no upload: ${e.message || e}`)
     } finally {
       setUploadando(false)
+    }
+  }
+
+  const [extraindoSpecs, setExtraindoSpecs] = useState(false)
+  const [avisoIa, setAvisoIa] = useState<string | null>(null)
+
+  async function uploadDatasheet(file: File) {
+    setUploadandoPdf(true); setErro(null); setAvisoIa(null)
+    try {
+      if (file.size > 20 * 1024 * 1024) throw new Error('PDF > 20MB')
+
+      // 1. Sobe o arquivo no storage
+      const path = `datasheets/${produto.id}-${Date.now()}.pdf`
+      const { error: upErr } = await supabaseBrowser.storage
+        .from('weg-catalogo')
+        .upload(path, file, { cacheControl: '3600', upsert: true, contentType: 'application/pdf' })
+      if (upErr) throw upErr
+      const { data } = supabaseBrowser.storage.from('weg-catalogo').getPublicUrl(path)
+      setUrlDatasheet(data.publicUrl)
+      setUploadandoPdf(false)
+
+      // 2. Kalebe 2026-08-31: pedir pra IA extrair specs do PDF e
+      //    pré-preencher a ficha. Não sobrescreve campos já preenchidos.
+      setExtraindoSpecs(true)
+      const fd = new FormData()
+      fd.append('arquivo', file)
+      fd.append('categoria', categoria)
+      const res = await fetch('/api/extrair-datasheet', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok || !json.sucesso) {
+        setAvisoIa(`IA não conseguiu extrair specs: ${json.erro || res.statusText}. Arquivo foi anexado mesmo assim.`)
+        return
+      }
+
+      const specs = (json.specs || {}) as any
+      const preencherStr = (atual: string, novo: any): string =>
+        (!atual || !atual.trim()) && novo != null && String(novo).trim() ? String(novo) : atual
+      const preencherNum = (atual: number, novo: any): number =>
+        (!atual || atual <= 0) && Number(novo) > 0 ? Number(novo) : atual
+
+      setFabricante((v: string) => preencherStr(v, json.fabricante))
+      setModelo((v: string) => preencherStr(v, json.modelo))
+      setDescCurta((v: string) => preencherStr(v, json.descricao_curta))
+      if (json.subcategoria) setSubcategoria((v: string) => v || json.subcategoria)
+      if (json.codigo_sugerido) setCodigoWeg((v: string) => v || json.codigo_sugerido)
+
+      // Specs por categoria — só preenche se veio da IA e o campo tá zerado
+      if (categoria === 'placa') {
+        setPotenciaWp((v: number) => preencherNum(v, specs.potencia_wp))
+        setAreaM2((v: number) => preencherNum(v, specs.area_m2))
+        setLarguraMm((v: number) => preencherNum(v, specs.largura_mm))
+        setTipoCelula((v: string) => preencherStr(v, specs.tipo_celula))
+      } else if (categoria === 'inversor') {
+        setPotenciaKw((v: number) => preencherNum(v, specs.potencia_kw))
+        setTensaoDesc((v: string) => preencherStr(v, specs.tensao_desc))
+        setDisjuntor((v: string) => preencherStr(v, specs.disjuntor_equivalente))
+        setEntradasMppt((v: number) => preencherNum(v, specs.entradas_mppt))
+      } else if (categoria === 'bateria') {
+        setCapacidadeKwh((v: number) => preencherNum(v, specs.capacidade_kwh))
+        setPotenciaKw((v: number) => preencherNum(v, specs.potencia_kw))
+        setTensaoDesc((v: string) => preencherStr(v, specs.tensao_desc))
+      }
+
+      setAvisoIa('✓ Specs extraídas do datasheet — revise antes de salvar')
+    } catch (e: any) {
+      setErro(`Falha: ${e.message || e}`)
+    } finally {
+      setUploadandoPdf(false)
+      setExtraindoSpecs(false)
     }
   }
 
@@ -123,6 +195,7 @@ export function EditarProdutoModal({
         capacidade_kwh: capacidadeKwh > 0 ? capacidadeKwh : undefined,
         preco_venda: precoVenda > 0 ? precoVenda : undefined,
         url_imagem: urlImagem || undefined,
+        url_datasheet: urlDatasheet || undefined,
       })
       if ('erro' in r) { setErro(r.erro); return }
       router.refresh()
@@ -142,32 +215,82 @@ export function EditarProdutoModal({
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Imagem do equipamento */}
-          <Sec titulo="Imagem do equipamento">
-            <div className="flex items-start gap-3">
-              <div className="w-24 h-24 shrink-0 bg-white/5 border border-white/15 rounded-lg overflow-hidden flex items-center justify-center">
-                {urlImagem ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={urlImagem} alt="Produto" className="w-full h-full object-contain" />
-                ) : (
-                  <span className="text-white/30 text-xs text-center px-2">sem imagem</span>
-                )}
+          {/* Anexos do produto — imagem + datasheet */}
+          <Sec titulo="Anexos do produto">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Imagem */}
+              <div className="p-3 bg-white/[0.02] border border-white/10 rounded-lg">
+                <p className="text-[11px] uppercase font-bold text-white/60 mb-2">📸 Imagem</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-20 h-20 shrink-0 bg-white/5 border border-white/15 rounded-lg overflow-hidden flex items-center justify-center">
+                    {urlImagem ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={urlImagem} alt="Produto" className="w-full h-full object-contain" />
+                    ) : (
+                      <span className="text-white/30 text-[10px] text-center px-1">sem imagem</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <label className="block">
+                      <input type="file" accept="image/png,image/jpeg,image/webp"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImagem(f) }}
+                        disabled={uploadando}
+                        className="text-[11px] text-white/70 file:mr-2 file:px-2 file:py-1 file:bg-sol/20 file:text-sol file:border-0 file:rounded file:text-[11px] file:font-bold" />
+                    </label>
+                    {uploadando && <p className="text-[11px] text-sol">⏳ Enviando…</p>}
+                    {urlImagem && (
+                      <div className="flex gap-2 items-center">
+                        <a href={urlImagem} target="_blank" rel="noreferrer" className="text-[10px] text-sol hover:underline">
+                          ver
+                        </a>
+                        <button type="button" onClick={() => setUrlImagem('')}
+                          className="text-[10px] text-coral hover:underline">
+                          ✕ remover
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex-1 space-y-2">
-                <label className="block">
-                  <span className="text-[11px] text-white/60 block mb-1">Upload de PNG/JPG</span>
-                  <input type="file" accept="image/png,image/jpeg,image/webp"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImagem(f) }}
-                    disabled={uploadando}
-                    className="text-xs text-white/70 file:mr-2 file:px-2 file:py-1 file:bg-sol/20 file:text-sol file:border-0 file:rounded file:text-xs file:font-bold" />
-                </label>
-                {uploadando && <p className="text-[11px] text-sol">⏳ Enviando…</p>}
-                {urlImagem && (
-                  <button type="button" onClick={() => setUrlImagem('')}
-                    className="text-[11px] text-coral hover:underline">
-                    ✕ Remover imagem
-                  </button>
-                )}
+
+              {/* Datasheet PDF */}
+              <div className="p-3 bg-white/[0.02] border border-white/10 rounded-lg">
+                <p className="text-[11px] uppercase font-bold text-white/60 mb-2">📄 Datasheet PDF</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-20 h-20 shrink-0 bg-white/5 border border-white/15 rounded-lg flex items-center justify-center">
+                    {urlDatasheet ? (
+                      <span className="text-3xl">📄</span>
+                    ) : (
+                      <span className="text-white/30 text-[10px] text-center px-1">sem PDF</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <label className="block">
+                      <input type="file" accept="application/pdf"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadDatasheet(f) }}
+                        disabled={uploadandoPdf}
+                        className="text-[11px] text-white/70 file:mr-2 file:px-2 file:py-1 file:bg-weg-azul/20 file:text-weg-azul file:border-0 file:rounded file:text-[11px] file:font-bold" />
+                    </label>
+                    {uploadandoPdf && <p className="text-[11px] text-sol">⏳ Enviando PDF…</p>}
+                    {extraindoSpecs && <p className="text-[11px] text-sol">🤖 IA lendo specs do datasheet…</p>}
+                    {avisoIa && (
+                      <p className={`text-[10px] ${avisoIa.startsWith('✓') ? 'text-verde' : 'text-coral'}`}>
+                        {avisoIa}
+                      </p>
+                    )}
+                    {urlDatasheet && (
+                      <div className="flex gap-2 items-center">
+                        <a href={urlDatasheet} target="_blank" rel="noreferrer" className="text-[10px] text-sol hover:underline">
+                          abrir
+                        </a>
+                        <button type="button" onClick={() => setUrlDatasheet('')}
+                          className="text-[10px] text-coral hover:underline">
+                          ✕ remover
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </Sec>

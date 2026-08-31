@@ -63,6 +63,7 @@ export type NovoProdutoInput = {
   ativo?: boolean
   disponivel_estoque?: boolean
   url_imagem?: string              // foto do produto (upload manual no admin)
+  url_datasheet?: string           // PDF do datasheet (upload manual no admin)
 }
 
 /**
@@ -305,6 +306,7 @@ export async function editarProdutoAction(
   if (patch.ativo !== undefined) update.ativo = patch.ativo
   if (patch.disponivel_estoque !== undefined) update.disponivel_estoque = patch.disponivel_estoque
   if (patch.url_imagem !== undefined) update.url_imagem = patch.url_imagem?.trim() || null
+  if (patch.url_datasheet !== undefined) update.url_datasheet = patch.url_datasheet?.trim() || null
 
   const { error } = await supabase.from('produtos').update(update).eq('id', produtoId)
   if (error) {
