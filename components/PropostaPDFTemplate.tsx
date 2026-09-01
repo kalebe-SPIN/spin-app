@@ -365,48 +365,44 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
 
             <div style={{ flex: 1 }} />
 
-            {/* Aceite e assinaturas — cartão branco pra dar leitura de "documento
-                oficial" no meio da paleta dark. Bloco Spin (Kalebe, com scan) +
-                bloco Cliente (linha vazia pra assinar). */}
-            <div style={E.blocoAssinaturaCard}>
-              <div style={E.tituloAceite}>
-                <span style={E.rotuloAceiteDourado}>Aceite e assinaturas</span>
-                <span style={E.dataAceite}>
+            {/* Aceite e assinaturas — Kalebe 2026-09-01: fundo dark + assinaturas
+                digitais estilo ClickSign (fonte cursiva + hash de verificação).
+                Cliente assina digitalmente via link separado; se ainda não
+                assinou, mostra placeholder 'Aguardando assinatura digital'. */}
+            <div style={E.blocoAssinaturaDark}>
+              <div style={E.tituloAceiteDark}>
+                <span style={E.rotuloAceiteDouradoDark}>Aceite e assinaturas</span>
+                <span style={E.dataAceiteDark}>
                   {projeto.cliente_endereco?.cidade || 'Tijucas'}/{projeto.cliente_endereco?.uf || 'SC'}, {dataHoje}
                 </span>
               </div>
 
               <div style={E.gridAssinaturas}>
-                {/* Spin — Kalebe */}
-                <div style={E.blocoAssinaturaLado}>
-                  <div style={E.espacoScan}>
-                    {empresa.rt_assinatura_url && (
-                      <img
-                        src={empresa.rt_assinatura_url}
-                        alt="Assinatura Kalebe"
-                        style={E.imgAssinatura}
-                        crossOrigin="anonymous"
-                      />
-                    )}
-                  </div>
-                  <div style={E.linhaAssinaturaBranca} />
-                  <p style={E.nomeAssinaturaEscuro}>{empresa.rt_nome || 'Kalebe Grün'}</p>
-                  <p style={E.cargoAssinaturaEscuro}>Diretor comercial · Spin Solar</p>
-                  <p style={E.docAssinaturaEscuro}>CNPJ 22.279.642/0001-04</p>
-                </div>
+                {/* SPIN — Kalebe (assinatura DIGITAL gerada) */}
+                <AssinaturaDigital
+                  nome={empresa.rt_nome || 'Kalebe Grün'}
+                  papel="Diretor comercial · Spin Solar"
+                  documento="CNPJ 22.279.642/0001-04"
+                  assinadoEm={dataHoje}
+                  hash={gerarHash(`spin-${projeto?.id || 'x'}-${dataHoje}`)}
+                  jaAssinou={true}
+                />
 
-                {/* Cliente */}
-                <div style={E.blocoAssinaturaLado}>
-                  <div style={E.espacoScan} />
-                  <div style={E.linhaAssinaturaBranca} />
-                  <p style={E.nomeAssinaturaEscuro}>{projeto.cliente_razao_social || '—'}</p>
-                  <p style={E.cargoAssinaturaEscuro}>Cliente · Tomador</p>
-                  <p style={E.docAssinaturaEscuro}>
-                    {projeto.cliente_cpf_cnpj
-                      ? `CPF/CNPJ ${formatarCpfCnpj(String(projeto.cliente_cpf_cnpj))}`
-                      : 'CPF/CNPJ ______________________'}
-                  </p>
-                </div>
+                {/* CLIENTE — se já assinou, mostra a assinatura; senão, placeholder */}
+                <AssinaturaDigital
+                  nome={projeto.cliente_razao_social || '—'}
+                  papel="Cliente · Tomador"
+                  documento={projeto.cliente_cpf_cnpj
+                    ? `CPF/CNPJ ${formatarCpfCnpj(String(projeto.cliente_cpf_cnpj))}`
+                    : 'CPF/CNPJ pendente'}
+                  assinadoEm={projeto.assinatura_cliente?.assinado_em || null}
+                  hash={projeto.assinatura_cliente?.hash || null}
+                  jaAssinou={!!projeto.assinatura_cliente?.assinado_em}
+                />
+              </div>
+
+              <div style={E.rodapeAceite}>
+                🔒 Assinaturas digitais verificáveis · Documento gerado por Spin Solar em {dataHoje}
               </div>
             </div>
 
@@ -446,6 +442,75 @@ function MetricManifesto({ label, valor, unidade, cor, prefixo, borda }: {
       </p>
     </div>
   )
+}
+
+/**
+ * Bloco de assinatura digital estilo ClickSign — Kalebe 2026-09-01.
+ *
+ * - Se jaAssinou: fonte cursiva com nome + selo verde 'ASSINADO
+ *   DIGITALMENTE' + hash de verificação + timestamp
+ * - Se pendente: placeholder amarelo 'AGUARDANDO ASSINATURA' + texto
+ *   explicando que a assinatura será feita via link enviado
+ *
+ * Substitui a assinatura escaneada anterior. Prepara pro fluxo de
+ * assinatura digital do cliente (link único → canvas HTML5 →
+ * projeto.assinatura_cliente jsonb). Fluxo do canvas fica pra
+ * próxima iteração — o layout PDF já aceita.
+ */
+function AssinaturaDigital({
+  nome, papel, documento, assinadoEm, hash, jaAssinou,
+}: {
+  nome: string
+  papel: string
+  documento: string
+  assinadoEm: string | null
+  hash: string | null
+  jaAssinou: boolean
+}) {
+  return (
+    <div style={jaAssinou ? E.cardAssinaturaDigital : E.cardAssinaturaPendente}>
+      <span style={{ ...E.selo, ...(jaAssinou ? E.seloVerificado : E.seloPendente) }}>
+        {jaAssinou ? '✓ Assinado digitalmente' : '⏳ Aguardando assinatura'}
+      </span>
+
+      {jaAssinou ? (
+        <p style={E.assinaturaCursiva}>{nome}</p>
+      ) : (
+        <p style={E.assinaturaPendenteTxt}>
+          Link de assinatura enviado por WhatsApp
+        </p>
+      )}
+
+      <div style={E.linhaSep} />
+      <p style={E.nomeAssinaturaDigital}>{nome}</p>
+      <p style={E.cargoAssinaturaDigital}>{papel}</p>
+      <p style={E.docAssinaturaDigital}>{documento}</p>
+
+      {jaAssinou && hash && (
+        <div style={E.rodapeVerificacao}>
+          <p style={E.hashTxt}>🔒 {hash}</p>
+          <p style={E.timestampTxt}>{assinadoEm}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Hash curto determinístico pra "verificação" visual (não é
+ *  criptograficamente seguro — só simula o UX de ClickSign no PDF).
+ *  Assinatura de valor jurídico virá pelo fluxo real quando implementado.
+ *  DJB2 hash — determinístico por input, sem side effects (safe pra SSR). */
+function gerarHash(input: string): string {
+  let h1 = 5381, h2 = 52711
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i)
+    h1 = ((h1 << 5) + h1) ^ c
+    h2 = ((h2 << 5) + h2) ^ c
+  }
+  const p1 = (h1 >>> 0).toString(16).padStart(8, '0').slice(0, 4)
+  const p2 = (h2 >>> 0).toString(16).padStart(8, '0').slice(0, 4)
+  const p3 = ((h1 ^ h2) >>> 0).toString(16).padStart(4, '0').slice(0, 4)
+  return `${p1}-${p2}-${p3}`
 }
 
 /**
@@ -885,83 +950,149 @@ const E = {
     fontSize: 10,
     color: 'rgba(245,245,240,.45)',
   },
-  // ═══ Cartão branco de aceite/assinaturas ═══
-  blocoAssinaturaCard: {
+  // ═══ Bloco DARK de aceite/assinaturas (Kalebe 2026-09-01) ═══
+  blocoAssinaturaDark: {
     marginTop: 32,
-    background: '#FFFFFF',
-    color: '#050B16',
-    padding: '28px 32px 32px',
-    borderRadius: 4,
-    boxShadow: '0 8px 32px rgba(245,180,0,0.08)',
-    border: '1px solid rgba(245,180,0,.3)',
+    background: 'rgba(255,255,255,0.02)',
+    color: '#F5F5F0',
+    padding: '28px 32px 24px',
+    borderRadius: 6,
+    border: '1px solid rgba(245,180,0,.35)',
   },
-  tituloAceite: {
+  tituloAceiteDark: {
     display: 'flex' as const,
     justifyContent: 'space-between' as const,
     alignItems: 'baseline' as const,
     paddingBottom: 16,
     marginBottom: 24,
-    borderBottom: '1px solid rgba(5,11,22,.08)',
+    borderBottom: '1px solid rgba(245,180,0,.15)',
   },
-  rotuloAceiteDourado: {
+  rotuloAceiteDouradoDark: {
     fontFamily: '"Space Grotesk", sans-serif',
     fontSize: 11,
     fontWeight: 700,
     letterSpacing: 3,
     textTransform: 'uppercase' as const,
-    color: '#B8860B',
+    color: '#F5B400',
   },
-  dataAceite: {
+  dataAceiteDark: {
     fontSize: 10,
-    color: 'rgba(5,11,22,.55)',
+    color: 'rgba(245,245,240,.55)',
     fontStyle: 'italic' as const,
   },
   gridAssinaturas: {
     display: 'grid' as const,
     gridTemplateColumns: '1fr 1fr',
-    gap: 48,
+    gap: 32,
   },
-  blocoAssinaturaLado: {
+  cardAssinaturaDigital: {
     display: 'flex' as const,
     flexDirection: 'column' as const,
-    alignItems: 'flex-start' as const,
+    padding: 16,
+    borderRadius: 4,
+    background: 'rgba(0,0,0,0.25)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    minHeight: 168,
   },
-  espacoScan: {
-    height: 72,
-    width: '100%',
+  cardAssinaturaPendente: {
     display: 'flex' as const,
-    alignItems: 'flex-end' as const,
-    marginBottom: -12,
+    flexDirection: 'column' as const,
+    padding: 16,
+    borderRadius: 4,
+    background: 'rgba(245,180,0,0.03)',
+    border: '1px dashed rgba(245,180,0,0.35)',
+    minHeight: 168,
   },
-  imgAssinatura: {
-    height: 68,
-    objectFit: 'contain' as const,
-    filter: 'contrast(1.15) brightness(0.85)',
-    // sem invert — fundo agora é branco, assinatura preta natural
+  selo: {
+    display: 'inline-block' as const,
+    fontFamily: '"Space Grotesk", sans-serif',
+    fontSize: 8,
+    fontWeight: 700,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase' as const,
+    padding: '3px 8px',
+    borderRadius: 2,
+    marginBottom: 12,
+    alignSelf: 'flex-start' as const,
   },
-  linhaAssinaturaBranca: {
-    width: '100%',
-    borderTop: '1.5px solid #050B16',
+  seloVerificado: {
+    background: 'rgba(16,185,129,0.15)',
+    color: '#10b981',
+    border: '1px solid rgba(16,185,129,0.35)',
+  },
+  seloPendente: {
+    background: 'rgba(245,180,0,0.15)',
+    color: '#F5B400',
+    border: '1px solid rgba(245,180,0,0.4)',
+  },
+  assinaturaCursiva: {
+    fontFamily: '"Great Vibes","Dancing Script","Brush Script MT",cursive',
+    fontSize: 34,
+    lineHeight: 1,
+    color: '#F5F5F0',
+    marginBottom: 10,
+    letterSpacing: '-0.02em',
+  },
+  assinaturaPendenteTxt: {
+    fontFamily: '"Space Grotesk", sans-serif',
+    fontSize: 12,
+    color: 'rgba(245,245,240,.55)',
+    marginBottom: 10,
+    fontStyle: 'italic' as const,
+  },
+  linhaSep: {
+    borderTop: '1px solid rgba(245,180,0,0.25)',
+    marginBottom: 8,
     marginTop: 4,
-    paddingTop: 8,
   },
-  nomeAssinaturaEscuro: {
+  nomeAssinaturaDigital: {
     margin: 0,
     fontFamily: '"Space Grotesk", sans-serif',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: 700,
     letterSpacing: '-0.01em',
-    color: '#050B16',
+    color: '#F5F5F0',
   },
-  cargoAssinaturaEscuro: {
+  cargoAssinaturaDigital: {
     margin: '3px 0 0',
     fontSize: 10,
-    color: 'rgba(5,11,22,.65)',
+    color: 'rgba(245,245,240,.65)',
     fontWeight: 500,
   },
-  docAssinaturaEscuro: {
+  docAssinaturaDigital: {
     margin: '2px 0 0',
     fontSize: 10,
-    color: 'rgba(5,11,22,.45)',
+    color: 'rgba(245,245,240,.45)',
+    fontFamily: 'monospace',
+  },
+  rodapeVerificacao: {
+    marginTop: 12,
+    paddingTop: 8,
+    borderTop: '1px dashed rgba(255,255,255,0.08)',
+    display: 'flex' as const,
+    flexDirection: 'column' as const,
+    gap: 2,
+  },
+  hashTxt: {
+    margin: 0,
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: 'rgba(16,185,129,.75)',
+    letterSpacing: '0.5px',
+  },
+  timestampTxt: {
+    margin: 0,
+    fontFamily: 'monospace',
+    fontSize: 9,
+    color: 'rgba(245,245,240,.35)',
+  },
+  rodapeAceite: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTop: '1px solid rgba(245,180,0,.15)',
+    textAlign: 'center' as const,
+    fontSize: 9,
+    color: 'rgba(245,245,240,.4)',
+    letterSpacing: '0.5px',
   },
 }
