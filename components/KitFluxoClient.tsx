@@ -187,12 +187,30 @@ export function KitFluxoClient({
   }, [placaEscolhida, potCcAlvo, padrao, inversores, tipoTelhado])
 
   function handleConfirmar() {
+    // Kalebe 2026-09-01: logs agressivos pra debug do 'não acontece nada'
+    console.log('[handleConfirmar] iniciado. kitEscolhidoId:', kitEscolhidoId)
+    setErro(null)
     if (!kitEscolhidoId) {
-      setErro('Escolha um kit sugerido pra continuar.')
+      setErro('❗ Escolha um kit sugerido pra continuar (clique em um card acima)')
       return
     }
     const kit = kitsSugeridos.find(k => k.id === kitEscolhidoId)
-    if (!kit) return
+    if (!kit) {
+      setErro(`❗ Kit ${kitEscolhidoId} não encontrado na lista. Recarregue a página.`)
+      return
+    }
+    if (!kit.placa?.id) {
+      setErro('❗ Kit sem placa configurada. Volte e reescolha a placa.')
+      return
+    }
+    if (!kit.inversores?.[0]?.produto_id) {
+      setErro('❗ Kit sem inversor configurado. Reescolha o kit.')
+      return
+    }
+    if (!placaEscolhida?.codigo_weg) {
+      setErro('❗ Placa sem código WEG. Recarregue a página.')
+      return
+    }
 
     const invPrincipal = kit.inversores[0]
 
@@ -223,22 +241,29 @@ export function KitFluxoClient({
     }
 
     startTransition(async () => {
-      const result = await salvarKitAction(projetoId, payload, categoria || undefined, opts)
-      if (!result) {
-        setErro('Sem resposta do servidor')
-        return
-      }
-      if (!result.sucesso) {
-        setErro(result.erro || 'Erro ao salvar')
-        return
-      }
-      // Kalebe 2026-09-01: server retorna next_path — cliente navega.
-      // Antes o redirect era feito no server e era engolido se algum
-      // passo throw antes; agora é explícito.
-      if ('next_path' in result && result.next_path) {
-        router.push(result.next_path)
-      } else {
-        router.refresh()
+      try {
+        console.log('[handleConfirmar] chamando salvarKitAction...')
+        const result = await salvarKitAction(projetoId, payload, categoria || undefined, opts)
+        console.log('[handleConfirmar] result:', result)
+        if (!result) {
+          setErro('❗ Sem resposta do servidor (result=undefined). Verifique conexão.')
+          return
+        }
+        if (!result.sucesso) {
+          setErro('❌ Servidor rejeitou: ' + (result.erro || 'sem detalhe'))
+          return
+        }
+        // Kalebe 2026-09-01: usa window.location.href pra garantir navegação
+        // mesmo se router.push falhar por algum motivo (App Router quirk).
+        if ('next_path' in result && result.next_path) {
+          console.log('[handleConfirmar] navegando pra', result.next_path)
+          window.location.href = result.next_path
+        } else {
+          window.location.reload()
+        }
+      } catch (e: any) {
+        console.error('[handleConfirmar] throw:', e)
+        setErro('❌ Erro no cliente: ' + (e?.message || 'desconhecido'))
       }
     })
   }
@@ -367,22 +392,29 @@ export function KitFluxoClient({
     }
 
     startTransition(async () => {
-      const result = await salvarKitAction(projetoId, payload, categoria || undefined, opts)
-      if (!result) {
-        setErro('Sem resposta do servidor')
-        return
-      }
-      if (!result.sucesso) {
-        setErro(result.erro || 'Erro ao salvar')
-        return
-      }
-      // Kalebe 2026-09-01: server retorna next_path — cliente navega.
-      // Antes o redirect era feito no server e era engolido se algum
-      // passo throw antes; agora é explícito.
-      if ('next_path' in result && result.next_path) {
-        router.push(result.next_path)
-      } else {
-        router.refresh()
+      try {
+        console.log('[handleConfirmar] chamando salvarKitAction...')
+        const result = await salvarKitAction(projetoId, payload, categoria || undefined, opts)
+        console.log('[handleConfirmar] result:', result)
+        if (!result) {
+          setErro('❗ Sem resposta do servidor (result=undefined). Verifique conexão.')
+          return
+        }
+        if (!result.sucesso) {
+          setErro('❌ Servidor rejeitou: ' + (result.erro || 'sem detalhe'))
+          return
+        }
+        // Kalebe 2026-09-01: usa window.location.href pra garantir navegação
+        // mesmo se router.push falhar por algum motivo (App Router quirk).
+        if ('next_path' in result && result.next_path) {
+          console.log('[handleConfirmar] navegando pra', result.next_path)
+          window.location.href = result.next_path
+        } else {
+          window.location.reload()
+        }
+      } catch (e: any) {
+        console.error('[handleConfirmar] throw:', e)
+        setErro('❌ Erro no cliente: ' + (e?.message || 'desconhecido'))
       }
     })
   }
