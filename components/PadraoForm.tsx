@@ -114,77 +114,11 @@ export function PadraoForm({
           </select>
         </Field>
 
-        <Field label="Altura do padrão de entrada (m)">
-          <input
-            type="number"
-            min={0}
-            step="0.1"
-            value={form.altura_padrao_entrada_m ?? ''}
-            onChange={(e) => update('altura_padrao_entrada_m', e.target.value ? Number(e.target.value) : null)}
-            className="input-spin"
-            placeholder="Ex: 5"
-          />
-        </Field>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Checkbox
-            label="Medidor já é bidirecional"
-            checked={form.medidor_bidirecional}
-            onChange={(v) => update('medidor_bidirecional', v)}
-          />
-          <Checkbox
-            label="Cabine primária (Grupo A)"
-            checked={form.tem_cabine_primaria}
-            onChange={(v) => update('tem_cabine_primaria', v)}
-          />
-        </div>
-      </fieldset>
-
-      {/* QGBT */}
-      <fieldset className="space-y-4 pt-4 border-t border-white/10">
-        <legend className="text-xs font-bold uppercase tracking-wider text-sol mb-3">
-          Quadro de proteção (QGBT)
-        </legend>
-
-        <Checkbox
-          label="QGBT tem espaço pra disjuntor solar dedicado"
-          checked={form.qgbt_tem_espaco_disjuntor_solar}
-          onChange={(v) => update('qgbt_tem_espaco_disjuntor_solar', v)}
-        />
-      </fieldset>
-
-      {/* ATERRAMENTO + SPDA */}
-      <fieldset className="space-y-4 pt-4 border-t border-white/10">
-        <legend className="text-xs font-bold uppercase tracking-wider text-sol mb-3">
-          Aterramento + SPDA
-        </legend>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Qtd hastes de aterramento">
-            <input
-              type="number"
-              min={0}
-              value={form.qtd_hastes_aterramento ?? ''}
-              onChange={(e) => update('qtd_hastes_aterramento', e.target.value ? Number(e.target.value) : null)}
-              className="input-spin"
-              placeholder="0 = sem aterramento"
-            />
-          </Field>
-
-          <div className="flex flex-col justify-end">
-            <Checkbox
-              label="Hastes interligadas (malha)"
-              checked={form.hastes_interligadas}
-              onChange={(v) => update('hastes_interligadas', v)}
-            />
-          </div>
-        </div>
-
-        <Checkbox
-          label="SPDA (para-raios) existente"
-          checked={form.tem_spda}
-          onChange={(v) => update('tem_spda', v)}
-        />
+        {/* Kalebe 2026-09-01: campos técnicos removidos do fluxo do consultor
+            (altura, medidor bidirecional, cabine primária, QGBT, aterramento,
+            SPDA) — 'não são importantes pra nossa necessidade, poluem o
+            processo'. Valores continuam no schema pra compat com registros
+            antigos, mas não são mais coletados. */}
       </fieldset>
 
       {/* DISTÂNCIA */}

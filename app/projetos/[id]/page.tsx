@@ -572,16 +572,10 @@ function getProximoPasso(status: string) {
         path: 'fatura',
       }
     case 'fatura_analisada':
-      return {
-        titulo: 'Preencher dados do telhado',
-        descricao: 'Tipo de cobertura, orientação, área, sombreamento. Múltiplas seções se aplicável.',
-        cta: 'Preencher telhado',
-        path: 'telhado',
-      }
-    case 'telhado_preenchido':
+    case 'telhado_preenchido': // Kalebe 2026-09-01: etapa telhado saiu, mas status legacy ainda existe
       return {
         titulo: 'Padrão de entrada CELESC',
-        descricao: 'Foto do quadro, padrão de entrada, aterramento, distância até o ponto da string.',
+        descricao: 'Foto do quadro e padrão de entrada.',
         cta: 'Preencher padrão',
         path: 'padrao',
       }

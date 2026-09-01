@@ -33,28 +33,28 @@ export const TIPOS_ITEM: InfoTipo[] = [
     descricao: 'Sistema conectado à rede — o padrão residencial e comercial.',
     exemploUso: '5 kWp residencial que compensa consumo mensal',
     disponivel: true,
-    fluxoPassos: 8,
+    fluxoPassos: 7,
   },
   {
     chave: 'fv_hibrido', emoji: '🌗', label: 'Solar híbrido (com BESS)', grupo: 'fotovoltaico',
     descricao: 'Solar + baterias com backup em caso de queda de energia.',
     exemploUso: '8 kWp + BESS 10kWh pra manter geladeira e wifi ativos',
     disponivel: true,
-    fluxoPassos: 9,
+    fluxoPassos: 8,
   },
   {
     chave: 'fv_zero_grid', emoji: '🚫🔌', label: 'Solar zero-grid', grupo: 'fotovoltaico',
     descricao: 'Injeção zero na rede (Smart Meter anti-injeção).',
     exemploUso: 'Comércio grande demanda, evita GD e taxa fio B',
     disponivel: true,
-    fluxoPassos: 8,
+    fluxoPassos: 7,
   },
   {
     chave: 'fv_offgrid', emoji: '🏝️', label: 'Solar off-grid', grupo: 'fotovoltaico',
     descricao: 'Isolado da rede — solar + BESS obrigatório.',
     exemploUso: 'Chácara sem CELESC, sítio remoto',
     disponivel: true,
-    fluxoPassos: 8,
+    fluxoPassos: 7,
   },
 
   // 🔋 BATERIA
@@ -123,6 +123,7 @@ export const TIPOS_ITEM: InfoTipo[] = [
     descricao: 'Desmontagem temporária das placas + estrutura pra obra no telhado, e remontagem depois.',
     exemploUso: 'Reforma/troca do telhado, mudança de imóvel, ampliação da laje',
     disponivel: true,
+    // Kalebe 2026-09-01: era 4 (incluía telhado). Telhado no perfil agora → 3
     fluxoPassos: 3,
   },
   {
@@ -130,7 +131,8 @@ export const TIPOS_ITEM: InfoTipo[] = [
     descricao: 'Só mão de obra: cliente já tem placas + inversor comprados (ou de terceiros). Spin instala.',
     exemploUso: 'Cliente comprou kit em outra loja e contratou Spin só pra montar',
     disponivel: true,
-    fluxoPassos: 4,
+    // Kalebe 2026-09-01: telhado saiu do fluxo (perfil do cliente)
+    fluxoPassos: 3,
   },
 
   // 🧱 CONSTRUÇÃO
@@ -218,10 +220,13 @@ export type PassoWorkflow =
 
 export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
   // ☀️ Fotovoltaico
-  fv_ongrid:     ['cliente', 'fatura', 'telhado', 'padrao', 'dimensionar', 'kit', 'lista_ca', 'orcamento'],
-  fv_hibrido:    ['cliente', 'fatura', 'telhado', 'padrao', 'dimensionar', 'kit', 'lista_ca', 'bess_config', 'orcamento'],
-  fv_zero_grid:  ['cliente', 'fatura', 'telhado', 'padrao', 'dimensionar', 'kit', 'lista_ca', 'orcamento'],
-  fv_offgrid:    ['cliente', 'telhado', 'dimensionar', 'kit', 'bess_config', 'lista_ca', 'orcamento'],
+  // Kalebe 2026-09-01: etapa 'telhado' REMOVIDA — foi fundida com 'cliente'
+  // (endereço + telhado agora vivem no perfil do cliente, herdados em toda
+  // proposta futura). Fluxos FV passaram de 8 → 7 passos e o híbrido 9 → 8.
+  fv_ongrid:     ['cliente', 'fatura', 'padrao', 'dimensionar', 'kit', 'lista_ca', 'orcamento'],
+  fv_hibrido:    ['cliente', 'fatura', 'padrao', 'dimensionar', 'kit', 'lista_ca', 'bess_config', 'orcamento'],
+  fv_zero_grid:  ['cliente', 'fatura', 'padrao', 'dimensionar', 'kit', 'lista_ca', 'orcamento'],
+  fv_offgrid:    ['cliente', 'dimensionar', 'kit', 'bess_config', 'lista_ca', 'orcamento'],
 
   // 🔋 BESS
   bess:          ['cliente', 'fatura', 'padrao', 'bess_config', 'orcamento'],
@@ -236,8 +241,9 @@ export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
   srv_padrao_entrada:     ['cliente', 'fatura', 'padrao', 'orcamento'],
   srv_laudo_tecnico:      ['cliente', 'servico_config', 'orcamento'],
   srv_analise_rede:       ['cliente', 'servico_config', 'orcamento'],
-  srv_retirada_recolocacao: ['cliente', 'telhado', 'servico_config', 'orcamento'],
-  srv_instalacao_placas:    ['cliente', 'telhado', 'padrao', 'servico_config', 'orcamento'],
+  // Kalebe 2026-09-01: telhado agora vive no perfil do cliente
+  srv_retirada_recolocacao: ['cliente', 'servico_config', 'orcamento'],
+  srv_instalacao_placas:    ['cliente', 'padrao', 'servico_config', 'orcamento'],
 
   // 🧱 Construção
   srv_alvenaria:          ['cliente', 'servico_config', 'orcamento'],
