@@ -59,6 +59,9 @@ export function VisualizadorMapaMini({
   const [carregando, setCarregando] = useState(true)
   const [modo, setModo] = useState<'mapa' | 'rua'>('mapa')
   const [medindo, setMedindo] = useState(false)
+  // Ref pra o listener do click do mapa NÃO ficar com closure stale
+  const medindoRef = useRef(false)
+  useEffect(() => { medindoRef.current = medindo }, [medindo])
   const [areaMedida, setAreaMedida] = useState<number | null>(null)
   const [buscandoSolar, setBuscandoSolar] = useState(false)
   const [solar, setSolar] = useState<SolarInsights | null>(null)
@@ -166,7 +169,9 @@ export function VisualizadorMapaMini({
 
       if (onArrastar) {
         map.addListener('click', (e: any) => {
-          if (medindo) return // click no modo medir vai pro DrawingManager
+          // Usa ref (não a var do closure) — sem isso o listener nunca
+          // via o estado atualizado e sempre movia o pino.
+          if (medindoRef.current) return
           const p = e.latLng; if (!p) return
           overlay.setPosicaoExterna(p); map.panTo(p)
           if (onArrastarRef.current) onArrastarRef.current(p.lat(), p.lng())
@@ -259,7 +264,11 @@ export function VisualizadorMapaMini({
     if (polyMedidoRef.current) { polyMedidoRef.current.setMap(null); polyMedidoRef.current = null }
     setAreaMedida(null)
     setMedindo(true)
-    setMsgAcao('Clica os cantos do telhado, duplo-clique no último pra fechar.')
+    // IMPORTANTE: atualiza o ref sincronamente porque o setState só
+    // reflete no listener após o re-render (e o próximo click pode
+    // chegar antes disso).
+    medindoRef.current = true
+    setMsgAcao('📐 Clique nos cantos do telhado. Duplo-clique no último ponto pra fechar o polígono.')
 
     const dm = new google.maps.drawing.DrawingManager({
       drawingMode: google.maps.drawing.OverlayType.POLYGON,
@@ -275,6 +284,7 @@ export function VisualizadorMapaMini({
 
     google.maps.event.addListenerOnce(dm, 'polygoncomplete', (poly: any) => {
       dm.setMap(null); drawManRef.current = null
+      medindoRef.current = false  // libera o click do mapa de volta
       polyMedidoRef.current = poly
       const path = poly.getPath()
       const area = google.maps.geometry.spherical.computeArea(path)
@@ -309,6 +319,7 @@ export function VisualizadorMapaMini({
     if (polyMedidoRef.current) { polyMedidoRef.current.setMap(null); polyMedidoRef.current = null }
     if (drawManRef.current) { drawManRef.current.setMap(null); drawManRef.current = null }
     setAreaMedida(null); setMedindo(false)
+    medindoRef.current = false
   }
 
   async function vetorizarComSolar() {
@@ -322,7 +333,12 @@ export function VisualizadorMapaMini({
       }
       setSolar(s)
       desenharSegmentosSolar(s)
-      setMsgAcao(`✓ ${s.segmentos?.length || 0} face(s) detectada(s) · qualidade ${s.qualidade}`)
+      const avisoQualidade = s.qualidade === 'LOW'
+        ? ' ⚠ imagem baixa qualidade — retângulos são aproximados, prefira medir manual'
+        : s.qualidade === 'MEDIUM'
+        ? ' — qualidade média'
+        : ' — qualidade alta'
+      setMsgAcao(`✓ ${s.segmentos?.length || 0} face(s) detectada(s)${avisoQualidade}`)
       if (onSolarPronto) onSolarPronto(s)
     } catch (e: any) {
       setMsgAcao(`❌ Erro Solar: ${e?.message || 'desconhecido'}`)
