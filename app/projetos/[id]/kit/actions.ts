@@ -716,6 +716,13 @@ async function buscarProdutoPorRef(
 ): Promise<{ ok: true; modelo: string; preco: number } | { ok: false; motivo: string }> {
   const termo = ref.trim()
   if (!termo) return { ok: false, motivo: 'referência vazia' }
+  // Kalebe 2026-09-01: se a ref for capacitor (BCWA, TCP, BSMJ), rejeita
+  // silenciosamente pra cair no dimensionamento por corrente/polos.
+  // Aconteceu de o SIW200G M050 ter disjuntor_equivalente='BCWA30V53'
+  // (dado errado da planilha WEG) e virar disjuntor de R$ 31k.
+  if (/^(BC|TCP|BSMJ|CAP|BFR|BFC|BCF)/i.test(termo)) {
+    return { ok: false, motivo: `referência '${termo}' parece capacitor/banco reativo — ignorada` }
+  }
 
   // Kalebe 2026-09-01: normaliza termo E produtos removendo hífens/espaços
   // pra o ilike do Postgres não perder match. 'MDWP-C50-2' matcha 'MDWP C50 2'.
@@ -799,6 +806,14 @@ async function buscarDisjuntorCompativel(
   polos: number,
   hojeIso: string,
 ): Promise<{ ok: true; modelo: string; preco: number } | { ok: false; motivo: string }> {
+  // Kalebe 2026-09-01: alguns produtos foram importados como categoria
+  // 'disjuntor' por engano — bancos de capacitor (BCWA), TCP, BSMJ etc.
+  // Filtra por prefixo do modelo: aceita só linhas de disjuntor reais.
+  //   MDW, DWB, NF, S18 = linhas WEG de disjuntor CA
+  //   Qualquer coisa que comece com BC, TCP, BSMJ, CAP → capacitor, filtra fora
+  const REGEX_NAO_DISJUNTOR = /^(BC|TCP|BSMJ|CAP|BFR|BFC|BCF)/i
+  const REGEX_DISJUNTOR_OK = /^(MDW|DWB|NF|S18|SDW|CBW|MPW)/i
+
   const { data: ativos } = await supabase
     .from('produtos')
     .select('id, modelo, specs')
@@ -806,6 +821,11 @@ async function buscarDisjuntorCompativel(
     .eq('ativo', true)
     .limit(500)
   let prods: any[] = (ativos || []) as any[]
+  // Aplica exclusão de capacitores + preferência pelos prefixos de disjuntor
+  const prodsLimpos = prods.filter((p) => !REGEX_NAO_DISJUNTOR.test(String(p.modelo || '')))
+  const prodsReais = prodsLimpos.filter((p) => REGEX_DISJUNTOR_OK.test(String(p.modelo || '')))
+  prods = prodsReais.length > 0 ? prodsReais : prodsLimpos  // fallback pra qualquer não-capacitor
+
   let usandoInativos = false
   if (prods.length === 0) {
     const { data: inat } = await supabase
@@ -814,7 +834,7 @@ async function buscarDisjuntorCompativel(
       .eq('categoria', 'disjuntor')
       .eq('ativo', false)
       .limit(500)
-    prods = (inat || []) as any[]
+    prods = ((inat || []) as any[]).filter((p) => !REGEX_NAO_DISJUNTOR.test(String(p.modelo || '')))
     if (prods.length === 0) return { ok: false, motivo: 'nenhum disjuntor cadastrado' }
     usandoInativos = true
   }

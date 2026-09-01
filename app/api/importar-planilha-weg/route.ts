@@ -268,7 +268,7 @@ function classificar(
       specs: {
         potencia_kw: parseNumPtBr(linha[6]),
         tensao_desc: tipo,
-        disjuntor_equivalente: String(linha[7] || '') || null,
+        disjuntor_equivalente: sanitizarDisjuntorEq(String(linha[7] || '')),
         entradas_mppt: parseNumPtBr(linha[8]),
       },
     }
@@ -309,7 +309,7 @@ function classificar(
       specs: {
         potencia_kw: parseNumPtBr(linha[6]),
         tensao_desc: tipo,
-        disjuntor_equivalente: String(linha[7] || '') || null,
+        disjuntor_equivalente: sanitizarDisjuntorEq(String(linha[7] || '')),
         entradas_mppt: parseNumPtBr(linha[8]),
       },
     }
@@ -459,6 +459,19 @@ function extrairModelo(nome: string, linha: unknown[]): string {
  * O Number() puro falhava em qualquer célula com vírgula/símbolo e
  * deixava specs vazio + preço 0 — era a causa dos cadastros incompletos.
  */
+/**
+ * Kalebe 2026-09-01: coluna 'disjuntor sugerido' da planilha WEG às
+ * vezes vem preenchida com banco de capacitor (BCWA, TCP, BSMJ, etc)
+ * — bug de dado deles. Se veio capacitor, retorna null pra o gerador
+ * de kits cair no dimensionamento por corrente/polos.
+ */
+function sanitizarDisjuntorEq(v: string): string | null {
+  const t = String(v || '').trim()
+  if (!t) return null
+  if (/^(BC|TCP|BSMJ|CAP|BFR|BFC|BCF)/i.test(t)) return null
+  return t
+}
+
 function parseNumPtBr(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null
   if (typeof v === 'number') return isFinite(v) ? v : null
