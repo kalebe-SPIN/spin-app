@@ -43,7 +43,9 @@ export function MapaSelecionarTelhado({
   const geocoderRef = useRef<any>(null)
 
   useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    const key =
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+      'AIzaSyDAHavsflEo_Ju2JdT_hHG0u663vOJMzts'
     if (!key) {
       setErro('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY não configurada.')
       setCarregando(false)

@@ -34,7 +34,9 @@ export default async function MapaTelhadoPage({ params }: { params: { id: string
     end.logradouro || end.rua, end.numero, end.bairro, end.cidade, end.uf, end.cep, 'Brasil',
   ].filter(Boolean).join(', ')
 
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+  const apiKey =
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    'AIzaSyDAHavsflEo_Ju2JdT_hHG0u663vOJMzts'
 
   return (
     <main className="min-h-screen p-4 md:p-6">

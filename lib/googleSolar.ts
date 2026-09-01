@@ -26,7 +26,9 @@ export async function buscarSolarInsights(
   latitude: number,
   longitude: number,
 ): Promise<SolarInsights | null> {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  const key =
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    'AIzaSyDAHavsflEo_Ju2JdT_hHG0u663vOJMzts'
   if (!key) return null
 
   const url =

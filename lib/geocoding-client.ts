@@ -23,7 +23,12 @@ export type EnderecoResolvido = {
   descricao_completa?: string
 }
 
-const KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+// Fallback hardcoded: a env var NEXT_PUBLIC_GOOGLE_MAPS_API_KEY não
+// está no Vercel. A chave abaixo é restrita a referrer HTTP (funciona
+// só de app.spinsolar.com.br, *.vercel.app, localhost:3000). Kalebe.
+const KEY =
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  'AIzaSyDAHavsflEo_Ju2JdT_hHG0u663vOJMzts'
 
 function parseComponents(comps: any[]): Partial<EnderecoResolvido> {
   const get = (t: string) => comps.find((c) => c.types?.includes(t))?.long_name || ''
