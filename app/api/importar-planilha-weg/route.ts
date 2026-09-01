@@ -282,11 +282,24 @@ function classificar(
     }
   }
 
-  // INVERSOR STRING (mono/trifásico)
+  // INVERSOR — string / híbrido / off-grid
+  // Kalebe 2026-09-01: parser separa por subcategoria pra diagnóstico
+  // e gerador de kits filtrarem corretamente.
+  //   SIW400H, SIW700H, "híbrido"  → inversor_hibrido
+  //   SIW300G off, "off grid"      → inversor_offgrid
+  //   Resto (SIW200G/300G/500G)    → inversor_string
   if (t.includes('inversor')) {
+    const nomeUp = nome.toUpperCase()
+    const tipoUp = tipo.toUpperCase()
+    let subcat = 'inversor_string'
+    if (/H[\s\d]/.test(nomeUp) && /SIW\d00H/.test(nomeUp) || tipoUp.includes('HÍBRID') || tipoUp.includes('HIBRID')) {
+      subcat = 'inversor_hibrido'
+    } else if (tipoUp.includes('OFF') || nomeUp.includes('OFF-GRID')) {
+      subcat = 'inversor_offgrid'
+    }
     return {
       categoria: 'inversor',
-      subcategoria: 'inversor_string',
+      subcategoria: subcat,
       fabricante: 'WEG',
       specs: {
         potencia_kw: parseNumPtBr(linha[6]),

@@ -15,6 +15,9 @@ import { createClient } from '@/lib/supabase/server'
 // de sistema (BESS, VE, off-grid). Kalebe 2026-09-01.
 const CATEGORIAS_ESSENCIAIS: Array<{
   categoria: string
+  /** Se preenchido, filtra também por subcategoria (ex: híbrido dentro
+   *  de 'inversor'). Sem isso, conta todos da categoria. */
+  subcategoriaFiltro?: string
   label: string
   contemEsperado: string
   usadoEm: string
@@ -31,17 +34,17 @@ const CATEGORIAS_ESSENCIAIS: Array<{
   { grupo: 'ongrid', categoria: 'dps',        label: '⚡ DPS',                    contemEsperado: 'CA / classe II',    usadoEm: 'Complementos — DPS CA' },
 
   // ==== BESS (bateria + híbrido) ====
-  { grupo: 'bess', categoria: 'bateria',        label: '🔋 Bateria',             contemEsperado: 'SBW / LiFePO4 / BYD',      usadoEm: 'Sistema híbrido / BESS' },
-  { grupo: 'bess', categoria: 'inversor_hibrido', label: '🌗 Inversor híbrido',  contemEsperado: 'SIW400H',                  usadoEm: 'Sistema híbrido (mestre)' },
-  { grupo: 'bess', categoria: 'embox',          label: '🎛 EMBOX (controle)',    contemEsperado: 'EMBOX WEG',                usadoEm: 'Paralelismo + despacho híbrido' },
-  { grupo: 'bess', categoria: 'medidor_energia', label: '📊 Medidor de energia', contemEsperado: 'DTSU666 / MMW03',          usadoEm: 'Anti-injeção + monitoramento' },
+  // Kalebe 2026-09-01: alinhado com o que o parser da planilha WEG cria.
+  { grupo: 'bess', categoria: 'bateria',        label: '🔋 Bateria',             contemEsperado: 'SBW / SBCW / SBSW',        usadoEm: 'Sistema híbrido / BESS' },
+  { grupo: 'bess', categoria: 'inversor',   subcategoriaFiltro: 'inversor_hibrido', label: '🌗 Inversor híbrido', contemEsperado: 'SIW400H / SIW700H', usadoEm: 'Sistema híbrido (mestre)' },
+  { grupo: 'bess', categoria: 'monitoramento', subcategoriaFiltro: 'controlador', label: '🎛 EMBOX / Controlador',  contemEsperado: 'EMBOX WEG',                usadoEm: 'Paralelismo + despacho híbrido' },
+  { grupo: 'bess', categoria: 'smart_meter', label: '📊 Medidor de energia', contemEsperado: 'DTSU666 / DDSU666 / MMW03', usadoEm: 'Anti-injeção + monitoramento' },
 
   // ==== OFF-GRID ====
-  { grupo: 'offgrid', categoria: 'controlador_carga', label: '🎚 Controlador de carga', contemEsperado: 'MPPT / PWM',       usadoEm: 'Off-grid (sem inversor híbrido)' },
+  { grupo: 'offgrid', categoria: 'inversor', subcategoriaFiltro: 'inversor_offgrid', label: '🏝 Inversor off-grid', contemEsperado: 'Standalone / SIW300G-off', usadoEm: 'Off-grid puro (sem rede)' },
 
   // ==== VE (mobilidade) ====
-  { grupo: 've', categoria: 'wallbox',    label: '⚡🚗 Wallbox (carregador VE)', contemEsperado: '7.4/11/22 kW',            usadoEm: 'Fluxo ve_recarga' },
-  { grupo: 've', categoria: 'totem_ve',   label: '🔌 Totem de recarga público', contemEsperado: 'Public DC/AC',            usadoEm: 'Fluxo ve_recarga (opcional)' },
+  { grupo: 've', categoria: 'outro',      subcategoriaFiltro: 've_wallbox', label: '⚡🚗 Wallbox (carregador VE)', contemEsperado: 'WEMOB / 7.4/11/22 kW', usadoEm: 'Fluxo ve_recarga' },
 
   // ==== LISTA CA ====
   { grupo: 'ca', categoria: 'cabo_ca',      label: '🔌 Cabo CA (fase/neutro/terra)', contemEsperado: 'HEPR 10mm² / 6mm² verde', usadoEm: 'Lista CA — cabos' },
@@ -74,22 +77,33 @@ export default async function DiagnosticoCatalogoPage() {
   // categorias distintas que existem no banco, não só as essenciais.
   const { data: todosProdutos } = await supabase
     .from('produtos')
-    .select('categoria, ativo, id, precos_produtos(preco_venda, vigente_ate)')
+    .select('categoria, subcategoria, ativo, id, precos_produtos(preco_venda, vigente_ate)')
     .limit(5000)
 
-  // Agrupa por categoria — conta ativos, inativos, com preço vigente
+  // Agrupa por categoria — conta ativos, inativos, com preço vigente.
+  // Kalebe 2026-09-01: também agrupa por (categoria, subcategoria) pra
+  // essenciais que filtram por subcat (ex: inversor_hibrido dentro de 'inversor').
   const porCategoria = new Map<string, {
+    totalAtivos: number; totalInativos: number; comPrecoVigente: number
+  }>()
+  const porCatSubcat = new Map<string, {
     totalAtivos: number; totalInativos: number; comPrecoVigente: number
   }>()
   ;(todosProdutos || []).forEach((p: any) => {
     const cat = p.categoria || '(sem categoria)'
-    if (!porCategoria.has(cat)) porCategoria.set(cat, { totalAtivos: 0, totalInativos: 0, comPrecoVigente: 0 })
-    const bucket = porCategoria.get(cat)!
-    if (p.ativo) bucket.totalAtivos++
-    else bucket.totalInativos++
-    if (p.ativo && (p.precos_produtos || []).some((x: any) =>
-      Number(x.preco_venda) > 0 && (!x.vigente_ate || x.vigente_ate >= hojeIso))) {
-      bucket.comPrecoVigente++
+    const sub = p.subcategoria || ''
+    const chaveCat = cat
+    const chaveCatSub = `${cat}::${sub}`
+    for (const chave of [chaveCat, chaveCatSub]) {
+      const map = chave === chaveCat ? porCategoria : porCatSubcat
+      if (!map.has(chave)) map.set(chave, { totalAtivos: 0, totalInativos: 0, comPrecoVigente: 0 })
+      const bucket = map.get(chave)!
+      if (p.ativo) bucket.totalAtivos++
+      else bucket.totalInativos++
+      if (p.ativo && (p.precos_produtos || []).some((x: any) =>
+        Number(x.preco_venda) > 0 && (!x.vigente_ate || x.vigente_ate >= hojeIso))) {
+        bucket.comPrecoVigente++
+      }
     }
   })
 
@@ -97,8 +111,12 @@ export default async function DiagnosticoCatalogoPage() {
   const mapaEssenciais = new Map(CATEGORIAS_ESSENCIAIS.map((c) => [c.categoria, c]))
   const categoriasSeen = new Set<string>()
   const linhasEssenciais = CATEGORIAS_ESSENCIAIS.map((cat) => {
-    categoriasSeen.add(cat.categoria)
-    const b = porCategoria.get(cat.categoria) || { totalAtivos: 0, totalInativos: 0, comPrecoVigente: 0 }
+    // Se a essencial tem subcategoriaFiltro, marca cat como "vista" só se
+    // não tem outra essencial que use a categoria sem subcat.
+    if (!cat.subcategoriaFiltro) categoriasSeen.add(cat.categoria)
+    const b = cat.subcategoriaFiltro
+      ? (porCatSubcat.get(`${cat.categoria}::${cat.subcategoriaFiltro}`) || { totalAtivos: 0, totalInativos: 0, comPrecoVigente: 0 })
+      : (porCategoria.get(cat.categoria) || { totalAtivos: 0, totalInativos: 0, comPrecoVigente: 0 })
     return {
       ...cat,
       ...b,
@@ -169,7 +187,9 @@ export default async function DiagnosticoCatalogoPage() {
                 <div className="flex-1 min-w-[240px]">
                   <p className="font-bold text-white">{l.label}</p>
                   <p className="text-[10px] font-mono text-white/40 mt-0.5">
-                    categoria = &quot;{l.categoria}&quot; · usado em: {l.usadoEm}
+                    categoria = &quot;{l.categoria}&quot;
+                    {l.subcategoriaFiltro && <> · subcategoria = &quot;{l.subcategoriaFiltro}&quot;</>}
+                    {' '}· usado em: {l.usadoEm}
                   </p>
                   <p className="text-[10px] text-white/50 mt-0.5">
                     Esperado: {l.contemEsperado}
