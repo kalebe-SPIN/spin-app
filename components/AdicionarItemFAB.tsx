@@ -19,7 +19,9 @@ export async function AdicionarItemFAB({ projetoId }: { projetoId: string }) {
   return (
     <Link
       href={`/projetos/${projetoId}/tipos`}
-      className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 bg-sol text-noite font-bold text-sm rounded-full shadow-2xl hover:bg-sol/90 transition-all hover:scale-105 border-2 border-noite"
+      // Kalebe 2026-09-01: subido pra bottom-24 (era bottom-6). Ficava
+      // por cima do botão 'Confirmar kit → Passo 7' e roubava o click.
+      className="fixed bottom-24 right-6 z-40 flex items-center gap-2 px-4 py-3 bg-sol text-noite font-bold text-sm rounded-full shadow-2xl hover:bg-sol/90 transition-all hover:scale-105 border-2 border-noite"
       title="Adicionar item na proposta (solar, BESS, VE, serviços)"
     >
       <span className="text-lg">🎁</span>

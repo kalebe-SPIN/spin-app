@@ -613,12 +613,15 @@ export function KitFluxoClient({
       )}
 
       {kitEscolhidoId && (
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+        // Kalebe 2026-09-01: pr-64 + pb-8 no wrapper pra escapar do FAB
+        // "🎁 1 item · editar" que é fixed bottom-6 right-6 z-40 e estava
+        // sobrepondo/roubando o click deste botão.
+        <div className="flex items-center justify-end gap-3 pt-4 pb-8 pr-4 md:pr-64 border-t border-white/10">
           <button
             type="button"
             onClick={handleConfirmar}
             disabled={isPending}
-            className="px-6 py-3 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40"
+            className="relative z-50 px-6 py-3 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40 shadow-2xl"
           >
             {isPending ? 'Salvando...' : 'Confirmar kit → Passo 7 Lista CA'}
           </button>
