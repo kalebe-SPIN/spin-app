@@ -194,6 +194,39 @@ function ModoPorUc({
 
   return (
     <div className="space-y-6">
+      {/* Progresso + botão avançar quando todas configuradas */}
+      {(() => {
+        const configuradas = ucs.filter((u) => !!itemDaUc(u.uc_ref)?.kit_selecionado).length
+        const total = ucs.length
+        const todasOk = configuradas === total && total > 0
+        return (
+          <div className={`p-4 rounded-lg border ${todasOk ? 'bg-verde/10 border-verde/40' : 'bg-sol/10 border-sol/30'}`}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className={`text-sm font-bold ${todasOk ? 'text-verde' : 'text-sol'}`}>
+                  {todasOk
+                    ? `✓ Todas as ${total} UCs configuradas — pronto pra Lista CA`
+                    : `${configuradas} de ${total} UCs configuradas — falta ${total - configuradas} pra avançar`}
+                </p>
+                <p className="text-[11px] text-white/60 mt-1">
+                  {todasOk
+                    ? 'Clique no botão à direita pra confirmar todos os kits e avançar.'
+                    : 'Clique em cada UC pendente abaixo pra montar o kit dela.'}
+                </p>
+              </div>
+              {todasOk && (
+                <a
+                  href={`/projetos/${projetoId}/lista-ca`}
+                  className="px-5 py-2.5 bg-verde text-noite font-bold text-sm rounded-lg hover:bg-verde/90"
+                >
+                  → Passo 7 Lista CA
+                </a>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Lista de UCs */}
       <section>
         <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
