@@ -66,6 +66,10 @@ export function VisualizadorMapaMini({
   const [buscandoSolar, setBuscandoSolar] = useState(false)
   const [solar, setSolar] = useState<SolarInsights | null>(null)
   const [msgAcao, setMsgAcao] = useState<string | null>(null)
+  // Prints capturados — preview embutido em vez de abrir em nova aba
+  const [printsFeitos, setPrintsFeitos] = useState<Array<{
+    tipo: 'aerea' | 'rua'; blobUrl: string; nome: string
+  }>>([])
 
   const KEY =
     apiKey ||
@@ -223,25 +227,43 @@ export function VisualizadorMapaMini({
   }, [lat, lng])
 
   // ============ AÇÕES ============
-  function baixarPNG(url: string, nome: string) {
-    const a = document.createElement('a')
-    a.href = url; a.download = nome
-    document.body.appendChild(a); a.click(); a.remove()
+  // Download REAL via fetch+blob — sem passar pelo browser abrir a URL
+  // (isso evita extensões tipo Adobe Express interceptarem a imagem).
+  async function baixarComoBlob(url: string, nome: string): Promise<string | null> {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      // Trigger download local
+      const a = document.createElement('a')
+      a.href = blobUrl; a.download = nome
+      document.body.appendChild(a); a.click(); a.remove()
+      return blobUrl
+    } catch (e: any) {
+      setMsgAcao(`❌ Falha ao baixar: ${e?.message || 'erro'}`)
+      setTimeout(() => setMsgAcao(null), 5000)
+      return null
+    }
   }
 
-  function printAerea() {
+  async function printAerea() {
     const url =
       `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}` +
       `&zoom=${zoom}&size=640x480&scale=2&maptype=satellite` +
       `&markers=color:red%7C${lat},${lng}&key=${KEY}`
-    baixarPNG(url, `telhado-aerea-${lat.toFixed(5)}-${lng.toFixed(5)}.png`)
-    if (onPrintPronto) onPrintPronto({ tipo: 'aerea', dataUrl: url })
-    setMsgAcao('📷 Print aéreo baixado')
-    setTimeout(() => setMsgAcao(null), 3000)
+    const nome = `telhado-aerea-${lat.toFixed(5)}-${lng.toFixed(5)}.png`
+    setMsgAcao('📷 Capturando aérea…')
+    const blobUrl = await baixarComoBlob(url, nome)
+    if (blobUrl) {
+      setPrintsFeitos((prev) => [...prev, { tipo: 'aerea', blobUrl, nome }])
+      if (onPrintPronto) onPrintPronto({ tipo: 'aerea', dataUrl: blobUrl })
+      setMsgAcao('✓ Print aéreo capturado')
+      setTimeout(() => setMsgAcao(null), 2500)
+    }
   }
 
-  function printRua() {
-    // Se está na vista Street View, pega heading atual; senão, olha pro pino
+  async function printRua() {
     let heading = 0, pitch = 0
     if (streetViewRef.current) {
       const pov = streetViewRef.current.getPov()
@@ -251,10 +273,29 @@ export function VisualizadorMapaMini({
     const url =
       `https://maps.googleapis.com/maps/api/streetview?location=${lat},${lng}` +
       `&size=640x480&heading=${heading}&pitch=${pitch}&fov=90&key=${KEY}`
-    baixarPNG(url, `telhado-rua-${lat.toFixed(5)}-${lng.toFixed(5)}.png`)
-    if (onPrintPronto) onPrintPronto({ tipo: 'rua', dataUrl: url })
-    setMsgAcao('🎥 Print da rua baixado')
-    setTimeout(() => setMsgAcao(null), 3000)
+    const nome = `telhado-rua-${lat.toFixed(5)}-${lng.toFixed(5)}.png`
+    setMsgAcao('🎥 Capturando rua…')
+    const blobUrl = await baixarComoBlob(url, nome)
+    if (blobUrl) {
+      setPrintsFeitos((prev) => [...prev, { tipo: 'rua', blobUrl, nome }])
+      if (onPrintPronto) onPrintPronto({ tipo: 'rua', dataUrl: blobUrl })
+      setMsgAcao('✓ Print da rua capturado')
+      setTimeout(() => setMsgAcao(null), 2500)
+    }
+  }
+
+  function rebaixarPrint(p: { blobUrl: string; nome: string }) {
+    const a = document.createElement('a')
+    a.href = p.blobUrl; a.download = p.nome
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+
+  function descartarPrint(idx: number) {
+    setPrintsFeitos((prev) => {
+      const alvo = prev[idx]
+      if (alvo) URL.revokeObjectURL(alvo.blobUrl)
+      return prev.filter((_, i) => i !== idx)
+    })
   }
 
   async function iniciarMedir() {
@@ -471,6 +512,42 @@ export function VisualizadorMapaMini({
             <div><b className="text-verde">{(solar.geracaoAnualKwh / 12).toFixed(0)}</b> kWh/mês</div>
           </div>
           <p className="text-white/40 text-[10px]">Qualidade da imagem aérea: {solar.qualidade} · clique nas faces coloridas pra ver detalhes</p>
+        </div>
+      )}
+
+      {/* GALERIA DE PRINTS CAPTURADOS — preview embutido, com opção
+          de baixar de novo ou descartar. Batch 2 salva no cliente. */}
+      {printsFeitos.length > 0 && (
+        <div className="p-3 bg-noite/40 border border-white/10 rounded space-y-2">
+          <p className="text-[11px] uppercase tracking-wider font-bold text-white/60">
+            📸 Prints capturados ({printsFeitos.length}) — já baixados na pasta Downloads
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {printsFeitos.map((p, i) => (
+              <div key={i} className="relative rounded overflow-hidden border border-white/10 bg-black/30">
+                <img src={p.blobUrl} alt={p.nome}
+                  className="w-full h-32 object-cover" />
+                <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-noite/80 text-[10px] font-bold text-white">
+                  {p.tipo === 'aerea' ? '🛰 Aérea' : '🎥 Rua'}
+                </div>
+                <div className="absolute top-1 right-1 flex gap-1">
+                  <button type="button" onClick={() => rebaixarPrint(p)}
+                    title="Baixar de novo"
+                    className="w-6 h-6 rounded bg-noite/80 hover:bg-noite text-white/90 text-[11px] flex items-center justify-center">
+                    ⬇
+                  </button>
+                  <button type="button" onClick={() => descartarPrint(i)}
+                    title="Descartar"
+                    className="w-6 h-6 rounded bg-noite/80 hover:bg-coral/80 text-white/90 text-[11px] flex items-center justify-center">
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-white/40">
+            💡 No próximo passo (Batch 2) esses prints ficam salvos no perfil do cliente automaticamente.
+          </p>
         </div>
       )}
 
