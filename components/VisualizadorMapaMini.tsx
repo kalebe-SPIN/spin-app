@@ -638,6 +638,27 @@ export function VisualizadorMapaMini({
           style={{ display: modo === 'mapa' ? 'block' : 'none', touchAction: 'none' }} />
         <div ref={streetRef} className="w-full h-full"
           style={{ display: modo === 'rua' ? 'block' : 'none' }} />
+
+        {/* Badge de bússola + coordenadas — canto superior esquerdo do
+            mapa aéreo. Kalebe 2026-08-31: a Street View já tem bússola
+            nativa; na aérea o Google não coloca (norte sempre pra cima).
+            Este badge dá a mesma referência visual + coord ao vivo. */}
+        {modo === 'mapa' && !carregando && (
+          <div className="absolute top-2 left-2 flex items-center gap-2 px-2 py-1.5 bg-noite/85 border border-white/20 rounded shadow-lg pointer-events-none z-10">
+            <svg width="26" height="26" viewBox="0 0 26 26" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="13" cy="13" r="11" fill="rgba(255,255,255,0.15)" stroke="#fff" strokeWidth="1"/>
+              <polygon points="13,4 10,15 13,13 16,15" fill="#dc2626" stroke="#7f1d1d" strokeWidth="0.5"/>
+              <text x="13" y="6.5" textAnchor="middle" fontSize="5.5" fill="#fff" fontWeight="bold" fontFamily="sans-serif">N</text>
+              <text x="13" y="24" textAnchor="middle" fontSize="4" fill="#fff" fontFamily="sans-serif">S</text>
+              <text x="23" y="14.5" textAnchor="middle" fontSize="4" fill="#fff" fontFamily="sans-serif">L</text>
+              <text x="3" y="14.5" textAnchor="middle" fontSize="4" fill="#fff" fontFamily="sans-serif">O</text>
+            </svg>
+            <div className="text-[10px] font-mono text-white leading-tight">
+              <div>📍 {lat.toFixed(6)}</div>
+              <div className="text-white/60">   {lng.toFixed(6)}</div>
+            </div>
+          </div>
+        )}
         {carregando && (
           <div className="absolute inset-0 flex items-center justify-center bg-noite/60 text-xs text-white/60">
             🛰 Carregando…
