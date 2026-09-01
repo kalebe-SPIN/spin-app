@@ -27,18 +27,50 @@ type ProdutoCatalogo = {
  * Enriquece cada item da lista com preço/produto_id vindos do catálogo.
  * Preserva preços já existentes (não sobrescreve preço manual).
  */
+/**
+ * Kalebe 2026-09-01: mapa categoria-da-lista → categorias-do-catálogo.
+ * A Lista CA usa nomes conceituais (cabo_terra, fixacao) que não existem
+ * como categoria real no banco (cadastrado como cabo_ca, outro etc).
+ * Ampliar a busca pra abranger todos os candidatos possíveis por item.
+ */
+const CATEGORIAS_EQUIVALENTES: Record<string, string[]> = {
+  cabo_terra: ['cabo_ca', 'cabo', 'cabo_cc'],
+  cabo_ca:    ['cabo_ca', 'cabo'],
+  cabo_cc:    ['cabo_cc', 'cabo'],
+  eletroduto: ['eletroduto', 'outro'],
+  fixacao:    ['outro', 'estrutura'],
+  conector:   ['conector', 'outro'],
+  disjuntor:  ['disjuntor'],
+  dps:        ['dps', 'protecao', 'outro'],
+  quadro:     ['quadro', 'outro'],
+  barramento: ['quadro', 'outro'],
+  terminal:   ['outro'],
+  bucha:      ['outro'],
+  parafuso:   ['outro'],
+  haste:      ['outro'],
+  placa_adv:  ['outro'],
+  mangueira:  ['outro'],
+  balde:      ['outro'],
+}
+
 export async function precificarLista(
   supabase: SupabaseClient,
   itens: ItemKit[],
 ): Promise<ItemKit[]> {
   if (itens.length === 0) return itens
 
-  const categorias = Array.from(new Set(itens.map((i) => i.categoria)))
+  // Expande categorias conceituais → categorias reais do banco
+  const categoriasReais = new Set<string>()
+  itens.forEach((i) => {
+    const equiv = CATEGORIAS_EQUIVALENTES[i.categoria] || [i.categoria]
+    equiv.forEach((c) => categoriasReais.add(c))
+  })
 
   const { data: produtos } = await supabase
     .from('v_produtos_ativos')
     .select('id, categoria, subcategoria, descricao_curta, preco_venda, unidade, codigo_weg')
-    .in('categoria', categorias)
+    .in('categoria', Array.from(categoriasReais))
+    .limit(2000)
 
   const catalogo = (produtos || []) as ProdutoCatalogo[]
 
@@ -55,12 +87,15 @@ export async function precificarLista(
       }
     }
 
-    const candidatos = catalogo.filter((p) => p.categoria === item.categoria)
+    // Kalebe 2026-09-01: candidatos incluem categorias equivalentes
+    const catsAceitas = CATEGORIAS_EQUIVALENTES[item.categoria] || [item.categoria]
+    const candidatos = catalogo.filter((p) => catsAceitas.includes(p.categoria))
     if (candidatos.length === 0) {
       return { ...item, preco_unitario: 0, origem_preco: 'sem_preco' as const }
     }
 
-    // Ranqueia por overlap de palavras-chave
+    // Ranqueia por overlap de palavras-chave normalizadas (espaços/pontuação
+    // removidos pra '6mm²' matchar '6mm', 'HEPR' matchar 'hepr' etc)
     const keywordsItem = extrairPalavrasChave(`${item.descricao} ${item.subcategoria || ''}`)
     let melhor: { p: ProdutoCatalogo; score: number } | null = null
     for (const p of candidatos) {

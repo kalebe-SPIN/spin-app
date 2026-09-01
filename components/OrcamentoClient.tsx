@@ -417,9 +417,19 @@ function ComposicaoCustosAdmin({
 
   return (
     <section className="bg-white/[0.03] border border-sol/30 rounded-xl p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-sol/10 text-sol">Admin</span>
-        <h2 className="text-lg font-bold text-white">Composição de custos e precificação</h2>
+      <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-sol/10 text-sol">Admin</span>
+          <h2 className="text-lg font-bold text-white">Composição de custos e precificação</h2>
+        </div>
+        {/* Kalebe 2026-09-01: analista de projeto valida conformidade
+            antes de fechar a proposta */}
+        <ValidadorAnalista
+          kit={projeto.kit_selecionado}
+          complementos={projeto.lista_complementos_cc?.itens || []}
+          avisos={avisos}
+          listaCa={listaCa}
+        />
       </div>
       <p className="text-xs text-white/50 mb-4">
         Detalhamento item-a-item para revisão gerencial. Não vai para o cliente.
@@ -504,12 +514,15 @@ function ComposicaoCustosAdmin({
                   <td className="py-1.5 px-2">{it.descricao}</td>
                   <td className="py-1.5 px-2 text-right whitespace-nowrap">{it.qtd} {it.unidade || 'un'}</td>
                   <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(it.preco_unitario || 0)}</td>
-                  <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt((it.preco_unitario || 0) * (it.qtd || 0))}</td>
+                  {/* Kalebe 2026-09-01: subtotal em amarelo pra dar foco (coluna paralela ao × FATOR do Kit WEG) */}
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap text-sol font-semibold">
+                    R$ {fmt((it.preco_unitario || 0) * (it.qtd || 0))}
+                  </td>
                 </tr>
               ))}
               <tr className="text-white font-bold border-t border-white/20">
                 <td className="py-2 px-2" colSpan={3}>Total Lista CA</td>
-                <td className="py-2 px-2 text-right whitespace-nowrap">R$ {fmt(totalListaCa)}</td>
+                <td className="py-2 px-2 text-right whitespace-nowrap text-sol">R$ {fmt(totalListaCa)}</td>
               </tr>
             </tbody>
           </table>
@@ -546,6 +559,131 @@ function ComposicaoCustosAdmin({
         <Linha label="Desconto máx. negociação (mantém margem mínima)" valor={fmt(proposta.desconto_max_negociacao)} />
       </div>
     </section>
+  )
+}
+
+/**
+ * Botão + modal 'Validar com Analista' — Kalebe 2026-09-01.
+ * Roda checklist local de conformidade do orçamento antes de fechar
+ * a proposta. Verificações rápidas (client-side, sem IA):
+ *   - Kit tem placa + inversor?
+ *   - Todos os complementos WEG têm preço?
+ *   - Lista CA tem itens sem preço?
+ *   - Ratio CC:CA está dentro do limite (150% string / 200% híbrido)?
+ *   - Total de avisos pendentes
+ * Retorna checklist visual verde/amarelo/vermelho. IA pode ser
+ * plugada depois (skill mestre-da-eletrica).
+ */
+function ValidadorAnalista({
+  kit, complementos, avisos, listaCa,
+}: {
+  kit: any
+  complementos: any[]
+  avisos: string[]
+  listaCa: any[]
+}) {
+  const [aberto, setAberto] = useState(false)
+
+  const check: Array<{ ok: 'ok' | 'aviso' | 'erro'; titulo: string; detalhe?: string }> = []
+
+  // 1. Placa + inversor
+  if (!kit?.placa) check.push({ ok: 'erro', titulo: 'Placa não selecionada' })
+  else check.push({ ok: 'ok', titulo: `Placa ${kit.placa.modelo}${kit.placa.potencia_wp ? ` (${kit.placa.potencia_wp}Wp)` : ''}`, detalhe: `${kit.qtd_placas || 0} unidades` })
+
+  const invs: any[] = kit?.inversores?.length > 0 ? kit.inversores : (kit?.inversor ? [{ ...kit.inversor, qtd: kit.qtd_inversores || 1 }] : [])
+  if (invs.length === 0) check.push({ ok: 'erro', titulo: 'Inversor não selecionado' })
+  else invs.forEach((inv: any) => check.push({ ok: 'ok', titulo: `Inversor ${inv.modelo}${inv.potencia_kw ? ` (${inv.potencia_kw}kW)` : ''}`, detalhe: `${inv.qtd || 1} unidade(s)` }))
+
+  // 2. FCI CC:CA
+  const potCc = Number(kit?.potencia_cc_kwp) || 0
+  const potCa = invs.reduce((s: number, i: any) => s + (Number(i.potencia_kw) || 0) * (Number(i.qtd) || 1), 0)
+  if (potCc > 0 && potCa > 0) {
+    const fci = (potCc / potCa) * 100
+    const isHibrido = invs.some((i: any) => /SIW\d00H/i.test(String(i.modelo || '')))
+    const limite = isHibrido ? 200 : 150
+    if (fci > limite) check.push({ ok: 'erro', titulo: `CC/CA fora do limite: ${fci.toFixed(0)}% (máx ${limite}% ${isHibrido ? 'híbrido' : 'string'})` })
+    else if (fci > limite * 0.9) check.push({ ok: 'aviso', titulo: `CC/CA no limite: ${fci.toFixed(0)}% (máx ${limite}%)` })
+    else check.push({ ok: 'ok', titulo: `CC/CA ${fci.toFixed(0)}% dentro do limite (máx ${limite}%)` })
+  }
+
+  // 3. Complementos WEG sem preço
+  const complSemPreco = complementos.filter((c: any) => !(Number(c.preco_unitario) > 0))
+  if (complSemPreco.length > 0) check.push({ ok: 'aviso', titulo: `${complSemPreco.length} complemento(s) WEG sem preço`, detalhe: complSemPreco.map((c: any) => c.categoria).join(', ') })
+  else check.push({ ok: 'ok', titulo: `${complementos.length} complementos WEG precificados` })
+
+  // 4. Lista CA sem preço
+  const caSemPreco = (listaCa || []).filter((c: any) => !(Number(c.preco_unitario) > 0))
+  if (caSemPreco.length > 0) check.push({ ok: 'aviso', titulo: `${caSemPreco.length} item(s) da Lista CA sem preço`, detalhe: `de ${(listaCa || []).length} totais` })
+  else if ((listaCa || []).length > 0) check.push({ ok: 'ok', titulo: `${listaCa.length} itens da Lista CA precificados` })
+
+  // 5. Avisos brutos
+  if (avisos.length > 0) check.push({ ok: 'aviso', titulo: `${avisos.length} aviso(s) do gerador de kit` })
+
+  const erros = check.filter(c => c.ok === 'erro').length
+  const alerts = check.filter(c => c.ok === 'aviso').length
+  const statusGeral: 'ok' | 'aviso' | 'erro' = erros > 0 ? 'erro' : alerts > 0 ? 'aviso' : 'ok'
+
+  return (
+    <>
+      <button type="button" onClick={() => setAberto(true)}
+        className={`px-3 py-1.5 text-[11px] font-bold rounded border ${
+          statusGeral === 'ok'    ? 'bg-verde/15 border-verde/40 text-verde hover:bg-verde/25' :
+          statusGeral === 'aviso' ? 'bg-sol/15 border-sol/40 text-sol hover:bg-sol/25' :
+                                    'bg-coral/15 border-coral/40 text-coral hover:bg-coral/25'
+        }`}>
+        🔬 Validar com Analista ({statusGeral === 'ok' ? '✓' : `${erros + alerts}`})
+      </button>
+
+      {aberto && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto"
+          onClick={() => setAberto(false)}>
+          <div className="bg-noite border border-white/15 rounded-xl w-full max-w-2xl p-5 space-y-3 mt-8"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-bold text-white">🔬 Analista de conformidade</p>
+                <p className="text-[11px] text-white/50">Checklist automático antes de fechar proposta</p>
+              </div>
+              <button onClick={() => setAberto(false)} className="text-white/50 hover:text-white text-xl">×</button>
+            </div>
+
+            <div className={`p-3 rounded border ${
+              statusGeral === 'ok'    ? 'bg-verde/10 border-verde/40 text-verde' :
+              statusGeral === 'aviso' ? 'bg-sol/10 border-sol/40 text-sol' :
+                                        'bg-coral/10 border-coral/40 text-coral'
+            }`}>
+              <p className="text-sm font-bold">
+                {statusGeral === 'ok'    ? '✓ Proposta APROVADA pra fechar' :
+                 statusGeral === 'aviso' ? `⚠ ${alerts} pendência(s) — revisar antes de fechar` :
+                                            `❌ ${erros} erro(s) crítico(s) — não fechar sem corrigir`}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              {check.map((c, i) => (
+                <div key={i} className={`flex items-start gap-2 px-3 py-2 rounded ${
+                  c.ok === 'ok'    ? 'bg-verde/5' :
+                  c.ok === 'aviso' ? 'bg-sol/5' :
+                                     'bg-coral/5'
+                }`}>
+                  <span className="text-sm">
+                    {c.ok === 'ok' ? '✓' : c.ok === 'aviso' ? '⚠' : '❌'}
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-xs text-white">{c.titulo}</p>
+                    {c.detalhe && <p className="text-[10px] text-white/50 mt-0.5">{c.detalhe}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[10px] text-white/40 pt-2 border-t border-white/10">
+              💡 Validação client-side. Análise técnica profunda (dimensionamento, conformidade NBR/CELESC) via IA mestre-da-eletrica virá em breve.
+            </p>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
