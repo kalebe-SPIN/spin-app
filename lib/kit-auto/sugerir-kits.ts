@@ -191,7 +191,10 @@ export function sugerirKits(input: {
   // silencioso mais comum quando o cadastro manual traz nome comercial.
   const naoClassificados = inversoresValidos.filter(i => {
     const m = i.modelo || ''
-    return !LINHAS_ONGRID.micro.test(m) && !LINHAS_ONGRID.mono.test(m) && !LINHAS_ONGRID.tri.test(m)
+    return !LINHAS_ONGRID.micro.test(m)
+        && !LINHAS_ONGRID.mono.test(m)
+        && !LINHAS_ONGRID.tri.test(m)
+        && !LINHAS_ONGRID.hibrido.test(m)
   })
 
   const diagnostico: DiagnosticoGerador = {
@@ -629,15 +632,22 @@ function agruparPorTipo(inversores: InversorInput[], _faseCliente: string) {
     const modelo = inv.modelo || ''
 
     // Classifica pela LINHA (SIW1xx, SIW2xx, SIW3xx, SIW4xx, SIW5xx)
-    // Independente da descrição de tensão
     if (LINHAS_ONGRID.micro.test(modelo)) {
       micro.push(inv)
     } else if (LINHAS_ONGRID.mono.test(modelo)) {
       mono.push(inv)
     } else if (LINHAS_ONGRID.tri.test(modelo)) {
       tri.push(inv)
+    } else if (LINHAS_ONGRID.hibrido.test(modelo)) {
+      // Kalebe 2026-09-01: híbridos SIW*H são candidatos válidos também.
+      // Classifica pela potência do prefixo:
+      //   SIW200H → mono  (2 kW range = mono)
+      //   SIW400H/SIW500H/SIW700H → tri (potência maior = tri)
+      if (/^SIW[12]00H/i.test(modelo)) mono.push(inv)
+      else tri.push(inv)
     }
-    // Outras linhas (SIW600+, híbridos) ignoradas em ongrid puro
+    // Outras linhas (nomes comerciais fora do padrão SIW) ficam de fora
+    // e aparecem em 'naoClassificados' no diagnóstico.
   }
 
   return { mono, tri, micro }

@@ -1265,6 +1265,7 @@ function DiagnosticoNenhumKit({ diagnostico, tipoLigacao }: {
   // Identifica a causa raiz mais provável
   let causaTitulo = 'Nenhum kit válido pra essa combinação.'
   let causaMotivo = ''
+  let acoes: string[] = []
   const isMono = tipoLigacao === 'monofasico'
   const isTri = tipoLigacao === 'trifasico'
   const grupoRelevante = isTri ? d.inversores_tri + d.inversores_mono : isMono ? d.inversores_mono : d.inversores_mono
@@ -1278,23 +1279,60 @@ function DiagnosticoNenhumKit({ diagnostico, tipoLigacao }: {
   } else if (grupoRelevante === 0) {
     causaMotivo = `Você tem ${d.inversores_apos_127v} inversores em estoque, mas nenhum é compatível com rede ${tipoLigacao}. Faltam inversores ${isMono ? 'monofásicos (SIW200/SIW300)' : isTri ? 'monofásicos (SIW200/SIW300) ou trifásicos (SIW400/SIW500)' : 'monofásicos (SIW200/SIW300)'} no cadastro.`
   } else if (d.inversores_nao_classificados > 0 && d.candidatos_gerados === 0) {
-    causaMotivo = `Você tem ${d.inversores_nao_classificados} inversor(es) em estoque mas o campo "modelo" deles não bate com o padrão WEG (SIW100/SIW200/SIW300/SIW400/SIW500). O gerador classifica pelo modelo, não pelo código. Ajuste o modelo em /admin/catalogo.`
+    causaMotivo = `Você tem ${d.inversores_nao_classificados} inversor(es) em estoque mas o campo "modelo" deles não bate com o padrão WEG (SIW100/SIW200/SIW300/SIW400/SIW500/SIW*H). O gerador classifica pelo modelo, não pelo código. Ajuste o modelo em /admin/catalogo.`
   } else if (d.candidatos_gerados === 0) {
     causaMotivo = 'O gerador não conseguiu montar nenhuma combinação candidata. Verifique se os inversores em estoque têm potência preenchida em specs.potencia_kw.'
   } else if (d.rejeitados_por_celesc > 0 && d.rejeitados_por_celesc === d.candidatos_gerados) {
-    causaMotivo = `Todas as ${d.candidatos_gerados} combinações excederam o limite CELESC de ${d.pot_ca_limite_celesc_kw} kW pra rede ${tipoLigacao}. Reduza a potência CC alvo ou escolha uma placa de menor Wp.`
+    // TODAS rejeitadas por CELESC — típico de mono/bifásico com CC alto
+    const ccMaxAceitavel = d.pot_ca_limite_celesc_kw * 1.5
+    causaMotivo = `Rede ${tipoLigacao} — CELESC limita a ${d.pot_ca_limite_celesc_kw} kW CA. Com FCI 150% dá no máximo ${fmtNum(ccMaxAceitavel, 2)} kWp CC. Você pediu ${fmtNum(d.pot_cc_real_kwp, 2)} kWp — excedeu.`
+    acoes = [
+      `Reduzir placas (alvo ≤ ${fmtNum(ccMaxAceitavel, 2)} kWp) — usar o botão “ajustar potência CC” abaixo`,
+      isMono ? 'Trocar padrão pra bifásico ou trifásico (aceita mais potência)' : 'Trocar padrão pra trifásico',
+      'Ativar modo “Kit por UC” e dividir em várias unidades consumidoras',
+    ]
   } else if (d.rejeitados_por_fci > 0 && d.rejeitados_por_fci === d.candidatos_gerados) {
-    causaMotivo = `Todas as ${d.candidatos_gerados} combinações ficaram fora do FCI aceitável (50% a 200%). A potência CC alvo (${fmtNum(d.pot_cc_real_kwp, 2)} kWp) não bate com as potências CA disponíveis (nenhum inversor entre ~${fmtNum(d.pot_cc_real_kwp / 2, 1)} e ~${fmtNum(d.pot_cc_real_kwp / 0.5, 1)} kW cadastrado). Ajuste a potência alvo ou cadastre inversor SIW de outra faixa. Se você já tem SIW no catálogo, confira se a subcategoria está setada como "inversor_string" em /admin/catalogo.`
-  } else if (d.rejeitados_por_desbalanceamento > 0) {
-    causaMotivo = `Todas as combinações rejeitaram por desbalanceamento entre fases > 5 kW. Cadastre mais opções de inversor ou reduza a potência CC alvo.`
+    const cadastroMin = fmtNum(d.pot_cc_real_kwp / 2, 1)
+    const cadastroMax = fmtNum(d.pot_cc_real_kwp / 0.5, 1)
+    causaMotivo = `Todas as ${d.candidatos_gerados} combinações ficaram fora do FCI aceitável (50%–200%). CC alvo ${fmtNum(d.pot_cc_real_kwp, 2)} kWp precisa de inversor entre ~${cadastroMin} e ~${cadastroMax} kW CA — não tem no catálogo.`
+    acoes = [
+      'Ajustar potência CC pra bater com algum inversor em estoque',
+      'Cadastrar inversor SIW de outra faixa em /admin/catalogo',
+      'Verificar subcategoria = "inversor_string" ou "inversor_hibrido" em /admin/catalogo',
+    ]
+  } else if (d.rejeitados_por_desbalanceamento > 0 && d.rejeitados_por_desbalanceamento === d.candidatos_gerados) {
+    causaMotivo = `Todas as combinações rejeitaram por desbalanceamento > 5 kW entre fases. Cadastre mais opções de inversor pra permitir dupla ou tripla combinação equilibrada.`
+    acoes = ['Cadastrar mais opções de inversor', 'Reduzir potência CC alvo']
   } else {
-    causaMotivo = 'As combinações candidatas foram rejeitadas por múltiplas regras. Revise potência CC alvo e disponibilidade em estoque.'
+    causaMotivo = `As ${d.candidatos_gerados} candidatas foram rejeitadas por múltiplas regras (FCI: ${d.rejeitados_por_fci}, CELESC: ${d.rejeitados_por_celesc}, desbalanceamento: ${d.rejeitados_por_desbalanceamento}). Revise potência CC alvo e disponibilidade.`
+    if (d.rejeitados_por_celesc > 0) {
+      const ccMaxAceitavel = d.pot_ca_limite_celesc_kw * 1.5
+      acoes.push(`Reduzir CC pra ≤ ${fmtNum(ccMaxAceitavel, 2)} kWp (teto CELESC × FCI 150%)`)
+    }
+    if (isMono) acoes.push('Trocar padrão pra bifásico ou trifásico')
+    acoes.push('Ativar “Kit por UC” pra dividir em várias unidades')
   }
 
   return (
     <div className="p-5 bg-coral/10 border border-coral/30 rounded-lg text-sm">
       <p className="text-coral font-bold mb-2">❌ {causaTitulo}</p>
-      <p className="text-white/90 leading-relaxed mb-4">{causaMotivo}</p>
+      <p className="text-white/90 leading-relaxed mb-3">{causaMotivo}</p>
+
+      {acoes.length > 0 && (
+        <div className="mb-4 p-3 bg-sol/10 border border-sol/30 rounded">
+          <p className="text-sol font-semibold text-xs uppercase tracking-wide mb-2">
+            💡 Como resolver
+          </p>
+          <ul className="space-y-1 text-white/90 text-sm">
+            {acoes.map((a, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="text-sol">→</span>
+                <span>{a}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <details className="text-xs text-white/70">
         <summary className="cursor-pointer text-white/80 font-semibold mb-2 hover:text-white">
