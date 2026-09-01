@@ -142,6 +142,11 @@ export async function POST(req: NextRequest) {
       descricao_curta: p.descricao_curta,
       specs: p.specs,
       ativo: true,
+      // Kalebe 2026-09-01: WEG traz muitos SKUs sem preço na planilha
+      // (câmeras Wi-Fi, sensores, nobreaks, wallbox WEMOB) porque exige
+      // cotação caso a caso. Marca como sob_cotacao pra excluir do
+      // diagnóstico e do gerador de kits até ter preço cadastrado.
+      sob_cotacao: !((p.preco_unitario || 0) > 0 || (p.preco_custo_spin || 0) > 0),
       // disponivel_estoque só na criação — respeitamos o valor atual pra existentes
     }))
 

@@ -77,8 +77,13 @@ export default async function DiagnosticoCatalogoPage() {
   // categorias distintas que existem no banco, não só as essenciais.
   const { data: todosProdutos } = await supabase
     .from('produtos')
-    .select('categoria, subcategoria, ativo, id, precos_produtos(preco_venda, vigente_ate)')
+    .select('categoria, subcategoria, ativo, sob_cotacao, id, precos_produtos(preco_venda, vigente_ate)')
     .limit(5000)
+
+  // Kalebe 2026-09-01: sob_cotacao é comportamento esperado — WEG traz
+  // vários SKUs sem preço (câmeras, sensores, wallbox WEMOB) pra cotar
+  // caso a caso. Excluir do diagnóstico.
+  const produtosFiltrados = (todosProdutos || []).filter((p: any) => !p.sob_cotacao)
 
   // Agrupa por categoria — conta ativos, inativos, com preço vigente.
   // Kalebe 2026-09-01: também agrupa por (categoria, subcategoria) pra
@@ -89,7 +94,7 @@ export default async function DiagnosticoCatalogoPage() {
   const porCatSubcat = new Map<string, {
     totalAtivos: number; totalInativos: number; comPrecoVigente: number
   }>()
-  ;(todosProdutos || []).forEach((p: any) => {
+  ;(produtosFiltrados).forEach((p: any) => {
     const cat = p.categoria || '(sem categoria)'
     const sub = p.subcategoria || ''
     const chaveCat = cat

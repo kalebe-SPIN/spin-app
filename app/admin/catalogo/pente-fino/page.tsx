@@ -48,7 +48,12 @@ export default async function PenteFinoPage() {
   // Produtos ativos sem preço vigente — cruzamento à mão
   const hojeIso = new Date().toISOString().slice(0, 10)
   const { data: prodsAtivos } = await supabase
-    .from('produtos').select('id, modelo, categoria, codigo_weg').eq('ativo', true).limit(2000)
+    // Kalebe 2026-09-01: ignora sob_cotacao — esses SKUs vêm da WEG SEM
+    // preço porque exigem cotação. Não é erro, é comportamento esperado.
+    .from('produtos').select('id, modelo, categoria, codigo_weg')
+    .eq('ativo', true)
+    .or('sob_cotacao.is.null,sob_cotacao.eq.false')
+    .limit(2000)
   const ids = (prodsAtivos || []).map(p => p.id)
   let precosMap = new Set<string>()
   if (ids.length > 0) {

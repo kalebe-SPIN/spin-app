@@ -35,19 +35,25 @@ export async function normalizarFabricanteAction() {
   return { sucesso: true, atualizados: (data || []).length }
 }
 
-/** Normaliza subcategoria vazia → 'sem_categoria' e categoria vazia → 'outro'. */
+/** Normaliza subcategoria vazia → 'sem_categoria' e categoria vazia → 'outro'.
+ *  Kalebe 2026-09-01: bug 'invalid input value for enum categoria_principal: ""'.
+ *  Causa: o filtro .eq('categoria', '') pede ao Postgres pra comparar o enum
+ *  com string vazia, o que ele rejeita antes mesmo do UPDATE rodar.
+ *  Fix: enum só aceita valores válidos ou NULL — filtrar só .is.null. */
 export async function normalizarCategoriasAction() {
   const g = await assertAdmin(); if (g.erro) return { erro: g.erro }
+  // subcategoria é text (não enum) — mantém o .or com eq. vazia
   const { data: sub, error: e1 } = await g.supabaseAdmin!
     .from('produtos')
     .update({ subcategoria: 'sem_categoria' })
     .or('subcategoria.is.null,subcategoria.eq.')
     .select('id')
   if (e1) return { erro: e1.message }
+  // categoria é enum — só pode ser null (nunca "")
   const { data: cat, error: e2 } = await g.supabaseAdmin!
     .from('produtos')
     .update({ categoria: 'outro' })
-    .or('categoria.is.null,categoria.eq.')
+    .is('categoria', null)
     .select('id')
   if (e2) return { erro: e2.message }
   revalidatePath('/admin/catalogo/pente-fino')
