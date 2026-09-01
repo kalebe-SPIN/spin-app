@@ -407,7 +407,23 @@ async function precificarComplementosCC(
         .limit(500)
       const listaInativos = (inativos || []) as any[]
       if (listaInativos.length === 0) {
-        return { ok: false, motivo: `nenhum produto cadastrado em categoria ${filtro.categorias.join('/')}` }
+        // Kalebe 2026-09-01: diagnóstico mais útil — mostra as categorias
+        // que TÊM produtos com nome próximo (contém 'cabo', 'estrutura' etc)
+        // pra o admin entender se é caso de renomear categoria ou cadastrar.
+        const filtroContem = (filtro.contem || []).join(' ') || filtro.categorias[0]
+        const { data: parecidos } = await supabase
+          .from('produtos')
+          .select('categoria')
+          .ilike('modelo', `%${filtroContem}%`)
+          .limit(20)
+        const catsExistentes = Array.from(new Set((parecidos || []).map((p: any) => p.categoria))).filter(Boolean)
+        const dica = catsExistentes.length > 0
+          ? ` (achei "${filtroContem}" em categoria: ${catsExistentes.slice(0, 3).join(', ')})`
+          : ''
+        return {
+          ok: false,
+          motivo: `zero produtos na categoria ${filtro.categorias.join('/')}${dica} — cadastre em /admin/catalogo`,
+        }
       }
       lista = listaInativos
       usandoInativos = true

@@ -111,13 +111,22 @@ export default async function CatalogoAdminPage() {
                 Uploads de planilhas de preço, PDF de estoque e datasheets dos produtos.
               </p>
             </div>
-            <Link
-              href="/admin/precificacao/fotovoltaico"
-              className="inline-flex items-center gap-2 px-3 py-2 bg-sol/10 border border-sol/30 text-sol text-xs font-bold rounded-lg hover:bg-sol/20 transition self-start md:self-auto"
-              title="Faixas R$/kWp, preço médio kWh CELESC, fator perdas — usados pelo Orçamento Rápido"
-            >
-              ☀️ Editar precificação FV →
-            </Link>
+            <div className="flex gap-2 flex-wrap self-start md:self-auto">
+              <Link
+                href="/admin/catalogo/diagnostico"
+                className="inline-flex items-center gap-2 px-3 py-2 bg-verde/10 border border-verde/30 text-verde text-xs font-bold rounded-lg hover:bg-verde/20 transition"
+                title="Ver categorias essenciais e onde falta cadastrar preço"
+              >
+                🔎 Diagnóstico
+              </Link>
+              <Link
+                href="/admin/precificacao/fotovoltaico"
+                className="inline-flex items-center gap-2 px-3 py-2 bg-sol/10 border border-sol/30 text-sol text-xs font-bold rounded-lg hover:bg-sol/20 transition"
+                title="Faixas R$/kWp, preço médio kWh CELESC, fator perdas — usados pelo Orçamento Rápido"
+              >
+                ☀️ Editar precificação FV →
+              </Link>
+            </div>
           </div>
         </header>
 
