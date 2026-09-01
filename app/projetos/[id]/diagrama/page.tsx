@@ -152,11 +152,18 @@ export default async function DiagramaPage({ params }: { params: { id: string } 
       desc: 'Sistema com bateria + saída EPS. Inclui MMW03, EMBOX e cadeia de backup.',
     })
   }
-  // Padrao de entrada — SEMPRE disponivel
+  // Padrão de entrada — SEMPRE disponível. Kalebe 2026-09-01: se o
+  // consultor sinalizou necessita_troca_padrao=true no /padrao, marca
+  // como RECOMENDADO no label pra o admin não esquecer de gerar.
+  const necessitaTroca = !!(projeto?.padrao_entrada?.necessita_troca_padrao)
   tiposDisponiveis.push({
     id: 'padrao_entrada',
-    label: 'Padrão de entrada CELESC',
-    desc: 'Prancha do padrão de entrada (Grupo A MT ou Grupo B BT) pra homologação.',
+    label: necessitaTroca
+      ? '⚠ Padrão de entrada CELESC (troca sinalizada pelo consultor)'
+      : 'Padrão de entrada CELESC',
+    desc: necessitaTroca
+      ? 'Prancha OBRIGATÓRIA — o consultor marcou que o padrão precisa ser trocado.'
+      : 'Prancha do padrão de entrada (Grupo A MT ou Grupo B BT) pra homologação.',
   })
   // Layout de instalação — SEMPRE disponível (se tem telhado_secoes, agente usa)
   tiposDisponiveis.push({

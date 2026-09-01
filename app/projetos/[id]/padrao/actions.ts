@@ -17,6 +17,11 @@ export type PadraoInput = {
   distancia_string_qgbt_m: number | null
   altura_padrao_entrada_m: number | null
   observacoes: string
+  // Kalebe 2026-09-01: consultor sinaliza que padrão precisa ser trocado.
+  // Consequências:
+  //   1. Gerador de diagramas inclui automaticamente o tipo 'padrao_entrada'
+  //   2. Homologação começa pela fase 'troca_padrao' antes das 7 fases atuais
+  necessita_troca_padrao: boolean
 }
 
 /** Salva dados do padrão e avança status do projeto */

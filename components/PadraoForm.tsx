@@ -25,6 +25,7 @@ export function PadraoForm({
     distancia_string_qgbt_m: padraoSalvo?.distancia_string_qgbt_m || null,
     altura_padrao_entrada_m: padraoSalvo?.altura_padrao_entrada_m || null,
     observacoes: padraoSalvo?.observacoes || '',
+    necessita_troca_padrao: padraoSalvo?.necessita_troca_padrao ?? false,
   })
   const [salvando, setSalvando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -114,11 +115,38 @@ export function PadraoForm({
           </select>
         </Field>
 
-        {/* Kalebe 2026-09-01: campos técnicos removidos do fluxo do consultor
-            (altura, medidor bidirecional, cabine primária, QGBT, aterramento,
-            SPDA) — 'não são importantes pra nossa necessidade, poluem o
-            processo'. Valores continuam no schema pra compat com registros
-            antigos, mas não são mais coletados. */}
+      </fieldset>
+
+      {/* ⚠ SINALIZAÇÃO DE TROCA DE PADRÃO — Kalebe 2026-09-01
+          Substituto dos 6 campos técnicos removidos. Quando marcado:
+            1. Gerador de diagramas inclui 'padrão de entrada' automaticamente
+            2. Homologação inicia com fase 'Troca de padrão' antes das 7 fases */}
+      <fieldset className="pt-4 border-t border-white/10">
+        <label className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
+          form.necessita_troca_padrao
+            ? 'bg-coral/10 border-coral/50'
+            : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.05]'
+        }`}>
+          <input
+            type="checkbox"
+            checked={form.necessita_troca_padrao}
+            onChange={(e) => update('necessita_troca_padrao', e.target.checked)}
+            className="mt-1 w-5 h-5 accent-coral cursor-pointer"
+          />
+          <div className="flex-1">
+            <div className={`text-sm font-bold ${form.necessita_troca_padrao ? 'text-coral' : 'text-white'}`}>
+              ⚠ Necessário trocar padrão de entrada
+            </div>
+            <p className="text-xs text-white/60 mt-1">
+              Marque se o padrão atual do imóvel precisa ser trocado/upgradado
+              antes da instalação FV. O sistema vai:
+            </p>
+            <ul className="text-xs text-white/70 mt-2 space-y-0.5 list-disc list-inside">
+              <li>Gerar automaticamente o <b>diagrama de padrão de entrada</b> junto com o unifilar</li>
+              <li>Iniciar a <b>homologação pela fase de troca de padrão</b> antes das 7 fases normais</li>
+            </ul>
+          </div>
+        </label>
       </fieldset>
 
       {/* DISTÂNCIA */}

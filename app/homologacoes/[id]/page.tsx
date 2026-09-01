@@ -55,7 +55,7 @@ export default async function HomologacaoDetalhePage({
         *,
         projeto:projetos(
           id, codigo, cliente_razao_social, cliente_cpf_cnpj, analise_fatura,
-          status, tipo_projeto, uc_geradora
+          status, tipo_projeto, uc_geradora, padrao_entrada
         ),
         eletrotecnico:profiles!homologacoes_eletrotecnico_id_fkey(nome_completo)
       `)
@@ -255,6 +255,52 @@ export default async function HomologacaoDetalhePage({
             estourar o Server Component ao passar objetos complexos
             (docs_socios, eletrotecnico obj, etc) pro Client Component.
             Wrapper renderTimeline try/catch expõe erro real quando quebra. */}
+        {/* FASE 0 — Troca de padrão (Kalebe 2026-09-01). Só aparece se o
+            consultor marcou padrao_entrada.necessita_troca_padrao = true.
+            Vai antes das 7 fases porque a CELESC exige padrão adequado
+            antes de submeter o pedido de acesso à GD. */}
+        {(hom.projeto as any)?.padrao_entrada?.necessita_troca_padrao && (
+          <section className="mb-6 p-5 bg-coral/10 border-2 border-coral/40 rounded-xl">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <h2 className="text-sm font-bold text-coral uppercase tracking-wider">
+                  Fase 0 — Troca de padrão de entrada (pré-requisito)
+                </h2>
+                <p className="text-xs text-white/60">
+                  O consultor sinalizou que o padrão precisa ser trocado antes de submeter o pedido à CELESC.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 bg-noite/40 border border-white/10 rounded">
+                <p className="text-white/50 text-[10px] uppercase mb-1">Iniciada em</p>
+                <p className="text-white">
+                  {homSafe.troca_padrao_iniciada_em
+                    ? new Date(homSafe.troca_padrao_iniciada_em).toLocaleDateString('pt-BR')
+                    : '— não iniciada'}
+                </p>
+              </div>
+              <div className="p-3 bg-noite/40 border border-white/10 rounded">
+                <p className="text-white/50 text-[10px] uppercase mb-1">Concluída em</p>
+                <p className="text-white">
+                  {homSafe.troca_padrao_concluida_em
+                    ? new Date(homSafe.troca_padrao_concluida_em).toLocaleDateString('pt-BR')
+                    : '— pendente'}
+                </p>
+              </div>
+            </div>
+            {homSafe.troca_padrao_observacoes && (
+              <p className="mt-3 p-3 bg-noite/40 border border-white/10 rounded text-xs text-white/70">
+                {homSafe.troca_padrao_observacoes}
+              </p>
+            )}
+            <p className="mt-3 text-[10px] text-white/40">
+              💡 Datas e observações editáveis via ação futura — por ora, use o campo de observações abaixo. Depois de concluir, prossiga para Fase 1.
+            </p>
+          </section>
+        )}
+
         {(() => {
           try {
             return (
