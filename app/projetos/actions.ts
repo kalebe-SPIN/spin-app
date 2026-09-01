@@ -12,6 +12,10 @@ export type EnderecoInstalacao = {
   bairro?: string
   cidade?: string
   uf?: string
+  // Kalebe 2026-08-31: coordenadas do Google Maps salvas pra que
+  // o profissional de instalação receba o link pelo WhatsApp.
+  lat?: number | null
+  lng?: number | null
 }
 
 export type NovoProjetoInput = {

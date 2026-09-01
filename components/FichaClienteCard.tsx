@@ -99,12 +99,50 @@ export function FichaClienteCard({
         )}
 
         {/* Endereço */}
-        {(linhaEnd || linhaBairroCidade || end.cep) && (
+        {(linhaEnd || linhaBairroCidade || end.cep || end.lat) && (
           <div className="pt-3 mt-3 border-t border-white/5">
-            <p className="text-[10px] uppercase tracking-wider text-white/40 mb-1">Endereço</p>
+            <p className="text-[10px] uppercase tracking-wider text-white/40 mb-1">Endereço da instalação</p>
             {linhaEnd && <p className="text-sm text-white">{linhaEnd}</p>}
             {linhaBairroCidade && <p className="text-xs text-white/60">{linhaBairroCidade}</p>}
             {end.cep && <p className="text-xs text-white/50 mt-1">CEP {formatarCep(end.cep)}</p>}
+
+            {/* Link Google Maps + botão pra enviar pro profissional de instalação.
+                Kalebe 2026-08-31: 'quero guardar tb o link do maps pra depois ser
+                enviado ao profissional de instalação'. */}
+            {end.lat != null && end.lng != null && (
+              <div className="mt-3 pt-3 border-t border-white/5 flex flex-wrap items-center gap-3">
+                <a
+                  href={`https://www.google.com/maps?q=${end.lat},${end.lng}`}
+                  target="_blank" rel="noreferrer"
+                  className="text-xs font-bold text-sol hover:underline"
+                >
+                  📍 Abrir no Google Maps ↗
+                </a>
+                <a
+                  href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${end.lat},${end.lng}`}
+                  target="_blank" rel="noreferrer"
+                  className="text-xs font-bold text-verde hover:underline"
+                >
+                  🎥 Street View ↗
+                </a>
+                {(() => {
+                  const linkMaps = `https://www.google.com/maps?q=${end.lat},${end.lng}`
+                  const msg = encodeURIComponent(
+                    `Olá! Local de instalação:\n\n📍 ${linhaEnd || 'Ver mapa'}\n${linhaBairroCidade || ''}\n\n🗺 ${linkMaps}`
+                  )
+                  return (
+                    <a
+                      href={`https://wa.me/?text=${msg}`}
+                      target="_blank" rel="noreferrer"
+                      className="ml-auto text-xs font-bold px-3 py-1.5 rounded bg-verde/15 border border-verde/40 text-verde hover:bg-verde/25"
+                      title="Enviar localização pro profissional de instalação via WhatsApp"
+                    >
+                      💬 Enviar pro campo
+                    </a>
+                  )
+                })()}
+              </div>
+            )}
           </div>
         )}
 
