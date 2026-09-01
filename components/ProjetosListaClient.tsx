@@ -284,7 +284,12 @@ function ProjetoLinha({ projeto }: { projeto: Projeto }) {
           </div>
           <div className="flex items-center gap-3 shrink-0">
             {valor && valor > 0 && (
-              <span className="text-xs font-bold text-verde tabular-nums">
+              // Kalebe 2026-09-01: é o soma bruta do KIT WEG (preço tabela sem
+              // fator/margem/impostos/MO/frete). NÃO é o preço final ao cliente.
+              // Rotulado explicitamente pra não confundir com valor de proposta.
+              <span className="text-xs font-mono tabular-nums text-white/60"
+                title="Total do kit WEG (bruto, sem fator/margem/impostos/mão de obra). Preço final ao cliente é maior.">
+                <span className="text-white/40 text-[10px] uppercase tracking-wider mr-1">Kit WEG</span>
                 R$ {valor.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
               </span>
             )}
