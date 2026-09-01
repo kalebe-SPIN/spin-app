@@ -122,21 +122,80 @@ export function NovoProjetoForm({
     setTelhadoSecoes((prev) => prev.filter(s => s.id !== id))
   }
 
+  const [buscandoCep, setBuscandoCep] = useState(false)
+  const [buscaLivre, setBuscaLivre] = useState('')
+  const [buscandoLivre, setBuscandoLivre] = useState(false)
+  const [avisoBusca, setAvisoBusca] = useState<string | null>(null)
+
   async function buscarCepInstalacao() {
     const cep = enderecoInst.cep.replace(/\D/g, '')
     if (cep.length !== 8) return
+    setBuscandoCep(true); setAvisoBusca(null)
     try {
       const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
       const data = await res.json()
-      if (data.erro) return
-      setEnderecoInst((e) => ({
-        ...e,
-        rua: data.logradouro || '',
-        bairro: data.bairro || '',
-        cidade: data.localidade || '',
-        uf: data.uf || 'SC',
-      }))
-    } catch {}
+      if (data.erro) { setAvisoBusca('CEP não encontrado no ViaCEP'); return }
+      const preenchido = {
+        rua: data.logradouro || enderecoInst.rua || '',
+        bairro: data.bairro || enderecoInst.bairro || '',
+        cidade: data.localidade || enderecoInst.cidade || '',
+        uf: data.uf || enderecoInst.uf || 'SC',
+      }
+      setEnderecoInst((e) => ({ ...e, ...preenchido }))
+
+      // Auto-geocode: pega o endereço recém-preenchido e converte em
+      // lat/lng pra o mapa aparecer sozinho. Kalebe 2026-08-31.
+      const enderecoTxt = [
+        preenchido.rua,
+        enderecoInst.numero,
+        preenchido.bairro,
+        preenchido.cidade,
+        preenchido.uf,
+        cep,
+      ].filter(Boolean).join(', ')
+      try {
+        const { geocodificarEnderecoAction } = await import('@/app/crm/clientes/geocodificar-endereco/action')
+        const g = await geocodificarEnderecoAction(enderecoTxt)
+        if (g.ok) {
+          setEnderecoInst((e) => ({ ...e, lat: g.endereco.lat, lng: g.endereco.lng }))
+        } else {
+          setAvisoBusca('CEP OK, mas o mapa não localizou — arraste depois de digitar o número.')
+        }
+      } catch { /* silencioso — usuário ainda pode colar link */ }
+    } catch {
+      setAvisoBusca('Falha ao consultar ViaCEP')
+    } finally {
+      setBuscandoCep(false)
+    }
+  }
+
+  async function buscarNoMaps() {
+    const q = buscaLivre.trim()
+    if (!q) return
+    setBuscandoLivre(true); setAvisoBusca(null)
+    try {
+      const { geocodificarEnderecoAction } = await import('@/app/crm/clientes/geocodificar-endereco/action')
+      const g = await geocodificarEnderecoAction(q)
+      if (g.ok) {
+        setEnderecoInst((e) => ({
+          ...e,
+          cep: g.endereco.cep ? formatarCep(g.endereco.cep) : e.cep,
+          rua: g.endereco.logradouro || e.rua,
+          numero: g.endereco.numero || e.numero,
+          bairro: g.endereco.bairro || e.bairro,
+          cidade: g.endereco.cidade || e.cidade,
+          uf: g.endereco.uf || e.uf,
+          lat: g.endereco.lat,
+          lng: g.endereco.lng,
+        }))
+      } else {
+        setAvisoBusca(g.erro)
+      }
+    } catch (e: any) {
+      setAvisoBusca(e?.message || 'Falha na busca')
+    } finally {
+      setBuscandoLivre(false)
+    }
   }
 
   function updateNovo<K extends keyof typeof formNovo>(k: K, v: typeof formNovo[K]) {
@@ -534,14 +593,32 @@ export function NovoProjetoForm({
           </p>
 
           <div className="space-y-2 p-3 bg-noite/40 border border-white/5 rounded">
+            {/* Barra de busca livre no Maps — Kalebe 2026-08-31.
+                Consultor digita "Rua Getúlio, 500, Florianópolis" e Enter,
+                sistema preenche tudo + ativa mapa. */}
+            <div className="flex gap-2 flex-wrap items-stretch">
+              <input
+                type="text"
+                placeholder="🔍 Buscar no Maps: rua, número, cidade…"
+                value={buscaLivre}
+                onChange={(e) => setBuscaLivre(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscarNoMaps() } }}
+                className="flex-1 min-w-[200px] px-3 py-2 bg-sol/5 border border-sol/30 rounded text-xs text-white placeholder:text-sol/50 focus:outline-none focus:border-sol/60"
+              />
+              <button type="button" onClick={buscarNoMaps} disabled={buscandoLivre || !buscaLivre.trim()}
+                className="px-4 py-2 rounded text-xs font-bold bg-sol text-noite hover:bg-sol/90 disabled:opacity-40 whitespace-nowrap">
+                {buscandoLivre ? '⏳ Buscando…' : '🎯 Localizar'}
+              </button>
+            </div>
+
             <div className="flex gap-2 flex-wrap">
               <input type="text" placeholder="CEP" value={enderecoInst.cep}
                 onChange={(e) => setEnderecoInst((s) => ({ ...s, cep: formatarCep(e.target.value) }))}
                 onBlur={buscarCepInstalacao}
                 className="w-32 px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
-              <button type="button" onClick={buscarCepInstalacao}
-                className="flex-1 min-w-[120px] px-3 py-2 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10">
-                🔍 Buscar CEP
+              <button type="button" onClick={buscarCepInstalacao} disabled={buscandoCep}
+                className="flex-1 min-w-[120px] px-3 py-2 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10 disabled:opacity-40">
+                {buscandoCep ? '⏳ Buscando…' : '🔍 Buscar CEP + mapa'}
               </button>
               <ColarLinkMapaBotao
                 className="px-3 py-2 rounded text-xs font-bold bg-verde/15 border border-verde/40 text-verde hover:bg-verde/25 whitespace-nowrap"
@@ -557,8 +634,15 @@ export function NovoProjetoForm({
                 }))}
               />
             </div>
+
+            {avisoBusca && (
+              <p className="text-[10px] text-sol bg-sol/10 border border-sol/30 rounded px-2 py-1.5">
+                ⚠ {avisoBusca}
+              </p>
+            )}
+
             <p className="text-[10px] text-white/40">
-              💡 Cliente sem número? Peça a localização por WhatsApp e cole o link.
+              💡 3 formas de localizar: <strong>busca livre</strong> (topo) · <strong>CEP</strong> (auto) · <strong>link WhatsApp</strong> (cliente sem número).
             </p>
             <div className="grid grid-cols-3 gap-2">
               <input type="text" placeholder="Rua" value={enderecoInst.rua}
