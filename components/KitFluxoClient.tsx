@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { salvarKitAction } from '@/app/projetos/[id]/kit/actions'
 import { sugerirKits, type KitSugerido, type DiagnosticoGerador } from '@/lib/kit-auto/sugerir-kits'
 import { fmtNum } from '@/lib/formatters'
@@ -112,6 +113,7 @@ export function KitFluxoClient({
     telhado_secoes_proprio: telhadoSecoesProprio,
   } : undefined
   const [isPending, startTransition] = useTransition()
+  const router = useRouter()
   const [erro, setErro] = useState<string | null>(null)
 
   const [categoria, setCategoria] = useState<CategoriaSistema | null>(
@@ -222,7 +224,22 @@ export function KitFluxoClient({
 
     startTransition(async () => {
       const result = await salvarKitAction(projetoId, payload, categoria || undefined, opts)
-      if (result && !result.sucesso) setErro(result.erro || 'Erro ao salvar')
+      if (!result) {
+        setErro('Sem resposta do servidor')
+        return
+      }
+      if (!result.sucesso) {
+        setErro(result.erro || 'Erro ao salvar')
+        return
+      }
+      // Kalebe 2026-09-01: server retorna next_path — cliente navega.
+      // Antes o redirect era feito no server e era engolido se algum
+      // passo throw antes; agora é explícito.
+      if ('next_path' in result && result.next_path) {
+        router.push(result.next_path)
+      } else {
+        router.refresh()
+      }
     })
   }
 
@@ -351,7 +368,22 @@ export function KitFluxoClient({
 
     startTransition(async () => {
       const result = await salvarKitAction(projetoId, payload, categoria || undefined, opts)
-      if (result && !result.sucesso) setErro(result.erro || 'Erro ao salvar')
+      if (!result) {
+        setErro('Sem resposta do servidor')
+        return
+      }
+      if (!result.sucesso) {
+        setErro(result.erro || 'Erro ao salvar')
+        return
+      }
+      // Kalebe 2026-09-01: server retorna next_path — cliente navega.
+      // Antes o redirect era feito no server e era engolido se algum
+      // passo throw antes; agora é explícito.
+      if ('next_path' in result && result.next_path) {
+        router.push(result.next_path)
+      } else {
+        router.refresh()
+      }
     })
   }
 

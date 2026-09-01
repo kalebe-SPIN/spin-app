@@ -70,7 +70,21 @@ export async function salvarKitAction(
   kit: KitSelecionado,
   tipoProjeto?: string,
   opts?: SalvarKitOpts,
-) {
+): Promise<{ sucesso: true; next_path?: string } | { sucesso: false; erro: string }> {
+  try {
+    return await _salvarKitActionImpl(projetoId, kit, tipoProjeto, opts)
+  } catch (e: any) {
+    console.error('[salvarKitAction] erro:', e?.message || e, e?.stack)
+    return { sucesso: false, erro: e?.message || 'Erro desconhecido ao salvar kit' }
+  }
+}
+
+async function _salvarKitActionImpl(
+  projetoId: string,
+  kit: KitSelecionado,
+  tipoProjeto?: string,
+  opts?: SalvarKitOpts,
+): Promise<{ sucesso: true; next_path?: string } | { sucesso: false; erro: string }> {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { sucesso: false, erro: 'Não autenticado' }
@@ -288,12 +302,15 @@ export async function salvarKitAction(
   }
 
   revalidatePath(`/projetos/${projetoId}`)
+  revalidatePath(`/projetos/${projetoId}/kit`)
+  // Kalebe 2026-09-01: retorna next_path em vez de redirect() do server.
+  // Se algum passo anterior throw (precificarComplementosCC, DB), o
+  // redirect era engolido e a UI ficava travada sem feedback.
+  // Cliente faz router.push explícito e sabe pra onde vai.
   if (modoPorUc) {
-    // Fica no /kit pra escolher próxima UC
-    revalidatePath(`/projetos/${projetoId}/kit`)
     return { sucesso: true }
   }
-  redirect(`/projetos/${projetoId}`)
+  return { sucesso: true, next_path: `/projetos/${projetoId}/lista-ca` }
 }
 
 // ─── Nova action: atualiza modo_composicao (centralizado ↔ por_uc) ────
