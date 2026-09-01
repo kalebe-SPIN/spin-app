@@ -4,7 +4,7 @@ import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PropostaVEPDFTemplate } from './PropostaVEPDFTemplate'
-import { nomearArquivo } from '@/lib/downloads'
+import { nomearProposta } from '@/lib/downloads'
 import { salvarUrlPropostaVeAction } from '@/app/projetos/[id]/ve/proposta/actions'
 
 type Props = {
@@ -47,10 +47,16 @@ export function PropostaVEClient({ projeto, selecao, configEmpresa }: Props) {
         pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
 
-      const nomeArquivo = nomearArquivo({
+      // Kalebe 2026-09-01: novo formato PROPOSTA_XCA_CLIENTE.pdf.
+      // VE não tem CC — só potência CA dos wallboxes selecionados.
+      const equipamentos = Array.isArray(selecao?.equipamentos) ? selecao.equipamentos : []
+      const potenciaCaTotal = equipamentos.reduce(
+        (s: number, e: any) => s + (Number(e?.potencia_kw) || 0) * (Number(e?.qtd) || 1),
+        0,
+      )
+      const nomeArquivo = nomearProposta({
         cliente: projeto.cliente_razao_social,
-        finalidade: 'PROPOSTA_VE',
-        tipo: 'PDF',
+        potenciaCaKw: potenciaCaTotal,
       })
       pdf.save(nomeArquivo)
 

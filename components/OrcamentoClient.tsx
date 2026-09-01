@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { salvarOrcamentoAction, marcarPropostaEnviadaAction } from '@/app/projetos/[id]/orcamento/actions'
 import { PropostaPDFTemplate } from './PropostaPDFTemplate'
-import { nomearArquivo } from '@/lib/downloads'
+import { nomearArquivo, nomearProposta } from '@/lib/downloads'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
 
 type PropostaUc = {
@@ -94,11 +94,18 @@ export function OrcamentoClient({
         pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
 
-      // 1) Baixar automaticamente — padrão NOME_FINALIDADE_TIPO.ext
-      const nomeArquivo = nomearArquivo({
+      // 1) Baixar automaticamente — Kalebe 2026-09-01: novo formato
+      //    PROPOSTA_5.2CC-4.4CA_NOME DO CLIENTE.pdf
+      const potenciaCcTotal = modoComposicao === 'por_uc'
+        ? (propostasPorUc || []).reduce((s: number, u: any) => s + (u.kit?.potencia_cc_kwp || 0), 0)
+        : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
+      const potenciaCaTotal = modoComposicao === 'por_uc'
+        ? (propostasPorUc || []).reduce((s: number, u: any) => s + (u.kit?.potencia_ca_kw || 0), 0)
+        : (projeto.kit_selecionado?.potencia_ca_kw || 0)
+      const nomeArquivo = nomearProposta({
         cliente: projeto.cliente_razao_social,
-        finalidade: 'PROPOSTA_COMERCIAL',
-        tipo: 'PDF',
+        potenciaCcKwp: potenciaCcTotal,
+        potenciaCaKw: potenciaCaTotal,
       })
       pdf.save(nomeArquivo)
 

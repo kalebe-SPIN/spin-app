@@ -74,6 +74,45 @@ export function nomearArquivo(input: {
   return `${nomeCliente}_${finalidade}_${tipoUpper}.${ext}`
 }
 
+/**
+ * Nomenclatura específica pra propostas comerciais.
+ * Kalebe 2026-09-01: 'PROPOSTA_POTÊNCIACC/CA_NOME DO CLIENTE' em UPPER.
+ *
+ * Como '/' quebra em filesystem (é separador de path), uso hífen entre
+ * as duas potências: PROPOSTA_5.2CC-4.4CA_JOAO SILVA.pdf
+ * O nome do cliente PRESERVA espaços (só remove acentos).
+ *
+ * Se falta CC (fluxo VE), fica só CA:  PROPOSTA_7.4CA_JOAO SILVA.pdf
+ * Se falta CA (raro), fica só CC:      PROPOSTA_5.2CC_JOAO SILVA.pdf
+ */
+export function nomearProposta(input: {
+  cliente: string | null | undefined
+  potenciaCcKwp?: number | null
+  potenciaCaKw?: number | null
+  ext?: 'pdf' | 'zip'
+}): string {
+  const cliente = normalizarNomePreservaEspacos(input.cliente || 'CLIENTE')
+  const cc = Number(input.potenciaCcKwp)
+  const ca = Number(input.potenciaCaKw)
+  const partes: string[] = []
+  if (cc > 0) partes.push(`${cc.toFixed(cc >= 10 ? 1 : 2)}CC`.replace(/\.?0+CC$/, 'CC'))
+  if (ca > 0) partes.push(`${ca.toFixed(ca >= 10 ? 1 : 2)}CA`.replace(/\.?0+CA$/, 'CA'))
+  const potencias = partes.join('-') || 'SEMDIMENSAO'
+  const ext = input.ext || 'pdf'
+  return `PROPOSTA_${potencias}_${cliente}.${ext}`
+}
+
+/** UPPERCASE + remove acentos, PRESERVA espaços simples. */
+function normalizarNomePreservaEspacos(s: string): string {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]+/g, ' ')  // não-alfanumérico vira espaço
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /** Remove acentos, uppercase, colapsa não-alfanumérico em _ */
 function normalizarNome(s: string): string {
   return String(s || '')
