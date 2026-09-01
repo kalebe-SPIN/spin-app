@@ -17,7 +17,7 @@
  * Geocoder entre chamadas subsequentes.
  */
 
-import { Loader } from '@googlemaps/js-api-loader'
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 
 export type EnderecoResolvido = {
   lat: number
@@ -37,6 +37,10 @@ const KEY =
 
 let geocoderPromise: Promise<any> | null = null
 
+// Config global do loader — 1 vez. As chamadas subsequentes de
+// importLibrary reusam essa config.
+setOptions({ key: KEY, v: 'weekly', language: 'pt-BR', region: 'BR' })
+
 /** Garante que o SDK Maps está carregado e retorna um Geocoder. */
 async function pegarGeocoder(): Promise<any> {
   if (!geocoderPromise) {
@@ -45,9 +49,9 @@ async function pegarGeocoder(): Promise<any> {
       // reusa direto sem baixar de novo.
       const g = (window as any).google
       if (g?.maps?.Geocoder) return new g.maps.Geocoder()
-      const loader = new Loader({ apiKey: KEY, version: 'weekly', libraries: [] })
-      await loader.load()
-      return new (window as any).google.maps.Geocoder()
+      // API v2 do js-api-loader — importLibrary functional
+      const geocoding: any = await importLibrary('geocoding')
+      return new geocoding.Geocoder()
     })()
   }
   return geocoderPromise

@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader } from '@googlemaps/js-api-loader'
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import { salvarSecoesMapaAction } from '@/app/projetos/[id]/telhado/mapa/actions'
 
 // Placa WEG padrão pra calcular capacidade estimada (620Wp bifacial)
@@ -51,13 +51,14 @@ export function MapaTelhadoEditor({
   useEffect(() => {
     if (!mapaRef.current) return
 
-    const loader = new Loader({
-      apiKey,
-      version: 'weekly',
-      libraries: ['drawing', 'geometry', 'places'],
-    })
-
-    loader.load()
+    setOptions({ key: apiKey, v: 'weekly', language: 'pt-BR', region: 'BR' })
+    Promise.all([
+      importLibrary('maps'),
+      importLibrary('drawing'),
+      importLibrary('geometry'),
+      importLibrary('places'),
+      importLibrary('geocoding'),
+    ])
       .then(async () => {
         // Geocoding do endereço pra centralizar
         const geocoder = new google.maps.Geocoder()

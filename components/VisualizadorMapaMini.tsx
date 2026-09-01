@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Loader } from '@googlemaps/js-api-loader'
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 
 type Props = {
   lat: number
@@ -54,9 +54,9 @@ export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20
     }
     let cancelado = false
 
-    const loader = new Loader({ apiKey: key, version: 'weekly', libraries: [] })
-
-    loader.load().then(() => {
+    // API v2 do js-api-loader — setOptions + importLibrary
+    setOptions({ key, v: 'weekly', language: 'pt-BR', region: 'BR' })
+    importLibrary('maps').then(async () => {
       if (cancelado || !mapaRef.current) return
       const google = (window as any).google
       const map = new google.maps.Map(mapaRef.current, {

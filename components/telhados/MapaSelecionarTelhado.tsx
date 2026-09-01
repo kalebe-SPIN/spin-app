@@ -4,7 +4,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Loader } from '@googlemaps/js-api-loader'
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import { buscarSolarInsights, type SolarInsights } from '@/lib/googleSolar'
 
 export type PontoTelhado = {
@@ -52,8 +52,9 @@ export function MapaSelecionarTelhado({
       return
     }
 
-    const loader = new Loader({ apiKey: key, version: 'weekly', libraries: ['places'] })
-    loader.load().then((google) => {
+    setOptions({ key, v: 'weekly', language: 'pt-BR', region: 'BR' })
+    Promise.all([importLibrary('maps'), importLibrary('places'), importLibrary('geocoding')]).then(() => {
+      const google = (window as any).google
       if (!divMapa.current) return
 
       geocoderRef.current = new google.maps.Geocoder()
