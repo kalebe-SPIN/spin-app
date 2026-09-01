@@ -70,6 +70,10 @@ export function VisualizadorMapaMini({
   const [printsFeitos, setPrintsFeitos] = useState<Array<{
     tipo: 'aerea' | 'rua'; blobUrl: string; nome: string
   }>>([])
+  // Guarda o polígono medido pra o Vetorizar usar como referência
+  const [poligonoMedido, setPoligonoMedido] = useState<PontoLatLng[] | null>(null)
+  // Tela cheia — CSS fixed em vez de Fullscreen API (mais confiável)
+  const [ampliado, setAmpliado] = useState(false)
 
   const KEY =
     apiKey ||
@@ -365,6 +369,7 @@ export function VisualizadorMapaMini({
       setAreaMedida(area)
       setMedindo(false)
       setMsgAcao(null)
+      setPoligonoMedido(pontos)
       if (onAreaMedida) onAreaMedida({ areaM2: Number(area.toFixed(2)), pontos })
       // Listener pra recalcular se editar
       path.addListener('set_at', () => recalcAreaMedida())
@@ -388,14 +393,27 @@ export function VisualizadorMapaMini({
   function limparMedicao() {
     if (polyMedidoRef.current) { polyMedidoRef.current.setMap(null); polyMedidoRef.current = null }
     if (drawManRef.current) { drawManRef.current.setMap(null); drawManRef.current = null }
-    setAreaMedida(null); setMedindo(false)
+    setAreaMedida(null); setMedindo(false); setPoligonoMedido(null)
     medindoRef.current = false
   }
 
   async function vetorizarComSolar() {
     setBuscandoSolar(true); setMsgAcao('🔬 Consultando Google Solar…')
     try {
-      const s = await buscarSolarInsights(lat, lng)
+      // Se o consultor MEDIU o telhado primeiro, usa o CENTROIDE do
+      // polígono como referência — mais preciso que o pino, que pode
+      // estar num canto ou fora do telhado. Kalebe 2026-08-31.
+      let refLat = lat, refLng = lng
+      if (poligonoMedido && poligonoMedido.length >= 3) {
+        const sum = poligonoMedido.reduce(
+          (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
+          { lat: 0, lng: 0 },
+        )
+        refLat = sum.lat / poligonoMedido.length
+        refLng = sum.lng / poligonoMedido.length
+        setMsgAcao('🔬 Consultando Solar no centro do polígono medido…')
+      }
+      const s = await buscarSolarInsights(refLat, refLng)
       if (!s) {
         setMsgAcao('❌ Google Solar não tem cobertura desta área. Use a régua manual.')
         setTimeout(() => setMsgAcao(null), 5000)
@@ -466,8 +484,23 @@ export function VisualizadorMapaMini({
     )
   }
 
+  // Quando amplia/minimiza, força o Google Maps a re-renderizar
+  // (senão fica com pedaços em cinza porque o container mudou)
+  useEffect(() => {
+    if (!mapRef.current) return
+    const google = (window as any).google
+    setTimeout(() => {
+      try {
+        google?.maps?.event?.trigger(mapRef.current, 'resize')
+        mapRef.current.setCenter({ lat, lng })
+      } catch {}
+    }, 100)
+  }, [ampliado])
+
   return (
-    <div className="space-y-2">
+    <div className={ampliado
+      ? 'fixed inset-0 z-[9999] bg-noite p-4 overflow-auto space-y-2'
+      : 'space-y-2'}>
       {/* TOOLBAR */}
       <div className="flex flex-wrap items-center gap-2 p-2 bg-noite/40 border border-white/10 rounded">
         <div className="flex rounded overflow-hidden border border-white/10">
@@ -495,18 +528,28 @@ export function VisualizadorMapaMini({
 
             <button type="button" onClick={buscandoSolar ? undefined : vetorizarComSolar}
               disabled={buscandoSolar}
+              title={poligonoMedido
+                ? 'Solar vai usar o CENTRO do polígono que você mediu como referência'
+                : '💡 Meça a área primeiro pra Solar ser mais preciso'}
               className="px-3 py-1.5 text-[11px] font-bold bg-verde/10 border border-verde/40 rounded text-verde hover:bg-verde/20 disabled:opacity-50">
-              {buscandoSolar ? '⏳ Analisando…' : '🔬 Vetorizar (Solar)'}
+              {buscandoSolar ? '⏳ Analisando…' : poligonoMedido ? '🔬 Vetorizar (do polígono)' : '🔬 Vetorizar (Solar)'}
             </button>
 
             {(areaMedida != null || solar) && (
               <button type="button" onClick={() => { limparMedicao(); limparSolar() }}
-                className="ml-auto px-2 py-1 text-[10px] text-white/50 hover:text-white/80">
+                className="px-2 py-1 text-[10px] text-white/50 hover:text-white/80">
                 Limpar
               </button>
             )}
           </>
         )}
+
+        {/* Ampliar tela — importante pra medir/vetorizar com precisão */}
+        <button type="button" onClick={() => setAmpliado((v) => !v)}
+          className="ml-auto px-3 py-1.5 text-[11px] font-bold bg-noite/40 border border-white/20 rounded text-white hover:bg-white/10"
+          title={ampliado ? 'Voltar ao tamanho normal' : 'Ampliar pra tela cheia (melhor pra medir/vetorizar)'}>
+          {ampliado ? '↙ Minimizar' : '⛶ Ampliar tela'}
+        </button>
       </div>
 
       {/* AVISOS */}
@@ -583,7 +626,10 @@ export function VisualizadorMapaMini({
       {/* CONTAINERS MAPA + STREET VIEW */}
       <div
         className="relative rounded border border-white/10 overflow-hidden"
-        style={{ height: altura, touchAction: 'none' }}
+        style={{
+          height: ampliado ? 'calc(100vh - 220px)' : altura,
+          touchAction: 'none',
+        }}
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
