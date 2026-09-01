@@ -20,6 +20,21 @@ export type SolarInsights = {
   qualidade: 'HIGH' | 'MEDIUM' | 'LOW'
   panelCapacityWatts: number
   potenciaMaxKwp: number
+  // Bounding box do prédio inteiro — [{lat,lng}, {lat,lng}]
+  centroPredio?: { lat: number; lng: number } | null
+  // Segmentos por face do telhado — pra vetorizar visualmente
+  segmentos?: Array<{
+    areaM2: number
+    inclinacaoGraus: number
+    orientacaoGraus: number  // 0=N, 90=E, 180=S, 270=W
+    centro: { lat: number; lng: number }
+    // Caixa aproximada do segmento (Solar API não devolve polígono exato,
+    // mas devolve a bounding box que a gente pode desenhar como retângulo)
+    boundingBox?: {
+      sw: { lat: number; lng: number }
+      ne: { lat: number; lng: number }
+    }
+  }>
 }
 
 export async function buscarSolarInsights(
@@ -65,6 +80,31 @@ export async function buscarSolarInsights(
 
     if (!maxPlacas) return null
 
+    // Extrai segmentos do telhado — cada face vira um retângulo colorido.
+    const rawSegs = (sp.roofSegmentStats || []) as any[]
+    const segmentos = rawSegs.map((s) => {
+      const bb = s.boundingBox
+      const centro = s.center || {}
+      return {
+        areaM2: Number((s.stats?.areaMeters2 || 0).toFixed(2)),
+        inclinacaoGraus: Number((s.pitchDegrees || 0).toFixed(1)),
+        orientacaoGraus: Number((s.azimuthDegrees || 0).toFixed(1)),
+        centro: {
+          lat: Number(centro.latitude ?? 0),
+          lng: Number(centro.longitude ?? 0),
+        },
+        boundingBox: bb ? {
+          sw: { lat: Number(bb.sw?.latitude ?? 0), lng: Number(bb.sw?.longitude ?? 0) },
+          ne: { lat: Number(bb.ne?.latitude ?? 0), lng: Number(bb.ne?.longitude ?? 0) },
+        } : undefined,
+      }
+    }).filter((s) => s.areaM2 > 0)
+
+    const centroPredio = data.center ? {
+      lat: Number(data.center.latitude),
+      lng: Number(data.center.longitude),
+    } : null
+
     return {
       maxPlacas,
       areaUtilM2: Number(areaUtilM2.toFixed(2)),
@@ -72,6 +112,8 @@ export async function buscarSolarInsights(
       qualidade,
       panelCapacityWatts,
       potenciaMaxKwp: Number(potenciaMaxKwp.toFixed(2)),
+      centroPredio,
+      segmentos,
     }
   } catch {
     return null
