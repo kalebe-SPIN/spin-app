@@ -422,14 +422,18 @@ function ComposicaoCustosAdmin({
           <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-sol/10 text-sol">Admin</span>
           <h2 className="text-lg font-bold text-white">Composição de custos e precificação</h2>
         </div>
-        {/* Kalebe 2026-09-01: analista de projeto valida conformidade
-            antes de fechar a proposta */}
-        <ValidadorAnalista
-          kit={projeto.kit_selecionado}
-          complementos={projeto.lista_complementos_cc?.itens || []}
-          avisos={avisos}
-          listaCa={listaCa}
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Kalebe 2026-09-01: regerar limpa snapshots antigos com
+              capacitor/gancho errado depois dos fixes recentes */}
+          <BotaoRegerarComposicao projetoId={projeto.id} />
+          {/* Analista de projeto valida conformidade antes de fechar */}
+          <ValidadorAnalista
+            kit={projeto.kit_selecionado}
+            complementos={projeto.lista_complementos_cc?.itens || []}
+            avisos={avisos}
+            listaCa={listaCa}
+          />
+        </div>
       </div>
       <p className="text-xs text-white/50 mb-4">
         Detalhamento item-a-item para revisão gerencial. Não vai para o cliente.
@@ -559,6 +563,45 @@ function ComposicaoCustosAdmin({
         <Linha label="Desconto máx. negociação (mantém margem mínima)" valor={fmt(proposta.desconto_max_negociacao)} />
       </div>
     </section>
+  )
+}
+
+/**
+ * Botão 🔄 Regerar composição — força re-execução do precificarComplementosCC
+ * no kit_selecionado atual, aplicando os fixes recentes (BCWA→capacitor,
+ * gancho→kit estrutura, normalização de espaços/hífens).
+ * Kalebe 2026-09-01.
+ */
+function BotaoRegerarComposicao({ projetoId }: { projetoId: string }) {
+  const [rodando, setRodando] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  async function regerar() {
+    if (!confirm('Regerar composição WEG (cabo, estrutura, MC4, disjuntor, DPS)? Aplica os fixes mais recentes ao snapshot.')) return
+    setRodando(true); setMsg(null)
+    try {
+      const { regenerarComplementosKitAction } = await import('@/app/projetos/[id]/kit/actions')
+      const r = await regenerarComplementosKitAction(projetoId)
+      if (r.sucesso) {
+        setMsg('✓ Regerado. Recarregando…')
+        setTimeout(() => window.location.reload(), 800)
+      } else {
+        setMsg('❌ ' + r.erro)
+      }
+    } catch (e: any) {
+      setMsg('❌ ' + (e?.message || 'falha'))
+    } finally {
+      setRodando(false)
+    }
+  }
+  return (
+    <div className="flex items-center gap-2">
+      {msg && <span className="text-[10px] text-white/60">{msg}</span>}
+      <button type="button" onClick={regerar} disabled={rodando}
+        className="px-3 py-1.5 text-[11px] font-bold bg-white/5 border border-white/15 rounded text-white hover:bg-white/10 disabled:opacity-40"
+        title="Refaz a composição CC (cabo, estrutura, MC4, disjuntor, DPS) com o catálogo atualizado">
+        {rodando ? '⏳ Regerando…' : '🔄 Regerar composição'}
+      </button>
+    </div>
   )
 }
 

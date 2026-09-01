@@ -313,6 +313,70 @@ async function _salvarKitActionImpl(
   return { sucesso: true, next_path: `/projetos/${projetoId}/lista-ca` }
 }
 
+// ─── Action: regerar composição dos complementos WEG ─────────────────
+// Kalebe 2026-09-01: quando um projeto tem lista_complementos_cc salva
+// antes dos fixes recentes (BCWA → capacitor, GANCHO → gancho individual,
+// filtro contem sem normalização), o snapshot fica preso com dados errados.
+// Este action re-roda precificarComplementosCC no kit_selecionado atual
+// e sobrescreve lista_complementos_cc com resultado limpo.
+export async function regenerarComplementosKitAction(
+  projetoId: string,
+): Promise<{ sucesso: true } | { sucesso: false; erro: string }> {
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { sucesso: false, erro: 'Não autenticado' }
+
+    const { data: proj } = await supabase
+      .from('projetos')
+      .select('kit_selecionado, padrao_entrada, telhado_secoes')
+      .eq('id', projetoId).single()
+
+    const kit: any = proj?.kit_selecionado
+    if (!kit || !kit.qtd_placas) return { sucesso: false, erro: 'Projeto sem kit selecionado' }
+
+    const padraoEfetivo: any = proj?.padrao_entrada || {}
+    const telhadoSecoesData: any[] = Array.isArray((proj as any)?.telhado_secoes) ? (proj as any).telhado_secoes : []
+    const ligacaoCliente = padraoEfetivo?.tipo_ligacao || 'monofasico'
+
+    const invsInput = kit.inversores?.length > 0 ? kit.inversores : (kit.inversor ? [{ id: kit.inversor.id, modelo: kit.inversor.modelo, potencia_kw: kit.inversor.potencia_kw, qtd: kit.qtd_inversores || 1 }] : [])
+
+    const complementosCC = await precificarComplementosCC(supabase, {
+      qtd_placas: kit.qtd_placas,
+      tipo_telhado: telhadoSecoesData[0]?.tipo_cobertura || null,
+      distancia_string_qgbt_m: Number(padraoEfetivo?.distancia_string_qgbt_m) || 0,
+      inversores: invsInput,
+      tipo_ligacao_cliente: ligacaoCliente,
+    })
+
+    const listaObj = {
+      itens: complementosCC.itens,
+      total: complementosCC.total,
+      avisos: complementosCC.avisos,
+      gerado_em: new Date().toISOString(),
+    }
+
+    const kitWegBrutoTotal = complementosCC.total +
+      (Number(kit.placa?.preco_venda) || 0) * (kit.qtd_placas || 0) +
+      invsInput.reduce((s: number, i: any) => s + (Number(i.preco_venda) || 0) * (Number(i.qtd) || 1), 0)
+
+    await supabase
+      .from('projetos')
+      .update({
+        lista_complementos_cc: listaObj,
+        kit_weg_bruto_total: kitWegBrutoTotal,
+      })
+      .eq('id', projetoId)
+
+    revalidatePath(`/projetos/${projetoId}/orcamento`)
+    revalidatePath(`/projetos/${projetoId}`)
+    return { sucesso: true }
+  } catch (e: any) {
+    console.error('[regenerarComplementosKitAction]', e?.message, e?.stack)
+    return { sucesso: false, erro: e?.message || 'Falha ao regerar' }
+  }
+}
+
 // ─── Nova action: atualiza modo_composicao (centralizado ↔ por_uc) ────
 export async function atualizarModoComposicaoAction(
   projetoId: string,
@@ -574,14 +638,22 @@ async function precificarComplementosCC(
   else if (/metal|zinco|alumin/.test(tipo)) contemEstrut = ['metal']
   else if (/ceram|barro|colonial/.test(tipo)) contemEstrut = ['ceram']
   else if (/laje|concreto/.test(tipo)) contemEstrut = ['laje']
-  const estrutura = await buscarProdutoComPreco({
+  // Kalebe 2026-09-01: preferir 'kit' na busca. Antes pegava 'GANCHO
+  // FIX DESLIZANTE' (peça individual R$ 39) em vez de 'KIT ESTRUTURA
+  // CERÂMICA 4 MÓDULOS' (kit completo R$ 400+).
+  // Tenta 1º: [contem tipo + 'kit'], se zero: [só contem tipo].
+  let estrutura = await buscarProdutoComPreco({
     categorias: ['estrutura'],
-    contem: contemEstrut,
-    // Kalebe 2026-08-29: quando tem múltiplos kits do mesmo tipo (ex:
-    // Fibromadeira p/ 4 módulos em várias velocidades de vento), cota
-    // pelo MAIOR preço — margem de segurança.
+    contem: [...contemEstrut, 'kit'],
     pegarMaiorPreco: true,
   })
+  if (!estrutura.ok) {
+    estrutura = await buscarProdutoComPreco({
+      categorias: ['estrutura'],
+      contem: contemEstrut,
+      pegarMaiorPreco: true,
+    })
+  }
   // Extrai N do modelo escolhido — 'Fibromadeira kit p/ 4 módulos' -> 4
   const matchModulos = estrutura.ok ? String(estrutura.modelo).match(/p\/\s*(\d+)\s*m[oó]dulos?/i) : null
   const modulosPorKit = matchModulos ? Number(matchModulos[1]) : 4
