@@ -143,8 +143,7 @@ export function NovoProjetoForm({
       }
       setEnderecoInst((e) => ({ ...e, ...preenchido }))
 
-      // Auto-geocode: pega o endereço recém-preenchido e converte em
-      // lat/lng pra o mapa aparecer sozinho. Kalebe 2026-08-31.
+      // Auto-geocode CLIENT-SIDE (não depende de env var server).
       const enderecoTxt = [
         preenchido.rua,
         enderecoInst.numero,
@@ -154,14 +153,16 @@ export function NovoProjetoForm({
         cep,
       ].filter(Boolean).join(', ')
       try {
-        const { geocodificarEnderecoAction } = await import('@/app/crm/clientes/geocodificar-endereco/action')
-        const g = await geocodificarEnderecoAction(enderecoTxt)
+        const { geocodificarEnderecoCliente } = await import('@/lib/geocoding-client')
+        const g = await geocodificarEnderecoCliente(enderecoTxt)
         if (g.ok) {
           setEnderecoInst((e) => ({ ...e, lat: g.endereco.lat, lng: g.endereco.lng }))
         } else {
-          setAvisoBusca('CEP OK, mas o mapa não localizou — arraste depois de digitar o número.')
+          setAvisoBusca(g.erro)
         }
-      } catch { /* silencioso — usuário ainda pode colar link */ }
+      } catch (err: any) {
+        setAvisoBusca(err?.message || 'Erro no mapa')
+      }
     } catch {
       setAvisoBusca('Falha ao consultar ViaCEP')
     } finally {
@@ -174,8 +175,10 @@ export function NovoProjetoForm({
     if (!q) return
     setBuscandoLivre(true); setAvisoBusca(null)
     try {
-      const { geocodificarEnderecoAction } = await import('@/app/crm/clientes/geocodificar-endereco/action')
-      const g = await geocodificarEnderecoAction(q)
+      // Geocoding CLIENT-SIDE (browser fetch pra maps.googleapis.com).
+      // Não depende de GOOGLE_MAPS_SERVER_KEY.
+      const { geocodificarEnderecoCliente } = await import('@/lib/geocoding-client')
+      const g = await geocodificarEnderecoCliente(q)
       if (g.ok) {
         setEnderecoInst((e) => ({
           ...e,
@@ -708,23 +711,23 @@ export function NovoProjetoForm({
                 altura={280}
                 zoom={20}
                 onArrastar={async (novoLat, novoLng) => {
-                  // Atualiza state + reverse geocode via server action
                   setEnderecoInst((s) => ({ ...s, lat: novoLat, lng: novoLng }))
+                  // Reverse geocode CLIENT-SIDE — não depende de env var server.
                   try {
-                    const { resolverLinkGoogleMapsAction } = await import('@/app/crm/clientes/resolver-link-mapa/action')
-                    const r = await resolverLinkGoogleMapsAction(`${novoLat},${novoLng}`)
-                    if (r.ok) {
+                    const { reverseGeocodeCliente } = await import('@/lib/geocoding-client')
+                    const r = await reverseGeocodeCliente(novoLat, novoLng)
+                    if (r.logradouro || r.cidade) {
                       setEnderecoInst((s) => ({
                         ...s,
-                        cep: r.endereco.cep ? formatarCep(r.endereco.cep) : s.cep,
-                        rua: r.endereco.logradouro || s.rua,
-                        numero: r.endereco.numero || s.numero,
-                        bairro: r.endereco.bairro || s.bairro,
-                        cidade: r.endereco.cidade || s.cidade,
-                        uf: r.endereco.uf || s.uf,
+                        cep: r.cep ? formatarCep(r.cep) : s.cep,
+                        rua: r.logradouro || s.rua,
+                        numero: r.numero || s.numero,
+                        bairro: r.bairro || s.bairro,
+                        cidade: r.cidade || s.cidade,
+                        uf: r.uf || s.uf,
                       }))
                     }
-                  } catch { /* ignora falha silenciosa */ }
+                  } catch { /* silencioso */ }
                 }}
               />
               <p className="text-[10px] text-white/40 mt-1">
