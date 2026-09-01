@@ -657,28 +657,37 @@ export function VisualizadorMapaMini({
  * Baixa uma imagem do Google Static/Street View e desenha overlays em cima
  * (coordenadas, rosa dos ventos, legenda) via Canvas 2D. Retorna um Blob PNG.
  *
- * Google Static Maps envia CORS aberto, então crossOrigin='anonymous' funciona
- * e o canvas não fica 'tainted'.
+ * Kalebe 2026-08-31: primeira versão usava <img crossOrigin='anonymous'>
+ * mas alguns CDNs do Google removem CORS headers no cache — imagem carregava,
+ * canvas ficava TAINTED em silêncio, toBlob passava null e overlays sumiam.
+ *
+ * Fix: fetch → blob → createImageBitmap. O bitmap vem de um blob LOCAL,
+ * nunca tainta o canvas. Funciona sempre, em qualquer edge do CDN.
  */
 async function desenharOverlaysNaImagem(
   url: string,
   opts: {
     coordLabel: string
     mostrarBussola?: boolean
-    headingBussola?: number  // 0 = norte pra cima (aérea); N em Street View gira
+    headingBussola?: number
     legenda?: string
   },
 ): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = img.width
-      canvas.height = img.height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { reject(new Error('canvas 2d indisponível')); return }
-      ctx.drawImage(img, 0, 0)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Google respondeu ${res.status}`)
+  const blob = await res.blob()
+  const bitmap = await createImageBitmap(blob)
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('canvas 2d indisponível')
+  ctx.drawImage(bitmap, 0, 0)
+
+  // Wrapper pra manter a estrutura original com opts.mostrarBussola etc
+  await Promise.resolve()  // no-op só pra manter fluxo async
+  ;(() => {
+    // (código dos overlays roda a seguir)
 
       // ============ BÚSSULA (top-right, 90px) ============
       if (opts.mostrarBussola) {
@@ -746,12 +755,12 @@ async function desenharOverlaysNaImagem(
         ctx.fillText(opts.legenda, canvas.width - pad - lw - 8, y0 - 26)
       }
 
-      canvas.toBlob((b) => {
-        if (b) resolve(b); else reject(new Error('toBlob falhou'))
-      }, 'image/png', 0.95)
-    }
-    img.onerror = () => reject(new Error('falha ao carregar imagem do Google'))
-    img.src = url
+  })()
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((b) => {
+      if (b) resolve(b); else reject(new Error('toBlob falhou'))
+    }, 'image/png', 0.95)
   })
 }
 
