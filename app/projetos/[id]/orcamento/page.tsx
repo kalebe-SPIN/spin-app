@@ -157,19 +157,60 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
 
   const params = paramsToRecord(paramsRows || [])
 
+  // Kalebe 2026-09-01: fix "preços não puxam na proposta". Se o snapshot
+  // do kit foi salvo com preço 0 (sem preço vigente na hora), re-consulta
+  // preço vigente ATUAL dos IDs de placa/inversor. Assim, se o admin
+  // cadastrou/importou preço DEPOIS do kit ser montado, a proposta usa.
+  const kitsParaColetar: any[] = modoComposicao === 'por_uc'
+    ? kitsPorUcRaw.map(k => k?.kit_selecionado).filter(Boolean)
+    : [kit].filter(Boolean)
+  const idsPrecoRefresh = new Set<string>()
+  kitsParaColetar.forEach((k: any) => {
+    if (k?.placa?.id && !(Number(k.placa.preco_venda) > 0)) idsPrecoRefresh.add(k.placa.id)
+    if (k?.inversor?.id && !(Number(k.inversor.preco_venda) > 0)) idsPrecoRefresh.add(k.inversor.id)
+  })
+  const precoAtualMap = new Map<string, number>()
+  if (idsPrecoRefresh.size > 0) {
+    const { data: pRows } = await supabase
+      .from('precos_produtos')
+      .select('produto_id, preco_venda, vigente_de, vigente_ate')
+      .in('produto_id', Array.from(idsPrecoRefresh))
+      .gt('preco_venda', 0)
+    const hoje = new Date().toISOString().slice(0, 10)
+    // Agrupa por produto e escolhe vigente aberto > futuro > vencido mais recente
+    const porProduto = new Map<string, any[]>()
+    ;(pRows || []).forEach((r: any) => {
+      const arr = porProduto.get(r.produto_id) || []
+      arr.push(r); porProduto.set(r.produto_id, arr)
+    })
+    porProduto.forEach((arr, pid) => {
+      const abertos = arr.filter(x => !x.vigente_ate)
+      const futuros = arr.filter(x => x.vigente_ate && x.vigente_ate >= hoje)
+      const vencidos = arr.filter(x => x.vigente_ate && x.vigente_ate < hoje)
+      const pick = (a: any[]) => a.slice().sort((x, y) => (x.vigente_de < y.vigente_de ? 1 : -1))[0]
+      const winner = pick(abertos) || pick(futuros) || pick(vencidos)
+      if (winner) precoAtualMap.set(pid, winner.preco_venda)
+    })
+  }
+  function precoOuFallback(item: any): number {
+    const s = Number(item?.preco_venda) || 0
+    if (s > 0) return s
+    return item?.id ? (precoAtualMap.get(item.id) || 0) : 0
+  }
+
   // Helper: calcula proposta pra um par (kit, listaCa, brutoTotal)
   function calcProposta(k: any, lca: any[], brutoTotal?: number) {
     return calcularProposta(
       {
         placa: {
           qtd: k.qtd_placas || 1,
-          preco_venda_unitario: k.placa?.preco_venda || 0,
+          preco_venda_unitario: precoOuFallback(k.placa),
           modelo: k.placa?.modelo || '—',
           potencia_wp: k.placa?.potencia_wp || 0,
         },
         inversor: {
           qtd: k.qtd_inversores || 1,
-          preco_venda_unitario: k.inversor?.preco_venda || 0,
+          preco_venda_unitario: precoOuFallback(k.inversor),
           modelo: k.inversor?.modelo || '—',
           potencia_kw: k.inversor?.potencia_kw || 0,
         },

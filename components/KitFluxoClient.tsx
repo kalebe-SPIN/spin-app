@@ -15,7 +15,7 @@ type ProdutoRow = {
   specs: any
   disponivel_estoque: boolean
   url_datasheet: string | null
-  precos_produtos: Array<{ preco_venda: number; vigente_de: string }>
+  precos_produtos: Array<{ preco_venda: number; vigente_de: string; vigente_ate?: string | null }>
 }
 
 type Props = {
@@ -35,10 +35,25 @@ type Props = {
   telhadoSecoesProprio?: any[]
 }
 
+/**
+ * Kalebe 2026-09-01: fallback em cascata pra nunca devolver 0 quando
+ * existe QUALQUER preço cadastrado. Ordem de preferência:
+ *   1. Vigente aberto (vigente_ate = null) mais recente
+ *   2. Vigente com data futura mais recente
+ *   3. Vencido — o mais recente (ex-preço, é o último que a Spin praticou)
+ * Assim data-colisão SCD (edição 2x no mesmo dia gerando duplicata
+ * com vigente_ate=hoje + vigente_de=hoje) resolve determinística.
+ */
 function precoDe(p: ProdutoRow): number {
-  const ps = p.precos_produtos || []
+  const ps = (p.precos_produtos || []).filter((x) => x && x.preco_venda > 0)
   if (!ps.length) return 0
-  return ps.slice().sort((a, b) => (a.vigente_de < b.vigente_de ? 1 : -1))[0].preco_venda
+  const hoje = new Date().toISOString().slice(0, 10)
+  const abertos = ps.filter((x) => !x.vigente_ate)
+  const futuros = ps.filter((x) => x.vigente_ate && x.vigente_ate >= hoje)
+  const vencidos = ps.filter((x) => x.vigente_ate && x.vigente_ate < hoje)
+  const pick = (arr: typeof ps) =>
+    arr.slice().sort((a, b) => (a.vigente_de < b.vigente_de ? 1 : -1))[0]
+  return (pick(abertos) || pick(futuros) || pick(vencidos))?.preco_venda || 0
 }
 
 type CategoriaSistema = 'ongrid' | 'hibrido_bess' | 'offgrid'

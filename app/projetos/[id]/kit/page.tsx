@@ -63,7 +63,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .from('produtos')
     .select(`
       id, codigo_weg, modelo, fabricante, descricao_curta, specs, disponivel_estoque, url_datasheet,
-      precos_produtos!inner(preco_venda, vigente_de)
+      precos_produtos(preco_venda, vigente_de, vigente_ate)
     `)
     .eq('categoria', 'placa')
     .eq('ativo', true)
@@ -77,7 +77,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .from('produtos')
     .select(`
       id, codigo_weg, modelo, subcategoria, descricao_curta, specs, disponivel_estoque,
-      precos_produtos!inner(preco_venda, vigente_de)
+      precos_produtos(preco_venda, vigente_de, vigente_ate)
     `)
     .eq('categoria', 'inversor')
     .in('subcategoria', ['inversor_string', 'microinversor'])
