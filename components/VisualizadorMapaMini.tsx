@@ -473,8 +473,14 @@ export function VisualizadorMapaMini({
         setTimeout(() => setMsgAcao(null), 5000)
         return
       }
+      // Só limpa polígonos antigos (se algum sobrou), mantém dados.
+      polySolarRef.current.forEach((p) => { try { p.setMap(null) } catch {} })
+      polySolarRef.current = []
       setSolar(s)
-      desenharSegmentosSolar(s)
+      // Kalebe 2026-09-01: 'pra mim ainda não faz sentido a vetorização
+      // do solar' — retângulos bounding-box em qualidade LOW ficam
+      // muito imprecisos e confundem. Só mostra os números agregados
+      // no painel abaixo.
       const avisoQualidade = s.qualidade === 'LOW'
         ? ' ⚠ imagem baixa qualidade — retângulos são aproximados, prefira medir manual'
         : s.qualidade === 'MEDIUM'
@@ -586,7 +592,7 @@ export function VisualizadorMapaMini({
                 ? 'Solar vai usar o CENTRO do polígono que você mediu como referência'
                 : '💡 Meça a área primeiro pra Solar ser mais preciso'}
               className="px-3 py-1.5 text-[11px] font-bold bg-verde/10 border border-verde/40 rounded text-verde hover:bg-verde/20 disabled:opacity-50">
-              {buscandoSolar ? '⏳ Analisando…' : poligonoMedido ? '🔬 Vetorizar (do polígono)' : '🔬 Vetorizar (Solar)'}
+              {buscandoSolar ? '⏳ Analisando…' : poligonoMedido ? '🔬 Analisar (do polígono)' : '🔬 Analisar (Solar)'}
             </button>
 
             {(areaMedida != null || solar) && (

@@ -5,6 +5,7 @@ import { ClienteForm } from '@/components/ClienteForm'
 import { TimelineInteracoes } from '@/components/TimelineInteracoes'
 import { FichaClienteCard } from '@/components/FichaClienteCard'
 import { TelhadoClienteCard } from '@/components/TelhadoClienteCard'
+import { TelhadoRegistrosCard } from '@/components/TelhadoRegistrosCard'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -137,6 +138,25 @@ export default async function ClienteDetalhePage({ params }: { params: { id: str
             clienteId={cliente.id}
             clienteEnderecoOk={!!(cliente.endereco && Object.keys(cliente.endereco).length > 0)}
             secoesIniciais={Array.isArray((cliente as any).telhado_secoes) ? (cliente as any).telhado_secoes : []}
+          />
+        </div>
+
+        {/* Registros do telhado — Batch 2. Prints, medições e Solar
+            salvos no cliente. Botão pra enviar tudo pro campo via WhatsApp. */}
+        <div className="mb-6">
+          <TelhadoRegistrosCard
+            clienteId={cliente.id}
+            clienteNome={cliente.razao_social || 'Cliente'}
+            lat={(cliente.endereco as any)?.lat ?? null}
+            lng={(cliente.endereco as any)?.lng ?? null}
+            registrosIniciais={Array.isArray((cliente as any).telhado_registros) ? (cliente as any).telhado_registros : []}
+            enderecoResumo={[
+              (cliente.endereco as any)?.logradouro,
+              (cliente.endereco as any)?.numero && `Nº ${(cliente.endereco as any)?.numero}`,
+              (cliente.endereco as any)?.bairro,
+              (cliente.endereco as any)?.cidade,
+              (cliente.endereco as any)?.uf,
+            ].filter(Boolean).join(', ')}
           />
         </div>
 
