@@ -777,12 +777,13 @@ export function NovoProjetoForm({
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <select value={s.tipo_cobertura}
                       onChange={(e) => updSecaoTelhado(s.id, 'tipo_cobertura', e.target.value)}
-                      className="px-2 py-1 bg-white/[0.03] border border-white/10 rounded text-xs text-white">
-                      <option value="fibrocimento">Fibrocimento</option>
-                      <option value="metalico">Metálico</option>
-                      <option value="ceramico">Cerâmico</option>
-                      <option value="laje">Laje</option>
-                      <option value="solo">Solo</option>
+                      style={{ colorScheme: 'dark' }}
+                      className="px-2 py-1 bg-noite/40 border border-white/10 rounded text-xs text-white">
+                      <option value="fibrocimento" className="bg-noite">Fibrocimento</option>
+                      <option value="metalico" className="bg-noite">Metálico</option>
+                      <option value="ceramico" className="bg-noite">Cerâmico</option>
+                      <option value="laje" className="bg-noite">Laje</option>
+                      <option value="solo" className="bg-noite">Solo</option>
                     </select>
                     <input type="number" step={1} value={s.area_m2 || ''}
                       onChange={(e) => updSecaoTelhado(s.id, 'area_m2', Number(e.target.value))}
@@ -790,8 +791,11 @@ export function NovoProjetoForm({
                       className="px-2 py-1 bg-white/[0.03] border border-white/10 rounded text-xs text-white placeholder:text-white/30" />
                     <select value={s.orientacao}
                       onChange={(e) => updSecaoTelhado(s.id, 'orientacao', e.target.value)}
-                      className="px-2 py-1 bg-white/[0.03] border border-white/10 rounded text-xs text-white">
-                      {['Norte', 'NE', 'Leste', 'SE', 'Sul', 'SO', 'Oeste', 'NO'].map(o => <option key={o}>{o}</option>)}
+                      style={{ colorScheme: 'dark' }}
+                      className="px-2 py-1 bg-noite/40 border border-white/10 rounded text-xs text-white">
+                      {['Norte', 'NE', 'Leste', 'SE', 'Sul', 'SO', 'Oeste', 'NO'].map(o =>
+                        <option key={o} className="bg-noite">{o}</option>
+                      )}
                     </select>
                     <input type="number" step={1} value={s.inclinacao_graus ?? ''}
                       onChange={(e) => updSecaoTelhado(s.id, 'inclinacao_graus', e.target.value ? Number(e.target.value) : null)}
