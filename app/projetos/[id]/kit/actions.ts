@@ -389,7 +389,7 @@ async function precificarComplementosCC(
     // Passo 1: busca produtos ATIVOS na categoria
     const { data: ativos } = await supabase
       .from('produtos')
-      .select('id, modelo, subcategoria, categoria')
+      .select('id, modelo, subcategoria, categoria, descricao_curta')
       .in('categoria', filtro.categorias)
       .eq('ativo', true)
       .limit(500)
@@ -401,7 +401,7 @@ async function precificarComplementosCC(
     if (listaAtivos.length === 0) {
       const { data: inativos } = await supabase
         .from('produtos')
-        .select('id, modelo, subcategoria, categoria')
+        .select('id, modelo, subcategoria, categoria, descricao_curta')
         .in('categoria', filtro.categorias)
         .eq('ativo', false)
         .limit(500)
@@ -429,10 +429,15 @@ async function precificarComplementosCC(
       usandoInativos = true
     }
 
-    // Passo 2: aplica filtro `contem` (preferido) com fallback
+    // Passo 2: aplica filtro `contem` (preferido) com fallback.
+    // Kalebe 2026-09-01: normaliza removendo TUDO que não é alfanumérico
+    // antes de comparar. Assim '6 mm²' matcha filtro '6mm', 'MC-4' matcha
+    // 'MC4', 'C40/2' matcha 'C40'. Antes o filtro perdia matches por
+    // causa de espaços, hífens e caracteres especiais.
+    const normalizar = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
     const preferidos = lista.filter((p: any) => {
-      const alvo = `${p.modelo || ''} ${p.subcategoria || ''}`.toLowerCase()
-      return !filtro.contem || filtro.contem.every((k) => alvo.includes(k.toLowerCase()))
+      const alvo = normalizar(`${p.modelo || ''} ${p.subcategoria || ''} ${p.descricao_curta || ''}`)
+      return !filtro.contem || filtro.contem.every((k) => alvo.includes(normalizar(k)))
     })
     const candidatos = preferidos.length > 0 ? preferidos : lista
 
@@ -712,14 +717,25 @@ async function buscarProdutoPorRef(
   const termo = ref.trim()
   if (!termo) return { ok: false, motivo: 'referência vazia' }
 
-  // Busca por modelo ou codigo_weg contendo o termo (ilike). Ativos primeiro.
+  // Kalebe 2026-09-01: normaliza termo E produtos removendo hífens/espaços
+  // pra o ilike do Postgres não perder match. 'MDWP-C50-2' matcha 'MDWP C50 2'.
+  const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  const termoNorm = norm(termo)
+
+  // Busca ilike com termo bruto (compat) + puxa TUDO da categoria disjuntor
+  // pra filtrar no JS. É pequeno o suficiente (~30 disjuntores).
   const { data: prods } = await supabase
     .from('produtos')
-    .select('id, modelo, codigo_weg, ativo')
-    .or(`modelo.ilike.%${termo}%,codigo_weg.ilike.%${termo}%`)
+    .select('id, modelo, codigo_weg, ativo, categoria, descricao_curta')
+    .or(`modelo.ilike.%${termo}%,codigo_weg.ilike.%${termo}%,categoria.eq.disjuntor,categoria.eq.dps`)
     .order('ativo', { ascending: false })
-    .limit(20)
-  const lista = (prods || []) as any[]
+    .limit(200)
+  const listaCompleta = (prods || []) as any[]
+  // Filtra os que realmente batem com termo normalizado
+  const lista = listaCompleta.filter((p: any) => {
+    const alvo = norm(`${p.modelo || ''} ${p.codigo_weg || ''} ${p.descricao_curta || ''}`)
+    return alvo.includes(termoNorm)
+  })
   if (lista.length === 0) return { ok: false, motivo: `referência '${termo}' não achada no /admin/catalogo` }
 
   for (const p of lista) {
