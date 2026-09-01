@@ -133,20 +133,29 @@ const DESBALANCEAMENTO_MAX_KW = 5            // Diferença entre fases ≤ 5 kW 
 // aparecem com aviso no card em vez de virarem null silencioso.
 const FCI_MIN_SUBDIMENSIONADO = 50           // aceita como "kit de entrada"
 const FCI_MIN_ACEITAVEL = 100                // FCI mínimo pra kit normal
-const FCI_MAX_ACEITAVEL = 200                // até aqui aparece com aviso
+// Kalebe 2026-09-01: limite CC:CA varia por tipo de inversor.
+//   String on-grid (SIW*G): 150% máx — regra técnica WEG e mercado
+//   Híbrido (SIW*H — SIW200H/400H): 200% máx — MPPT dedicado maior
+//   Microinversor: 145% (calculado dinamicamente linha ~380)
+const FCI_MAX_STRING_ONGRID = 150
+const FCI_MAX_HIBRIDO = 200
+const FCI_MAX_MICRO = 145
 const FCI_SWEET_MIN = 120
 const FCI_SWEET_MAX = 135
 const FATOR_SEGURANCA_DISJUNTOR = 0.8
 
 // Linhas WEG por categoria (ongrid)
 // SIW100 = microinversor
-// SIW200, SIW300 = inversor string monofásico
-// SIW400, SIW500 = inversor string trifásico
-// SIW600+ = híbrido/BESS (não entra em ongrid puro)
+// SIW200G/300G = inversor string monofásico
+// SIW400G/500G = inversor string trifásico
+// SIW200H/400H = HÍBRIDO (aceita 200% CC:CA)
+// Regex compat: aceita SIW200 e SIW200G/M etc (produtos legados sem
+// sufixo). Híbrido exige H explícito pra não confundir com string.
 const LINHAS_ONGRID = {
   micro: /^SIW100/i,
-  mono: /^SIW(200|300)/i,
-  tri: /^SIW(400|500)/i,
+  mono: /^SIW(200|300)(?!H)/i,   // NÃO pega SIW200H (híbrido)
+  tri: /^SIW(400|500)(?!H)/i,    // NÃO pega SIW400H (híbrido)
+  hibrido: /^SIW\d00H/i,          // SIW200H, SIW400H, SIW700H etc.
 }
 
 // ==========================================================
@@ -355,8 +364,22 @@ function tentarComposicao(args: {
   const potCaTotal = inversorPrincipal.potencia_kw * qtdInversorPrincipal
   const fci = (potCcRealKwp / potCaTotal) * 100
 
-  // FCI: aceita 80-145% (100-145 normal, 80-99 subdimensionado "kit de entrada")
-  if (fci < FCI_MIN_SUBDIMENSIONADO || fci > FCI_MAX_ACEITAVEL) {
+  // Kalebe 2026-09-01: FCI máximo VARIA por tipo de inversor.
+  //   Híbrido (SIW*H): 200% — MPPT robusto aceita mais oversizing
+  //   String on-grid (SIW*G): 150% — regra técnica WEG
+  //   Micro: 145% — limite pra clipping aceitável
+  //   Outros/legado: cai no genérico 200% pra não bloquear catálogo estranho
+  const modeloInv = inversorPrincipal.modelo || ''
+  const fciMaxDinamico =
+    categoria === 'hibrido' || LINHAS_ONGRID.hibrido.test(modeloInv)
+      ? FCI_MAX_HIBRIDO
+      : categoria === 'microinversor'
+      ? FCI_MAX_MICRO
+      : categoria === 'string'
+      ? FCI_MAX_STRING_ONGRID
+      : FCI_MAX_HIBRIDO
+
+  if (fci < FCI_MIN_SUBDIMENSIONADO || fci > fciMaxDinamico) {
     if (diagnostico) diagnostico.rejeitados_por_fci++
     return null
   }
@@ -376,7 +399,7 @@ function tentarComposicao(args: {
   if (categoria === 'microinversor') {
     const placasMaxPorMicro = Math.max(
       1,
-      Math.floor((inversorPrincipal.potencia_kw * 1000 * 1.45) / placa.potencia_wp),
+      Math.floor((inversorPrincipal.potencia_kw * 1000 * (FCI_MAX_MICRO / 100)) / placa.potencia_wp),
     )
     const capacidadeTotal = qtdInversorPrincipal * placasMaxPorMicro
     if (qtdPlacas > capacidadeTotal) {
