@@ -72,11 +72,13 @@ export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20
         position: { lat, lng },
         map,
         draggable: !!onArrastar,
-        cursor: onArrastar ? 'move' : 'pointer',
-        optimized: false,
+        cursor: onArrastar ? 'grab' : 'pointer',
+        // optimized: DEIXA o Google decidir (padrão true). Forçar false
+        // criava um DIV isolado por marker que em alguns browsers não
+        // recebia o mousemove direito → cursor mudava mas drag falhava.
         zIndex: 9999,
-        title: onArrastar ? '✋ Arraste ou clique no mapa pra ajustar' : '',
-        animation: google.maps.Animation.DROP,
+        title: onArrastar ? 'Arraste pra ajustar o ponto exato' : '',
+        crossOnDrag: false,  // remove o "+" que aparece durante drag (interceptava mouseup)
       })
       markerRef.current = marker
 
@@ -138,8 +140,18 @@ export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20
   }
 
   return (
-    <div className="relative rounded border border-white/10 overflow-hidden" style={{ height: altura }}>
-      <div ref={mapaRef} className="w-full h-full" />
+    <div
+      className="relative rounded border border-white/10 overflow-hidden"
+      style={{ height: altura, touchAction: 'none' }}
+      // Bloqueia qualquer submit/tecla do <form> ancestral quando
+      // o usuário está interagindo com o mapa. Sem isso, o Enter no
+      // meio de um drag envia o form; e alguns handlers do form
+      // capturam mousedown antes do Google Maps.
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
+    >
+      <div ref={mapaRef} className="w-full h-full" style={{ touchAction: 'none' }} />
       {carregando && (
         <div className="absolute inset-0 flex items-center justify-center bg-noite/60 text-xs text-white/60">
           🛰 Carregando satélite…
