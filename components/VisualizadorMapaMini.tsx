@@ -72,6 +72,8 @@ export function VisualizadorMapaMini({
   }>>([])
   // Guarda o polígono medido pra o Vetorizar usar como referência
   const [poligonoMedido, setPoligonoMedido] = useState<PontoLatLng[] | null>(null)
+  // Contador de vértices durante desenho — feedback visual pro consultor
+  const [verticesTemp, setVerticesTemp] = useState<PontoLatLng[]>([])
   // Tela cheia — CSS fixed em vez de Fullscreen API (mais confiável)
   const [ampliado, setAmpliado] = useState(false)
 
@@ -334,15 +336,17 @@ export function VisualizadorMapaMini({
   async function iniciarMedir() {
     const google = (window as any).google
     if (!google || !mapRef.current) return
+    if (!google.maps?.drawing?.DrawingManager) {
+      setMsgAcao('❌ Biblioteca "drawing" não carregou — recarregue a página')
+      setTimeout(() => setMsgAcao(null), 5000)
+      return
+    }
     // Limpa polígono anterior
     if (polyMedidoRef.current) { polyMedidoRef.current.setMap(null); polyMedidoRef.current = null }
-    setAreaMedida(null)
+    setAreaMedida(null); setVerticesTemp([])
     setMedindo(true)
-    // IMPORTANTE: atualiza o ref sincronamente porque o setState só
-    // reflete no listener após o re-render (e o próximo click pode
-    // chegar antes disso).
     medindoRef.current = true
-    setMsgAcao('📐 Clique nos cantos do telhado. Duplo-clique no último ponto pra fechar o polígono.')
+    setMsgAcao('📐 Clique nos cantos do telhado. Quando terminar, clique de novo no PRIMEIRO ponto pra fechar (ou duplo-click no último).')
 
     const dm = new google.maps.drawing.DrawingManager({
       drawingMode: google.maps.drawing.OverlayType.POLYGON,
@@ -356,7 +360,22 @@ export function VisualizadorMapaMini({
     dm.setMap(mapRef.current)
     drawManRef.current = dm
 
+    // Listener no click do mapa DURANTE o modo desenho — conta vértices.
+    // O DrawingManager consome os cliques mas o listener adicional roda
+    // antes, dando feedback ao vivo do progresso.
+    const listenerClicksTemp = mapRef.current.addListener('click', (e: any) => {
+      if (!medindoRef.current) return
+      const p = e.latLng
+      if (p) setVerticesTemp((prev) => [...prev, { lat: p.lat(), lng: p.lng() }])
+    })
+    ;(dm as any).__listenerTemp = listenerClicksTemp
+
     google.maps.event.addListenerOnce(dm, 'polygoncomplete', (poly: any) => {
+      // Limpa listener temporário de vértices
+      if ((dm as any).__listenerTemp) {
+        try { google.maps.event.removeListener((dm as any).__listenerTemp) } catch {}
+      }
+      setVerticesTemp([])
       dm.setMap(null); drawManRef.current = null
       medindoRef.current = false  // libera o click do mapa de volta
       polyMedidoRef.current = poly
@@ -392,9 +411,47 @@ export function VisualizadorMapaMini({
 
   function limparMedicao() {
     if (polyMedidoRef.current) { polyMedidoRef.current.setMap(null); polyMedidoRef.current = null }
-    if (drawManRef.current) { drawManRef.current.setMap(null); drawManRef.current = null }
-    setAreaMedida(null); setMedindo(false); setPoligonoMedido(null)
+    if (drawManRef.current) {
+      const google = (window as any).google
+      if ((drawManRef.current as any).__listenerTemp) {
+        try { google.maps.event.removeListener((drawManRef.current as any).__listenerTemp) } catch {}
+      }
+      drawManRef.current.setMap(null); drawManRef.current = null
+    }
+    setAreaMedida(null); setMedindo(false); setPoligonoMedido(null); setVerticesTemp([])
     medindoRef.current = false
+  }
+
+  // Finaliza manualmente o polígono usando os vértices clicados até agora
+  // (fallback pra quem não sabe fazer duplo-click)
+  function finalizarMedicaoManual() {
+    const google = (window as any).google
+    if (!google || !mapRef.current || verticesTemp.length < 3) return
+    // Cancela o DrawingManager (não vamos deixá-lo fechar)
+    if (drawManRef.current) {
+      if ((drawManRef.current as any).__listenerTemp) {
+        try { google.maps.event.removeListener((drawManRef.current as any).__listenerTemp) } catch {}
+      }
+      drawManRef.current.setMap(null); drawManRef.current = null
+    }
+    // Cria o polígono manualmente com os vértices
+    const poly = new google.maps.Polygon({
+      paths: verticesTemp,
+      fillColor: '#f59e0b', fillOpacity: 0.35,
+      strokeColor: '#f59e0b', strokeWeight: 2,
+      editable: true, draggable: false, zIndex: 5000,
+      map: mapRef.current,
+    })
+    polyMedidoRef.current = poly
+    medindoRef.current = false; setMedindo(false)
+    const path = poly.getPath()
+    const area = google.maps.geometry.spherical.computeArea(path)
+    setAreaMedida(area); setPoligonoMedido([...verticesTemp])
+    setVerticesTemp([])
+    setMsgAcao(null)
+    if (onAreaMedida) onAreaMedida({ areaM2: Number(area.toFixed(2)), pontos: verticesTemp })
+    path.addListener('set_at', () => recalcAreaMedida())
+    path.addListener('insert_at', () => recalcAreaMedida())
   }
 
   async function vetorizarComSolar() {
@@ -559,6 +616,26 @@ export function VisualizadorMapaMini({
         </p>
       )}
 
+      {/* Contador de vértices + botão finalizar (durante desenho) */}
+      {medindo && (
+        <div className="flex items-center gap-3 px-3 py-2 bg-sol/10 border border-sol/40 rounded">
+          <div className="flex-1 text-[11px] text-sol">
+            <b>Vértices clicados: {verticesTemp.length}</b>
+            {verticesTemp.length < 3 && ' — clique em pelo menos 3 cantos'}
+            {verticesTemp.length >= 3 && ' — pode finalizar quando quiser'}
+          </div>
+          <button type="button" onClick={finalizarMedicaoManual}
+            disabled={verticesTemp.length < 3}
+            className="px-3 py-1 text-[11px] font-bold bg-verde text-noite rounded disabled:opacity-30 disabled:cursor-not-allowed hover:bg-verde/90">
+            ✓ Finalizar polígono
+          </button>
+          <button type="button" onClick={limparMedicao}
+            className="px-2 py-1 text-[11px] text-coral hover:text-coral/80">
+            ✕ Cancelar
+          </button>
+        </div>
+      )}
+
       {/* Área medida */}
       {areaMedida != null && (
         <div className="px-3 py-2 bg-verde/10 border border-verde/30 rounded text-[11px] text-verde flex items-center gap-3">
@@ -644,18 +721,12 @@ export function VisualizadorMapaMini({
             nativa; na aérea o Google não coloca (norte sempre pra cima).
             Este badge dá a mesma referência visual + coord ao vivo. */}
         {modo === 'mapa' && !carregando && (
-          <div className="absolute top-2 left-2 flex items-center gap-2 px-2 py-1.5 bg-noite/85 border border-white/20 rounded shadow-lg pointer-events-none z-10">
-            <svg width="26" height="26" viewBox="0 0 26 26" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="13" cy="13" r="11" fill="rgba(255,255,255,0.15)" stroke="#fff" strokeWidth="1"/>
-              <polygon points="13,4 10,15 13,13 16,15" fill="#dc2626" stroke="#7f1d1d" strokeWidth="0.5"/>
-              <text x="13" y="6.5" textAnchor="middle" fontSize="5.5" fill="#fff" fontWeight="bold" fontFamily="sans-serif">N</text>
-              <text x="13" y="24" textAnchor="middle" fontSize="4" fill="#fff" fontFamily="sans-serif">S</text>
-              <text x="23" y="14.5" textAnchor="middle" fontSize="4" fill="#fff" fontFamily="sans-serif">L</text>
-              <text x="3" y="14.5" textAnchor="middle" fontSize="4" fill="#fff" fontFamily="sans-serif">O</text>
-            </svg>
+          <div className="absolute top-2 left-2 flex items-center gap-2 px-2.5 py-2 bg-gradient-to-br from-noite/95 to-black/95 border border-sol/30 rounded-lg shadow-xl pointer-events-none z-10">
+            <RosaDosVentos size={40} />
             <div className="text-[10px] font-mono text-white leading-tight">
-              <div>📍 {lat.toFixed(6)}</div>
-              <div className="text-white/60">   {lng.toFixed(6)}</div>
+              <div className="text-sol font-bold text-[9px] uppercase tracking-wider mb-0.5">Coord</div>
+              <div>{lat.toFixed(6)}</div>
+              <div className="text-white/70">{lng.toFixed(6)}</div>
             </div>
           </div>
         )}
@@ -710,45 +781,79 @@ async function desenharOverlaysNaImagem(
   ;(() => {
     // (código dos overlays roda a seguir)
 
-      // ============ BÚSSULA (top-right, 90px) ============
+      // ============ ROSA DOS VENTOS PREMIUM (top-right, 100px) ============
+      // Estrela de 8 pontas estilo náutico. Kalebe 2026-08-31: 'caprichar
+      // no design'. Mesma lógica do <RosaDosVentos> SVG do widget.
       if (opts.mostrarBussola) {
-        const cx = canvas.width - 70
-        const cy = 70
-        const r = 40
-        // Círculo de fundo (branco semi-transparente)
+        const size = 100
+        const cx = canvas.width - size / 2 - 12
+        const cy = size / 2 + 12
+        const r1 = size * 0.46
+        const r2 = size * 0.16
+        const heading = opts.headingBussola || 0
+
+        // Fundo circular com gradiente radial
+        const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, size * 0.48)
+        grad.addColorStop(0, 'rgba(251,191,36,0.25)')
+        grad.addColorStop(1, 'rgba(0,0,0,0.85)')
         ctx.beginPath()
-        ctx.arc(cx, cy, r + 8, 0, Math.PI * 2)
-        ctx.fillStyle = 'rgba(255,255,255,0.85)'
+        ctx.arc(cx, cy, size * 0.48, 0, Math.PI * 2)
+        ctx.fillStyle = grad
         ctx.fill()
-        ctx.strokeStyle = '#0f172a'
+        ctx.strokeStyle = '#fbbf24'
         ctx.lineWidth = 2
         ctx.stroke()
 
-        // Rotaciona só a seta interna pelo heading (se dado)
-        const heading = opts.headingBussola || 0
+        // Estrela — 8 triângulos (4 intercardeais brancos + N vermelho + E/S/W brancos)
         ctx.save()
         ctx.translate(cx, cy)
         ctx.rotate((heading * Math.PI) / 180)
-        // Seta apontando pra cima (vermelha)
-        ctx.beginPath()
-        ctx.moveTo(0, -r + 4)
-        ctx.lineTo(-10, r - 12)
-        ctx.lineTo(0, r - 20)
-        ctx.lineTo(10, r - 12)
-        ctx.closePath()
-        ctx.fillStyle = '#dc2626'
-        ctx.fill()
+        const angulos = [0, 45, 90, 135, 180, 225, 270, 315]
+        angulos.forEach((angDeg, idx) => {
+          const isCardinal = idx % 2 === 0
+          const isN = idx === 0
+          const angRad = (angDeg - 90) * Math.PI / 180
+          const angRadA = (angDeg - 90 - 22.5) * Math.PI / 180
+          const angRadB = (angDeg - 90 + 22.5) * Math.PI / 180
+          const x1 = Math.cos(angRad) * r1, y1 = Math.sin(angRad) * r1
+          const xa = Math.cos(angRadA) * r2, ya = Math.sin(angRadA) * r2
+          const xb = Math.cos(angRadB) * r2, yb = Math.sin(angRadB) * r2
+          ctx.beginPath()
+          ctx.moveTo(x1, y1); ctx.lineTo(xa, ya); ctx.lineTo(0, 0); ctx.lineTo(xb, yb)
+          ctx.closePath()
+          if (isN) {
+            const gN = ctx.createLinearGradient(0, -r1, 0, 0)
+            gN.addColorStop(0, '#dc2626'); gN.addColorStop(1, '#7f1d1d')
+            ctx.fillStyle = gN
+          } else if (isCardinal) {
+            ctx.fillStyle = '#e5e7eb'
+          } else {
+            const gI = ctx.createLinearGradient(0, y1, 0, 0)
+            gI.addColorStop(0, '#fff'); gI.addColorStop(1, '#d1d5db')
+            ctx.fillStyle = gI
+          }
+          ctx.strokeStyle = '#0f172a'
+          ctx.lineWidth = 0.6
+          ctx.fill(); ctx.stroke()
+        })
         ctx.restore()
 
-        // Letra N fixa em cima (sempre indica norte real)
-        ctx.font = 'bold 16px sans-serif'
-        ctx.fillStyle = '#0f172a'
+        // Letras N/S/L/O fixas (sempre indicam norte REAL, não giram)
+        ctx.font = 'bold 16px serif'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        ctx.fillText('N', cx, cy - r - 2)
-        ctx.fillText('S', cx, cy + r + 2)
-        ctx.fillText('L', cx + r + 4, cy)
-        ctx.fillText('O', cx - r - 4, cy)
+        // N vermelho com contorno branco
+        ctx.lineWidth = 3
+        ctx.strokeStyle = '#fff'
+        ctx.strokeText('N', cx, cy - size * 0.42)
+        ctx.fillStyle = '#dc2626'
+        ctx.fillText('N', cx, cy - size * 0.42)
+        // S/L/O brancos
+        ctx.fillStyle = '#fff'
+        ctx.font = 'bold 12px serif'
+        ctx.fillText('S', cx, cy + size * 0.42)
+        ctx.fillText('L', cx + size * 0.42, cy)
+        ctx.fillText('O', cx - size * 0.42, cy)
       }
 
       // ============ COORDENADAS (bottom-left) ============
@@ -783,6 +888,90 @@ async function desenharOverlaysNaImagem(
       if (b) resolve(b); else reject(new Error('toBlob falhou'))
     }, 'image/png', 0.95)
   })
+}
+
+/**
+ * Rosa dos ventos estilo náutico — estrela de 8 pontas com N destacado.
+ * Kalebe 2026-08-31: 'caprichar no design'.
+ */
+function RosaDosVentos({ size = 40, headingGraus = 0 }: { size?: number; headingGraus?: number }) {
+  const c = size / 2
+  const r1 = size * 0.46  // raio externo
+  const r2 = size * 0.16  // raio interno (ponta curta da estrela)
+  // 8 pontas alternando externa/interna
+  const pts: string[] = []
+  for (let i = 0; i < 16; i++) {
+    const ang = (i * 22.5 - 90) * Math.PI / 180  // -90 = topo
+    const r = i % 2 === 0 ? r1 : r2
+    pts.push(`${(c + Math.cos(ang) * r).toFixed(2)},${(c + Math.sin(ang) * r).toFixed(2)}`)
+  }
+  const estrelaPath = pts.join(' ')
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="rvBg" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.15" />
+          <stop offset="100%" stopColor="#000" stopOpacity="0.5" />
+        </radialGradient>
+        <linearGradient id="rvClaro" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fff" />
+          <stop offset="100%" stopColor="#d1d5db" />
+        </linearGradient>
+        <linearGradient id="rvEscuro" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#dc2626" />
+          <stop offset="100%" stopColor="#7f1d1d" />
+        </linearGradient>
+      </defs>
+      {/* Círculo de fundo */}
+      <circle cx={c} cy={c} r={size * 0.48} fill="url(#rvBg)" stroke="#fbbf24" strokeWidth="1"/>
+      {/* Rosa gira quando heading != 0 (Street View) */}
+      <g transform={`rotate(${headingGraus} ${c} ${c})`}>
+        {/* 4 triângulos vazados (branco/prata) NE, SE, SO, NO */}
+        {[45, 135, 225, 315].map((ang) => {
+          const rad = (ang - 90) * Math.PI / 180
+          const x1 = c + Math.cos(rad) * r1
+          const y1 = c + Math.sin(rad) * r1
+          const rad2a = (ang - 90 - 22.5) * Math.PI / 180
+          const rad2b = (ang - 90 + 22.5) * Math.PI / 180
+          const xa = c + Math.cos(rad2a) * r2
+          const ya = c + Math.sin(rad2a) * r2
+          const xb = c + Math.cos(rad2b) * r2
+          const yb = c + Math.sin(rad2b) * r2
+          return <polygon key={ang} points={`${x1},${y1} ${xa},${ya} ${c},${c} ${xb},${yb}`}
+            fill="url(#rvClaro)" stroke="#0f172a" strokeWidth="0.4"/>
+        })}
+        {/* 4 triângulos cardinais N (vermelho), E/S/W (branco fosco) */}
+        {[
+          { ang: 0, fill: 'url(#rvEscuro)' },   // N vermelho
+          { ang: 90, fill: '#e5e7eb' },         // E
+          { ang: 180, fill: '#e5e7eb' },        // S
+          { ang: 270, fill: '#e5e7eb' },        // O
+        ].map(({ ang, fill }) => {
+          const rad = (ang - 90) * Math.PI / 180
+          const x1 = c + Math.cos(rad) * r1
+          const y1 = c + Math.sin(rad) * r1
+          const rad2a = (ang - 90 - 22.5) * Math.PI / 180
+          const rad2b = (ang - 90 + 22.5) * Math.PI / 180
+          const xa = c + Math.cos(rad2a) * r2
+          const ya = c + Math.sin(rad2a) * r2
+          const xb = c + Math.cos(rad2b) * r2
+          const yb = c + Math.sin(rad2b) * r2
+          return <polygon key={ang} points={`${x1},${y1} ${xa},${ya} ${c},${c} ${xb},${yb}`}
+            fill={fill} stroke="#0f172a" strokeWidth="0.4"/>
+        })}
+      </g>
+      {/* Letras N/S/L/O fixas (não giram) */}
+      <text x={c} y={size * 0.14} textAnchor="middle" fontSize={size * 0.18}
+        fill="#dc2626" fontWeight="900" fontFamily="serif" style={{ paintOrder: 'stroke' }}
+        stroke="#fff" strokeWidth="0.8">N</text>
+      <text x={c} y={size * 0.98} textAnchor="middle" fontSize={size * 0.14}
+        fill="#fff" fontWeight="bold" fontFamily="serif">S</text>
+      <text x={size * 0.96} y={c + size * 0.05} textAnchor="middle" fontSize={size * 0.14}
+        fill="#fff" fontWeight="bold" fontFamily="serif">L</text>
+      <text x={size * 0.04} y={c + size * 0.05} textAnchor="middle" fontSize={size * 0.14}
+        fill="#fff" fontWeight="bold" fontFamily="serif">O</text>
+    </svg>
+  )
 }
 
 function orientacaoNome(azimuth: number): string {
