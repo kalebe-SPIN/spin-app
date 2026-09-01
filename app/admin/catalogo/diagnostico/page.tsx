@@ -11,22 +11,52 @@ import { createClient } from '@/lib/supabase/server'
  * têm preço vigente e onde está o gap.
  */
 
-// Categorias essenciais consumidas pelo gerador de kits:
+// Categorias essenciais consumidas pelo gerador de kits + demais tipos
+// de sistema (BESS, VE, off-grid). Kalebe 2026-09-01.
 const CATEGORIAS_ESSENCIAIS: Array<{
   categoria: string
   label: string
   contemEsperado: string
   usadoEm: string
+  grupo: 'ongrid' | 'bess' | 've' | 'offgrid' | 'ca'
 }> = [
-  { categoria: 'placa',      label: '☀️ Placa fotovoltaica',   contemEsperado: 'JAM/canadian/trina', usadoEm: 'Kit — geração' },
-  { categoria: 'inversor',   label: '⚡ Inversor',              contemEsperado: 'SIW/microinversor',  usadoEm: 'Kit — conversão' },
-  { categoria: 'cabo_cc',    label: '🔌 Cabo CC (6mm²)',        contemEsperado: '6mm² preto/vermelho',usadoEm: 'Complementos WEG — cabo solar' },
-  { categoria: 'cabo',       label: '🔌 Cabo (fallback CC)',    contemEsperado: '6mm²',               usadoEm: 'Complementos WEG — cabo solar (2ª opção)' },
-  { categoria: 'estrutura',  label: '🏗 Estrutura de fixação',   contemEsperado: 'fibro/metal/cerâmico/laje', usadoEm: 'Complementos WEG — estrutura' },
-  { categoria: 'conector',   label: '🔗 Conector',              contemEsperado: 'MC4',                usadoEm: 'Complementos WEG — MC4' },
-  { categoria: 'disjuntor',  label: '🔒 Disjuntor',             contemEsperado: 'CA / DIN / Steck',   usadoEm: 'Complementos WEG — disjuntor CA' },
-  { categoria: 'dps',        label: '⚡ DPS',                    contemEsperado: 'CA / classe II',    usadoEm: 'Complementos WEG — DPS CA' },
+  // ==== ON-GRID ====
+  { grupo: 'ongrid', categoria: 'placa',      label: '☀️ Placa fotovoltaica',   contemEsperado: 'JAM/canadian/trina', usadoEm: 'Kit — geração' },
+  { grupo: 'ongrid', categoria: 'inversor',   label: '⚡ Inversor',              contemEsperado: 'SIW/microinversor',  usadoEm: 'Kit — conversão' },
+  { grupo: 'ongrid', categoria: 'cabo_cc',    label: '🔌 Cabo CC (6mm²)',        contemEsperado: '6mm² preto/vermelho',usadoEm: 'Complementos — cabo solar' },
+  { grupo: 'ongrid', categoria: 'cabo',       label: '🔌 Cabo (fallback CC)',    contemEsperado: '6mm²',               usadoEm: 'Complementos — cabo solar (2ª opção)' },
+  { grupo: 'ongrid', categoria: 'estrutura',  label: '🏗 Estrutura de fixação',   contemEsperado: 'fibro/metal/cerâmico/laje', usadoEm: 'Complementos — estrutura' },
+  { grupo: 'ongrid', categoria: 'conector',   label: '🔗 Conector',              contemEsperado: 'MC4',                usadoEm: 'Complementos — MC4' },
+  { grupo: 'ongrid', categoria: 'disjuntor',  label: '🔒 Disjuntor',             contemEsperado: 'CA / DIN / Steck',   usadoEm: 'Complementos — disjuntor CA' },
+  { grupo: 'ongrid', categoria: 'dps',        label: '⚡ DPS',                    contemEsperado: 'CA / classe II',    usadoEm: 'Complementos — DPS CA' },
+
+  // ==== BESS (bateria + híbrido) ====
+  { grupo: 'bess', categoria: 'bateria',        label: '🔋 Bateria',             contemEsperado: 'SBW / LiFePO4 / BYD',      usadoEm: 'Sistema híbrido / BESS' },
+  { grupo: 'bess', categoria: 'inversor_hibrido', label: '🌗 Inversor híbrido',  contemEsperado: 'SIW400H',                  usadoEm: 'Sistema híbrido (mestre)' },
+  { grupo: 'bess', categoria: 'embox',          label: '🎛 EMBOX (controle)',    contemEsperado: 'EMBOX WEG',                usadoEm: 'Paralelismo + despacho híbrido' },
+  { grupo: 'bess', categoria: 'medidor_energia', label: '📊 Medidor de energia', contemEsperado: 'DTSU666 / MMW03',          usadoEm: 'Anti-injeção + monitoramento' },
+
+  // ==== OFF-GRID ====
+  { grupo: 'offgrid', categoria: 'controlador_carga', label: '🎚 Controlador de carga', contemEsperado: 'MPPT / PWM',       usadoEm: 'Off-grid (sem inversor híbrido)' },
+
+  // ==== VE (mobilidade) ====
+  { grupo: 've', categoria: 'wallbox',    label: '⚡🚗 Wallbox (carregador VE)', contemEsperado: '7.4/11/22 kW',            usadoEm: 'Fluxo ve_recarga' },
+  { grupo: 've', categoria: 'totem_ve',   label: '🔌 Totem de recarga público', contemEsperado: 'Public DC/AC',            usadoEm: 'Fluxo ve_recarga (opcional)' },
+
+  // ==== LISTA CA ====
+  { grupo: 'ca', categoria: 'cabo_ca',      label: '🔌 Cabo CA (fase/neutro/terra)', contemEsperado: 'HEPR 10mm² / 6mm² verde', usadoEm: 'Lista CA — cabos' },
+  { grupo: 'ca', categoria: 'eletroduto',   label: '🔩 Eletroduto',                  contemEsperado: 'PVC 1" / rígido',         usadoEm: 'Lista CA — condução' },
+  { grupo: 'ca', categoria: 'caixa_passagem', label: '📦 Caixa de passagem',         contemEsperado: 'PVC 100×100',             usadoEm: 'Lista CA — junções' },
+  { grupo: 'ca', categoria: 'abracadeira',  label: '🔗 Abraçadeira',                 contemEsperado: 'Tipo D / nylon UV',       usadoEm: 'Lista CA — fixação' },
 ]
+
+const GRUPO_LABEL: Record<string, string> = {
+  ongrid: '☀️ On-grid (obrigatórios do kit FV)',
+  bess: '🔋 BESS e Híbrido',
+  offgrid: '🏝 Off-grid',
+  ve: '🚗 Recarga VE',
+  ca: '🔌 Lista CA (materiais tributáveis)',
+}
 
 export default async function DiagnosticoCatalogoPage() {
   const supabase = createClient()
@@ -40,38 +70,58 @@ export default async function DiagnosticoCatalogoPage() {
 
   const hojeIso = new Date().toISOString().slice(0, 10)
 
-  const linhas = await Promise.all(CATEGORIAS_ESSENCIAIS.map(async (cat) => {
-    const { count: totalAtivos } = await supabase.from('produtos')
-      .select('id', { count: 'exact', head: true })
-      .eq('categoria', cat.categoria).eq('ativo', true)
-    const { count: totalInativos } = await supabase.from('produtos')
-      .select('id', { count: 'exact', head: true })
-      .eq('categoria', cat.categoria).eq('ativo', false)
+  // Kalebe 2026-09-01: 'puxe todas no diagnóstico'. Puxa TODAS as
+  // categorias distintas que existem no banco, não só as essenciais.
+  const { data: todosProdutos } = await supabase
+    .from('produtos')
+    .select('categoria, ativo, id, precos_produtos(preco_venda, vigente_ate)')
+    .limit(5000)
 
-    const { data: ativosComPreco } = await supabase.from('produtos')
-      .select('id, precos_produtos!inner(preco_venda, vigente_ate)')
-      .eq('categoria', cat.categoria).eq('ativo', true)
-      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`, { foreignTable: 'precos_produtos' })
-      .limit(500)
+  // Agrupa por categoria — conta ativos, inativos, com preço vigente
+  const porCategoria = new Map<string, {
+    totalAtivos: number; totalInativos: number; comPrecoVigente: number
+  }>()
+  ;(todosProdutos || []).forEach((p: any) => {
+    const cat = p.categoria || '(sem categoria)'
+    if (!porCategoria.has(cat)) porCategoria.set(cat, { totalAtivos: 0, totalInativos: 0, comPrecoVigente: 0 })
+    const bucket = porCategoria.get(cat)!
+    if (p.ativo) bucket.totalAtivos++
+    else bucket.totalInativos++
+    if (p.ativo && (p.precos_produtos || []).some((x: any) =>
+      Number(x.preco_venda) > 0 && (!x.vigente_ate || x.vigente_ate >= hojeIso))) {
+      bucket.comPrecoVigente++
+    }
+  })
 
-    const comPrecoVigente = (ativosComPreco || []).filter((p: any) =>
-      (p.precos_produtos || []).some((x: any) => Number(x.preco_venda) > 0)
-    ).length
-
+  // Enriquece com metadados das essenciais + fabrica linhas pras "outras"
+  const mapaEssenciais = new Map(CATEGORIAS_ESSENCIAIS.map((c) => [c.categoria, c]))
+  const categoriasSeen = new Set<string>()
+  const linhasEssenciais = CATEGORIAS_ESSENCIAIS.map((cat) => {
+    categoriasSeen.add(cat.categoria)
+    const b = porCategoria.get(cat.categoria) || { totalAtivos: 0, totalInativos: 0, comPrecoVigente: 0 }
     return {
       ...cat,
-      totalAtivos: totalAtivos || 0,
-      totalInativos: totalInativos || 0,
-      comPrecoVigente,
-      status: (totalAtivos || 0) === 0
-        ? 'sem_produtos'
-        : comPrecoVigente === 0
-        ? 'sem_preco'
-        : 'ok',
-    }
-  }))
+      ...b,
+      status: b.totalAtivos === 0 ? 'sem_produtos'
+        : b.comPrecoVigente === 0 ? 'sem_preco' : 'ok',
+    } as any
+  })
+  const linhasOutras = Array.from(porCategoria.entries())
+    .filter(([cat]) => !categoriasSeen.has(cat))
+    .map(([categoria, b]) => ({
+      categoria,
+      label: `📦 ${categoria}`,
+      contemEsperado: '(categoria fora dos essenciais)',
+      usadoEm: 'Não consumido diretamente pelo gerador — verifique reclassificação',
+      grupo: 'outras' as any,
+      ...b,
+      status: b.totalAtivos === 0 ? 'sem_produtos'
+        : b.comPrecoVigente === 0 ? 'sem_preco' : 'ok',
+    }))
+    .sort((a, b) => (b.totalAtivos - a.totalAtivos))
 
-  const problemas = linhas.filter((l) => l.status !== 'ok').length
+  const linhas = [...linhasEssenciais, ...linhasOutras]
+  const problemas = linhasEssenciais.filter((l) => l.status !== 'ok').length
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -91,13 +141,25 @@ export default async function DiagnosticoCatalogoPage() {
         {problemas > 0 && (
           <div className="mb-6 p-4 bg-coral/10 border border-coral/40 rounded-xl">
             <p className="text-sm font-bold text-coral">
-              ⚠ {problemas} categoria(s) com problema — orçamento vai mostrar &quot;não cadastrado&quot; nesses itens.
+              ⚠ {problemas} categoria(s) essencial(is) com problema — orçamento vai mostrar &quot;não cadastrado&quot; nesses itens.
             </p>
           </div>
         )}
 
-        <div className="space-y-2">
-          {linhas.map((l) => (
+        {/* Agrupa por 'grupo' (ongrid, bess, offgrid, ve, ca, outras). */}
+        {['ongrid', 'bess', 'offgrid', 've', 'ca', 'outras'].map((grupo) => {
+          const doGrupo = linhas.filter((l: any) => l.grupo === grupo)
+          if (doGrupo.length === 0) return null
+          const titulo = grupo === 'outras'
+            ? `📦 Outras categorias cadastradas (${doGrupo.length})`
+            : GRUPO_LABEL[grupo] || grupo
+          return (
+            <section key={grupo} className="mb-6">
+              <h2 className="text-xs uppercase tracking-wider font-bold text-sol mb-2">
+                {titulo}
+              </h2>
+              <div className="space-y-2">
+                {doGrupo.map((l: any) => (
             <div key={l.categoria} className={`p-4 rounded-lg border ${
               l.status === 'ok' ? 'bg-verde/5 border-verde/30' :
               l.status === 'sem_preco' ? 'bg-sol/5 border-sol/30' :
@@ -152,8 +214,11 @@ export default async function DiagnosticoCatalogoPage() {
                 )}
               </div>
             </div>
-          ))}
-        </div>
+                ))}
+              </div>
+            </section>
+          )
+        })}
 
         <div className="mt-6 p-4 bg-white/[0.03] border border-white/10 rounded text-xs text-white/60 space-y-1">
           <p><strong className="text-white">Como usar:</strong></p>
