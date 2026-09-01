@@ -50,6 +50,8 @@ export function VisualizadorMapaMini({
   const drawManRef = useRef<any>(null)
   const polySolarRef = useRef<any[]>([])
   const polyMedidoRef = useRef<any>(null)
+  const polylineMedirRef = useRef<any>(null)  // linha visual durante desenho
+  const markersMedirRef = useRef<any[]>([])   // círculos nos vértices
   const streetViewRef = useRef<any>(null)
   const posicaoRef = useRef({ lat, lng })
   const onArrastarRef = useRef(onArrastar)
@@ -177,16 +179,43 @@ export function VisualizadorMapaMini({
       overlay.setMap(map)
       overlayRef.current = overlay
 
-      if (onArrastar) {
-        map.addListener('click', (e: any) => {
-          // Usa ref (não a var do closure) — sem isso o listener nunca
-          // via o estado atualizado e sempre movia o pino.
-          if (medindoRef.current) return
-          const p = e.latLng; if (!p) return
+      map.addListener('click', (e: any) => {
+        const p = e.latLng; if (!p) return
+        const lat_ = p.lat(); const lng_ = p.lng()
+
+        // MODO MEDIR: adiciona vértice em vez de mover pino
+        if (medindoRef.current) {
+          // Marker pequeno branco no vértice pra ver onde clicou
+          const marker = new google.maps.Marker({
+            position: { lat: lat_, lng: lng_ },
+            map,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 6,
+              fillColor: '#fbbf24',
+              fillOpacity: 1,
+              strokeColor: '#fff',
+              strokeWeight: 2,
+            },
+            zIndex: 6000,
+            clickable: false,
+          })
+          markersMedirRef.current.push(marker)
+          // Atualiza polyline
+          if (polylineMedirRef.current) {
+            const path = polylineMedirRef.current.getPath()
+            path.push(new google.maps.LatLng(lat_, lng_))
+          }
+          setVerticesTemp((prev) => [...prev, { lat: lat_, lng: lng_ }])
+          return
+        }
+
+        // MODO NORMAL: move o pino
+        if (onArrastar) {
           overlay.setPosicaoExterna(p); map.panTo(p)
-          if (onArrastarRef.current) onArrastarRef.current(p.lat(), p.lng())
-        })
-      }
+          if (onArrastarRef.current) onArrastarRef.current(lat_, lng_)
+        }
+      })
 
       // Street View panorama (criado uma vez, escondido)
       if (streetRef.current) {
@@ -301,8 +330,7 @@ export function VisualizadorMapaMini({
       // está olhando).
       const imgFinal = await desenharOverlaysNaImagem(url, {
         coordLabel: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
-        mostrarBussola: true,
-        headingBussola: heading, // seta gira; N sempre fixo
+        mostrarBussola: false, // Street View já tem bússola nativa
         legenda: `Vista ${orientacaoNome(heading)} (${Math.round(heading)}°) · ${new Date().toLocaleString('pt-BR')}`,
       })
       const blobUrl = URL.createObjectURL(imgFinal)
@@ -333,67 +361,45 @@ export function VisualizadorMapaMini({
     })
   }
 
+  // Implementação MANUAL do desenho — sem DrawingManager (que estava
+  // engolindo cliques). Cada click adiciona vértice + marker + linha.
+  // Botão 'Finalizar' fecha em polygon. Kalebe 2026-09-01.
   async function iniciarMedir() {
     const google = (window as any).google
     if (!google || !mapRef.current) return
-    if (!google.maps?.drawing?.DrawingManager) {
-      setMsgAcao('❌ Biblioteca "drawing" não carregou — recarregue a página')
+    if (!google.maps?.geometry?.spherical) {
+      setMsgAcao('❌ Biblioteca "geometry" não carregou — recarregue a página')
       setTimeout(() => setMsgAcao(null), 5000)
       return
     }
-    // Limpa polígono anterior
-    if (polyMedidoRef.current) { polyMedidoRef.current.setMap(null); polyMedidoRef.current = null }
-    setAreaMedida(null); setVerticesTemp([])
+    // Limpa desenho anterior
+    limparDesenhosMedicao()
+    setAreaMedida(null); setPoligonoMedido(null); setVerticesTemp([])
     setMedindo(true)
     medindoRef.current = true
-    setMsgAcao('📐 Clique nos cantos do telhado. Quando terminar, clique de novo no PRIMEIRO ponto pra fechar (ou duplo-click no último).')
+    // Muda cursor pra crosshair — indica que está no modo desenho
+    mapRef.current.setOptions({ draggableCursor: 'crosshair' })
+    setMsgAcao('📐 Clique em cada canto do telhado. Quando terminar, clique em "Finalizar polígono" (aparece com 3+ vértices).')
 
-    const dm = new google.maps.drawing.DrawingManager({
-      drawingMode: google.maps.drawing.OverlayType.POLYGON,
-      drawingControl: false,
-      polygonOptions: {
-        fillColor: '#f59e0b', fillOpacity: 0.35,
-        strokeColor: '#f59e0b', strokeWeight: 2,
-        clickable: false, editable: true, draggable: false, zIndex: 5000,
-      },
+    // Cria polyline vazia (visual dos segmentos)
+    const polyline = new google.maps.Polyline({
+      path: [],
+      strokeColor: '#f59e0b',
+      strokeWeight: 3,
+      strokeOpacity: 0.9,
+      map: mapRef.current,
+      zIndex: 5000,
+      clickable: false,
     })
-    dm.setMap(mapRef.current)
-    drawManRef.current = dm
+    polylineMedirRef.current = polyline
+  }
 
-    // Listener no click do mapa DURANTE o modo desenho — conta vértices.
-    // O DrawingManager consome os cliques mas o listener adicional roda
-    // antes, dando feedback ao vivo do progresso.
-    const listenerClicksTemp = mapRef.current.addListener('click', (e: any) => {
-      if (!medindoRef.current) return
-      const p = e.latLng
-      if (p) setVerticesTemp((prev) => [...prev, { lat: p.lat(), lng: p.lng() }])
-    })
-    ;(dm as any).__listenerTemp = listenerClicksTemp
-
-    google.maps.event.addListenerOnce(dm, 'polygoncomplete', (poly: any) => {
-      // Limpa listener temporário de vértices
-      if ((dm as any).__listenerTemp) {
-        try { google.maps.event.removeListener((dm as any).__listenerTemp) } catch {}
-      }
-      setVerticesTemp([])
-      dm.setMap(null); drawManRef.current = null
-      medindoRef.current = false  // libera o click do mapa de volta
-      polyMedidoRef.current = poly
-      const path = poly.getPath()
-      const area = google.maps.geometry.spherical.computeArea(path)
-      const pontos: PontoLatLng[] = []
-      for (let i = 0; i < path.getLength(); i++) {
-        const p = path.getAt(i); pontos.push({ lat: p.lat(), lng: p.lng() })
-      }
-      setAreaMedida(area)
-      setMedindo(false)
-      setMsgAcao(null)
-      setPoligonoMedido(pontos)
-      if (onAreaMedida) onAreaMedida({ areaM2: Number(area.toFixed(2)), pontos })
-      // Listener pra recalcular se editar
-      path.addListener('set_at', () => recalcAreaMedida())
-      path.addListener('insert_at', () => recalcAreaMedida())
-    })
+  function limparDesenhosMedicao() {
+    if (polyMedidoRef.current) { polyMedidoRef.current.setMap(null); polyMedidoRef.current = null }
+    if (polylineMedirRef.current) { polylineMedirRef.current.setMap(null); polylineMedirRef.current = null }
+    markersMedirRef.current.forEach((m) => { try { m.setMap(null) } catch {} })
+    markersMedirRef.current = []
+    if (mapRef.current) mapRef.current.setOptions({ draggableCursor: null })
   }
 
   function recalcAreaMedida() {
@@ -410,31 +416,22 @@ export function VisualizadorMapaMini({
   }
 
   function limparMedicao() {
-    if (polyMedidoRef.current) { polyMedidoRef.current.setMap(null); polyMedidoRef.current = null }
-    if (drawManRef.current) {
-      const google = (window as any).google
-      if ((drawManRef.current as any).__listenerTemp) {
-        try { google.maps.event.removeListener((drawManRef.current as any).__listenerTemp) } catch {}
-      }
-      drawManRef.current.setMap(null); drawManRef.current = null
-    }
+    limparDesenhosMedicao()
     setAreaMedida(null); setMedindo(false); setPoligonoMedido(null); setVerticesTemp([])
     medindoRef.current = false
+    setMsgAcao(null)
   }
 
-  // Finaliza manualmente o polígono usando os vértices clicados até agora
-  // (fallback pra quem não sabe fazer duplo-click)
   function finalizarMedicaoManual() {
     const google = (window as any).google
     if (!google || !mapRef.current || verticesTemp.length < 3) return
-    // Cancela o DrawingManager (não vamos deixá-lo fechar)
-    if (drawManRef.current) {
-      if ((drawManRef.current as any).__listenerTemp) {
-        try { google.maps.event.removeListener((drawManRef.current as any).__listenerTemp) } catch {}
-      }
-      drawManRef.current.setMap(null); drawManRef.current = null
-    }
-    // Cria o polígono manualmente com os vértices
+    // Limpa polyline+markers do modo desenho
+    if (polylineMedirRef.current) { polylineMedirRef.current.setMap(null); polylineMedirRef.current = null }
+    markersMedirRef.current.forEach((m) => { try { m.setMap(null) } catch {} })
+    markersMedirRef.current = []
+    if (mapRef.current) mapRef.current.setOptions({ draggableCursor: null })
+
+    // Cria polígono final com fill
     const poly = new google.maps.Polygon({
       paths: verticesTemp,
       fillColor: '#f59e0b', fillOpacity: 0.35,
