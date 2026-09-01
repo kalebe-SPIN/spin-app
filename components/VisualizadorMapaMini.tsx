@@ -254,12 +254,26 @@ export function VisualizadorMapaMini({
       `&markers=color:red%7C${lat},${lng}&key=${KEY}`
     const nome = `telhado-aerea-${lat.toFixed(5)}-${lng.toFixed(5)}.png`
     setMsgAcao('📷 Capturando aérea…')
-    const blobUrl = await baixarComoBlob(url, nome)
-    if (blobUrl) {
+    try {
+      // Baixa a imagem crua e desenha overlays (coord + rosa dos ventos)
+      // via canvas antes de salvar. Static Maps SEMPRE retorna com
+      // norte pra cima — a bússola fica fixa apontando ↑.
+      const imgFinal = await desenharOverlaysNaImagem(url, {
+        coordLabel: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+        mostrarBussola: true,
+        legenda: `Zoom ${zoom} · ${new Date().toLocaleString('pt-BR')}`,
+      })
+      const blobUrl = URL.createObjectURL(imgFinal)
+      const a = document.createElement('a')
+      a.href = blobUrl; a.download = nome
+      document.body.appendChild(a); a.click(); a.remove()
       setPrintsFeitos((prev) => [...prev, { tipo: 'aerea', blobUrl, nome }])
       if (onPrintPronto) onPrintPronto({ tipo: 'aerea', dataUrl: blobUrl })
-      setMsgAcao('✓ Print aéreo capturado')
-      setTimeout(() => setMsgAcao(null), 2500)
+      setMsgAcao('✓ Print aéreo capturado com coordenadas + bússola')
+      setTimeout(() => setMsgAcao(null), 3000)
+    } catch (e: any) {
+      setMsgAcao(`❌ Falha ao capturar: ${e?.message || 'erro'}`)
+      setTimeout(() => setMsgAcao(null), 5000)
     }
   }
 
@@ -275,12 +289,27 @@ export function VisualizadorMapaMini({
       `&size=640x480&heading=${heading}&pitch=${pitch}&fov=90&key=${KEY}`
     const nome = `telhado-rua-${lat.toFixed(5)}-${lng.toFixed(5)}.png`
     setMsgAcao('🎥 Capturando rua…')
-    const blobUrl = await baixarComoBlob(url, nome)
-    if (blobUrl) {
+    try {
+      // Overlays: coord + bússola girada com o heading atual (setinha
+      // aponta pra direção da vista, pra o consultor entender pra onde
+      // está olhando).
+      const imgFinal = await desenharOverlaysNaImagem(url, {
+        coordLabel: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+        mostrarBussola: true,
+        headingBussola: heading, // seta gira; N sempre fixo
+        legenda: `Vista ${orientacaoNome(heading)} (${Math.round(heading)}°) · ${new Date().toLocaleString('pt-BR')}`,
+      })
+      const blobUrl = URL.createObjectURL(imgFinal)
+      const a = document.createElement('a')
+      a.href = blobUrl; a.download = nome
+      document.body.appendChild(a); a.click(); a.remove()
       setPrintsFeitos((prev) => [...prev, { tipo: 'rua', blobUrl, nome }])
       if (onPrintPronto) onPrintPronto({ tipo: 'rua', dataUrl: blobUrl })
-      setMsgAcao('✓ Print da rua capturado')
-      setTimeout(() => setMsgAcao(null), 2500)
+      setMsgAcao(`✓ Print da rua (${orientacaoNome(heading)}) capturado`)
+      setTimeout(() => setMsgAcao(null), 3000)
+    } catch (e: any) {
+      setMsgAcao(`❌ Falha ao capturar: ${e?.message || 'erro'}`)
+      setTimeout(() => setMsgAcao(null), 5000)
     }
   }
 
@@ -576,6 +605,108 @@ export function VisualizadorMapaMini({
       </div>
     </div>
   )
+}
+
+/**
+ * Baixa uma imagem do Google Static/Street View e desenha overlays em cima
+ * (coordenadas, rosa dos ventos, legenda) via Canvas 2D. Retorna um Blob PNG.
+ *
+ * Google Static Maps envia CORS aberto, então crossOrigin='anonymous' funciona
+ * e o canvas não fica 'tainted'.
+ */
+async function desenharOverlaysNaImagem(
+  url: string,
+  opts: {
+    coordLabel: string
+    mostrarBussola?: boolean
+    headingBussola?: number  // 0 = norte pra cima (aérea); N em Street View gira
+    legenda?: string
+  },
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { reject(new Error('canvas 2d indisponível')); return }
+      ctx.drawImage(img, 0, 0)
+
+      // ============ BÚSSULA (top-right, 90px) ============
+      if (opts.mostrarBussola) {
+        const cx = canvas.width - 70
+        const cy = 70
+        const r = 40
+        // Círculo de fundo (branco semi-transparente)
+        ctx.beginPath()
+        ctx.arc(cx, cy, r + 8, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'
+        ctx.fill()
+        ctx.strokeStyle = '#0f172a'
+        ctx.lineWidth = 2
+        ctx.stroke()
+
+        // Rotaciona só a seta interna pelo heading (se dado)
+        const heading = opts.headingBussola || 0
+        ctx.save()
+        ctx.translate(cx, cy)
+        ctx.rotate((heading * Math.PI) / 180)
+        // Seta apontando pra cima (vermelha)
+        ctx.beginPath()
+        ctx.moveTo(0, -r + 4)
+        ctx.lineTo(-10, r - 12)
+        ctx.lineTo(0, r - 20)
+        ctx.lineTo(10, r - 12)
+        ctx.closePath()
+        ctx.fillStyle = '#dc2626'
+        ctx.fill()
+        ctx.restore()
+
+        // Letra N fixa em cima (sempre indica norte real)
+        ctx.font = 'bold 16px sans-serif'
+        ctx.fillStyle = '#0f172a'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText('N', cx, cy - r - 2)
+        ctx.fillText('S', cx, cy + r + 2)
+        ctx.fillText('L', cx + r + 4, cy)
+        ctx.fillText('O', cx - r - 4, cy)
+      }
+
+      // ============ COORDENADAS (bottom-left) ============
+      const pad = 12
+      const y0 = canvas.height - pad
+      ctx.font = 'bold 14px monospace'
+      const cw = ctx.measureText(opts.coordLabel).width
+      // Fundo escuro
+      ctx.fillStyle = 'rgba(15,23,42,0.85)'
+      ctx.fillRect(pad, y0 - 46, cw + 24, 38)
+      // Texto branco
+      ctx.fillStyle = '#fff'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.fillText('📍 ' + opts.coordLabel, pad + 12, y0 - 34)
+
+      // ============ LEGENDA (bottom-right) ============
+      if (opts.legenda) {
+        ctx.font = '12px sans-serif'
+        const lw = ctx.measureText(opts.legenda).width
+        ctx.fillStyle = 'rgba(15,23,42,0.75)'
+        ctx.fillRect(canvas.width - pad - lw - 16, y0 - 32, lw + 16, 24)
+        ctx.fillStyle = '#fff'
+        ctx.textAlign = 'left'
+        ctx.fillText(opts.legenda, canvas.width - pad - lw - 8, y0 - 26)
+      }
+
+      canvas.toBlob((b) => {
+        if (b) resolve(b); else reject(new Error('toBlob falhou'))
+      }, 'image/png', 0.95)
+    }
+    img.onerror = () => reject(new Error('falha ao carregar imagem do Google'))
+    img.src = url
+  })
 }
 
 function orientacaoNome(azimuth: number): string {
