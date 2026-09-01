@@ -64,6 +64,9 @@ export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20
         fullscreenControl: true,
         streetViewControl: true,   // habilita pegman pra street view
         mapTypeControl: true,
+        zoomControl: true,
+        gestureHandling: 'greedy', // arrasta com um dedo, sem Ctrl
+        clickableIcons: false,     // POIs não roubam o clique do usuário
       })
       // Marker padrão do Google (ícone vermelho de gota) — mais confiável
       // pra draggable que o Symbol vetorial. optimized:false garante que
@@ -86,6 +89,19 @@ export function VisualizadorMapaMini({ lat, lng, apiKey, altura = 260, zoom = 20
         const p = marker.getPosition()
         if (p && onArrastarRef.current) onArrastarRef.current(p.lat(), p.lng())
       })
+
+      // Clique no mapa também move o marker — fallback confiável quando
+      // o drag não funciona por algum motivo (Kalebe 2026-08-31).
+      if (onArrastar) {
+        map.addListener('click', (e: any) => {
+          const p = e.latLng
+          if (!p) return
+          const novoLat = p.lat()
+          const novoLng = p.lng()
+          marker.setPosition({ lat: novoLat, lng: novoLng })
+          if (onArrastarRef.current) onArrastarRef.current(novoLat, novoLng)
+        })
+      }
       setCarregando(false)
     }).catch((e: any) => {
       if (!cancelado) {

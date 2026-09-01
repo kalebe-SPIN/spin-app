@@ -616,7 +616,7 @@ export function NovoProjetoForm({
                 </div>
               </div>
               <p className="text-[10px] text-sol mb-2">
-                💡 Arraste o pino amarelo até ficar em cima do telhado. O endereço se ajusta.
+                💡 <strong>Arraste o pino</strong> ou <strong>clique no ponto exato</strong> do telhado. O endereço se ajusta.
               </p>
               <VisualizadorMapaMini
                 lat={enderecoInst.lat}
