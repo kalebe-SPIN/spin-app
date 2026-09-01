@@ -528,19 +528,22 @@ async function precificarComplementosCC(
   const memoriaCabo = ehMicroinversor
     ? '25m fixo (microinversor)'
     : `${distEfetiva}m × ${Math.max(1, totalEntradasMppt)} entradas MPPT`
+  // Kalebe 2026-09-01: qtd é sempre calculada, mesmo sem catálogo.
+  // Preço zero quando não achou produto (deixa claro pra admin cadastrar).
   const cabo = await buscarProdutoComPreco({
     categorias: ['cabo_cc', 'cabo'],
     contem: ['6mm'],
   })
-  if (cabo.ok) {
-    itens.push({
-      categoria: 'cabo_cc', modelo: `${cabo.modelo} · ${memoriaCabo}`,
-      qtd: metrosCabo, unidade: 'm', preco_unitario: cabo.preco,
-      subtotal: metrosCabo * cabo.preco,
-    })
-  } else {
-    avisos.push(`Cabo solar 6mm² (${metrosCabo}m · ${memoriaCabo}) — ${cabo.motivo}`)
-  }
+  itens.push({
+    categoria: 'cabo_cc',
+    modelo: cabo.ok
+      ? `${cabo.modelo} · ${memoriaCabo}`
+      : `Cabo solar 6mm² · ${memoriaCabo} · ⚠ não cadastrado`,
+    qtd: metrosCabo, unidade: 'm',
+    preco_unitario: cabo.ok ? cabo.preco : 0,
+    subtotal: cabo.ok ? metrosCabo * cabo.preco : 0,
+  })
+  if (!cabo.ok) avisos.push(`Cabo solar (${metrosCabo}m) — ${cabo.motivo}`)
 
   // 2. Estrutura — 1 kit pra cada N módulos (N vem do modelo escolhido)
   const tipo = String(entrada.tipo_telhado || '').toLowerCase()
@@ -561,15 +564,16 @@ async function precificarComplementosCC(
   const matchModulos = estrutura.ok ? String(estrutura.modelo).match(/p\/\s*(\d+)\s*m[oó]dulos?/i) : null
   const modulosPorKit = matchModulos ? Number(matchModulos[1]) : 4
   const qtdKitsEstrutura = Math.ceil(entrada.qtd_placas / modulosPorKit)
-  if (estrutura.ok) {
-    itens.push({
-      categoria: 'estrutura', modelo: `${estrutura.modelo} · ${entrada.qtd_placas} módulos ÷ ${modulosPorKit}`,
-      qtd: qtdKitsEstrutura, unidade: 'kit', preco_unitario: estrutura.preco,
-      subtotal: qtdKitsEstrutura * estrutura.preco,
-    })
-  } else {
-    avisos.push(`Estrutura ${contemEstrut[0] || 'genérica'} (${qtdKitsEstrutura} kit) — ${estrutura.motivo}`)
-  }
+  itens.push({
+    categoria: 'estrutura',
+    modelo: estrutura.ok
+      ? `${estrutura.modelo} · ${entrada.qtd_placas} módulos ÷ ${modulosPorKit}`
+      : `Estrutura ${contemEstrut[0] || 'genérica'} · ${entrada.qtd_placas} módulos ÷ ${modulosPorKit} · ⚠ não cadastrado`,
+    qtd: qtdKitsEstrutura, unidade: 'kit',
+    preco_unitario: estrutura.ok ? estrutura.preco : 0,
+    subtotal: estrutura.ok ? qtdKitsEstrutura * estrutura.preco : 0,
+  })
+  if (!estrutura.ok) avisos.push(`Estrutura (${qtdKitsEstrutura} kit) — ${estrutura.motivo}`)
 
   // 3. MC4 — 1 par por entrada MPPT total dos inversores (Kalebe 2026-08-29)
   const qtdMc4 = Math.max(1, totalEntradasMppt)
@@ -578,15 +582,16 @@ async function precificarComplementosCC(
     categorias: ['conector'],
     contem: ['mc4'],
   })
-  if (mc4.ok) {
-    itens.push({
-      categoria: 'conector', modelo: `${mc4.modelo} · ${memoriaMc4}`,
-      qtd: qtdMc4, unidade: 'par', preco_unitario: mc4.preco,
-      subtotal: qtdMc4 * mc4.preco,
-    })
-  } else {
-    avisos.push(`Conector MC4 (${qtdMc4} par · ${memoriaMc4}) — ${mc4.motivo}`)
-  }
+  itens.push({
+    categoria: 'conector',
+    modelo: mc4.ok
+      ? `${mc4.modelo} · ${memoriaMc4}`
+      : `Conector MC4 · ${memoriaMc4} · ⚠ não cadastrado`,
+    qtd: qtdMc4, unidade: 'par',
+    preco_unitario: mc4.ok ? mc4.preco : 0,
+    subtotal: mc4.ok ? qtdMc4 * mc4.preco : 0,
+  })
+  if (!mc4.ok) avisos.push(`Conector MC4 (${qtdMc4} par) — ${mc4.motivo}`)
 
   // 4. Disjuntor CA — 1 disjuntor POR MODELO de inversor (agrupa qtd).
   //    Kalebe 2026-08-29: PRIMEIRO tenta usar a referência que o
@@ -636,16 +641,15 @@ async function precificarComplementosCC(
       disj = await buscarDisjuntorCompativel(supabase, g.in_a, g.polos, hojeIso)
     }
 
-    if (disj.ok) {
-      itens.push({
-        categoria: 'disjuntor', modelo: disj.modelo,
-        qtd: g.qtd, unidade: 'un', preco_unitario: disj.preco,
-        subtotal: g.qtd * disj.preco,
-      })
-    } else {
-      const rotulo = g.ref ? `Disjuntor ${g.ref} (ref. projetista)` : `Disjuntor ${g.in_a}A ${g.polos}P`
-      avisos.push(`${rotulo} (${g.modeloInv}, ${g.qtd} un) — ${disj.motivo}`)
-    }
+    const rotulo = g.ref ? `Disjuntor ${g.ref} (ref. projetista)` : `Disjuntor ${g.in_a}A ${g.polos}P`
+    itens.push({
+      categoria: 'disjuntor',
+      modelo: disj.ok ? disj.modelo : `${rotulo} · ${g.modeloInv} · ⚠ não cadastrado`,
+      qtd: g.qtd, unidade: 'un',
+      preco_unitario: disj.ok ? disj.preco : 0,
+      subtotal: disj.ok ? g.qtd * disj.preco : 0,
+    })
+    if (!disj.ok) avisos.push(`${rotulo} (${g.modeloInv}, ${g.qtd} un) — ${disj.motivo}`)
   }
 
   // 5. DPS CA — 1 por fase + 1 no neutro, classe II 20kA.
@@ -681,15 +685,14 @@ async function precificarComplementosCC(
       })
     }
 
-    if (dps.ok) {
-      itens.push({
-        categoria: 'dps', modelo: dps.modelo,
-        qtd: qtdDps, unidade: 'un', preco_unitario: dps.preco,
-        subtotal: qtdDps * dps.preco,
-      })
-    } else {
-      avisos.push(`DPS CA (${qtdDps} un) — ${dps.motivo}`)
-    }
+    itens.push({
+      categoria: 'dps',
+      modelo: dps.ok ? dps.modelo : `DPS CA · classe II 20kA · ⚠ não cadastrado`,
+      qtd: qtdDps, unidade: 'un',
+      preco_unitario: dps.ok ? dps.preco : 0,
+      subtotal: dps.ok ? qtdDps * dps.preco : 0,
+    })
+    if (!dps.ok) avisos.push(`DPS CA (${qtdDps} un) — ${dps.motivo}`)
   }
 
   const total = itens.reduce((s, x) => s + x.subtotal, 0)
