@@ -580,14 +580,24 @@ export async function buscarDisjuntorCompativel(
   const todos = prods.map((p) => {
     const modelo = String(p.modelo || '')
     const specsCorrente = Number(p.specs?.corrente_nominal_a)
-    const matchC = modelo.match(/C(\d+)/i)
+    // Kalebe 2026-09-02: extrator robusto — cobre WEG mini (MDW-C32-1),
+    // caixa moldada (DWB160B100-3, DWB250B250-3, NF125), Siemens (5SL62..).
+    // 1º tenta C\d+ (MDW), 2º B\d+ (DWB), 3º só número entre 8-2000 no modelo.
+    const matchCorrente =
+      modelo.match(/C(\d+)/i) ||
+      modelo.match(/B(\d{2,4})/i) ||
+      modelo.match(/(?:^|[^0-9])(\d{2,4})(?:[^0-9]|$)/)
     const corrente = Number.isFinite(specsCorrente) && specsCorrente > 0
       ? specsCorrente
-      : (matchC ? Number(matchC[1]) : 0)
+      : (matchCorrente ? Number(matchCorrente[1]) : 0)
     const specsPolos = Number(p.specs?.polos)
+    // Regex de polos ampliada: pega '-3' / '-3D' / '-3P' / '-3DF' / '3I' etc
+    // no fim do modelo (padrão DWB160B100-3 tem apenas '-3').
     const polosProd = Number.isFinite(specsPolos) && specsPolos > 0
       ? specsPolos
-      : (/3D|3P/i.test(modelo) ? 3 : /2D|2P/i.test(modelo) ? 2 : 1)
+      : (/[\-\s](3[A-Z]*)$|3[DPI]|TRI/i.test(modelo) ? 3
+         : /[\-\s](2[A-Z]*)$|2[DPI]|BI/i.test(modelo) ? 2
+         : 1)
     return { produto: p, corrente, polos: polosProd }
   })
 
@@ -595,11 +605,19 @@ export async function buscarDisjuntorCompativel(
     .filter((c) => c.polos === polos && c.corrente >= inMinA)
     .sort((a, b) => a.corrente - b.corrente)
   const soPolos = todos.filter((c) => c.polos === polos)
+  // Kalebe 2026-09-02: só cai no fallback "qualquer disjuntor" quando
+  // ninguém com polos certos. Antes pegava DWB160B100-3 (100A tri) pra
+  // dimensionamento 32A mono — completamente errado. Se o polos certos
+  // existir mas com corrente muito acima (>3×), ainda usa (melhor 100A
+  // sobrando que zerar), MAS registra em modelo indicando "sobredim".
   const candidatos = ideais.length > 0 ? ideais : soPolos.length > 0 ? soPolos : todos
+  const sobredimensionado = ideais.length === 0 && soPolos.length > 0
+    && soPolos[0].corrente > inMinA * 3
   const sufInat = usandoInativos ? ' (inativo)' : ''
 
-  const cotacoes: Array<{ modelo: string; preco: number }> = []
-  for (const { produto } of candidatos) {
+  const cotacoes: Array<{ modelo: string; preco: number; corrente: number }> = []
+  for (const c of candidatos) {
+    const produto = c.produto
     const { data: precos } = await supabase
       .from('precos_produtos')
       .select('preco_venda, vigente_de, vigente_ate')
@@ -608,11 +626,18 @@ export async function buscarDisjuntorCompativel(
       .order('vigente_de', { ascending: false })
       .limit(1)
     const preco = Number((precos || [])[0]?.preco_venda) || 0
-    if (preco > 0) cotacoes.push({ modelo: `${produto.modelo}${sufInat}`, preco })
+    if (preco > 0) {
+      const sufSobre = sobredimensionado ? ` · ⚠ sobredim (cadastro só tem ${c.corrente}A)` : ''
+      cotacoes.push({ modelo: `${produto.modelo}${sufInat}${sufSobre}`, preco, corrente: c.corrente })
+    }
   }
   if (cotacoes.length > 0) {
-    const escolhida = cotacoes.reduce((a, b) => (a.preco >= b.preco ? a : b))
-    return { ok: true, ...escolhida }
+    // Se sobredimensionado, prefere o de MENOR corrente (menos desperdício).
+    // Caso normal: mantém a lógica antiga (maior preço = margem de segurança).
+    const escolhida = sobredimensionado
+      ? cotacoes.reduce((a, b) => (a.corrente <= b.corrente ? a : b))
+      : cotacoes.reduce((a, b) => (a.preco >= b.preco ? a : b))
+    return { ok: true, modelo: escolhida.modelo, preco: escolhida.preco }
   }
   const cotacoesVencidas: Array<{ modelo: string; preco: number }> = []
   for (const { produto } of candidatos) {
