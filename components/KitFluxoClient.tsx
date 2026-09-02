@@ -8,7 +8,7 @@ import { fmtNum } from '@/lib/formatters'
 
 type ProdutoRow = {
   id: string
-  codigo_weg: string
+  codigo_weg: string | null
   modelo: string
   fabricante: string | null
   subcategoria?: string
@@ -156,7 +156,7 @@ export function KitFluxoClient({
     const r = sugerirKits({
       placa: {
         id: placaEscolhida.id,
-        codigo_weg: placaEscolhida.codigo_weg,
+        codigo_weg: placaEscolhida.codigo_weg || '',
         modelo: placaEscolhida.modelo,
         fabricante: placaEscolhida.fabricante,
         potencia_wp: placaEscolhida.specs?.potencia_wp || 0,
@@ -171,7 +171,7 @@ export function KitFluxoClient({
       potCcAlvoKwp: potCcAlvo,
       inversores: inversores.map(i => ({
         id: i.id,
-        codigo_weg: i.codigo_weg,
+        codigo_weg: i.codigo_weg || '',
         modelo: i.modelo,
         subcategoria: i.subcategoria || 'inversor_string',
         potencia_kw: i.specs?.potencia_kw || 0,
@@ -207,17 +207,15 @@ export function KitFluxoClient({
       setErro('❗ Kit sem inversor configurado. Reescolha o kit.')
       return
     }
-    if (!placaEscolhida?.codigo_weg) {
-      setErro('❗ Placa sem código WEG. Recarregue a página.')
-      return
-    }
+    // Kalebe 2026-09-02: codigo_weg é OPCIONAL — placa LONGI/JA/Trina não
+    // é WEG. Fallback pra string vazia; o id do produto já identifica.
 
     const invPrincipal = kit.inversores[0]
 
     const payload: any = {
       placa: {
         id: kit.placa.id,
-        codigo_weg: placaEscolhida!.codigo_weg,
+        codigo_weg: placaEscolhida?.codigo_weg || '',
         modelo: kit.placa.modelo,
         potencia_wp: kit.placa.potencia_wp,
         preco_venda: kit.placa.preco_unitario,
@@ -226,7 +224,7 @@ export function KitFluxoClient({
       potencia_cc_kwp: kit.pot_cc_kwp,
       inversor: {
         id: invPrincipal.produto_id,
-        codigo_weg: invPrincipal.codigo_weg,
+        codigo_weg: invPrincipal.codigo_weg || '',
         modelo: invPrincipal.modelo,
         potencia_kw: invPrincipal.potencia_kw,
         preco_venda: invPrincipal.preco_unitario,
@@ -353,7 +351,7 @@ export function KitFluxoClient({
     const payload: any = {
       placa: {
         id: placaManual.id,
-        codigo_weg: placaManual.codigo_weg,
+        codigo_weg: placaManual.codigo_weg || '',
         modelo: placaManual.modelo,
         potencia_wp: placaManual.specs?.potencia_wp || 0,
         preco_venda: precoDe(placaManual),
@@ -366,7 +364,7 @@ export function KitFluxoClient({
         potencia_kw: 0, preco_venda: 0,
       } : {
         id: invPrincipal.produto.id,
-        codigo_weg: invPrincipal.produto.codigo_weg,
+        codigo_weg: invPrincipal.produto.codigo_weg || '',
         modelo: invPrincipal.produto.modelo,
         potencia_kw: invPrincipal.potencia_kw,
         preco_venda: invPrincipal.preco,
@@ -376,7 +374,7 @@ export function KitFluxoClient({
       // NOVO: array completo de inversores no kit (vazio em ampliação)
       inversores: modoAmpliacao ? [] : manualInversoresResolvidos.map((x) => ({
         id: x.produto.id,
-        codigo_weg: x.produto.codigo_weg,
+        codigo_weg: x.produto.codigo_weg || '',
         modelo: x.produto.modelo,
         potencia_kw: x.potencia_kw,
         preco_venda: x.preco,
