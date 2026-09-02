@@ -3,7 +3,7 @@
 import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { salvarOrcamentoAction, marcarPropostaEnviadaAction } from '@/app/projetos/[id]/orcamento/actions'
+import { salvarOrcamentoAction, marcarPropostaEnviadaAction, aplicarDescontoAdminAction } from '@/app/projetos/[id]/orcamento/actions'
 import { PropostaPDFTemplate } from './PropostaPDFTemplate'
 import { nomearArquivo, nomearProposta } from '@/lib/downloads'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
@@ -32,6 +32,25 @@ type Props = {
 const BUCKET_PROPOSTAS = 'propostas-pdf'
 const FATOR_WEG = 0.4182
 
+/**
+ * Kalebe 2026-09-02: aplica desconto do admin (pct OU valor absoluto)
+ * sobre o PV original. Se pct > 0 tem prioridade; senão valor. Cap no
+ * próprio PV pra não gerar negativo.
+ */
+function calcularDescontoFinal(pvOriginal: number, pct?: number | null, valor?: number | null) {
+  const pctNum = typeof pct === 'number' && pct > 0 ? pct : 0
+  const valNum = typeof valor === 'number' && valor > 0 ? valor : 0
+  if (pctNum > 0) {
+    const v = Math.min(pvOriginal * (pctNum / 100), pvOriginal)
+    return { pctEfetivo: pctNum, valorDesconto: v, pvFinal: pvOriginal - v }
+  }
+  if (valNum > 0) {
+    const v = Math.min(valNum, pvOriginal)
+    return { pctEfetivo: pvOriginal > 0 ? (v / pvOriginal) * 100 : 0, valorDesconto: v, pvFinal: pvOriginal - v }
+  }
+  return { pctEfetivo: 0, valorDesconto: 0, pvFinal: pvOriginal }
+}
+
 export function OrcamentoClient({
   projeto, proposta, configEmpresa, listaCa, ehAdmin = false,
   modoComposicao = 'centralizado', propostasPorUc = null,
@@ -54,9 +73,22 @@ export function OrcamentoClient({
     : listaCa
 
   // Totais consolidados (soma de todas as UCs no modo por_uc)
-  const totalConsolidado = modoComposicao === 'por_uc' && propostasPorUc
+  const totalConsolidadoBruto = modoComposicao === 'por_uc' && propostasPorUc
     ? propostasPorUc.reduce((s, u) => s + (u.proposta?.pv_total || 0), 0)
     : (proposta?.pv_total || 0)
+
+  // Kalebe 2026-09-02: desconto do admin (persistido em projetos.*).
+  // Aplica sobre o consolidado (não por UC — a negociação fecha em um
+  // valor único). O PDF e o WhatsApp usam o pvFinal, não o bruto.
+  const descontoInfo = calcularDescontoFinal(
+    totalConsolidadoBruto,
+    projeto.desconto_admin_pct,
+    projeto.desconto_admin_valor,
+  )
+  const totalConsolidado = descontoInfo.pvFinal
+  const pvFinalUcAtiva = modoComposicao === 'por_uc'
+    ? (ucAtiva?.proposta?.pv_total || 0)
+    : descontoInfo.pvFinal
   const potenciaCcConsolidada = modoComposicao === 'por_uc' && propostasPorUc
     ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
     : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
@@ -183,7 +215,11 @@ export function OrcamentoClient({
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Metric label="UCs contempladas" value={String(propostasPorUc.length)} highlight />
             <Metric label="Potência CC total" value={`${potenciaCcConsolidada.toFixed(2)} kWp`} />
-            <Metric label="PV TOTAL (todas UCs)" value={`R$ ${fmt(totalConsolidado)}`} highlight verde />
+            <Metric
+              label={descontoInfo.valorDesconto > 0 ? 'PV TOTAL (com desconto)' : 'PV TOTAL (todas UCs)'}
+              value={`R$ ${fmt(totalConsolidado)}`}
+              highlight verde
+            />
           </div>
         </section>
       )}
@@ -229,9 +265,32 @@ export function OrcamentoClient({
           />
           <Metric label="Kit WEG (com fator)" value={`R$ ${fmt(propostaEfetiva.kit_weg_com_fator)}`} />
           <Metric label="Lista CA + serviços" value={`R$ ${fmt(propostaEfetiva.subtotal_lista_ca + propostaEfetiva.frete + propostaEfetiva.projeto_art + propostaEfetiva.instalacao)}`} />
-          <Metric label={modoComposicao === 'por_uc' ? 'PV desta UC' : 'PV FINAL'} value={`R$ ${fmt(propostaEfetiva.pv_total)}`} highlight verde />
+          <Metric
+            label={modoComposicao === 'por_uc'
+              ? 'PV desta UC'
+              : (descontoInfo.valorDesconto > 0 ? 'PV FINAL (com desconto)' : 'PV FINAL')}
+            value={`R$ ${fmt(modoComposicao === 'por_uc' ? propostaEfetiva.pv_total : descontoInfo.pvFinal)}`}
+            highlight verde
+          />
         </div>
+        {descontoInfo.valorDesconto > 0 && modoComposicao !== 'por_uc' && (
+          <p className="mt-3 text-[11px] text-white/50">
+            De R$ {fmt(totalConsolidadoBruto)} — desconto de R$ {fmt(descontoInfo.valorDesconto)} ({fmt(descontoInfo.pctEfetivo)}%){projeto.desconto_admin_motivo ? ` · ${projeto.desconto_admin_motivo}` : ''}
+          </p>
+        )}
       </section>
+
+      {/* Kalebe 2026-09-02: card de desconto no fechamento — só admin */}
+      {ehAdmin && (
+        <CampoDescontoAdmin
+          projetoId={projeto.id}
+          pvBruto={totalConsolidadoBruto}
+          pctAtual={projeto.desconto_admin_pct}
+          valorAtual={projeto.desconto_admin_valor}
+          motivoAtual={projeto.desconto_admin_motivo}
+          fmt={fmt}
+        />
+      )}
 
       {/* Composição de custos + precificação — SÓ ADMIN. Usa UC ativa. */}
       {ehAdmin && (
@@ -730,3 +789,150 @@ function ValidadorAnalista({
   )
 }
 
+
+/**
+ * Kalebe 2026-09-02: Card do desconto do admin no fechamento da proposta.
+ * Aceita percentual (0-100) OU valor absoluto (R$). Se pct preenchido,
+ * tem prioridade. Persiste em projetos.desconto_admin_*. O PV FINAL
+ * exibido no resumo, no PDF e no WhatsApp usa o pvFinal (bruto - desconto).
+ */
+function CampoDescontoAdmin({
+  projetoId, pvBruto, pctAtual, valorAtual, motivoAtual, fmt,
+}: {
+  projetoId: string
+  pvBruto: number
+  pctAtual: number | null | undefined
+  valorAtual: number | null | undefined
+  motivoAtual: string | null | undefined
+  fmt: (v: number) => string
+}) {
+  const [pct, setPct] = useState<string>(pctAtual != null ? String(pctAtual) : '')
+  const [valor, setValor] = useState<string>(valorAtual != null ? String(valorAtual) : '')
+  const [motivo, setMotivo] = useState<string>(motivoAtual || '')
+  const [salvando, setSalvando] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const pctNum = Number(pct.replace(',', '.')) || 0
+  const valNum = Number(valor.replace(',', '.')) || 0
+  const preview = pctNum > 0
+    ? { valorDesc: pvBruto * (pctNum / 100), pvFinal: pvBruto * (1 - pctNum / 100), tipo: `${pctNum}%` }
+    : valNum > 0
+      ? { valorDesc: Math.min(valNum, pvBruto), pvFinal: Math.max(0, pvBruto - valNum), tipo: `R$ ${fmt(valNum)}` }
+      : { valorDesc: 0, pvFinal: pvBruto, tipo: null }
+
+  async function salvar() {
+    setSalvando(true); setMsg(null)
+    try {
+      const r = await aplicarDescontoAdminAction(projetoId, {
+        pct: pctNum > 0 ? pctNum : null,
+        valor: pctNum > 0 ? null : (valNum > 0 ? valNum : null),
+        motivo: motivo.trim() || null,
+      })
+      if ('sucesso' in r) {
+        setMsg('✓ Desconto aplicado. Recarregando…')
+        setTimeout(() => window.location.reload(), 600)
+      } else {
+        setMsg('❌ ' + r.erro)
+      }
+    } catch (e: any) {
+      setMsg('❌ ' + (e?.message || 'falha'))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function limpar() {
+    if (!confirm('Remover desconto aplicado?')) return
+    setSalvando(true); setMsg(null)
+    setPct(''); setValor(''); setMotivo('')
+    try {
+      const r = await aplicarDescontoAdminAction(projetoId, { pct: null, valor: null, motivo: null })
+      if ('sucesso' in r) {
+        setMsg('✓ Desconto removido. Recarregando…')
+        setTimeout(() => window.location.reload(), 600)
+      } else {
+        setMsg('❌ ' + r.erro)
+      }
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <section className="bg-white/[0.03] border border-sol/40 rounded-xl p-6">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <span className="text-[10px] uppercase tracking-wider text-sol font-bold">Admin</span>
+          <h2 className="text-lg font-bold text-white">Desconto do fechamento</h2>
+          <p className="text-xs text-white/50 mt-0.5">
+            Ajuste manual no PV — reflete no resumo, no PDF e no WhatsApp
+          </p>
+        </div>
+        {(pctAtual || valorAtual) ? (
+          <button type="button" onClick={limpar} disabled={salvando}
+            className="text-[11px] font-semibold text-white/60 hover:text-coral underline underline-offset-2">
+            🗑 Remover desconto
+          </button>
+        ) : null}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Desconto %</span>
+          <input
+            type="text" inputMode="decimal" value={pct}
+            onChange={e => { setPct(e.target.value); if (e.target.value) setValor('') }}
+            placeholder="ex: 5"
+            className="bg-white/[0.03] border border-white/15 rounded px-3 py-2 text-sm text-white font-mono focus:border-sol outline-none"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">
+            Ou desconto R$ {pct ? '(ignorado — usa %)' : ''}
+          </span>
+          <input
+            type="text" inputMode="decimal" value={valor}
+            onChange={e => setValor(e.target.value)}
+            placeholder="ex: 1500,00"
+            disabled={!!pct}
+            className="bg-white/[0.03] border border-white/15 rounded px-3 py-2 text-sm text-white font-mono focus:border-sol outline-none disabled:opacity-40"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Motivo (opcional)</span>
+          <input
+            type="text" value={motivo}
+            onChange={e => setMotivo(e.target.value)}
+            placeholder='ex: "cliente VIP", "fechamento até 6ª"'
+            className="bg-white/[0.03] border border-white/15 rounded px-3 py-2 text-sm text-white focus:border-sol outline-none"
+          />
+        </label>
+      </div>
+
+      {preview.tipo && (
+        <div className="mt-4 p-4 bg-sol/10 border border-sol/30 rounded-lg grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">PV bruto</p>
+            <p className="text-white font-mono">R$ {fmt(pvBruto)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-coral font-bold mb-1">− Desconto ({preview.tipo})</p>
+            <p className="text-coral font-mono">R$ {fmt(preview.valorDesc)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-verde font-bold mb-1">PV final ao cliente</p>
+            <p className="text-verde font-mono font-bold text-base">R$ {fmt(preview.pvFinal)}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center gap-3 flex-wrap">
+        <button type="button" onClick={salvar} disabled={salvando}
+          className="px-4 py-2 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40">
+          {salvando ? '⏳ Aplicando…' : '💾 Aplicar desconto'}
+        </button>
+        {msg && <span className="text-xs text-white/70">{msg}</span>}
+      </div>
+    </section>
+  )
+}

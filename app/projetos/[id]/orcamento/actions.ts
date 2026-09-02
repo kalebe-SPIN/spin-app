@@ -117,3 +117,46 @@ export async function marcarPropostaAceitaAction(projetoId: string, observacoes?
   }
   return { sucesso: true, outras_excluidas: excluidas }
 }
+
+/**
+ * Kalebe 2026-09-02: aplica desconto do admin no fechamento da proposta.
+ * Aceita percentual (0-100) OU valor absoluto (R$). Se pct preenchido,
+ * tem prioridade. Zero em ambos limpa o desconto.
+ * Requer role admin.
+ */
+export async function aplicarDescontoAdminAction(
+  projetoId: string,
+  entrada: { pct?: number | null; valor?: number | null; motivo?: string | null },
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  const { data: perfil } = await supabase
+    .from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (perfil?.role !== 'admin') return { erro: 'Só admin pode aplicar desconto' }
+
+  const pct = entrada.pct != null && !Number.isNaN(entrada.pct) ? Number(entrada.pct) : null
+  const valor = entrada.valor != null && !Number.isNaN(entrada.valor) ? Number(entrada.valor) : null
+  if (pct != null && (pct < 0 || pct > 100)) {
+    return { erro: 'Percentual deve ficar entre 0 e 100' }
+  }
+  if (valor != null && valor < 0) return { erro: 'Valor não pode ser negativo' }
+
+  const zerando = (pct === null || pct === 0) && (valor === null || valor === 0)
+
+  const { error } = await supabase
+    .from('projetos')
+    .update({
+      desconto_admin_pct: zerando ? null : pct,
+      desconto_admin_valor: zerando ? null : valor,
+      desconto_admin_motivo: zerando ? null : (entrada.motivo || null),
+      desconto_admin_por: zerando ? null : user.id,
+      desconto_admin_em: zerando ? null : new Date().toISOString(),
+    })
+    .eq('id', projetoId)
+  if (error) return { erro: error.message }
+
+  revalidatePath(`/projetos/${projetoId}/orcamento`)
+  revalidatePath(`/projetos/${projetoId}`)
+  return { sucesso: true }
+}

@@ -54,16 +54,32 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
     const geracaoMesKwh = (kit.potencia_cc_kwp || 0) * HORAS_SOL * 30 * (1 - PERDAS)
     const geracaoAnoKwh = geracaoMesKwh * 12
     const economiaMesEstimada = geracaoMesKwh * 0.9  // tarifa CELESC média ~R$ 0,90/kWh
-    const roiAnos = economiaMesEstimada > 0 ? proposta.pv_total / (economiaMesEstimada * 12) : 0
 
-    // Formato do investimento em milhões/mil pro headline da capa
-    const invMil = proposta.pv_total / 1000
+    // Kalebe 2026-09-02: aplica desconto do admin (projetos.desconto_admin_*).
+    // pvBruto = proposta.pv_total (centralizado) ou soma de UCs (por_uc).
+    // pvFinal = pvBruto - desconto.
+    const pvBruto = ehPorUc
+      ? (propostasPorUc || []).reduce((s, u) => s + (u.proposta?.pv_total || 0), 0)
+      : proposta.pv_total
+    const descPct = Number(projeto.desconto_admin_pct) || 0
+    const descVal = Number(projeto.desconto_admin_valor) || 0
+    const valorDesconto = descPct > 0
+      ? Math.min(pvBruto * (descPct / 100), pvBruto)
+      : (descVal > 0 ? Math.min(descVal, pvBruto) : 0)
+    const pctEfetivo = valorDesconto > 0 && pvBruto > 0 ? (valorDesconto / pvBruto) * 100 : 0
+    const pvFinal = pvBruto - valorDesconto
+    const temDesconto = valorDesconto > 0
+
+    const roiAnos = economiaMesEstimada > 0 ? pvFinal / (economiaMesEstimada * 12) : 0
+
+    // Formato do investimento em milhões/mil pro headline da capa (usa pvFinal)
+    const invMil = pvFinal / 1000
     const invHeadline = invMil >= 1000
       ? `R$ ${fmtNum(invMil / 1000, 2)} mi`
       : `R$ ${fmtNum(invMil, 1)} mil`
 
-    // Totais consolidados quando por_uc
-    const totalPvUcs = ehPorUc ? (propostasPorUc || []).reduce((s, u) => s + (u.proposta?.pv_total || 0), 0) : 0
+    // Totais consolidados quando por_uc — pvFinal já reflete desconto
+    const totalPvUcs = ehPorUc ? pvFinal : 0
     const totalPotenciaUcs = ehPorUc ? (propostasPorUc || []).reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0) : 0
 
     return (
@@ -327,8 +343,21 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
             {/* Valor gigante em bloco dourado */}
             <div style={E.blocoValor}>
               <p style={E.rotuloValorTotal}>Valor total da proposta</p>
-              <p style={E.valorTotal}>R$ {fmt(proposta.pv_total)}</p>
+              <p style={E.valorTotal}>R$ {fmt(pvFinal)}</p>
               <p style={E.subValor}>Sistema completo · chaves na mão · kit WEG + materiais + instalação</p>
+              {temDesconto && (
+                <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(5,11,22,0.15)', display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'baseline' }}>
+                  <div>
+                    <span style={{ fontSize: 11, color: 'rgba(5,11,22,0.55)', textDecoration: 'line-through' }}>
+                      De R$ {fmt(pvBruto)}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#050B16', fontWeight: 700 }}>
+                    Desconto {fmtNum(pctEfetivo, 1)}% · R$ {fmt(valorDesconto)}
+                    {projeto.desconto_admin_motivo ? ` · ${projeto.desconto_admin_motivo}` : ''}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Formas de pagamento */}
