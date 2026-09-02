@@ -77,10 +77,24 @@ export async function precificarComplementosCC(
   const memoriaCabo = ehMicroinversor
     ? '25m fixo (microinversor)'
     : `${distEfetiva}m × ${Math.max(1, totalEntradasMppt)} entradas MPPT`
-  const cabo = await buscarProdutoComPreco(supabase, hojeIso, {
+  // Kalebe 2026-09-02: 1ª tentativa cabo_cc/cabo, fallback cabo_ca com 6mm
+  // (planilha WEG traz o cabo solar HEPR 6mm² cadastrado em cabo_ca).
+  let cabo = await buscarProdutoComPreco(supabase, hojeIso, {
     categorias: ['cabo_cc', 'cabo'],
     contem: ['6mm'],
   })
+  if (!cabo.ok) {
+    cabo = await buscarProdutoComPreco(supabase, hojeIso, {
+      categorias: ['cabo_ca'],
+      contem: ['6mm', 'solar'],
+    })
+  }
+  if (!cabo.ok) {
+    cabo = await buscarProdutoComPreco(supabase, hojeIso, {
+      categorias: ['cabo_ca'],
+      contem: ['6mm'],
+    })
+  }
   itens.push({
     categoria: 'cabo_cc',
     modelo: cabo.ok
@@ -158,7 +172,7 @@ export async function precificarComplementosCC(
   for (const [, g] of grupos) {
     let disj: { ok: true; modelo: string; preco: number } | { ok: false; motivo: string } | null = null
     if (g.ref) {
-      const porRef = await buscarProdutoPorRef(supabase, g.ref, hojeIso)
+      const porRef = await buscarProdutoPorRef(supabase, g.ref, hojeIso, ['disjuntor'])
       if (porRef.ok) disj = { ...porRef, modelo: `${porRef.modelo} · ref. projetista` }
     }
     if (!disj || !disj.ok) {
@@ -187,7 +201,7 @@ export async function precificarComplementosCC(
     let dps: { ok: true; modelo: string; preco: number } | { ok: false; motivo: string } | null = null
     if (refsDps.length > 0) {
       for (const ref of refsDps) {
-        const porRef = await buscarProdutoPorRef(supabase, ref, hojeIso)
+        const porRef = await buscarProdutoPorRef(supabase, ref, hojeIso, ['dps', 'protecao'])
         if (porRef.ok) { dps = { ...porRef, modelo: `${porRef.modelo} · ref. projetista` }; break }
       }
     }
@@ -196,6 +210,12 @@ export async function precificarComplementosCC(
         categorias: ['dps', 'protecao'],
         pegarMaiorPreco: true,
       })
+    }
+    // Kalebe 2026-09-02: fallback por PALAVRA-CHAVE em qualquer categoria —
+    // se o DPS foi cadastrado com categoria='outro' (comum na planilha WEG),
+    // não perde o preço só porque a categoria está errada.
+    if (!dps || !dps.ok) {
+      dps = await buscarProdutoPorNome(supabase, hojeIso, ['dps', 'clamper', 'spd'], /kvar|capacit|reativ/i)
     }
     itens.push({
       categoria: 'dps',
@@ -319,14 +339,22 @@ async function buscarProdutoComPreco(
   return { ok: false, motivo: detalhes }
 }
 
+/** Regex "não é disjuntor real" — bate capacitor, banco reativo, TCP,
+ *  BSMJ etc. Kalebe 2026-09-02: agora tb bate CAPACIT/KVAR/BANCO/REATIV
+ *  no NOME do produto retornado (não só no termo de entrada), pra
+ *  cortar produto cadastrado com nome comercial fora do prefixo. */
+const REGEX_LIXO_DISJUNTOR = /^(BC|TCP|BSMJ|CAP|BFR|BFC|BCF)/i
+const REGEX_LIXO_MODELO = /capacit|kvar|banco|reativ|contator|rele\s*termic/i
+
 export async function buscarProdutoPorRef(
   supabase: any,
   ref: string,
   hojeIso: string,
+  categoriasAceitas?: string[],
 ): Promise<{ ok: true; modelo: string; preco: number } | { ok: false; motivo: string }> {
   const termo = ref.trim()
   if (!termo) return { ok: false, motivo: 'referência vazia' }
-  if (/^(BC|TCP|BSMJ|CAP|BFR|BFC|BCF)/i.test(termo)) {
+  if (REGEX_LIXO_DISJUNTOR.test(termo) || REGEX_LIXO_MODELO.test(termo)) {
     return { ok: false, motivo: `referência '${termo}' parece capacitor/banco reativo — ignorada` }
   }
   const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -334,15 +362,40 @@ export async function buscarProdutoPorRef(
   const { data: prods } = await supabase
     .from('produtos')
     .select('id, modelo, codigo_weg, ativo, categoria, descricao_curta')
-    .or(`modelo.ilike.%${termo}%,codigo_weg.ilike.%${termo}%,categoria.eq.disjuntor,categoria.eq.dps`)
+    .or(`modelo.ilike.%${termo}%,codigo_weg.ilike.%${termo}%`)
     .order('ativo', { ascending: false })
     .limit(200)
   const listaCompleta = (prods || []) as any[]
-  const lista = listaCompleta.filter((p: any) => {
+  const listaBruta = listaCompleta.filter((p: any) => {
     const alvo = norm(`${p.modelo || ''} ${p.codigo_weg || ''} ${p.descricao_curta || ''}`)
     return alvo.includes(termoNorm)
   })
-  if (lista.length === 0) return { ok: false, motivo: `referência '${termo}' não achada no /admin/catalogo` }
+  // Kalebe 2026-09-02: filtra CAPACITOR/KVAR mesmo se produto foi
+  // cadastrado com categoria='disjuntor' por engano (é o caso da
+  // planilha WEG que traz BCWA30V53 na aba de disjuntores).
+  const listaSemLixo = listaBruta.filter((p: any) => {
+    const modelo = String(p.modelo || '')
+    const desc = String(p.descricao_curta || '')
+    if (REGEX_LIXO_DISJUNTOR.test(modelo)) return false
+    if (REGEX_LIXO_MODELO.test(modelo)) return false
+    if (REGEX_LIXO_MODELO.test(desc)) return false
+    return true
+  })
+  // Kalebe 2026-09-02: se caller passou categoriasAceitas, filtra por
+  // elas — protege de retornar disjuntor quando busca é pra DPS e vice-versa.
+  const lista = categoriasAceitas && categoriasAceitas.length > 0
+    ? listaSemLixo.filter((p: any) => categoriasAceitas.includes(String(p.categoria || '')))
+    : listaSemLixo
+  if (lista.length === 0) {
+    if (listaBruta.length > 0 && listaSemLixo.length === 0) {
+      return { ok: false, motivo: `referência '${termo}' bate ${listaBruta.length} produto(s), mas todos são capacitor/banco reativo — ignorados` }
+    }
+    if (listaSemLixo.length > 0 && lista.length === 0) {
+      const cats = Array.from(new Set(listaSemLixo.map((p: any) => p.categoria).filter(Boolean)))
+      return { ok: false, motivo: `referência '${termo}' bate ${listaSemLixo.length} produto(s) mas em categoria(s) errada(s): ${cats.join(', ')} — esperado ${categoriasAceitas?.join('/')}` }
+    }
+    return { ok: false, motivo: `referência '${termo}' não achada no /admin/catalogo` }
+  }
 
   for (const p of lista) {
     const suf = p.ativo === false ? ' (inativo)' : ''
@@ -368,6 +421,52 @@ export async function buscarProdutoPorRef(
     if (preco > 0) return { ok: true, modelo: `${p.modelo}${suf} · ⚠ preço vencido`, preco }
   }
   return { ok: false, motivo: `referência '${termo}' achada (${lista.length}) mas sem preço em precos_produtos` }
+}
+
+/**
+ * Kalebe 2026-09-02: busca produto por PALAVRA-CHAVE no modelo (ilike),
+ * ignora a categoria — usado quando o cadastro está bagunçado (DPS caiu
+ * em categoria='outro' etc). Aceita lista de sinônimos e um regex de
+ * exclusão pra cortar homônimos indesejados.
+ */
+async function buscarProdutoPorNome(
+  supabase: any,
+  hojeIso: string,
+  palavras: string[],
+  excluir?: RegExp,
+): Promise<{ ok: true; modelo: string; preco: number } | { ok: false; motivo: string }> {
+  const orClause = palavras.map(p => `modelo.ilike.%${p}%`).join(',')
+  const { data: prods } = await supabase
+    .from('produtos')
+    .select('id, modelo, categoria, ativo')
+    .or(orClause)
+    .order('ativo', { ascending: false })
+    .limit(200)
+  const lista = ((prods || []) as any[]).filter((p: any) => {
+    if (!excluir) return true
+    return !excluir.test(String(p.modelo || ''))
+  })
+  if (lista.length === 0) {
+    return { ok: false, motivo: `nenhum produto cadastrado com "${palavras.join('/')}" no modelo` }
+  }
+  const cotacoes: Array<{ modelo: string; preco: number }> = []
+  for (const p of lista) {
+    const suf = p.ativo === false ? ' (inativo)' : ''
+    const { data: precosV } = await supabase
+      .from('precos_produtos')
+      .select('preco_venda, vigente_de, vigente_ate')
+      .eq('produto_id', p.id)
+      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+      .order('vigente_de', { ascending: false })
+      .limit(1)
+    const preco = Number((precosV || [])[0]?.preco_venda) || 0
+    if (preco > 0) cotacoes.push({ modelo: `${p.modelo}${suf}`, preco })
+  }
+  if (cotacoes.length > 0) {
+    const escolhida = cotacoes.reduce((a, b) => (a.preco >= b.preco ? a : b))
+    return { ok: true, ...escolhida }
+  }
+  return { ok: false, motivo: `${lista.length} produto(s) com "${palavras.join('/')}" no modelo, mas sem preço vigente` }
 }
 
 export function fasesDoTipoLigacao(t: string): number {
@@ -407,12 +506,21 @@ export async function buscarDisjuntorCompativel(
 
   const { data: ativos } = await supabase
     .from('produtos')
-    .select('id, modelo, specs')
+    .select('id, modelo, specs, descricao_curta')
     .eq('categoria', 'disjuntor')
     .eq('ativo', true)
     .limit(500)
   let prods: any[] = (ativos || []) as any[]
-  const prodsLimpos = prods.filter((p) => !REGEX_NAO_DISJUNTOR.test(String(p.modelo || '')))
+  // Kalebe 2026-09-02: usa REGEX_LIXO_MODELO tb pra cortar CAPACITOR/KVAR/BANCO
+  // que passe por qualquer motivo (nome sem prefixo mas com keyword).
+  const prodsLimpos = prods.filter((p) => {
+    const modelo = String(p.modelo || '')
+    const desc = String(p.descricao_curta || '')
+    if (REGEX_NAO_DISJUNTOR.test(modelo)) return false
+    if (REGEX_LIXO_MODELO.test(modelo)) return false
+    if (REGEX_LIXO_MODELO.test(desc)) return false
+    return true
+  })
   const prodsReais = prodsLimpos.filter((p) => REGEX_DISJUNTOR_OK.test(String(p.modelo || '')))
   prods = prodsReais.length > 0 ? prodsReais : prodsLimpos
 
@@ -420,11 +528,17 @@ export async function buscarDisjuntorCompativel(
   if (prods.length === 0) {
     const { data: inat } = await supabase
       .from('produtos')
-      .select('id, modelo, specs')
+      .select('id, modelo, specs, descricao_curta')
       .eq('categoria', 'disjuntor')
       .eq('ativo', false)
       .limit(500)
-    prods = ((inat || []) as any[]).filter((p) => !REGEX_NAO_DISJUNTOR.test(String(p.modelo || '')))
+    prods = ((inat || []) as any[]).filter((p) => {
+      const modelo = String(p.modelo || '')
+      const desc = String(p.descricao_curta || '')
+      return !REGEX_NAO_DISJUNTOR.test(modelo)
+          && !REGEX_LIXO_MODELO.test(modelo)
+          && !REGEX_LIXO_MODELO.test(desc)
+    })
     if (prods.length === 0) return { ok: false, motivo: 'nenhum disjuntor cadastrado' }
     usandoInativos = true
   }
