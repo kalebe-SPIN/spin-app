@@ -639,11 +639,14 @@ export async function buscarDisjuntorCompativel(
     }
   }
   if (cotacoes.length > 0) {
-    // Se sobredimensionado, prefere o de MENOR corrente (menos desperdício).
-    // Caso normal: mantém a lógica antiga (maior preço = margem de segurança).
-    const escolhida = sobredimensionado
-      ? cotacoes.reduce((a, b) => (a.corrente <= b.corrente ? a : b))
-      : cotacoes.reduce((a, b) => (a.preco >= b.preco ? a : b))
+    // Kalebe 2026-09-02: SEMPRE o de MENOR corrente com preço válido.
+    // O dimensionamento por corrente (I × 1,15 → escala IEC) já garante
+    // margem de segurança — pegar disjuntor de maior corrente ainda é
+    // sobredim desnecessário. Ex: 5 kW mono calculado 32A não deve
+    // virar MDWH-C100-2. A escolha por "maior preço" (lógica antiga)
+    // era herança da estrutura de telhado, onde a Spin queria cotar
+    // pelo pior caso — em disjuntor não faz sentido.
+    const escolhida = cotacoes.reduce((a, b) => (a.corrente <= b.corrente ? a : b))
     return { ok: true, modelo: escolhida.modelo, preco: escolhida.preco }
   }
   const cotacoesVencidas: Array<{ modelo: string; preco: number }> = []
