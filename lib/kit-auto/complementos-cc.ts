@@ -173,12 +173,38 @@ export async function precificarComplementosCC(
     let disj: { ok: true; modelo: string; preco: number } | { ok: false; motivo: string } | null = null
     if (g.ref) {
       const porRef = await buscarProdutoPorRef(supabase, g.ref, hojeIso, ['disjuntor'])
-      if (porRef.ok) disj = { ...porRef, modelo: `${porRef.modelo} · ref. projetista` }
+      if (porRef.ok) {
+        // Kalebe 2026-09-02: sanity check da REF do projetista antes de aceitar.
+        // Extrai polos e corrente do MODELO retornado (ex: 'DWB160B125-3DF' → 125A, 3P).
+        // Se polos ≠ calculado OU corrente > 2× calculado, rejeita a ref e
+        // deixa cair no dimensionamento por corrente. Fecha o buraco de
+        // cadastros errados (planilha WEG traz disjuntor tri em ref de
+        // inversor mono, ex: SIW200G M050 5kW → DWB160B125-3DF).
+        const modeloDisj = String(porRef.modelo || '')
+        const matchPolos = modeloDisj.match(/(\d)[DP](?!\w)/i)
+        const polosRef = matchPolos ? Number(matchPolos[1]) : NaN
+        const matchC = modeloDisj.match(/C(\d+)/i) || modeloDisj.match(/B(\d+)/i) || modeloDisj.match(/(\d{2,3})A?/)
+        const correnteRef = matchC ? Number(matchC[1]) : NaN
+        const polosBatem = !Number.isFinite(polosRef) || polosRef === g.polos
+        const correnteRazoavel = !Number.isFinite(correnteRef) || correnteRef <= g.in_a * 2
+        if (polosBatem && correnteRazoavel) {
+          disj = { ...porRef, modelo: `${porRef.modelo} · ref. projetista` }
+        } else {
+          avisos.push(
+            `Ref. projetista '${g.ref}' (${modeloDisj}) INCOERENTE — ` +
+            `${polosBatem ? '' : `polos ${polosRef} ≠ ${g.polos} esperado; `}` +
+            `${correnteRazoavel ? '' : `corrente ${correnteRef}A >> ${g.in_a}A calculado; `}` +
+            `caiu no cálculo por corrente. Corrija specs.disjuntor_equivalente em /admin/catalogo do inversor ${g.modeloInv}.`
+          )
+        }
+      }
     }
     if (!disj || !disj.ok) {
       disj = await buscarDisjuntorCompativel(supabase, g.in_a, g.polos, hojeIso)
     }
-    const rotulo = g.ref ? `Disjuntor ${g.ref} (ref. projetista)` : `Disjuntor ${g.in_a}A ${g.polos}P`
+    const rotulo = g.ref && disj?.ok && disj.modelo.includes('ref. projetista')
+      ? `Disjuntor ${g.ref} (ref. projetista)`
+      : `Disjuntor ${g.in_a}A ${g.polos}P`
     itens.push({
       categoria: 'disjuntor',
       modelo: disj.ok ? disj.modelo : `${rotulo} · ${g.modeloInv} · ⚠ não cadastrado`,
