@@ -525,7 +525,14 @@ export function calcularInDisjuntor(potenciaKw: number, fases: 'monofasico' | 'b
   const correnteProjeto = correnteNominal * 1.15
   const escala = [10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125]
   const in_a = escala.find(x => x >= correnteProjeto) || 125
-  const polos = fases === 'monofasico' ? 1 : fases === 'bifasico' ? 2 : 3
+  // Kalebe 2026-09-02: monofásico CA na CELESC usa disjuntor BIPOLAR
+  // (F+N), não unipolar. Cadastro Spin segue: MDWP-C32-2 é o correto
+  // pra 5 kW mono. Antes eu retornava 1 → não matchava nada → caía no
+  // fallback DWB160B100-3 (tri 100A).
+  //   mono → 2 (F+N)
+  //   bi   → 2 (F+F)
+  //   tri  → 3 (3F sem neutro na proteção)
+  const polos = fases === 'trifasico' ? 3 : 2
   return { in_a, polos }
 }
 
