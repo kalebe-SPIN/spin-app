@@ -380,6 +380,14 @@ export async function buscarProdutoPorRef(
 ): Promise<{ ok: true; modelo: string; preco: number } | { ok: false; motivo: string }> {
   const termo = ref.trim()
   if (!termo) return { ok: false, motivo: 'referência vazia' }
+  // Kalebe 2026-09-02: rejeita termo curto/só numérico. Cadastro da
+  // planilha WEG salvou disjuntor_equivalente como "2", "3", "12" —
+  // números soltos matcham QUALQUER produto que contenha esse dígito
+  // no modelo/código (ex: '2' → 'DWB160B125-3DF' porque tem '125'/'2').
+  // Ref válida precisa ter ≥ 4 chars e conter pelo menos 1 letra.
+  if (termo.length < 4 || !/[a-z]/i.test(termo)) {
+    return { ok: false, motivo: `referência '${termo}' inválida (curta ou só numérica) — ignorada` }
+  }
   if (REGEX_LIXO_DISJUNTOR.test(termo) || REGEX_LIXO_MODELO.test(termo)) {
     return { ok: false, motivo: `referência '${termo}' parece capacitor/banco reativo — ignorada` }
   }
