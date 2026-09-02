@@ -5,6 +5,7 @@ import { calcularProposta, paramsToRecord } from '@/lib/precificacao/calcular'
 import { OrcamentoClient } from '@/components/OrcamentoClient'
 import { OrcamentoServicosClient } from '@/components/OrcamentoServicosClient'
 import { apenasServicos, type TipoItem } from '@/lib/tipos-projeto'
+import { precificarComplementosCC } from '@/lib/kit-auto/complementos-cc'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -198,6 +199,61 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
     return item?.id ? (precoAtualMap.get(item.id) || 0) : 0
   }
 
+  // Kalebe 2026-09-02: SEMPRE re-roda precificarComplementosCC on-demand
+  // pra refletir o catálogo atual. Snapshots antigos vinham zerados (qtd=0,
+  // "não cadastrado") mesmo com produtos existindo no /admin/catalogo —
+  // porque foram salvos antes dos fixes recentes. Agora a página garante
+  // resultado fresco em todo carregamento.
+  const padraoEfetivo: any = projeto.padrao_entrada || {}
+  const telhadoSecoesData: any[] = Array.isArray((projeto as any).telhado_secoes)
+    ? (projeto as any).telhado_secoes : []
+  const ligacaoCliente = padraoEfetivo?.tipo_ligacao || 'monofasico'
+
+  async function regerarComplementos(k: any) {
+    if (!k?.qtd_placas) return null
+    const invs = k.inversores?.length > 0
+      ? k.inversores
+      : (k.inversor
+          ? [{ id: k.inversor.id, modelo: k.inversor.modelo, potencia_kw: k.inversor.potencia_kw, qtd: k.qtd_inversores || 1 }]
+          : [])
+    try {
+      const r = await precificarComplementosCC(supabase, {
+        qtd_placas: k.qtd_placas,
+        tipo_telhado: telhadoSecoesData[0]?.tipo_cobertura || null,
+        distancia_string_qgbt_m: Number(padraoEfetivo?.distancia_string_qgbt_m) || 0,
+        inversores: invs,
+        tipo_ligacao_cliente: ligacaoCliente,
+      })
+      return { itens: r.itens, total: r.total, avisos: r.avisos, gerado_em: new Date().toISOString() }
+    } catch (e: any) {
+      console.error('[orcamento/page] regerarComplementos', e?.message)
+      return null
+    }
+  }
+
+  const complementosCentralizado = modoComposicao === 'centralizado'
+    ? await regerarComplementos(kit) : null
+  const complementosPorUcMap = new Map<string, any>()
+  if (modoComposicao === 'por_uc') {
+    for (const item of kitsPorUcRaw) {
+      if (item?.kit_selecionado) {
+        const c = await regerarComplementos(item.kit_selecionado)
+        if (c) complementosPorUcMap.set(String(item.uc_ref), c)
+      }
+    }
+  }
+
+  // Recalcula kit_weg_bruto_total on-demand pra o calcProposta usar valor
+  // sempre coerente com os complementos regerados.
+  function brutoTotalFresh(k: any, complementos: any): number | undefined {
+    if (!complementos) return undefined
+    const placaSub = (Number(k.placa?.preco_venda) || 0) * (k.qtd_placas || 0)
+    const invsList = k.inversores?.length > 0 ? k.inversores
+      : (k.inversor ? [{ ...k.inversor, qtd: k.qtd_inversores || 1 }] : [])
+    const invSub = invsList.reduce((s: number, i: any) => s + (Number(i.preco_venda) || 0) * (Number(i.qtd) || 1), 0)
+    return placaSub + invSub + (complementos.total || 0)
+  }
+
   // Helper: calcula proposta pra um par (kit, listaCa, brutoTotal)
   function calcProposta(k: any, lca: any[], brutoTotal?: number) {
     return calcularProposta(
@@ -230,24 +286,49 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
 
   // Rota A — centralizado: 1 proposta única
   const proposta = modoComposicao === 'centralizado'
-    ? calcProposta(kit, listaCa as any[], (projeto as any).kit_weg_bruto_total)
+    ? calcProposta(
+        kit,
+        listaCa as any[],
+        brutoTotalFresh(kit, complementosCentralizado) ?? (projeto as any).kit_weg_bruto_total,
+      )
     : null
 
   // Rota B — por_uc: 1 proposta por UC + label
   const propostasPorUc = modoComposicao === 'por_uc'
     ? kitsPorUcRaw
         .filter(k => k?.kit_selecionado)
-        .map((item: any) => ({
-          uc_ref: item.uc_ref,
-          label: item.uc_ref === 'principal' ? 'UC principal' : `UC ${item.uc_ref}`,
-          endereco_label: item.endereco_label || null,
-          endereco_proprio: !!item.endereco_proprio,
-          kit: item.kit_selecionado,
-          listaCa: (item.lista_ca_confirmada || []) as any[],
-          complementosCc: item.lista_complementos_cc || null,
-          proposta: calcProposta(item.kit_selecionado, item.lista_ca_confirmada || [], item.kit_weg_bruto_total),
-        }))
+        .map((item: any) => {
+          const cFresh = complementosPorUcMap.get(String(item.uc_ref)) || null
+          return {
+            uc_ref: item.uc_ref,
+            label: item.uc_ref === 'principal' ? 'UC principal' : `UC ${item.uc_ref}`,
+            endereco_label: item.endereco_label || null,
+            endereco_proprio: !!item.endereco_proprio,
+            kit: item.kit_selecionado,
+            listaCa: (item.lista_ca_confirmada || []) as any[],
+            complementosCc: cFresh || item.lista_complementos_cc || null,
+            proposta: calcProposta(
+              item.kit_selecionado,
+              item.lista_ca_confirmada || [],
+              brutoTotalFresh(item.kit_selecionado, cFresh) ?? item.kit_weg_bruto_total,
+            ),
+          }
+        })
     : null
+
+  // Kalebe 2026-09-02: injeta os complementos frescos no projeto que vai
+  // pro Client, sobrescrevendo o snapshot antigo. Assim OrcamentoClient
+  // renderiza qtd/preço atualizados sem exigir clique em "Regerar".
+  const projetoComComplementos = {
+    ...projeto,
+    lista_complementos_cc: complementosCentralizado || (projeto as any).lista_complementos_cc,
+    kits_por_uc: modoComposicao === 'por_uc'
+      ? kitsPorUcRaw.map((item: any) => ({
+          ...item,
+          lista_complementos_cc: complementosPorUcMap.get(String(item.uc_ref)) || item.lista_complementos_cc,
+        }))
+      : (projeto as any).kits_por_uc,
+  }
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -271,7 +352,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
         </header>
 
         <OrcamentoClient
-          projeto={projeto}
+          projeto={projetoComComplementos}
           proposta={proposta as any}
           configEmpresa={configEmpresa}
           listaCa={(listaCa || []) as any}
