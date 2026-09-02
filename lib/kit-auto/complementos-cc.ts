@@ -63,7 +63,11 @@ export async function precificarComplementosCC(
   let totalEntradasMppt = 0
   for (const inv of entrada.inversores) {
     const mpptSpec = inv.id ? Number(specsInversores[inv.id]?.entradas_mppt) : NaN
-    const mppt = Number.isFinite(mpptSpec) && mpptSpec > 0 ? mpptSpec : 1
+    // Kalebe 2026-09-02: fallback quando datasheet ainda não foi cadastrado
+    // em specs. Usa inferência por linha SIW (SIW100=1, 200/300/400=2, 500=3).
+    const mppt = Number.isFinite(mpptSpec) && mpptSpec > 0
+      ? mpptSpec
+      : inferirMpptDoModelo(inv.modelo)
     totalEntradasMppt += mppt * (inv.qtd || 0)
   }
   const ehMicroinversor = entrada.inversores.length > 0
@@ -161,7 +165,14 @@ export async function precificarComplementosCC(
   type GrupoDisj = { ref?: string; in_a: number; polos: number; qtd: number; modeloInv: string }
   const grupos = new Map<string, GrupoDisj>()
   for (const inv of entrada.inversores) {
-    const fases: FaseInvKit = inv.fases || inferirFasesDoModelo(inv.modelo) || (entrada.tipo_ligacao_cliente as FaseInvKit)
+    // Kalebe 2026-09-02: resolverFasesInversor lê da descrição de tensão
+    // ("Inversor Monofásico 220 V") quando specs.fases está NULL — cobre
+    // o cadastro atual da planilha WEG.
+    const tensaoDesc = inv.id ? specsInversores[inv.id]?.tensao_desc : undefined
+    const fases: FaseInvKit = resolverFasesInversor(
+      { fases: inv.fases, modelo: inv.modelo, tensao_desc: tensaoDesc },
+      entrada.tipo_ligacao_cliente,
+    )
     const { in_a, polos } = calcularInDisjuntor(inv.potencia_kw, fases || 'monofasico')
     const refProjetista = inv.id ? String(specsInversores[inv.id]?.disjuntor_equivalente || '').trim() : ''
     const chave = refProjetista ? `ref:${refProjetista.toLowerCase()}` : `calc:${in_a}A-${polos}P`
@@ -516,6 +527,44 @@ export function inferirFasesDoModelo(modelo: string): FaseInvKit {
   if (/^SIW[45]0\d/.test(m)) return 'trifasico'
   if (/^SIW[123]0\d/.test(m)) return 'monofasico'
   return undefined
+}
+
+/**
+ * Kalebe 2026-09-02: infere fases de MÚLTIPLAS fontes em ordem de
+ * prioridade. Cadastro da planilha WEG deixou specs.fases NULL em
+ * quase todos os inversores — precisamos deduzir da descrição, do
+ * modelo, e como último recurso do padrão do cliente.
+ */
+export function resolverFasesInversor(
+  inv: { fases?: FaseInvKit; modelo: string; tensao_desc?: string },
+  tipoLigacaoCliente?: string,
+): FaseInvKit {
+  if (inv.fases) return inv.fases
+  const desc = String(inv.tensao_desc || '').toLowerCase()
+  if (/trif[aá]sic/.test(desc)) return 'trifasico'
+  if (/bif[aá]sic/.test(desc)) return 'bifasico'
+  if (/monof[aá]sic/.test(desc)) return 'monofasico'
+  const pelaLinha = inferirFasesDoModelo(inv.modelo)
+  if (pelaLinha) return pelaLinha
+  const cli = String(tipoLigacaoCliente || '').toLowerCase()
+  if (/tri/.test(cli)) return 'trifasico'
+  if (/bi/.test(cli)) return 'bifasico'
+  return 'monofasico'
+}
+
+/**
+ * MPPT default por linha SIW quando specs.entradas_mppt é NULL.
+ * Baseado no datasheet WEG mais comum de cada família.
+ */
+export function inferirMpptDoModelo(modelo: string): number {
+  const m = String(modelo || '').toUpperCase()
+  if (/^SIW100/.test(m)) return 1  // microinversor
+  if (/^SIW200/.test(m)) return 2  // string mono pequeno
+  if (/^SIW300/.test(m)) return 2  // string mono maior
+  if (/^SIW400/.test(m)) return 2  // string tri pequeno
+  if (/^SIW500/.test(m)) return 3  // string tri maior
+  if (/^SIW[67]00/.test(m)) return 4  // string tri alto
+  return 1
 }
 
 export function calcularInDisjuntor(potenciaKw: number, fases: 'monofasico' | 'bifasico' | 'trifasico'): { in_a: number; polos: number } {
