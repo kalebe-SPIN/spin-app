@@ -27,6 +27,12 @@ type Props = {
   ehAdmin?: boolean
   modoComposicao?: 'centralizado' | 'por_uc'
   propostasPorUc?: PropostaUc[] | null
+  campanhaAplicada?: {
+    titulo: string
+    subtitulo?: string | null
+    condicao_especial: string
+    vigente_ate?: string | null
+  } | null
 }
 
 const BUCKET_PROPOSTAS = 'propostas-pdf'
@@ -53,7 +59,7 @@ function calcularDescontoFinal(pvOriginal: number, pct?: number | null, valor?: 
 
 export function OrcamentoClient({
   projeto, proposta, configEmpresa, listaCa, ehAdmin = false,
-  modoComposicao = 'centralizado', propostasPorUc = null,
+  modoComposicao = 'centralizado', propostasPorUc = null, campanhaAplicada = null,
 }: Props) {
   // No modo por_uc, escolhe a UC ativa (default: primeira). Todo o
   // dashboard/composição usa a proposta da UC ativa; o PDF unifica.
@@ -80,11 +86,20 @@ export function OrcamentoClient({
   // Kalebe 2026-09-02: desconto do admin (persistido em projetos.*).
   // Aplica sobre o consolidado (não por UC — a negociação fecha em um
   // valor único). O PDF e o WhatsApp usam o pvFinal, não o bruto.
-  const descontoInfo = calcularDescontoFinal(
-    totalConsolidadoBruto,
-    projeto.desconto_admin_pct,
-    projeto.desconto_admin_valor,
-  )
+  // Se projeto.pv_promocional_forcado (vindo de campanha do mês), TEM
+  // prioridade máxima: sobrescreve o pvFinal antes de qualquer desconto.
+  const pvPromoForcado = Number(projeto.pv_promocional_forcado) || 0
+  const descontoInfo = pvPromoForcado > 0
+    ? {
+        pctEfetivo: totalConsolidadoBruto > 0 ? ((totalConsolidadoBruto - pvPromoForcado) / totalConsolidadoBruto) * 100 : 0,
+        valorDesconto: Math.max(0, totalConsolidadoBruto - pvPromoForcado),
+        pvFinal: pvPromoForcado,
+      }
+    : calcularDescontoFinal(
+        totalConsolidadoBruto,
+        projeto.desconto_admin_pct,
+        projeto.desconto_admin_valor,
+      )
   const totalConsolidado = descontoInfo.pvFinal
   const pvFinalUcAtiva = modoComposicao === 'por_uc'
     ? (ucAtiva?.proposta?.pv_total || 0)
@@ -358,6 +373,7 @@ export function OrcamentoClient({
           listaCa={listaCaEfetiva}
           modoComposicao={modoComposicao}
           propostasPorUc={propostasPorUc || undefined}
+          campanhaAplicada={campanhaAplicada}
         />
       </div>
     </div>

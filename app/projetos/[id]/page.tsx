@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { AgendaDoProjeto } from '@/components/AgendaDoProjeto'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
+import { CardCampanhaProjeto } from '@/components/CardCampanhaProjeto'
 import { MudarEtapaCard } from '@/components/MudarEtapaCard'
 import { ItensPropostaCard } from '@/components/ItensPropostaCard'
 import { AcoesRapidasCard } from '@/components/AcoesRapidasCard'
@@ -81,6 +82,19 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
     .maybeSingle()
 
   const propsDocs = montarPropsDocsHomologacao(homologacao, projeto)
+
+  // Kalebe 2026-09-02: campanhas do mês ativas + campanha aplicada (se houver)
+  const hojeIso = new Date().toISOString().slice(0, 10)
+  const { data: campanhasAtivas } = await supabase
+    .from('campanhas_mes')
+    .select('id, titulo, subtitulo, condicao_especial, pv_promocional, qtd_placas, qtd_inversores, vigente_ate')
+    .eq('ativa', true)
+    .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+    .order('criado_em', { ascending: false })
+    .limit(10)
+  const campanhaAplicada = projeto.campanha_aplicada_id
+    ? (await supabase.from('campanhas_mes').select('*').eq('id', projeto.campanha_aplicada_id).maybeSingle()).data
+    : null
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -213,6 +227,17 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
               </div>
             </div>
           </div>
+        )}
+
+        {/* Kalebe 2026-09-02: card de campanha do mês. Se aplicada, mostra
+            aviso + botão remover. Se não aplicada e existem campanhas ativas,
+            oferece "gerar proposta de campanha". */}
+        {(campanhaAplicada || (campanhasAtivas && campanhasAtivas.length > 0)) && (
+          <CardCampanhaProjeto
+            projetoId={projeto.id}
+            campanhaAplicada={campanhaAplicada as any}
+            campanhasAtivas={(campanhasAtivas || []) as any}
+          />
         )}
 
         {/* Próximo passo CTA */}

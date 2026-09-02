@@ -150,6 +150,16 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
     .eq('singleton', true)
     .single()
 
+  // Kalebe 2026-09-02: se o projeto tem campanha aplicada, carrega dados
+  // pra o banner "condição especial" no PDF + card do Client.
+  const campanhaAplicada = projeto.campanha_aplicada_id
+    ? (await supabase
+        .from('campanhas_mes')
+        .select('titulo, subtitulo, condicao_especial, vigente_ate')
+        .eq('id', projeto.campanha_aplicada_id)
+        .maybeSingle()).data
+    : null
+
   const { data: paramsRows } = await supabase
     .from('parametros_precificacao')
     .select('chave, valor_numero, valor_json, unidade')
@@ -359,6 +369,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
           ehAdmin={ehAdmin}
           modoComposicao={modoComposicao}
           propostasPorUc={propostasPorUc as any}
+          campanhaAplicada={campanhaAplicada as any}
         />
       </div>
     </main>

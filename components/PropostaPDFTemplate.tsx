@@ -22,6 +22,15 @@ type Props = {
     kit: any
     proposta: PropostaCalculada
   }>
+  /** Kalebe 2026-09-02: campanha do mês aplicada. Se preenchido, o PDF
+   *  ganha um banner dourado "CONDIÇÃO ESPECIAL DE CAMPANHA" na p.3
+   *  com título + texto vindos do cadastro em /admin/campanhas. */
+  campanhaAplicada?: {
+    titulo: string
+    subtitulo?: string | null
+    condicao_especial: string
+    vigente_ate?: string | null
+  } | null
 }
 
 /**
@@ -39,7 +48,7 @@ type Props = {
  * Dimensões A4 em px @ 96 DPI: 794 × 1123.
  */
 export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
-  ({ projeto, proposta, configEmpresa, modoComposicao, propostasPorUc }, ref) => {
+  ({ projeto, proposta, configEmpresa, modoComposicao, propostasPorUc, campanhaAplicada }, ref) => {
     const ehPorUc = modoComposicao === 'por_uc' && !!propostasPorUc?.length
     const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     const fmtInt = (v: number) => Math.round(v).toLocaleString('pt-BR')
@@ -339,6 +348,42 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <p style={{ ...E.rotuloDourado, fontSize: 10, letterSpacing: 3 }}>03 · Investimento</p>
               <h2 style={E.tituloSecao}>Valor total e formas de pagamento</h2>
             </div>
+
+            {/* Kalebe 2026-09-02: banner "condição especial de campanha" */}
+            {campanhaAplicada && (
+              <div style={{
+                marginBottom: 20,
+                padding: '16px 20px',
+                background: 'linear-gradient(90deg, #D4AF37 0%, #F5B400 100%)',
+                borderRadius: 8,
+                color: '#050B16',
+                display: 'flex',
+                gap: 16,
+                alignItems: 'flex-start',
+              }}>
+                <div style={{ fontSize: 24 }}>🎁</div>
+                <div style={{ flex: 1 }}>
+                  <p style={{
+                    fontSize: 9, letterSpacing: 3, textTransform: 'uppercase',
+                    fontWeight: 900, margin: 0, marginBottom: 4,
+                  }}>
+                    Condição especial de campanha
+                  </p>
+                  <h3 style={{ fontSize: 16, fontWeight: 900, margin: '0 0 6px', lineHeight: 1.2 }}>
+                    {campanhaAplicada.titulo}
+                    {campanhaAplicada.subtitulo ? ` — ${campanhaAplicada.subtitulo}` : ''}
+                  </h3>
+                  <p style={{ fontSize: 11, lineHeight: 1.5, margin: 0, fontWeight: 500 }}>
+                    {campanhaAplicada.condicao_especial}
+                  </p>
+                  {campanhaAplicada.vigente_ate && (
+                    <p style={{ fontSize: 10, fontWeight: 700, margin: '6px 0 0' }}>
+                      Válida até {campanhaAplicada.vigente_ate}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Valor gigante em bloco dourado */}
             <div style={E.blocoValor}>

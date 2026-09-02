@@ -89,6 +89,12 @@ export default async function AdminHomePage() {
             titulo="Catálogo WEG"
             desc="Upload de planilha de preços, PDF de estoque, datasheets e imagens dos produtos WEG."
           />
+          <AdminCard
+            href="/admin/campanhas"
+            icon="🎁"
+            titulo="Campanhas do mês"
+            desc="Kits com preço promocional pré-configurado. Consultor oferece direto do card do projeto, PDF sai com selo de condição especial."
+          />
         </Grupo>
 
         {/* Grupo 3: Automação e IA */}
