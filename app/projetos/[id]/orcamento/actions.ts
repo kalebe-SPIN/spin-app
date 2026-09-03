@@ -137,10 +137,13 @@ export async function aplicarDescontoAdminAction(
 
   const pct = entrada.pct != null && !Number.isNaN(entrada.pct) ? Number(entrada.pct) : null
   const valor = entrada.valor != null && !Number.isNaN(entrada.valor) ? Number(entrada.valor) : null
-  if (pct != null && (pct < 0 || pct > 100)) {
-    return { erro: 'Percentual deve ficar entre 0 e 100' }
+  // Kalebe 2026-09-02: agora aceita valores NEGATIVOS = acréscimo.
+  // - pct positivo → desconto (%); pct negativo → acréscimo (%)
+  // - valor positivo → desconto (R$); valor negativo → acréscimo (R$)
+  // Cap do pct em ±100 pra evitar dobrar/zerar por acidente.
+  if (pct != null && (pct < -100 || pct > 100)) {
+    return { erro: 'Percentual deve ficar entre -100 e 100' }
   }
-  if (valor != null && valor < 0) return { erro: 'Valor não pode ser negativo' }
 
   const zerando = (pct === null || pct === 0) && (valor === null || valor === 0)
 

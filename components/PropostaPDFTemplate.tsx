@@ -64,20 +64,26 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
     const geracaoAnoKwh = geracaoMesKwh * 12
     const economiaMesEstimada = geracaoMesKwh * 0.9  // tarifa CELESC média ~R$ 0,90/kWh
 
-    // Kalebe 2026-09-02: aplica desconto do admin (projetos.desconto_admin_*).
-    // pvBruto = proposta.pv_total (centralizado) ou soma de UCs (por_uc).
-    // pvFinal = pvBruto - desconto.
+    // Kalebe 2026-09-02: ajuste do admin (projetos.desconto_admin_*).
+    // Sinal define: positivo = desconto (subtrai), negativo = acréscimo (soma).
     const pvBruto = ehPorUc
       ? (propostasPorUc || []).reduce((s, u) => s + (u.proposta?.pv_total || 0), 0)
       : proposta.pv_total
     const descPct = Number(projeto.desconto_admin_pct) || 0
     const descVal = Number(projeto.desconto_admin_valor) || 0
-    const valorDesconto = descPct > 0
-      ? Math.min(pvBruto * (descPct / 100), pvBruto)
-      : (descVal > 0 ? Math.min(descVal, pvBruto) : 0)
-    const pctEfetivo = valorDesconto > 0 && pvBruto > 0 ? (valorDesconto / pvBruto) * 100 : 0
-    const pvFinal = pvBruto - valorDesconto
-    const temDesconto = valorDesconto > 0
+    const deltaRaw = descPct !== 0
+      ? pvBruto * (descPct / 100)
+      : (descVal !== 0 ? descVal : 0)
+    const delta = deltaRaw > pvBruto ? pvBruto : deltaRaw
+    const valorAjuste = Math.abs(delta)
+    const pctEfetivo = pvBruto > 0 ? (delta / pvBruto) * 100 : 0  // com sinal
+    const pvFinal = pvBruto - delta
+    const temAjuste = delta !== 0
+    const sentido: 'desconto' | 'acrescimo' | 'nenhum' =
+      delta > 0 ? 'desconto' : delta < 0 ? 'acrescimo' : 'nenhum'
+    // Compat com blocos que ainda leem os nomes antigos
+    const temDesconto = temAjuste
+    const valorDesconto = valorAjuste
 
     const roiAnos = economiaMesEstimada > 0 ? pvFinal / (economiaMesEstimada * 12) : 0
 
@@ -390,7 +396,7 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <p style={E.rotuloValorTotal}>Valor total da proposta</p>
               <p style={E.valorTotal}>R$ {fmt(pvFinal)}</p>
               <p style={E.subValor}>Sistema completo · chaves na mão · kit WEG + materiais + instalação</p>
-              {temDesconto && (
+              {temAjuste && (
                 <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(5,11,22,0.15)', display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'baseline' }}>
                   <div>
                     <span style={{ fontSize: 11, color: 'rgba(5,11,22,0.55)', textDecoration: 'line-through' }}>
@@ -398,7 +404,7 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
                     </span>
                   </div>
                   <div style={{ fontSize: 12, color: '#050B16', fontWeight: 700 }}>
-                    Desconto {fmtNum(pctEfetivo, 1)}% · R$ {fmt(valorDesconto)}
+                    {sentido === 'desconto' ? 'Desconto' : 'Acréscimo'} {fmtNum(Math.abs(pctEfetivo), 1)}% · R$ {fmt(valorAjuste)}
                     {projeto.desconto_admin_motivo ? ` · ${projeto.desconto_admin_motivo}` : ''}
                   </div>
                 </div>

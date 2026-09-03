@@ -39,22 +39,42 @@ const BUCKET_PROPOSTAS = 'propostas-pdf'
 const FATOR_WEG = 0.4182
 
 /**
- * Kalebe 2026-09-02: aplica desconto do admin (pct OU valor absoluto)
- * sobre o PV original. Se pct > 0 tem prioridade; senão valor. Cap no
- * próprio PV pra não gerar negativo.
+ * Kalebe 2026-09-02: ajuste final do admin (pct OU valor absoluto).
+ * Sinal define a direção:
+ *   valor/pct POSITIVO → DESCONTO (subtrai do PV)
+ *   valor/pct NEGATIVO → ACRÉSCIMO (soma ao PV)
+ * Se pct != 0 tem prioridade; senão valor. Cap: desconto máximo = PV
+ * original (não vai a negativo); acréscimo sem limite superior.
+ * Retorna:
+ *   valorDelta  → módulo, sempre positivo (facilita exibição)
+ *   sentido     → 'desconto' | 'acrescimo' | 'nenhum'
+ *   pctEfetivo  → sinal preservado (positivo=desconto, negativo=acréscimo)
+ *   pvFinal     → PV depois do ajuste
  */
 function calcularDescontoFinal(pvOriginal: number, pct?: number | null, valor?: number | null) {
-  const pctNum = typeof pct === 'number' && pct > 0 ? pct : 0
-  const valNum = typeof valor === 'number' && valor > 0 ? valor : 0
-  if (pctNum > 0) {
-    const v = Math.min(pvOriginal * (pctNum / 100), pvOriginal)
-    return { pctEfetivo: pctNum, valorDesconto: v, pvFinal: pvOriginal - v }
+  const pctNum = typeof pct === 'number' && pct !== 0 ? pct : 0
+  const valNum = typeof valor === 'number' && valor !== 0 ? valor : 0
+  let delta = 0
+  let pctEfetivo = 0
+  if (pctNum !== 0) {
+    delta = pvOriginal * (pctNum / 100)  // positivo=desconto, negativo=acréscimo
+    pctEfetivo = pctNum
+  } else if (valNum !== 0) {
+    delta = valNum
+    pctEfetivo = pvOriginal > 0 ? (delta / pvOriginal) * 100 : 0
   }
-  if (valNum > 0) {
-    const v = Math.min(valNum, pvOriginal)
-    return { pctEfetivo: pvOriginal > 0 ? (v / pvOriginal) * 100 : 0, valorDesconto: v, pvFinal: pvOriginal - v }
+  // Cap desconto no valor do PV (não deixa PV virar negativo)
+  if (delta > pvOriginal) delta = pvOriginal
+  const pvFinal = pvOriginal - delta
+  const sentido: 'desconto' | 'acrescimo' | 'nenhum' =
+    delta > 0 ? 'desconto' : delta < 0 ? 'acrescimo' : 'nenhum'
+  return {
+    pctEfetivo,
+    valorDesconto: Math.abs(delta),  // compat: sempre módulo
+    valorDelta: delta,               // com sinal
+    sentido,
+    pvFinal,
   }
-  return { pctEfetivo: 0, valorDesconto: 0, pvFinal: pvOriginal }
 }
 
 export function OrcamentoClient({
@@ -90,11 +110,16 @@ export function OrcamentoClient({
   // prioridade máxima: sobrescreve o pvFinal antes de qualquer desconto.
   const pvPromoForcado = Number(projeto.pv_promocional_forcado) || 0
   const descontoInfo = pvPromoForcado > 0
-    ? {
-        pctEfetivo: totalConsolidadoBruto > 0 ? ((totalConsolidadoBruto - pvPromoForcado) / totalConsolidadoBruto) * 100 : 0,
-        valorDesconto: Math.max(0, totalConsolidadoBruto - pvPromoForcado),
-        pvFinal: pvPromoForcado,
-      }
+    ? (() => {
+        const delta = totalConsolidadoBruto - pvPromoForcado
+        return {
+          pctEfetivo: totalConsolidadoBruto > 0 ? (delta / totalConsolidadoBruto) * 100 : 0,
+          valorDesconto: Math.abs(delta),
+          valorDelta: delta,
+          sentido: (delta > 0 ? 'desconto' : delta < 0 ? 'acrescimo' : 'nenhum') as 'desconto' | 'acrescimo' | 'nenhum',
+          pvFinal: pvPromoForcado,
+        }
+      })()
     : calcularDescontoFinal(
         totalConsolidadoBruto,
         projeto.desconto_admin_pct,
@@ -231,7 +256,9 @@ export function OrcamentoClient({
             <Metric label="UCs contempladas" value={String(propostasPorUc.length)} highlight />
             <Metric label="Potência CC total" value={`${potenciaCcConsolidada.toFixed(2)} kWp`} />
             <Metric
-              label={descontoInfo.valorDesconto > 0 ? 'PV TOTAL (com desconto)' : 'PV TOTAL (todas UCs)'}
+              label={descontoInfo.sentido === 'desconto' ? 'PV TOTAL (com desconto)'
+                : descontoInfo.sentido === 'acrescimo' ? 'PV TOTAL (com acréscimo)'
+                : 'PV TOTAL (todas UCs)'}
               value={`R$ ${fmt(totalConsolidado)}`}
               highlight verde
             />
@@ -283,14 +310,16 @@ export function OrcamentoClient({
           <Metric
             label={modoComposicao === 'por_uc'
               ? 'PV desta UC'
-              : (descontoInfo.valorDesconto > 0 ? 'PV FINAL (com desconto)' : 'PV FINAL')}
+              : (descontoInfo.sentido === 'desconto' ? 'PV FINAL (com desconto)'
+                 : descontoInfo.sentido === 'acrescimo' ? 'PV FINAL (com acréscimo)'
+                 : 'PV FINAL')}
             value={`R$ ${fmt(modoComposicao === 'por_uc' ? propostaEfetiva.pv_total : descontoInfo.pvFinal)}`}
             highlight verde
           />
         </div>
-        {descontoInfo.valorDesconto > 0 && modoComposicao !== 'por_uc' && (
+        {descontoInfo.sentido !== 'nenhum' && modoComposicao !== 'por_uc' && (
           <p className="mt-3 text-[11px] text-white/50">
-            De R$ {fmt(totalConsolidadoBruto)} — desconto de R$ {fmt(descontoInfo.valorDesconto)} ({fmt(descontoInfo.pctEfetivo)}%){projeto.desconto_admin_motivo ? ` · ${projeto.desconto_admin_motivo}` : ''}
+            De R$ {fmt(totalConsolidadoBruto)} — {descontoInfo.sentido === 'desconto' ? 'desconto' : 'acréscimo'} de R$ {fmt(descontoInfo.valorDesconto)} ({fmt(Math.abs(descontoInfo.pctEfetivo))}%){projeto.desconto_admin_motivo ? ` · ${projeto.desconto_admin_motivo}` : ''}
           </p>
         )}
       </section>
@@ -830,22 +859,32 @@ function CampoDescontoAdmin({
 
   const pctNum = Number(pct.replace(',', '.')) || 0
   const valNum = Number(valor.replace(',', '.')) || 0
-  const preview = pctNum > 0
-    ? { valorDesc: pvBruto * (pctNum / 100), pvFinal: pvBruto * (1 - pctNum / 100), tipo: `${pctNum}%` }
-    : valNum > 0
-      ? { valorDesc: Math.min(valNum, pvBruto), pvFinal: Math.max(0, pvBruto - valNum), tipo: `R$ ${fmt(valNum)}` }
-      : { valorDesc: 0, pvFinal: pvBruto, tipo: null }
+  // Kalebe 2026-09-02: agora suporta ACRÉSCIMO. Valores negativos = aumento.
+  //   pct/valor POSITIVO → desconto (subtrai)
+  //   pct/valor NEGATIVO → acréscimo (soma)
+  const previewCore = pctNum !== 0
+    ? { delta: pvBruto * (pctNum / 100), tipo: `${pctNum > 0 ? '' : ''}${pctNum}%` }
+    : valNum !== 0
+      ? { delta: valNum, tipo: `R$ ${fmt(Math.abs(valNum))}` }
+      : { delta: 0, tipo: null as string | null }
+  const deltaCap = previewCore.delta > pvBruto ? pvBruto : previewCore.delta
+  const preview = {
+    valorAjuste: Math.abs(deltaCap),
+    pvFinal: pvBruto - deltaCap,
+    tipo: previewCore.tipo,
+    sentido: (deltaCap > 0 ? 'desconto' : deltaCap < 0 ? 'acrescimo' : 'nenhum') as 'desconto' | 'acrescimo' | 'nenhum',
+  }
 
   async function salvar() {
     setSalvando(true); setMsg(null)
     try {
       const r = await aplicarDescontoAdminAction(projetoId, {
-        pct: pctNum > 0 ? pctNum : null,
-        valor: pctNum > 0 ? null : (valNum > 0 ? valNum : null),
+        pct: pctNum !== 0 ? pctNum : null,
+        valor: pctNum !== 0 ? null : (valNum !== 0 ? valNum : null),
         motivo: motivo.trim() || null,
       })
       if ('sucesso' in r) {
-        setMsg('✓ Desconto aplicado. Recarregando…')
+        setMsg('✓ Ajuste aplicado. Recarregando…')
         setTimeout(() => window.location.reload(), 600)
       } else {
         setMsg('❌ ' + r.erro)
@@ -858,13 +897,13 @@ function CampoDescontoAdmin({
   }
 
   async function limpar() {
-    if (!confirm('Remover desconto aplicado?')) return
+    if (!confirm('Remover ajuste aplicado?')) return
     setSalvando(true); setMsg(null)
     setPct(''); setValor(''); setMotivo('')
     try {
       const r = await aplicarDescontoAdminAction(projetoId, { pct: null, valor: null, motivo: null })
       if ('sucesso' in r) {
-        setMsg('✓ Desconto removido. Recarregando…')
+        setMsg('✓ Ajuste removido. Recarregando…')
         setTimeout(() => window.location.reload(), 600)
       } else {
         setMsg('❌ ' + r.erro)
@@ -879,37 +918,39 @@ function CampoDescontoAdmin({
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
           <span className="text-[10px] uppercase tracking-wider text-sol font-bold">Admin</span>
-          <h2 className="text-lg font-bold text-white">Desconto do fechamento</h2>
+          <h2 className="text-lg font-bold text-white">Ajuste final da proposta</h2>
           <p className="text-xs text-white/50 mt-0.5">
-            Ajuste manual no PV — reflete no resumo, no PDF e no WhatsApp
+            Positivo = desconto · Negativo = acréscimo. Reflete no resumo, no PDF e no WhatsApp.
           </p>
         </div>
         {(pctAtual || valorAtual) ? (
           <button type="button" onClick={limpar} disabled={salvando}
             className="text-[11px] font-semibold text-white/60 hover:text-coral underline underline-offset-2">
-            🗑 Remover desconto
+            🗑 Remover ajuste
           </button>
         ) : null}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Desconto %</span>
+          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">
+            Ajuste % <span className="text-white/40 normal-case tracking-normal">(+ desc, − acresc)</span>
+          </span>
           <input
             type="text" inputMode="decimal" value={pct}
             onChange={e => { setPct(e.target.value); if (e.target.value) setValor('') }}
-            placeholder="ex: 5"
+            placeholder="ex: 5 (desc) ou -3 (acr)"
             className="bg-white/[0.03] border border-white/15 rounded px-3 py-2 text-sm text-white font-mono focus:border-sol outline-none"
           />
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">
-            Ou desconto R$ {pct ? '(ignorado — usa %)' : ''}
+            Ou ajuste R$ {pct ? '(ignorado — usa %)' : ''}
           </span>
           <input
             type="text" inputMode="decimal" value={valor}
             onChange={e => setValor(e.target.value)}
-            placeholder="ex: 1500,00"
+            placeholder="ex: 1500 (desc) ou -800 (acr)"
             disabled={!!pct}
             className="bg-white/[0.03] border border-white/15 rounded px-3 py-2 text-sm text-white font-mono focus:border-sol outline-none disabled:opacity-40"
           />
@@ -919,21 +960,29 @@ function CampoDescontoAdmin({
           <input
             type="text" value={motivo}
             onChange={e => setMotivo(e.target.value)}
-            placeholder='ex: "cliente VIP", "fechamento até 6ª"'
+            placeholder='ex: "cliente VIP" / "frete extra"'
             className="bg-white/[0.03] border border-white/15 rounded px-3 py-2 text-sm text-white focus:border-sol outline-none"
           />
         </label>
       </div>
 
-      {preview.tipo && (
-        <div className="mt-4 p-4 bg-sol/10 border border-sol/30 rounded-lg grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+      {preview.tipo && preview.sentido !== 'nenhum' && (
+        <div className={`mt-4 p-4 border rounded-lg grid grid-cols-1 md:grid-cols-3 gap-3 text-sm ${
+          preview.sentido === 'desconto' ? 'bg-sol/10 border-sol/30' : 'bg-coral/10 border-coral/30'
+        }`}>
           <div>
             <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">PV bruto</p>
             <p className="text-white font-mono">R$ {fmt(pvBruto)}</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-coral font-bold mb-1">− Desconto ({preview.tipo})</p>
-            <p className="text-coral font-mono">R$ {fmt(preview.valorDesc)}</p>
+            <p className={`text-[10px] uppercase tracking-wider font-bold mb-1 ${
+              preview.sentido === 'desconto' ? 'text-coral' : 'text-sol'
+            }`}>
+              {preview.sentido === 'desconto' ? '− Desconto' : '+ Acréscimo'} ({preview.tipo})
+            </p>
+            <p className={`font-mono ${preview.sentido === 'desconto' ? 'text-coral' : 'text-sol'}`}>
+              R$ {fmt(preview.valorAjuste)}
+            </p>
           </div>
           <div>
             <p className="text-[10px] uppercase tracking-wider text-verde font-bold mb-1">PV final ao cliente</p>
@@ -945,7 +994,7 @@ function CampoDescontoAdmin({
       <div className="mt-4 flex items-center gap-3 flex-wrap">
         <button type="button" onClick={salvar} disabled={salvando}
           className="px-4 py-2 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40">
-          {salvando ? '⏳ Aplicando…' : '💾 Aplicar desconto'}
+          {salvando ? '⏳ Aplicando…' : '💾 Aplicar ajuste'}
         </button>
         {msg && <span className="text-xs text-white/70">{msg}</span>}
       </div>
