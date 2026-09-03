@@ -163,3 +163,60 @@ export async function aplicarDescontoAdminAction(
   revalidatePath(`/projetos/${projetoId}`)
   return { sucesso: true }
 }
+
+/**
+ * Kalebe 2026-09-02: adiciona um item livre à proposta (extras).
+ * Descrição + valor, sem passar pelo dimensionamento. Soma ao PV bruto
+ * antes do ajuste final. Só admin.
+ */
+export async function adicionarExtraAction(
+  projetoId: string,
+  entrada: { descricao: string; valor: number },
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  const { data: perfil } = await supabase
+    .from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (perfil?.role !== 'admin') return { erro: 'Só admin pode adicionar extras' }
+
+  const desc = String(entrada.descricao || '').trim()
+  const val = Number(entrada.valor) || 0
+  if (!desc) return { erro: 'Descrição obrigatória' }
+  if (val === 0) return { erro: 'Valor não pode ser zero' }
+
+  const { data: proj } = await supabase
+    .from('projetos').select('extras_proposta').eq('id', projetoId).single()
+  const atuais: any[] = Array.isArray(proj?.extras_proposta) ? proj.extras_proposta : []
+  const novos = [...atuais, { descricao: desc, valor: val, criado_em: new Date().toISOString() }]
+
+  const { error } = await supabase
+    .from('projetos').update({ extras_proposta: novos }).eq('id', projetoId)
+  if (error) return { erro: error.message }
+  revalidatePath(`/projetos/${projetoId}/orcamento`)
+  return { sucesso: true }
+}
+
+export async function removerExtraAction(
+  projetoId: string,
+  index: number,
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  const { data: perfil } = await supabase
+    .from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (perfil?.role !== 'admin') return { erro: 'Só admin' }
+
+  const { data: proj } = await supabase
+    .from('projetos').select('extras_proposta').eq('id', projetoId).single()
+  const atuais: any[] = Array.isArray(proj?.extras_proposta) ? proj.extras_proposta : []
+  if (index < 0 || index >= atuais.length) return { erro: 'Índice inválido' }
+  const novos = atuais.filter((_, i) => i !== index)
+
+  const { error } = await supabase
+    .from('projetos').update({ extras_proposta: novos }).eq('id', projetoId)
+  if (error) return { erro: error.message }
+  revalidatePath(`/projetos/${projetoId}/orcamento`)
+  return { sucesso: true }
+}

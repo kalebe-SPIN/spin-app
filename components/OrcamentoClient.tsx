@@ -3,7 +3,7 @@
 import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { salvarOrcamentoAction, marcarPropostaEnviadaAction, aplicarDescontoAdminAction } from '@/app/projetos/[id]/orcamento/actions'
+import { salvarOrcamentoAction, marcarPropostaEnviadaAction, aplicarDescontoAdminAction, adicionarExtraAction, removerExtraAction } from '@/app/projetos/[id]/orcamento/actions'
 import { PropostaPDFTemplate } from './PropostaPDFTemplate'
 import { nomearArquivo, nomearProposta } from '@/lib/downloads'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
@@ -98,10 +98,17 @@ export function OrcamentoClient({
     ? (ucAtiva?.listaCa || [])
     : listaCa
 
-  // Totais consolidados (soma de todas as UCs no modo por_uc)
-  const totalConsolidadoBruto = modoComposicao === 'por_uc' && propostasPorUc
+  // Kalebe 2026-09-02: extras livres (brindes, consultoria, serviços extras)
+  // Somam ao bruto ANTES do ajuste final.
+  const extras: Array<{ descricao: string; valor: number }> =
+    Array.isArray(projeto.extras_proposta) ? projeto.extras_proposta : []
+  const totalExtras = extras.reduce((s, e) => s + (Number(e.valor) || 0), 0)
+
+  // Totais consolidados (soma de todas as UCs no modo por_uc) + extras
+  const pvBaseCalculado = modoComposicao === 'por_uc' && propostasPorUc
     ? propostasPorUc.reduce((s, u) => s + (u.proposta?.pv_total || 0), 0)
     : (proposta?.pv_total || 0)
+  const totalConsolidadoBruto = pvBaseCalculado + totalExtras
 
   // Kalebe 2026-09-02: desconto do admin (persistido em projetos.*).
   // Aplica sobre o consolidado (não por UC — a negociação fecha em um
@@ -324,7 +331,16 @@ export function OrcamentoClient({
         )}
       </section>
 
-      {/* Kalebe 2026-09-02: card de desconto no fechamento — só admin */}
+      {/* Kalebe 2026-09-02: itens extras livres (brinde, consultoria) — só admin */}
+      {ehAdmin && (
+        <CampoExtrasProposta
+          projetoId={projeto.id}
+          extras={extras}
+          fmt={fmt}
+        />
+      )}
+
+      {/* Kalebe 2026-09-02: card de ajuste final no fechamento — só admin */}
       {ehAdmin && (
         <CampoDescontoAdmin
           projetoId={projeto.id}
@@ -998,6 +1014,124 @@ function CampoDescontoAdmin({
         </button>
         {msg && <span className="text-xs text-white/70">{msg}</span>}
       </div>
+    </section>
+  )
+}
+
+/**
+ * Kalebe 2026-09-02: Itens extras livres da proposta (não vieram do
+ * dimensionamento nem do catálogo). Ex: brinde, consultoria complementar,
+ * serviço extra a pedido do cliente. Somam ao PV bruto antes do ajuste
+ * final. Aparecem em linha própria no PDF antes do valor total.
+ */
+function CampoExtrasProposta({
+  projetoId, extras, fmt,
+}: {
+  projetoId: string
+  extras: Array<{ descricao: string; valor: number; criado_em?: string }>
+  fmt: (v: number) => string
+}) {
+  const [desc, setDesc] = useState('')
+  const [valor, setValor] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const total = extras.reduce((s, e) => s + (Number(e.valor) || 0), 0)
+
+  async function adicionar() {
+    setMsg(null)
+    const val = Number(valor.replace(',', '.')) || 0
+    if (!desc.trim()) { setMsg('❌ Descrição obrigatória'); return }
+    if (val === 0) { setMsg('❌ Valor não pode ser zero'); return }
+    setSalvando(true)
+    try {
+      const r = await adicionarExtraAction(projetoId, { descricao: desc.trim(), valor: val })
+      if ('sucesso' in r) {
+        setDesc(''); setValor('')
+        setMsg('✓ Item adicionado. Recarregando…')
+        setTimeout(() => window.location.reload(), 500)
+      } else {
+        setMsg('❌ ' + r.erro)
+      }
+    } finally { setSalvando(false) }
+  }
+
+  async function remover(index: number, descricao: string) {
+    if (!confirm(`Remover "${descricao}"?`)) return
+    setSalvando(true)
+    try {
+      const r = await removerExtraAction(projetoId, index)
+      if ('sucesso' in r) {
+        window.location.reload()
+      } else {
+        setMsg('❌ ' + r.erro); setSalvando(false)
+      }
+    } catch { setSalvando(false) }
+  }
+
+  return (
+    <section className="bg-white/[0.03] border border-sol/40 rounded-xl p-6">
+      <div className="mb-3">
+        <span className="text-[10px] uppercase tracking-wider text-sol font-bold">Admin</span>
+        <h2 className="text-lg font-bold text-white">Itens extras da proposta</h2>
+        <p className="text-xs text-white/50 mt-0.5">
+          Adicione itens que não estão no dimensionamento (brinde, consultoria, serviço extra).
+          Somam ao PV antes do ajuste final e aparecem em linha própria no PDF.
+        </p>
+      </div>
+
+      {/* Lista de extras cadastrados */}
+      {extras.length > 0 && (
+        <div className="mb-4 border border-white/10 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-white/[0.03] border-b border-white/10">
+              <tr>
+                <th className="text-left px-3 py-2 text-[10px] uppercase tracking-wider text-white/50 font-bold">Descrição</th>
+                <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-white/50 font-bold">Valor</th>
+                <th className="w-12"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {extras.map((e, i) => (
+                <tr key={i} className="border-b border-white/5 last:border-0">
+                  <td className="px-3 py-2 text-white">{e.descricao}</td>
+                  <td className="px-3 py-2 text-right font-mono text-sol">R$ {fmt(Number(e.valor) || 0)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <button type="button" onClick={() => remover(i, e.descricao)} disabled={salvando}
+                      className="text-xs text-coral hover:underline">🗑</button>
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-white/[0.02] font-bold">
+                <td className="px-3 py-2 text-white text-xs uppercase tracking-wider">Total extras</td>
+                <td className="px-3 py-2 text-right font-mono text-verde">R$ {fmt(total)}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Form de novo item */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3 items-end">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Descrição *</span>
+          <input type="text" value={desc} onChange={e => setDesc(e.target.value)}
+            placeholder='ex: "Consultoria complementar", "Brinde inaugural"'
+            className="bg-white/[0.03] border border-white/15 rounded px-3 py-2 text-sm text-white focus:border-sol outline-none" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Valor R$ *</span>
+          <input type="text" inputMode="decimal" value={valor} onChange={e => setValor(e.target.value)}
+            placeholder="ex: 500,00"
+            className="bg-white/[0.03] border border-white/15 rounded px-3 py-2 text-sm text-white font-mono focus:border-sol outline-none" />
+        </label>
+        <button type="button" onClick={adicionar} disabled={salvando}
+          className="px-4 py-2 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40">
+          {salvando ? '⏳' : '+ Adicionar'}
+        </button>
+      </div>
+      {msg && <p className="mt-3 text-xs text-white/70">{msg}</p>}
     </section>
   )
 }

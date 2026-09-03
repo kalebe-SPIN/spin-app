@@ -64,11 +64,18 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
     const geracaoAnoKwh = geracaoMesKwh * 12
     const economiaMesEstimada = geracaoMesKwh * 0.9  // tarifa CELESC média ~R$ 0,90/kWh
 
+    // Kalebe 2026-09-02: extras livres da proposta (brinde, consultoria, etc)
+    const extras: Array<{ descricao: string; valor: number }> =
+      Array.isArray(projeto.extras_proposta) ? projeto.extras_proposta : []
+    const totalExtras = extras.reduce((s, e) => s + (Number(e.valor) || 0), 0)
+
     // Kalebe 2026-09-02: ajuste do admin (projetos.desconto_admin_*).
     // Sinal define: positivo = desconto (subtrai), negativo = acréscimo (soma).
-    const pvBruto = ehPorUc
+    // pvBruto inclui extras.
+    const pvBase = ehPorUc
       ? (propostasPorUc || []).reduce((s, u) => s + (u.proposta?.pv_total || 0), 0)
       : proposta.pv_total
+    const pvBruto = pvBase + totalExtras
     const descPct = Number(projeto.desconto_admin_pct) || 0
     const descVal = Number(projeto.desconto_admin_valor) || 0
     const deltaRaw = descPct !== 0
@@ -388,6 +395,34 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
                     </p>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Kalebe 2026-09-02: itens extras (aparecem antes do valor total) */}
+            {extras.length > 0 && (
+              <div style={{
+                marginBottom: 16, padding: '14px 18px',
+                background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.3)',
+                borderRadius: 8,
+              }}>
+                <p style={{
+                  fontSize: 9, letterSpacing: 2, textTransform: 'uppercase',
+                  color: '#D4AF37', fontWeight: 700, margin: 0, marginBottom: 8,
+                }}>
+                  Itens adicionais inclusos
+                </p>
+                {extras.map((e, i) => (
+                  <div key={i} style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    padding: '4px 0', borderBottom: i < extras.length - 1 ? '1px dashed rgba(245,245,240,0.1)' : 'none',
+                    fontSize: 11,
+                  }}>
+                    <span style={{ color: '#F5F5F0' }}>{e.descricao}</span>
+                    <span style={{ color: '#D4AF37', fontWeight: 700, fontFamily: 'monospace' }}>
+                      R$ {fmt(Number(e.valor) || 0)}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
 
