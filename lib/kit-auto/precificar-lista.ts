@@ -41,7 +41,7 @@ const CATEGORIAS_EQUIVALENTES: Record<string, string[]> = {
   fixacao:    ['outro', 'estrutura'],
   conector:   ['conector', 'outro'],
   disjuntor:  ['disjuntor'],
-  dps:        ['dps', 'protecao', 'outro'],
+  dps:        ['dps', 'outro'],
   quadro:     ['quadro', 'outro'],
   barramento: ['quadro', 'outro'],
   terminal:   ['outro'],

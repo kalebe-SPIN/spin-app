@@ -238,13 +238,13 @@ export async function precificarComplementosCC(
     let dps: { ok: true; modelo: string; preco: number } | { ok: false; motivo: string } | null = null
     if (refsDps.length > 0) {
       for (const ref of refsDps) {
-        const porRef = await buscarProdutoPorRef(supabase, ref, hojeIso, ['dps', 'protecao'])
+        const porRef = await buscarProdutoPorRef(supabase, ref, hojeIso, ['dps'])
         if (porRef.ok) { dps = { ...porRef, modelo: `${porRef.modelo} · ref. projetista` }; break }
       }
     }
     if (!dps || !dps.ok) {
       dps = await buscarProdutoComPreco(supabase, hojeIso, {
-        categorias: ['dps', 'protecao'],
+        categorias: ['dps'],
         pegarMaiorPreco: true,
       })
     }
