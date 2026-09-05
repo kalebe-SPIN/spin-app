@@ -3,6 +3,8 @@
 import { forwardRef } from 'react'
 import { calcularFormasPagamento, type PropostaCalculada } from '@/lib/precificacao/calcular'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
+import { GraficoGeracaoConsumo } from './GraficoGeracaoConsumo'
+import { estimarGeracaoMensal, extrairConsumoMensal } from '@/lib/geracao-mensal'
 
 type Props = {
   projeto: any
@@ -340,16 +342,39 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <DadoLinha rot="Perdas assumidas" val={`${fmtNum(PERDAS * 100, 0)}%`} />
             </div>
 
-            <div style={E.destaqueGeracao}>
-              <div>
-                <p style={E.rotuloDourado}>Geração média mensal</p>
-                <p style={E.valorGigante}>{fmtInt(geracaoMesKwh)} <span style={{ fontSize: 20, color: 'rgba(245,245,240,.6)' }}>kWh</span></p>
-              </div>
-              <div style={{ borderLeft: '1px solid rgba(245,180,0,.25)', paddingLeft: 24 }}>
-                <p style={E.rotuloDourado}>Geração anual estimada</p>
-                <p style={E.valorGigante}>{fmtInt(geracaoAnoKwh)} <span style={{ fontSize: 20, color: 'rgba(245,245,240,.6)' }}>kWh</span></p>
-              </div>
-            </div>
+            {/* Kalebe 2026-09-06: gráfico Consumo × Geração (12 meses).
+                Substitui os dois "cards" de geração média/anual — mais rico. */}
+            {(() => {
+              const potCcKwp = ehPorUc
+                ? (propostasPorUc || []).reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
+                : (kit.potencia_cc_kwp || 0)
+              const uf = projeto.uf || projeto.cliente_uf
+              const est = estimarGeracaoMensal({ potencia_kwp: potCcKwp, uf })
+              const consumo = extrairConsumoMensal(projeto)
+              return (
+                <div style={{ marginTop: 20 }}>
+                  <GraficoGeracaoConsumo
+                    geracaoMensal={est.serie.map(s => s.geracao_kwh)}
+                    consumoMensal={consumo}
+                    titulo="Consumo × Geração ao longo do ano"
+                    tema="dark"
+                    altura={220}
+                  />
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16,
+                  }}>
+                    <div>
+                      <p style={E.rotuloDourado}>Geração média mensal</p>
+                      <p style={E.valorGigante}>{fmtInt(est.media_mensal_kwh)} <span style={{ fontSize: 20, color: 'rgba(245,245,240,.6)' }}>kWh</span></p>
+                    </div>
+                    <div style={{ borderLeft: '1px solid rgba(245,180,0,.25)', paddingLeft: 24 }}>
+                      <p style={E.rotuloDourado}>Geração anual estimada</p>
+                      <p style={E.valorGigante}>{fmtInt(est.total_anual_kwh)} <span style={{ fontSize: 20, color: 'rgba(245,245,240,.6)' }}>kWh</span></p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             <div style={{ flex: 1 }} />
 

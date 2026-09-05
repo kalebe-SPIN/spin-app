@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { salvarOrcamentoAction, marcarPropostaEnviadaAction, aplicarDescontoAdminAction, adicionarExtraAction, removerExtraAction } from '@/app/projetos/[id]/orcamento/actions'
 import { PropostaPDFTemplate } from './PropostaPDFTemplate'
+import { GraficoGeracaoConsumo } from './GraficoGeracaoConsumo'
+import { estimarGeracaoMensal, extrairConsumoMensal } from '@/lib/geracao-mensal'
 import { nomearArquivo, nomearProposta } from '@/lib/downloads'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
 
@@ -356,6 +358,34 @@ export function OrcamentoClient({
           </p>
         )}
       </section>
+
+      {/* Kalebe 2026-09-06: gráfico "Consumo × Geração estimada" — 12 meses.
+          Aparece sempre (com ou sem consumo cadastrado). Se houver consumo,
+          sobrepõe a linha de consumo pra visualizar cobertura. */}
+      {(() => {
+        const potCcTotal = modoComposicao === 'por_uc' && propostasPorUc
+          ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
+          : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
+        if (!potCcTotal) return null
+        const uf = projeto.uf || projeto.cliente_uf || projeto.telhado_secoes?.[0]?.uf
+        const geracao = estimarGeracaoMensal({ potencia_kwp: potCcTotal, uf })
+        const consumo = extrairConsumoMensal(projeto)
+        return (
+          <section className="bg-white/[0.03] border border-white/10 rounded-xl p-6">
+            <GraficoGeracaoConsumo
+              geracaoMensal={geracao.serie.map(s => s.geracao_kwh)}
+              consumoMensal={consumo}
+              titulo="Consumo × Geração estimada"
+              tema="dark"
+            />
+            <p className="text-[11px] text-white/50 mt-3">
+              Estimativa baseada em {geracao.perfil === 'SC' ? 'HSP Santa Catarina' : `HSP região ${geracao.perfil}`} · perdas de {geracao.perdas_pct}% ·
+              média mensal de {geracao.media_mensal_kwh.toFixed(0)} kWh · anual de {geracao.total_anual_kwh.toFixed(0)} kWh
+              {!consumo && <span className="ml-1 text-coral">· sem consumo cadastrado — importe uma fatura pra fundir com a linha de consumo</span>}
+            </p>
+          </section>
+        )
+      })()}
 
       {/* Kalebe 2026-09-02: itens extras livres (brinde, consultoria) — só admin */}
       {ehAdmin && (
