@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PropostaConsultorConteudo } from '@/components/vaga/PropostaConsultorConteudo'
+import { PropostaCredenciamentoConteudo } from '@/components/vaga/PropostaCredenciamentoConteudo'
 import { PropostaCampoConteudo } from '@/components/vaga/PropostaCampoConteudo'
 import { montarContrato } from '@/lib/contrato-representacao'
 
@@ -20,7 +21,13 @@ const DOCS = [
 ]
 
 export default async function PreviaVagaPage({ searchParams }: { searchParams?: { tipo?: string } }) {
-  const tipo = searchParams?.tipo === 'campo' ? 'campo' : 'comercial'
+  const tipo =
+    searchParams?.tipo === 'campo' ? 'campo'
+    : searchParams?.tipo === 'credenciamento' ? 'credenciamento'
+    : 'comercial'
+  // Campo é empreitada por OS (sem contrato/docs nesta prévia); os demais seguem
+  // a jornada completa proposta → contrato → documentos.
+  const jornadaCompleta = tipo !== 'campo'
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -46,6 +53,7 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
             <span className="text-sol font-bold">👁 Prévia</span>
             <div className="flex gap-1">
               <Link href="/admin/vagas/previa?tipo=comercial" className={`text-xs px-2.5 py-1 rounded-full border ${tipo === 'comercial' ? 'bg-sol text-noite-0 border-sol font-bold' : 'text-white/60 border-white/15 hover:bg-white/10'}`}>Consultor Comercial</Link>
+              <Link href="/admin/vagas/previa?tipo=credenciamento" className={`text-xs px-2.5 py-1 rounded-full border ${tipo === 'credenciamento' ? 'bg-sol text-noite-0 border-sol font-bold' : 'text-white/60 border-white/15 hover:bg-white/10'}`}>Credenciamento</Link>
               <Link href="/admin/vagas/previa?tipo=campo" className={`text-xs px-2.5 py-1 rounded-full border ${tipo === 'campo' ? 'bg-sol text-noite-0 border-sol font-bold' : 'text-white/60 border-white/15 hover:bg-white/10'}`}>Prof. de campo</Link>
             </div>
           </div>
@@ -59,7 +67,7 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
         {/* Navegação interna */}
         <nav className="flex flex-wrap gap-2 mb-10">
           <a href="#proposta" className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white/80 hover:bg-white/10 transition-colors">1 · Proposta</a>
-          {tipo === 'comercial' && <>
+          {jornadaCompleta && <>
             <a href="#contrato" className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white/80 hover:bg-white/10 transition-colors">2 · Contrato</a>
             <a href="#documentos" className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white/80 hover:bg-white/10 transition-colors">3 · Documentos</a>
           </>}
@@ -76,13 +84,22 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
             />
           ) : (
           <>
-          {/* Consultor Comercial (unificada) — PDF só libera após assinatura */}
+          {/* Consultor Comercial (unificada) OU Credenciamento — PDF só libera após assinatura */}
+          {tipo === 'credenciamento' ? (
+            <PropostaCredenciamentoConteudo
+              nomeCandidato={nomeExemplo}
+              zona={zonaExemplo}
+              empresa={empresa}
+              cidades={['Florianópolis', 'Itajaí', 'Blumenau', 'Joinville', 'Criciúma', 'Chapecó', 'Lages']}
+            />
+          ) : (
           <PropostaConsultorConteudo
             nomeCandidato={nomeExemplo}
             zona={zonaExemplo}
             empresa={empresa}
             cidades={['Florianópolis', 'Itajaí', 'Blumenau', 'Joinville', 'Criciúma', 'Chapecó', 'Lages']}
           />
+          )}
           <div className="mb-16 p-6 bg-white/[0.03] border border-white/10 rounded-2xl">
             <p className="text-white/50 text-sm">
               🔒 Aqui o candidato vê os botões <strong className="text-white/80">"Aceitar proposta"</strong> e
@@ -93,7 +110,7 @@ export default async function PreviaVagaPage({ searchParams }: { searchParams?: 
           )}
         </section>
 
-        {tipo === 'comercial' && (
+        {jornadaCompleta && (
         <>
         {/* ETAPA 2 — Contrato */}
         <section id="contrato" className="scroll-mt-20 mb-16">

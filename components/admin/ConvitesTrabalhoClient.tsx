@@ -10,7 +10,7 @@ import {
   excluirConviteAction,
 } from '@/app/admin/vagas/actions'
 
-type TipoProposta = 'comercial' | 'campo' | 'solar'
+type TipoProposta = 'comercial' | 'campo' | 'solar' | 'credenciamento'
 
 type Convite = {
   id: string
@@ -28,9 +28,10 @@ type Convite = {
 }
 
 const TIPO_INFO: Record<TipoProposta, { label: string; emoji: string; cor: string }> = {
-  comercial: { label: 'Consultor Comercial', emoji: '💼', cor: 'text-sol bg-sol/10 border-sol/25' },
-  campo:     { label: 'Prof. de Campo',      emoji: '🔧', cor: 'text-weg-azul bg-weg-azul/10 border-weg-azul/25' },
-  solar:     { label: 'Consultor Comercial', emoji: '💼', cor: 'text-sol bg-sol/10 border-sol/25' },
+  comercial:      { label: 'Consultor Comercial', emoji: '💼', cor: 'text-sol bg-sol/10 border-sol/25' },
+  campo:          { label: 'Prof. de Campo',      emoji: '🔧', cor: 'text-weg-azul bg-weg-azul/10 border-weg-azul/25' },
+  solar:          { label: 'Consultor Comercial', emoji: '💼', cor: 'text-sol bg-sol/10 border-sol/25' },
+  credenciamento: { label: 'Credenciamento',      emoji: '⭐', cor: 'text-verde bg-verde/10 border-verde/25' },
 }
 
 const STATUS_LABEL: Record<string, { txt: string; cor: string }> = {
@@ -50,7 +51,7 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
   const [telefone, setTelefone] = useState('')
   const [zona, setZona] = useState('')
   const [cidades, setCidades] = useState('')
-  const [tipoProposta, setTipoProposta] = useState<'comercial' | 'campo' | 'solar'>('comercial')
+  const [tipoProposta, setTipoProposta] = useState<TipoProposta>('comercial')
   const [erro, setErro] = useState<string | null>(null)
   const [cred, setCred] = useState<{ email: string; senha: string; link: string } | null>(null)
 
@@ -110,7 +111,7 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <label className="text-sm font-semibold text-white/80">Tipo de proposta</label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {([['comercial', '💼 Consultor Comercial'], ['campo', '🔧 Profissional de Campo']] as const).map(([v, l]) => (
+              {([['comercial', '💼 Consultor Comercial'], ['credenciamento', '⭐ Credenciamento'], ['campo', '🔧 Profissional de Campo']] as const).map(([v, l]) => (
                 <button
                   key={v}
                   type="button"
@@ -210,7 +211,7 @@ export function ConvitesTrabalhoClient({ convites }: { convites: Convite[] }) {
                         title="Trocar o tipo de proposta que o candidato vê"
                         className={`appearance-none text-xs font-bold pl-2.5 pr-6 py-1 rounded-full border cursor-pointer ${tInfo.cor} disabled:opacity-50`}
                       >
-                        {(['comercial', 'campo'] as TipoProposta[]).map((k) => (
+                        {(['comercial', 'credenciamento', 'campo'] as TipoProposta[]).map((k) => (
                           <option key={k} value={k} className="bg-noite text-white">
                             {TIPO_INFO[k].emoji} {TIPO_INFO[k].label}
                           </option>

@@ -52,6 +52,14 @@ export default async function AdminVagasPage() {
               👁 Prévia — Consultor Comercial ↗
             </Link>
             <Link
+              href="/admin/vagas/previa?tipo=credenciamento"
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-verde/15 border border-verde/40 text-verde font-semibold rounded-lg hover:bg-verde/25 transition-colors whitespace-nowrap text-sm"
+            >
+              👁 Prévia — Credenciamento ↗
+            </Link>
+            <Link
               href="/admin/vagas/previa?tipo=campo"
               target="_blank"
               rel="noopener"

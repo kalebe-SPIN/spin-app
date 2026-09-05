@@ -4,12 +4,14 @@ import { createClient } from '@/lib/supabase/server'
 import { AceitarPropostaBtn } from '@/components/vaga/AceitarPropostaBtn'
 import { PropostaCampoConteudo } from '@/components/vaga/PropostaCampoConteudo'
 import { PropostaConsultorConteudo } from '@/components/vaga/PropostaConsultorConteudo'
+import { PropostaCredenciamentoConteudo } from '@/components/vaga/PropostaCredenciamentoConteudo'
 
 /**
  * Apresentação da proposta de trabalho — /vaga/proposta
- * - campo    → Profissional de Campo (empreitada por OS)
- * - demais   → Consultor Comercial (Linha Completa: sistemas + O&M) — unificada,
- *              cobre os tipos 'solar' e 'comercial' antigos.
+ * - campo          → Profissional de Campo (empreitada por OS)
+ * - credenciamento → Credenciamento de parceiros de vendas (acelerador + níveis)
+ * - demais         → Consultor Comercial (Linha Completa: sistemas + O&M) —
+ *                    unificada, cobre os tipos 'solar' e 'comercial' antigos.
  */
 export default async function PropostaPage() {
   const convite = await getConviteAtual()
@@ -38,10 +40,13 @@ export default async function PropostaPage() {
     )
   }
 
-  // Unificada — Consultor Comercial (Linha Completa)
+  // Credenciamento — parceiro de vendas (acelerador + Semana de Fechamento + níveis)
+  const Proposta = convite.tipo_proposta === 'credenciamento' ? PropostaCredenciamentoConteudo : PropostaConsultorConteudo
+
+  // Consultor Comercial unificada (default) OU Credenciamento
   return (
     <main className="max-w-screen-xl mx-auto px-6 py-10 md:py-14">
-      <PropostaConsultorConteudo
+      <Proposta
         nomeCandidato={convite.nome_candidato}
         zona={convite.zona}
         cidades={convite.cidades || []}

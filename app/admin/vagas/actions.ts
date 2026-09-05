@@ -33,7 +33,7 @@ export async function criarConviteAction(input: {
   zona?: string
   cargo?: string
   cidades?: string[]
-  tipo_proposta?: 'comercial' | 'campo' | 'solar'
+  tipo_proposta?: 'comercial' | 'campo' | 'solar' | 'credenciamento'
 }): Promise<
   | { sucesso: true; email: string; senha: string; link: string }
   | { erro: string }
@@ -79,9 +79,10 @@ export async function criarConviteAction(input: {
     telefone: input.telefone?.trim() || null,
     zona: input.zona?.trim() || null,
     cidades: (input.cidades || []).map((c) => c.trim()).filter(Boolean),
-    tipo_proposta: ['campo', 'solar'].includes(input.tipo_proposta || '') ? input.tipo_proposta : 'comercial',
+    tipo_proposta: ['campo', 'solar', 'credenciamento'].includes(input.tipo_proposta || '') ? input.tipo_proposta : 'comercial',
     cargo: input.cargo?.trim() || (
       input.tipo_proposta === 'campo' ? 'Profissional de Campo — Serviços de O&M'
+      : input.tipo_proposta === 'credenciamento' ? 'Parceiro Comercial Credenciado — Sistemas Fotovoltaicos'
       : input.tipo_proposta === 'solar' ? 'Parceiro Comercial — Sistemas Fotovoltaicos'
       : 'Parceiro Comercial — Serviços de O&M'),
     created_by: check.userId,
@@ -174,12 +175,12 @@ export async function redefinirSenhaCandidatoAction(
 /** Alterna o tipo de proposta que o candidato vai ver ao acessar. */
 export async function alterarTipoPropostaAction(
   conviteId: string,
-  novoTipo: 'comercial' | 'campo' | 'solar',
+  novoTipo: 'comercial' | 'campo' | 'solar' | 'credenciamento',
 ): Promise<{ sucesso: true } | { erro: string }> {
   const check = await verificarAdmin()
   if (!check.ok) return { erro: check.erro }
 
-  if (!['comercial', 'campo', 'solar'].includes(novoTipo)) {
+  if (!['comercial', 'campo', 'solar', 'credenciamento'].includes(novoTipo)) {
     return { erro: 'Tipo de proposta inválido.' }
   }
 

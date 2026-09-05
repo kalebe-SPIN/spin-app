@@ -9,7 +9,7 @@ export type ConviteTrabalho = {
   cargo: string
   zona: string | null
   cidades: string[]
-  tipo_proposta: 'comercial' | 'campo' | 'solar'
+  tipo_proposta: 'comercial' | 'campo' | 'solar' | 'credenciamento'
   status: 'enviado' | 'proposta_aceita' | 'contrato_assinado' | 'docs_enviados' | 'concluido' | 'recusado'
   entradas_usadas: number
   max_entradas: number
