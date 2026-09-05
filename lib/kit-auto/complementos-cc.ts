@@ -248,11 +248,24 @@ export async function precificarComplementosCC(
         pegarMaiorPreco: true,
       })
     }
-    // Kalebe 2026-09-02: fallback por PALAVRA-CHAVE em qualquer categoria —
-    // se o DPS foi cadastrado com categoria='outro' (comum na planilha WEG),
-    // não perde o preço só porque a categoria está errada.
+    // Kalebe 2026-09-06 (2ª rodada de reforço): busca AMPLA por palavra-chave.
+    // Cobre TODAS as variações de nome comercial que aparecem em cadastro
+    // desnormalizado: DPS, SPD, clamper, protetor de surto, supressor,
+    // surge, "classe II". Depois busca também na descrição_curta.
     if (!dps || !dps.ok) {
-      dps = await buscarProdutoPorNome(supabase, hojeIso, ['dps', 'clamper', 'spd'], /kvar|capacit|reativ/i)
+      dps = await buscarProdutoPorNome(
+        supabase, hojeIso,
+        ['dps', 'clamper', 'spd', 'protetor', 'surto', 'surge', 'supressor'],
+        /kvar|capacit|reativ|contator|rele|fusivel|fusível/i,
+      )
+    }
+    // Última chance: busca por 'classe ii' na DESCRIÇÃO (não só modelo)
+    if (!dps || !dps.ok) {
+      dps = await buscarProdutoPorDescricao(
+        supabase, hojeIso,
+        ['classe ii', 'surto', '20ka', '40ka', 'ii 20', 'ii 40'],
+        /kvar|capacit|reativ/i,
+      )
     }
     itens.push({
       categoria: 'dps',
@@ -512,6 +525,56 @@ async function buscarProdutoPorNome(
     return { ok: true, ...escolhida }
   }
   return { ok: false, motivo: `${lista.length} produto(s) com "${palavras.join('/')}" no modelo, mas sem preço vigente` }
+}
+
+/**
+ * Kalebe 2026-09-06: última chance de encontrar produto — busca por
+ * PALAVRAS-CHAVE na DESCRICAO_CURTA (não só modelo). Cadastro da
+ * planilha WEG costuma ter descrição completa mas modelo curto/só código.
+ * Ex: DPS pode ter modelo "CLPU-C40/1275" mas descrição "Protetor de
+ * Surto DPS Classe II 20kA". Sem esse fallback, a busca por 'dps'/'spd'
+ * no modelo passa direto.
+ */
+async function buscarProdutoPorDescricao(
+  supabase: any,
+  hojeIso: string,
+  palavras: string[],
+  excluir?: RegExp,
+): Promise<{ ok: true; modelo: string; preco: number } | { ok: false; motivo: string }> {
+  const orClause = palavras.map(p => `descricao_curta.ilike.%${p}%`).join(',')
+  const { data: prods } = await supabase
+    .from('produtos')
+    .select('id, modelo, descricao_curta, categoria, ativo')
+    .or(orClause)
+    .eq('ativo', true)
+    .limit(200)
+  const lista = ((prods || []) as any[]).filter((p: any) => {
+    const alvo = `${p.modelo || ''} ${p.descricao_curta || ''}`
+    if (excluir && excluir.test(alvo)) return false
+    return true
+  })
+  if (lista.length === 0) {
+    return { ok: false, motivo: `nenhum produto ativo com "${palavras.join('/')}" na descrição` }
+  }
+  const cotacoes: Array<{ modelo: string; preco: number }> = []
+  for (const p of lista) {
+    const { data: precosV } = await supabase
+      .from('precos_produtos')
+      .select('preco_venda, vigente_de, vigente_ate')
+      .eq('produto_id', p.id)
+      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+      .order('vigente_de', { ascending: false })
+      .limit(1)
+    const preco = Number((precosV || [])[0]?.preco_venda) || 0
+    if (preco > 0) cotacoes.push({ modelo: p.modelo, preco })
+  }
+  if (cotacoes.length > 0) {
+    // Escolhe o de menor preço — nesse fallback estamos raspando o barril,
+    // não faz sentido cobrar o mais caro sem certeza de match ideal.
+    const escolhida = cotacoes.reduce((a, b) => (a.preco <= b.preco ? a : b))
+    return { ok: true, modelo: `${escolhida.modelo} · via descrição`, preco: escolhida.preco }
+  }
+  return { ok: false, motivo: `${lista.length} produto(s) com "${palavras.join('/')}" na descrição, mas sem preço vigente` }
 }
 
 export function fasesDoTipoLigacao(t: string): number {
