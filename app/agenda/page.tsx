@@ -34,8 +34,8 @@ export default async function AgendaPage({
 
   // Pares vinculados: mesma zona, role complementar (vendedor ↔ campo)
   const roleComplementar =
-    meuRole === 'vendedor_servicos' ? 'profissional_campo'
-    : meuRole === 'profissional_campo' ? 'vendedor_servicos'
+    meuRole === 'representante' ? 'profissional_campo'
+    : meuRole === 'profissional_campo' ? 'representante'
     : null
 
   let pares: Par[] = []
@@ -179,11 +179,11 @@ export default async function AgendaPage({
                 peerNome={pares[0].nome}
               />
             )}
-            {pares.length === 0 && (meuRole === 'vendedor_servicos' || meuRole === 'profissional_campo') && (
+            {pares.length === 0 && (meuRole === 'representante' || meuRole === 'profissional_campo') && (
               <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl text-xs text-white/50 leading-relaxed">
                 <p className="font-bold text-white/70 mb-1">Sem par vinculado ainda</p>
                 Peça pro admin cadastrar sua <strong>zona</strong> em /admin/usuarios. O chat par-a-par aparece quando houver{' '}
-                {meuRole === 'vendedor_servicos' ? 'um profissional de campo' : 'um vendedor de serviços'} na mesma zona.
+                {meuRole === 'representante' ? 'um profissional de campo' : 'um vendedor de serviços'} na mesma zona.
               </div>
             )}
           </aside>

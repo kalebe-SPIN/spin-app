@@ -16,7 +16,7 @@ async function verificarPermissao() {
 
   const { data: perfil } = await supabase
     .from('profiles').select('role').eq('id', user.id).maybeSingle()
-  if (perfil?.role !== 'vendedor_servicos' && perfil?.role !== 'admin') {
+  if (perfil?.role !== 'representante' && perfil?.role !== 'admin') {
     return { erro: 'Somente vendedor de serviços ou admin' as const }
   }
   return { userId: user.id, role: perfil.role }

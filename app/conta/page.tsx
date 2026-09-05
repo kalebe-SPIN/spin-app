@@ -74,7 +74,7 @@ export default async function ContaPage() {
           <PreferenciasAgendaForm
             limiteInicial={Number(profile?.limite_horas_agenda ?? 6)}
             zonaInicial={profile?.zona ?? null}
-            podeEditarZona={profile?.role === 'vendedor_servicos' || profile?.role === 'profissional_campo'}
+            podeEditarZona={profile?.role === 'representante' || profile?.role === 'profissional_campo'}
           />
         </div>
 

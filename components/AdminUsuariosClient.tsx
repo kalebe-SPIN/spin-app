@@ -26,10 +26,10 @@ type RoleInfo = { label: string; emoji: string; cor: string; bg: string }
 
 const ROLES_INFO: Record<Role, RoleInfo> = {
   admin:              { label: 'Admin',              emoji: '👑', cor: 'text-sol',      bg: 'bg-sol/10 border-sol/30' },
-  representante:      { label: 'Representante',      emoji: '🤝', cor: 'text-weg-azul', bg: 'bg-weg-azul/10 border-weg-azul/30' },
+  representante:      { label: 'Representante Spin', emoji: '⭐', cor: 'text-sol',      bg: 'bg-sol/10 border-sol/30' },
   instalador:         { label: 'Instalador',         emoji: '🔧', cor: 'text-verde',    bg: 'bg-verde/10 border-verde/30' },
   colaborador:        { label: 'Colaborador',        emoji: '👤', cor: 'text-white/70', bg: 'bg-white/10 border-white/20' },
-  vendedor_servicos:  { label: 'Vendedor Serviços',  emoji: '📞', cor: 'text-coral',    bg: 'bg-coral/10 border-coral/30' },
+  profissional_campo: { label: 'Profissional Campo', emoji: '🚐', cor: 'text-weg-azul', bg: 'bg-weg-azul/10 border-weg-azul/30' },
 }
 
 /** Fallback pra role desconhecido — evita crash "Cannot read 'bg' of undefined"

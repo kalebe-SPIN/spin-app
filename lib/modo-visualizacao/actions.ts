@@ -26,7 +26,7 @@ export async function definirModoAction(novo: ModoVisualizacao) {
   if (perfil?.role !== 'admin') return
 
   // Valida entrada — evita cookie com valor inesperado
-  const modosValidos: ModoVisualizacao[] = ['admin', 'consultor', 'vendedor_servicos', 'profissional_campo']
+  const modosValidos: ModoVisualizacao[] = ['admin', 'consultor', 'representante', 'profissional_campo']
   if (!modosValidos.includes(novo)) return
 
   cookies().set(COOKIE_NAME, novo, {
@@ -37,7 +37,7 @@ export async function definirModoAction(novo: ModoVisualizacao) {
 
   // Se saiu do admin, volta pra rota segura pro modo escolhido
   if (novo === 'consultor') redirect('/projetos')
-  if (novo === 'vendedor_servicos') redirect('/')
+  if (novo === 'representante') redirect('/')
   if (novo === 'profissional_campo') redirect('/agenda')
 
   revalidatePath('/', 'layout')
@@ -63,12 +63,12 @@ export async function alternarModoAction() {
   const atual = cookies().get(COOKIE_NAME)?.value
   const proximo: Record<string, ModoVisualizacao> = {
     admin: 'consultor',
-    consultor: 'vendedor_servicos',
-    vendedor_servicos: 'profissional_campo',
+    consultor: 'representante',
+    representante: 'profissional_campo',
     profissional_campo: 'admin',
   }
   const chaveAtual =
-    atual === 'consultor' || atual === 'vendedor_servicos' || atual === 'profissional_campo'
+    atual === 'consultor' || atual === 'representante' || atual === 'profissional_campo'
       ? atual : 'admin'
   const novo: ModoVisualizacao = proximo[chaveAtual]
 
@@ -79,7 +79,7 @@ export async function alternarModoAction() {
   })
 
   if (novo === 'consultor') redirect('/projetos')
-  if (novo === 'vendedor_servicos') redirect('/')
+  if (novo === 'representante') redirect('/')
   if (novo === 'profissional_campo') redirect('/agenda')
 
   revalidatePath('/', 'layout')

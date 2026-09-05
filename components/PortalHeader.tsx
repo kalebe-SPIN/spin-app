@@ -47,11 +47,11 @@ export async function PortalHeader() {
   // Monta links pra passar tanto pro desktop quanto pro drawer mobile
   const linksNav = [
     { href: '/dashboard', label: '📊 Dashboard' },
-    ...(modoAtivo !== 'vendedor_servicos' && modoAtivo !== 'profissional_campo'
+    ...(modoAtivo !== 'representante' && modoAtivo !== 'profissional_campo'
       ? [{ href: '/projetos', label: '📋 Projetos' }] : []),
     {
       href:
-        modoAtivo === 'vendedor_servicos' ? '/crm/servicos'
+        modoAtivo === 'representante' ? '/crm/servicos'
         : modoAtivo === 'admin' ? '/crm/pipeline'
         : '/crm',
       label: '🎯 CRM',
@@ -102,7 +102,7 @@ export async function PortalHeader() {
               </p>
               <p className="text-[10px] uppercase tracking-wider text-white/40">
                 {modoAtivo === 'admin' ? 'Administrador'
-                  : modoAtivo === 'vendedor_servicos' ? 'Vendedor de serviços'
+                  : modoAtivo === 'representante' ? 'Representante Spin'
                   : modoAtivo === 'profissional_campo' ? 'Profissional de campo'
                   : 'Consultor'}
               </p>

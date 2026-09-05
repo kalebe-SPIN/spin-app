@@ -22,7 +22,7 @@ export default async function OrcamentoRapidoPage({
   if (!user) redirect('/login')
 
   const { modo } = await getModoVisualizacao()
-  if (modo === 'vendedor_servicos') redirect('/crm/servicos')
+  if (modo === 'representante') redirect('/crm/servicos')
   if (modo === 'profissional_campo') redirect('/agenda')
 
   const { data: profile } = await supabase

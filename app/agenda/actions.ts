@@ -143,7 +143,7 @@ export async function mudarStatusEventoAction(
         .from('profiles')
         .select('id, nome_completo, telefone')
         .eq('zona', dono.zona)
-        .eq('role', 'vendedor_servicos')
+        .eq('role', 'representante')
       for (const v of vendedores || []) {
         await dispararGatilho('agenda_servico_executado', {
           usuario_id: v.id,

@@ -39,23 +39,16 @@ export default async function DashboardPage() {
   const { modo } = await getModoVisualizacao()
   const mostraAdmin = profile?.role === 'admin' && modo === 'admin'
 
-  // Vendedor de serviços tem dashboard próprio focado em desempenho + resultado + meta.
-  // Aciona por MODO (não role) — admin que alterna pra "Vendedor Serv." no toggle
-  // vê a experiência do vendedor pra validar. Vendedor real sempre cai aqui
-  // porque getModoVisualizacao força modo=role quando não é admin.
-  if (modo === 'vendedor_servicos') {
-    const { DashboardVendedorServicos } = await import('@/components/DashboardVendedorServicos')
-    return <DashboardVendedorServicos userId={user.id} nome={profile?.nome_completo || 'Vendedor'} />
-  }
-
   // Profissional de campo ainda não tem dashboard próprio — o fluxo dele é
   // executar OS na agenda. Manda direto pra /agenda até criarmos DashboardCampo.
   if (modo === 'profissional_campo') redirect('/agenda')
 
-  // Kalebe 2026-09-06: Dashboard do Representante Spin — espelha a proposta
-  // de credenciamento (acelerador, portfólio, carteira, níveis).
-  const ehRepresentante = profile?.role === 'representante' || profile?.role === 'consultor'
-  if (ehRepresentante && modo !== 'admin') {
+  // Kalebe 2026-09-06: Dashboard do Representante Spin — perfil unificado
+  // (substitui o antigo vendedor_servicos). Espelha a proposta de
+  // credenciamento: header "Meu ganho", acelerador de volume, portfólio
+  // segmentado (residencial/comercial/usina/carregador/O&M), MRR da
+  // carteira, breakdown por origem do lead, progresso pro próximo nível.
+  if (modo === 'representante') {
     const { DashboardRepresentante } = await import('@/components/DashboardRepresentante')
     const { agregarDashboardRepresentante } = await import('@/lib/representante-agregacoes')
     const dados = await agregarDashboardRepresentante(supabase, user.id)

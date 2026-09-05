@@ -149,7 +149,7 @@ export async function DashboardVendedorServicos({ userId, nome }: { userId: stri
               Olá, <span className="text-coral">{nome.split(' ')[0]}</span>
             </h1>
             <p className="text-white/60 text-sm mt-1">
-              Vendedor de serviços · {mesNome(mes)} de {ano} · {diaAtual}/{diasNoMes} dias · {diasRestantes} restantes
+              Representante Spin · {mesNome(mes)} de {ano} · {diaAtual}/{diasNoMes} dias · {diasRestantes} restantes
             </p>
           </div>
           <div className="flex items-center gap-2">

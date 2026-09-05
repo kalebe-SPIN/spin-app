@@ -30,11 +30,11 @@ const MODOS: {
     classeInativo: 'text-white/50 hover:text-verde hover:bg-verde/10 border-transparent',
   },
   {
-    chave: 'vendedor_servicos',
-    labelCurto: 'Vendedor Serv.',
-    emoji: '🧽',
-    classeAtivo: 'bg-coral/20 text-coral border-coral/50',
-    classeInativo: 'text-white/50 hover:text-coral hover:bg-coral/10 border-transparent',
+    chave: 'representante',
+    labelCurto: 'Representante',
+    emoji: '⭐',
+    classeAtivo: 'bg-sol/20 text-sol border-sol/50',
+    classeInativo: 'text-white/50 hover:text-sol hover:bg-sol/10 border-transparent',
   },
   {
     chave: 'profissional_campo',

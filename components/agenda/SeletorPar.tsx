@@ -40,7 +40,7 @@ export function SeletorPar({
         <option value={meuId} className="bg-noite">👤 Minha agenda — {meuNome.split(' ')[0]}</option>
         {paresOrdenados.map((p) => (
           <option key={p.id} value={p.id} className="bg-noite">
-            {p.role === 'vendedor_servicos' ? '🧽' : '🚐'} {p.nome} ({rotuloRole(p.role)})
+            {p.role === 'representante' ? '🧽' : '🚐'} {p.nome} ({rotuloRole(p.role)})
           </option>
         ))}
       </select>
@@ -49,7 +49,7 @@ export function SeletorPar({
 }
 
 function rotuloRole(role: string) {
-  if (role === 'vendedor_servicos') return 'vendedor'
+  if (role === 'representante') return 'vendedor'
   if (role === 'profissional_campo') return 'campo'
   return role
 }

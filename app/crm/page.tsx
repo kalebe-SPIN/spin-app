@@ -15,8 +15,8 @@ export default async function CrmHubPage() {
     .eq('id', user.id)
     .single()
 
-  // Vendedor de serviços tem CRM próprio (/crm/servicos) — redireciona pra lá.
-  if (perfil?.role === 'vendedor_servicos') redirect('/crm/servicos')
+  // Representante Spin tem CRM próprio (/crm/servicos) — redireciona pra lá.
+  if (perfil?.role === 'representante') redirect('/crm/servicos')
 
   // Hub aberto pra admin e consultor (representante). Outros roles não têm
   // fluxo comercial de solar, então bloqueia.

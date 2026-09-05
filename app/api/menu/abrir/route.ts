@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Só admin ou consultor solar (representante) ativo abre o catálogo autenticado.
-  // Vendedor de serviços e profissional de campo não tem fluxo comercial de FV.
+  // Representante Spin e profissional de campo não tem fluxo comercial de FV.
   const { data: perfil } = await supabase
     .from('profiles')
     .select('ativo, role')

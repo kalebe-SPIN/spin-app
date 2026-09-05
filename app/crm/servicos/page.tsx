@@ -20,7 +20,7 @@ export default async function CrmServicosPage() {
   const { data: perfil } = await supabase
     .from('profiles').select('role').eq('id', user.id).maybeSingle()
 
-  const permitido = perfil?.role === 'vendedor_servicos' || perfil?.role === 'admin'
+  const permitido = perfil?.role === 'representante' || perfil?.role === 'admin'
   if (!permitido) {
     return (
       <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -90,7 +90,7 @@ export default async function CrmServicosPage() {
   const { data: vendedoresRaw } = await supabase
     .from('profiles')
     .select('id, nome_completo, role')
-    .in('role', ['admin', 'vendedor_servicos'])
+    .in('role', ['admin', 'representante'])
     .eq('ativo', true)
     .order('nome_completo', { ascending: true })
   const vendedores = (vendedoresRaw || []) as Array<{ id: string; nome_completo: string; role: string }>

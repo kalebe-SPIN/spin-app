@@ -54,7 +54,7 @@ export type EtapaFunil = {
 export type LinhaRank = {
   id: string
   nome: string
-  role: 'representante' | 'vendedor_servicos' | 'admin'
+  role: 'representante' | 'representante' | 'admin'
   vendido: number
   em_proposta: number
   meta: number
@@ -120,7 +120,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   const { data: perfis } = await supabase
     .from('profiles')
     .select('id, nome_completo, role, ativo')
-    .in('role', ['admin', 'representante', 'vendedor_servicos', 'profissional_campo'])
+    .in('role', ['admin', 'representante', 'representante', 'profissional_campo'])
 
   const perfilPorId = new Map<string, { nome: string; role: string }>()
   for (const p of perfis || []) {
@@ -129,7 +129,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
 
   const admins = (perfis || []).filter((p) => p.role === 'admin' && p.ativo)
   const representantes = (perfis || []).filter((p) => p.role === 'representante' && p.ativo)
-  const vendedoresServ = (perfis || []).filter((p) => p.role === 'vendedor_servicos' && p.ativo)
+  const vendedoresServ = (perfis || []).filter((p) => p.role === 'representante' && p.ativo)
   const profissionaisCampo = (perfis || []).filter((p) => p.role === 'profissional_campo' && p.ativo)
 
   // Vendedores solar = representantes + admins (Kalebe também fecha venda).
@@ -316,7 +316,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     ...metricasVend.map((v) => ({
       id: v.id,
       nome: v.nome,
-      role: 'vendedor_servicos' as const,
+      role: 'representante' as const,
       vendido: (telhadosData || [])
         .filter((t: any) => t.vendedor_id === v.id && t.fase === 'fechado' && (t.updated_at || '') >= inicioMesIso)
         .reduce((s: number, t: any) => s + (Number(t.proposta_valor) || 0), 0),

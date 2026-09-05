@@ -274,7 +274,7 @@ export function NovoTelhadoModal({
                   className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white">
                   {vendedores.map(v => (
                     <option key={v.id} value={v.id}>
-                      {v.nome_completo}{v.role === 'vendedor_servicos' ? '' : ` (${v.role})`}
+                      {v.nome_completo}{v.role === 'representante' ? '' : ` (${v.role})`}
                     </option>
                   ))}
                 </select>

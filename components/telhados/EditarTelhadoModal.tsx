@@ -153,7 +153,7 @@ export function EditarTelhadoModal({
                 <option value="">— não alterar —</option>
                 {vendedores.map(v => (
                   <option key={v.id} value={v.id}>
-                    {v.nome_completo}{v.role === 'vendedor_servicos' ? '' : ` (${v.role})`}
+                    {v.nome_completo}{v.role === 'representante' ? '' : ` (${v.role})`}
                   </option>
                 ))}
               </select>

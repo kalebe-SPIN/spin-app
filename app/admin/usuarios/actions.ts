@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export type Role = 'admin' | 'representante' | 'instalador' | 'colaborador' | 'vendedor_servicos'
+export type Role = 'admin' | 'representante' | 'instalador' | 'colaborador' | 'profissional_campo'
 
 async function verificarAdmin(): Promise<{ ok: true } | { ok: false; erro: string }> {
   const supabase = createClient()
