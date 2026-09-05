@@ -1,8 +1,7 @@
 'use client'
 
 import { forwardRef } from 'react'
-import type { PropostaCalculada } from '@/lib/precificacao/calcular'
-import { calcularFormasPagamento } from '@/lib/precificacao/calcular'
+import { calcularFormasPagamento, type PropostaCalculada } from '@/lib/precificacao/calcular'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
 
 type Props = {
