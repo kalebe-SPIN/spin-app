@@ -77,6 +77,39 @@ export type PropostaCalculada = {
 
 const FATOR_KIT_WEG = 0.4182
 
+export type FormasPagamento = PropostaCalculada['formas_pagamento']
+
+/**
+ * Deriva as formas de pagamento a partir de um valor total.
+ *
+ * IMPORTANTE: sempre passe o valor FINAL da proposta (já com desconto/acréscimo
+ * e extras aplicados), nunca o PV bruto — senão à vista/cartão/financiado
+ * apresentam parcelas do preço errado. Ver PropostaPDFTemplate.
+ */
+export function calcularFormasPagamento(total: number): FormasPagamento {
+  const base = Math.max(0, total || 0)
+  const aVistaPix = base * 0.97 // 3% desconto à vista PIX
+  const parcelasCartao = 12
+  const valorParcelaCartao = (base * 1.0899) / parcelasCartao // ~8.99% de juros total 12x
+  const parcelasFinanciado = 60
+  const parcelaFinMin = (base * 1.35) / parcelasFinanciado
+  const parcelaFinMax = (base * 1.85) / parcelasFinanciado
+
+  return {
+    a_vista_pix: { valor: aVistaPix, desconto_pct: 3 },
+    parcelado_cartao: {
+      parcelas: parcelasCartao,
+      valor_parcela: valorParcelaCartao,
+      valor_total: valorParcelaCartao * parcelasCartao,
+    },
+    financiado_estimado: {
+      parcelas: parcelasFinanciado,
+      valor_parcela_min: parcelaFinMin,
+      valor_parcela_max: parcelaFinMax,
+    },
+  }
+}
+
 /**
  * Busca valor numérico de um parâmetro vigente pela chave.
  */
@@ -174,13 +207,8 @@ export function calcularProposta(entradas: Entradas, params: ParametrosVigentes)
     / (1 - (margemMinima + comissaoPct + impostosPct) / 100)
   const descontoMaxNegociacao = pvTotal - pvMinimo
 
-  // Pagamento
-  const aVistaPix = pvTotal * 0.97 // 3% desconto à vista PIX
-  const parcelasCartao = 12
-  const valorParcelaCartao = pvTotal * 1.0899 / parcelasCartao // ~8.99% de juros total 12x
-  const parcelasFinanciado = 60
-  const parcelaFinMin = pvTotal * 1.35 / parcelasFinanciado
-  const parcelaFinMax = pvTotal * 1.85 / parcelasFinanciado
+  // Pagamento — base padrão é o pvTotal; a camada de apresentação (PDF/WhatsApp)
+  // recalcula com calcularFormasPagamento(pvFinal) quando há desconto/acréscimo/extras.
 
   return {
     subtotal_kit_weg_bruto: subtotalKitBruto,
@@ -203,19 +231,7 @@ export function calcularProposta(entradas: Entradas, params: ParametrosVigentes)
       numero_placas: numeroPlacas,
       potencia_cc_kwp: potencia_kwp,
     },
-    formas_pagamento: {
-      a_vista_pix: { valor: aVistaPix, desconto_pct: 3 },
-      parcelado_cartao: {
-        parcelas: parcelasCartao,
-        valor_parcela: valorParcelaCartao,
-        valor_total: valorParcelaCartao * parcelasCartao,
-      },
-      financiado_estimado: {
-        parcelas: parcelasFinanciado,
-        valor_parcela_min: parcelaFinMin,
-        valor_parcela_max: parcelaFinMax,
-      },
-    },
+    formas_pagamento: calcularFormasPagamento(pvTotal),
   }
 }
 

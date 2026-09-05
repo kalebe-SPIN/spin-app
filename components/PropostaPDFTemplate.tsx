@@ -2,6 +2,7 @@
 
 import { forwardRef } from 'react'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
+import { calcularFormasPagamento } from '@/lib/precificacao/calcular'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
 
 type Props = {
@@ -91,6 +92,12 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
     // Compat com blocos que ainda leem os nomes antigos
     const temDesconto = temAjuste
     const valorDesconto = valorAjuste
+
+    // Kalebe 2026-09-02: formas de pagamento reagem ao PV FINAL (com
+    // extras + ajuste + campanha), não ao PV bruto do calcularProposta.
+    // Antes o à vista PIX, cartão 12× e financiado eram exibidos com o
+    // valor original — não refletia desconto/acréscimo aplicado depois.
+    const formasPgto = calcularFormasPagamento(pvFinal)
 
     const roiAnos = economiaMesEstimada > 0 ? pvFinal / (economiaMesEstimada * 12) : 0
 
@@ -451,19 +458,19 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
             <div style={E.grid3}>
               <CardPgto
                 titulo="À vista PIX"
-                valor={`R$ ${fmt(proposta.formas_pagamento.a_vista_pix.valor)}`}
-                sub={`${proposta.formas_pagamento.a_vista_pix.desconto_pct}% de desconto`}
+                valor={`R$ ${fmt(formasPgto.a_vista_pix.valor)}`}
+                sub={`${formasPgto.a_vista_pix.desconto_pct}% de desconto`}
                 destaque
               />
               <CardPgto
-                titulo={`Cartão em ${proposta.formas_pagamento.parcelado_cartao.parcelas}×`}
-                valor={`R$ ${fmt(proposta.formas_pagamento.parcelado_cartao.valor_parcela)}/mês`}
-                sub={`Total: R$ ${fmt(proposta.formas_pagamento.parcelado_cartao.valor_total)}`}
+                titulo={`Cartão em ${formasPgto.parcelado_cartao.parcelas}×`}
+                valor={`R$ ${fmt(formasPgto.parcelado_cartao.valor_parcela)}/mês`}
+                sub={`Total: R$ ${fmt(formasPgto.parcelado_cartao.valor_total)}`}
               />
               <CardPgto
-                titulo={`Financiado ${proposta.formas_pagamento.financiado_estimado.parcelas}×`}
-                valor={`R$ ${fmt(proposta.formas_pagamento.financiado_estimado.valor_parcela_min)}`}
-                sub={`até R$ ${fmt(proposta.formas_pagamento.financiado_estimado.valor_parcela_max)}/mês · sujeito à análise`}
+                titulo={`Financiado ${formasPgto.financiado_estimado.parcelas}×`}
+                valor={`R$ ${fmt(formasPgto.financiado_estimado.valor_parcela_min)}`}
+                sub={`até R$ ${fmt(formasPgto.financiado_estimado.valor_parcela_max)}/mês · sujeito à análise`}
               />
             </div>
 
