@@ -243,9 +243,15 @@ export async function precificarComplementosCC(
       }
     }
     if (!dps || !dps.ok) {
+      // Kalebe 2026-09-06 (3ª rodada): DPS CA usa modelo básico (275V 20kA
+      // pra 220V, 380V pra tri). NÃO cobrar pelo mais caro — o DPS de 1100V
+      // é CC solar (custa R$ 5.685) e não faz sentido em projeto residencial
+      // normal (R$ 90). Filtra fora modelos "1100V", "600V" e "50kA/200kA"
+      // (esses são CC ou casos especiais).
       dps = await buscarProdutoComPreco(supabase, hojeIso, {
         categorias: ['dps'],
-        pegarMaiorPreco: true,
+        naoConter: ['1100V', '1100Vca', '600V', '600Vcc', '50kA/200kA', '50ka200ka'],
+        pegarMaiorPreco: false,  // menor preço com preço válido
       })
     }
     // Kalebe 2026-09-06 (2ª rodada de reforço): busca AMPLA por palavra-chave.
@@ -293,6 +299,10 @@ async function buscarProdutoComPreco(
   filtro: {
     categorias: string[]
     contem?: string[]
+    /** Kalebe 2026-09-06: exclui candidatos que contêm essas strings no
+     *  modelo/descrição. Usado pra descartar variantes de "topo" que não
+     *  fazem sentido no contexto (ex: DPS 1100V CC quando busca é CA). */
+    naoConter?: string[]
     pegarMaiorPreco?: boolean
   },
 ): Promise<BuscaResult> {
@@ -335,11 +345,18 @@ async function buscarProdutoComPreco(
   }
 
   const normalizar = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-  const preferidos = lista.filter((p: any) => {
+  // Kalebe 2026-09-06: primeiro corta o LIXO (naoConter) — DPS 1100V é CC,
+  // não faz sentido pra dimensionamento CA por exemplo.
+  const semLixo = lista.filter((p: any) => {
+    if (!filtro.naoConter || filtro.naoConter.length === 0) return true
+    const alvo = normalizar(`${p.modelo || ''} ${p.subcategoria || ''} ${p.descricao_curta || ''}`)
+    return !filtro.naoConter.some((k) => alvo.includes(normalizar(k)))
+  })
+  const preferidos = semLixo.filter((p: any) => {
     const alvo = normalizar(`${p.modelo || ''} ${p.subcategoria || ''} ${p.descricao_curta || ''}`)
     return !filtro.contem || filtro.contem.every((k) => alvo.includes(normalizar(k)))
   })
-  const candidatos = preferidos.length > 0 ? preferidos : lista
+  const candidatos = preferidos.length > 0 ? preferidos : semLixo.length > 0 ? semLixo : lista
 
   const cotacoes: Array<{ id: string; modelo: string; preco: number }> = []
   for (const escolhido of candidatos) {
@@ -353,12 +370,15 @@ async function buscarProdutoComPreco(
     const preco = Number((precos || [])[0]?.preco_venda) || 0
     if (preco > 0) {
       const modelo = usandoInativos ? `${escolhido.modelo} (inativo)` : escolhido.modelo
-      if (!filtro.pegarMaiorPreco) return { ok: true, id: escolhido.id, modelo, preco }
       cotacoes.push({ id: escolhido.id, modelo, preco })
     }
   }
   if (cotacoes.length > 0) {
-    const escolhida = cotacoes.reduce((a, b) => (a.preco >= b.preco ? a : b))
+    // Kalebe 2026-09-06: pegarMaiorPreco true = MAIOR (estrutura, margem seg),
+    // false = MENOR (DPS/disjuntor — dimensionamento já garante margem).
+    const escolhida = filtro.pegarMaiorPreco
+      ? cotacoes.reduce((a, b) => (a.preco >= b.preco ? a : b))
+      : cotacoes.reduce((a, b) => (a.preco <= b.preco ? a : b))
     return { ok: true, ...escolhida }
   }
 
