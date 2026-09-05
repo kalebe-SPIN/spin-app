@@ -52,6 +52,32 @@ export default async function DashboardPage() {
   // executar OS na agenda. Manda direto pra /agenda até criarmos DashboardCampo.
   if (modo === 'profissional_campo') redirect('/agenda')
 
+  // Kalebe 2026-09-06: Dashboard do Representante Spin — espelha a proposta
+  // de credenciamento (acelerador, portfólio, carteira, níveis).
+  const ehRepresentante = profile?.role === 'representante' || profile?.role === 'consultor'
+  if (ehRepresentante && modo !== 'admin') {
+    const { DashboardRepresentante } = await import('@/components/DashboardRepresentante')
+    const { agregarDashboardRepresentante } = await import('@/lib/representante-agregacoes')
+    const dados = await agregarDashboardRepresentante(supabase, user.id)
+    if (dados) {
+      return (
+        <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
+          <div className="max-w-screen-2xl mx-auto">
+            <header className="mb-8">
+              <h1 className="text-3xl md:text-4xl font-black text-white">
+                Olá, <span className="text-sol">{profile?.nome_completo?.split(' ')[0] || 'parceiro'}</span>
+              </h1>
+              <p className="text-white/60 mt-1 text-sm">
+                Painel do Representante Spin · atualizado em tempo real
+              </p>
+            </header>
+            <DashboardRepresentante dados={dados} />
+          </div>
+        </main>
+      )
+    }
+  }
+
   // Painel de equipe (só admin) — fetch inicial. Depois o client subscribe
   // em postgres_changes e atualiza em tempo real.
   const dadosEquipe = mostraAdmin ? await buscarPainelEquipeAction() : null

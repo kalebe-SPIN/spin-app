@@ -150,6 +150,32 @@ export function OrcamentoClient({
 
   async function gerarPDF() {
     if (!templateRef.current) return
+    // Kalebe 2026-09-06 (§8.1 Prompt 12): trava item R$ 0,00.
+    // Bloqueia geração de PDF enquanto houver item da composição com
+    // preço zero ou "não cadastrado" — vazamento silencioso de custo.
+    const itensZerados: string[] = []
+    const complementos: any[] = projeto.lista_complementos_cc?.itens || []
+    for (const c of complementos) {
+      if (!Number(c.preco_unitario)) {
+        const qtd = Number(c.qtd) || 0
+        itensZerados.push(`${c.categoria || 'item'} (${qtd} ${c.unidade || 'un'})`)
+      }
+    }
+    for (const i of listaCaEfetiva) {
+      if (!Number(i.preco_unitario) && Number(i.qtd) > 0) {
+        itensZerados.push(`${i.descricao} (${i.qtd} ${i.unidade || 'un'})`)
+      }
+    }
+    if (itensZerados.length > 0) {
+      setErro(
+        `❌ ${itensZerados.length === 1 ? 'O item' : 'Os itens'} ` +
+        `${itensZerados.slice(0, 3).join(', ')}` +
+        `${itensZerados.length > 3 ? ` (+${itensZerados.length - 3})` : ''}` +
+        ` não ${itensZerados.length === 1 ? 'tem' : 'têm'} preço cadastrado. ` +
+        `O orçamento não pode ser emitido até que ${itensZerados.length === 1 ? 'seja corrigido' : 'sejam corrigidos'} em /admin/catalogo.`,
+      )
+      return
+    }
     setGerando(true)
     setErro(null)
     try {
