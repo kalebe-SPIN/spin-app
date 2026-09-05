@@ -672,7 +672,7 @@ function ComposicaoCustosAdmin({
         <div className="space-y-1 text-xs text-white/70">
           <Linha label={`Margem (${proposta.memoria_calculo.margem_pct}%)`} valor={fmt(proposta.margem)} />
           <Linha label={`Comissão vendedor (${proposta.memoria_calculo.comissao_pct}%)`} valor={fmt(proposta.comissao_vendedor)} />
-          <Linha label={`Impostos Simples (${proposta.memoria_calculo.impostos_pct}% — só sobre base impostável)`} valor={fmt(proposta.impostos_simples)} />
+          <Linha label={`Impostos Simples (${proposta.memoria_calculo.impostos_pct}% sobre a nota Spin = PV − kit WEG)`} valor={fmt(proposta.impostos_simples)} />
         </div>
       </div>
 

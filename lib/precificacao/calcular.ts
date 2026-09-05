@@ -142,27 +142,36 @@ export function calcularProposta(entradas: Entradas, params: ParametrosVigentes)
   // 6. BASE IMPOSTAVEL (tudo menos kit WEG)
   const baseImpostavel = subtotalListaCa + frete + projetoArt + instalacao
 
-  // 7. MARGEM (sobre PV — método invertido: PV = custo / (1 - margem%))
+  // 7. MARGEM + COMISSÃO + IMPOSTOS (método invertido).
+  //    Kalebe 2026-09-02: imposto Simples agora incide SÓ sobre a "nota Spin"
+  //    (PV − kit WEG), com alíquota 15%. Antes era 6% sobre o PV total —
+  //    ajuste proporcional que dava ~15% sobre a nota, mas menos preciso.
+  //    Motivo: a nota fiscal dos equipamentos WEG é emitida pelo fornecedor
+  //    direto ao cliente (não passa pela Spin), então só a diferença (Lista
+  //    CA + serviços + margem + comissão) entra na tributação da Spin.
+  //
+  //    Álgebra do método invertido:
+  //      PV = kit + baseImp + margem·PV + comissao·PV + imposto·(PV − kit)
+  //      PV(1 − (m+c+i)/100) = kit·(1 − i/100) + baseImp
+  //      PV = [kit·(1 − i/100) + baseImp] / (1 − (m+c+i)/100)
   const margemPct = getNum(params, 'margem_contribuicao_perc', 20)
   const comissaoPct = getNum(params, 'comissao_vendedor_perc', 5)
-  const impostosPct = getNum(params, 'aliquota_simples_perc', 6)
+  const impostosPct = getNum(params, 'aliquota_simples_perc', 15)
 
-  // Custo total antes de acréscimos
   const custoTotal = kitWegComFator + baseImpostavel
-
-  // PV = custo / (1 - (margem + comissao + impostos)/100)
   const percentualsAcrescimos = (margemPct + comissaoPct + impostosPct) / 100
-  const pvTotal = custoTotal / (1 - percentualsAcrescimos)
+  const pvTotal = (kitWegComFator * (1 - impostosPct / 100) + baseImpostavel) / (1 - percentualsAcrescimos)
 
   const margem = pvTotal * (margemPct / 100)
   const comissaoVendedor = pvTotal * (comissaoPct / 100)
-  const impostosSimples = baseImpostavel > 0
-    ? (pvTotal - kitWegComFator) * (impostosPct / 100)
-    : 0
+  // Imposto = 15% sobre a nota Spin (PV − kit WEG). Fica coerente com a
+  // nova fórmula do PV — antes era exibido isso mas embutido diferente.
+  const impostosSimples = (pvTotal - kitWegComFator) * (impostosPct / 100)
 
-  // Margem mínima aceita — pra calcular desconto máximo
+  // Margem mínima aceita — pra calcular desconto máximo (mesma fórmula nova)
   const margemMinima = getNum(params, 'margem_minima_negociacao_perc', 15)
-  const pvMinimo = custoTotal / (1 - (margemMinima + comissaoPct + impostosPct) / 100)
+  const pvMinimo = (kitWegComFator * (1 - impostosPct / 100) + baseImpostavel)
+    / (1 - (margemMinima + comissaoPct + impostosPct) / 100)
   const descontoMaxNegociacao = pvTotal - pvMinimo
 
   // Pagamento
