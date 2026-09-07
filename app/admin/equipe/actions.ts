@@ -163,9 +163,17 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // Sem filtro pra não perder projetos criados por admins nem por representantes
   // que ficaram inativos depois. Filtra depois no memória agrupando por
   // consultor_id que aparece de fato.
+  // Kalebe 2026-09-07: `tipos_projeto` (plural) NÃO existe na tabela.
+  // Os tipos vêm de `projeto_itens.tipo` (relacional). Nested select
+  // do PostgREST puxa os itens junto na mesma round-trip.
   const projetosPromise = supabase
     .from('projetos')
-    .select('id, consultor_id, cliente_id, cliente_razao_social, cliente_cpf_cnpj, status, pv_total, orcamento_final, tipos_projeto, ve_recarga_selecionada, created_at, updated_at, status_atualizado_em')
+    .select(`
+      id, consultor_id, cliente_id, cliente_razao_social, cliente_cpf_cnpj,
+      status, pv_total, orcamento_final, tipo_projeto, ve_recarga_selecionada,
+      created_at, updated_at, status_atualizado_em,
+      projeto_itens(tipo, status)
+    `)
 
   // Kalebe 2026-08-27: painel mostrava 0 pra Maria Eduarda porque só
   // buscava telhados de quem tem role vendedor_servicos. Como admins
@@ -431,8 +439,14 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     const doc = String(p.cliente_cpf_cnpj || '').replace(/\D/g, '')
     if (doc.length === 14) cardPerfil.pj += 1
     else cardPerfil.pf += 1
-    // Tipo de projeto
-    const tipos: string[] = Array.isArray(p.tipos_projeto) ? p.tipos_projeto : []
+    // Tipos de projeto: prioridade projeto_itens (múltiplos), fallback
+    // tipo_projeto (singular, legado). Filtra itens removidos.
+    const itensAtivos = Array.isArray(p.projeto_itens)
+      ? p.projeto_itens.filter((i: any) => i.status !== 'removido')
+      : []
+    const tipos: string[] = itensAtivos.length > 0
+      ? itensAtivos.map((i: any) => String(i.tipo || ''))
+      : (p.tipo_projeto ? [String(p.tipo_projeto)] : [])
     const jaContou = new Set<string>()
     for (const t of tipos) {
       const k = String(t).toLowerCase()
