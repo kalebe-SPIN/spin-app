@@ -141,10 +141,15 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   const fimMesPassadoIso = fimMesPassado.toISOString()
 
   // ─── Perfis comerciais + admin (admin também vende) ────────────────────────
+  // Kalebe 2026-09-07: 'representante' é o perfil unificado (substituiu
+  // 'vendedor_servicos'). Ambos os roles caem no bucket 'representantes'
+  // pra compat com usuários legados que ainda não foram migrados no banco.
+  // 'vendedoresServ' fica vazio pra não duplicar — bloco vai sumir da UI
+  // se não houver ninguém com role exclusivamente 'vendedor_servicos'.
   const { data: perfis } = await supabase
     .from('profiles')
     .select('id, nome_completo, role, ativo')
-    .in('role', ['admin', 'representante', 'representante', 'profissional_campo'])
+    .in('role', ['admin', 'representante', 'vendedor_servicos', 'profissional_campo'])
 
   const perfilPorId = new Map<string, { nome: string; role: string }>()
   for (const p of perfis || []) {
@@ -152,11 +157,16 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   }
 
   const admins = (perfis || []).filter((p) => p.role === 'admin' && p.ativo)
-  const representantes = (perfis || []).filter((p) => p.role === 'representante' && p.ativo)
-  const vendedoresServ = (perfis || []).filter((p) => p.role === 'representante' && p.ativo)
+  // Representantes = role 'representante' (novo) + 'vendedor_servicos' (legado)
+  const representantes = (perfis || []).filter(
+    (p) => (p.role === 'representante' || p.role === 'vendedor_servicos') && p.ativo,
+  )
+  // vendedoresServ propositalmente vazio — o painel Client detecta length=0
+  // e não renderiza o bloco. Legado unificado no bucket de representantes.
+  const vendedoresServ: any[] = []
   const profissionaisCampo = (perfis || []).filter((p) => p.role === 'profissional_campo' && p.ativo)
 
-  // Vendedores solar = representantes + admins (Kalebe também fecha venda).
+  // Vendedores solar = representantes + admins (admin também fecha venda).
   const vendedoresSolar = [...admins, ...representantes]
 
   // ─── Puxa TODOS os projetos (não filtra por consultor_id) ─────────────────
@@ -336,26 +346,38 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   ]
 
   // ─── Rank consolidado de vendedores ───────────────────────────────────────
-  const rankVendedores: LinhaRank[] = [
-    ...metricasRepres.map((r) => ({
+  // Kalebe 2026-09-07: deduplica por id (previne duplicata caso o mesmo
+  // usuário caia em metricasRepres E metricasVend antes da unificação).
+  const rankMap = new Map<string, LinhaRank>()
+  for (const r of metricasRepres) {
+    // Se o mesmo id já veio em metricasVend, soma as vendas de telhado
+    const vendasTelhados = (telhadosData || [])
+      .filter((t: any) => t.vendedor_id === r.id && t.fase === 'fechado' && (t.updated_at || '') >= inicioMesIso)
+      .reduce((s: number, t: any) => s + (Number(t.proposta_valor) || 0), 0)
+    rankMap.set(r.id, {
       id: r.id,
       nome: r.nome,
       role: (perfilPorId.get(r.id)?.role === 'admin' ? 'admin' : 'representante') as 'representante' | 'admin',
-      vendido: r.vendas_valor,
+      vendido: r.vendas_valor + vendasTelhados,
       em_proposta: r.propostas_enviadas,
       meta: 0,
-    })),
-    ...metricasVend.map((v) => ({
+    })
+  }
+  for (const v of metricasVend) {
+    if (rankMap.has(v.id)) continue  // já contabilizado
+    const vendasTelhados = (telhadosData || [])
+      .filter((t: any) => t.vendedor_id === v.id && t.fase === 'fechado' && (t.updated_at || '') >= inicioMesIso)
+      .reduce((s: number, t: any) => s + (Number(t.proposta_valor) || 0), 0)
+    rankMap.set(v.id, {
       id: v.id,
       nome: v.nome,
       role: 'representante' as const,
-      vendido: (telhadosData || [])
-        .filter((t: any) => t.vendedor_id === v.id && t.fase === 'fechado' && (t.updated_at || '') >= inicioMesIso)
-        .reduce((s: number, t: any) => s + (Number(t.proposta_valor) || 0), 0),
+      vendido: vendasTelhados,
       em_proposta: v.em_proposta,
       meta: 0,
-    })),
-  ].sort((a, b) => b.vendido - a.vendido)
+    })
+  }
+  const rankVendedores: LinhaRank[] = Array.from(rankMap.values()).sort((a, b) => b.vendido - a.vendido)
 
   // ─── Comparativo mês vs mês passado ───────────────────────────────────────
   const projetosFechadosPassado = todosProjetos.filter((p: any) =>

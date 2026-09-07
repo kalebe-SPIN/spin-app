@@ -176,7 +176,7 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Consultores solar */}
         <BlocoTipo
-          titulo="☀️ Consultor Solar"
+          titulo="⭐ Representante Spin"
           sub={`${dados.representantes.length} ativo${dados.representantes.length === 1 ? '' : 's'}`}
           cor="sol"
           vazio={dados.representantes.length === 0}
@@ -186,17 +186,21 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
           ))}
         </BlocoTipo>
 
-        {/* Vendedores de serviços */}
-        <BlocoTipo
-          titulo="🧽 Vendedor de Serviços"
-          sub={`${dados.vendedoresServ.length} ativo${dados.vendedoresServ.length === 1 ? '' : 's'}`}
-          cor="weg-azul"
-          vazio={dados.vendedoresServ.length === 0}
-        >
-          {dados.vendedoresServ.map((v) => (
-            <ItemVend key={v.id} v={v} onClick={() => setAberto({ tipo: 'vendedor_serv', id: v.id })} />
-          ))}
-        </BlocoTipo>
+        {/* Vendedores de serviços — só renderiza se ainda houver usuários
+            com role legado 'vendedor_servicos' (não unificados). Ficou aqui
+            só pra transição — se tudo migrou pra representante, some. */}
+        {dados.vendedoresServ.length > 0 && (
+          <BlocoTipo
+            titulo="🧽 Vendedor de Serviços (legado)"
+            sub={`${dados.vendedoresServ.length} ativo${dados.vendedoresServ.length === 1 ? '' : 's'}`}
+            cor="weg-azul"
+            vazio={false}
+          >
+            {dados.vendedoresServ.map((v) => (
+              <ItemVend key={v.id} v={v} onClick={() => setAberto({ tipo: 'vendedor_serv', id: v.id })} />
+            ))}
+          </BlocoTipo>
+        )}
 
         {/* Profissionais de campo */}
         <BlocoTipo
@@ -319,7 +323,7 @@ function ModalDrillDown({ dados, selecao, onFechar }: {
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold">
-              {selecao.tipo === 'representante' ? 'Consultor Solar' : selecao.tipo === 'vendedor_serv' ? 'Vendedor de Serviços' : 'Profissional de Campo'}
+              {selecao.tipo === 'representante' ? 'Representante Spin' : selecao.tipo === 'vendedor_serv' ? 'Vendedor de Serviços' : 'Profissional de Campo'}
             </p>
             <p className="text-lg font-black text-white">{pessoa.nome}</p>
           </div>
