@@ -95,6 +95,12 @@ export default async function AdminHomePage() {
             titulo="Campanhas do mês"
             desc="Kits com preço promocional pré-configurado. Consultor oferece direto do card do projeto, PDF sai com selo de condição especial."
           />
+          <AdminCard
+            href="/admin/representantes"
+            icon="⭐"
+            titulo="Programa de Representantes"
+            desc="Ranking, métricas do mês, folha estimada, alertas fiscais (RBT12 × faixa Simples). Espelha a proposta de credenciamento."
+          />
         </Grupo>
 
         {/* Grupo 3: Automação e IA */}
