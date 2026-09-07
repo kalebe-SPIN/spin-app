@@ -45,7 +45,9 @@ begin
      and p.url_pdf_proposta is not null;
 
   -- Etiquetas = tipos únicos dos projeto_itens de todos os projetos do cliente
-  select coalesce(array_agg(distinct tipo order by tipo), '{}'::text[])
+  -- Kalebe 2026-09-07: pi.tipo é ENUM tipo_item_projeto — cast pra text
+  -- pra o coalesce com '{}'::text[] funcionar (Postgres não converte enum[]).
+  select coalesce(array_agg(distinct pi.tipo::text order by pi.tipo::text), '{}'::text[])
     into v_etiquetas
     from public.projeto_itens pi
     join public.projetos p on p.id = pi.projeto_id
