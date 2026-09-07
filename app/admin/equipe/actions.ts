@@ -165,7 +165,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // consultor_id que aparece de fato.
   const projetosPromise = supabase
     .from('projetos')
-    .select('id, consultor_id, cliente_id, cliente_tipo, cliente_razao_social, status, pv_total, orcamento_final, tipos_projeto, ve_recarga_selecionada, created_at, updated_at, status_atualizado_em')
+    .select('id, consultor_id, cliente_id, cliente_razao_social, cliente_cpf_cnpj, status, pv_total, orcamento_final, tipos_projeto, ve_recarga_selecionada, created_at, updated_at, status_atualizado_em')
 
   // Kalebe 2026-08-27: painel mostrava 0 pra Maria Eduarda porque só
   // buscava telhados de quem tem role vendedor_servicos. Como admins
@@ -426,9 +426,10 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     on_grid: 0, hibrido: 0, limpeza: 0, om: 0, ve: 0, outros: 0,
   }
   for (const p of leadRepresentante.values()) {
-    // PJ vs PF — heurística: cliente_tipo = 'pj'|'pf', senão infere pelo CNPJ
-    const tipo = String(p.cliente_tipo || '').toLowerCase()
-    if (tipo === 'pj' || tipo === 'juridica') cardPerfil.pj += 1
+    // PJ vs PF — heurística: campo cliente_cpf_cnpj é unificado.
+    // Se tem 14 dígitos = CNPJ (PJ); se tem 11 = CPF (PF); vazio = PF default.
+    const doc = String(p.cliente_cpf_cnpj || '').replace(/\D/g, '')
+    if (doc.length === 14) cardPerfil.pj += 1
     else cardPerfil.pf += 1
     // Tipo de projeto
     const tipos: string[] = Array.isArray(p.tipos_projeto) ? p.tipos_projeto : []
