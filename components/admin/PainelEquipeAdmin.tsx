@@ -82,12 +82,64 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
         </div>
       </div>
 
-      {/* KPIs consolidados da equipe inteira */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <KpiTotal label="Projetos criados" valor={t.projetos_criados} cor="text-sol" hint="mês corrente" />
-        <KpiTotal label="Contratos assinados" valor={t.contratos_assinados} cor="text-verde" hint={fmtBRL(t.vendas_valor)} />
-        <KpiTotal label="Telhados no CRM" valor={t.telhados_prospectados} cor="text-weg-azul" hint={`${t.fechados_servicos} fechados`} />
-        <KpiTotal label="OS executadas" valor={t.os_executadas} cor="text-coral" hint={fmtBRL(t.faturamento_execucao)} />
+      {/* KPIs consolidados — 4 cards do mês (Kalebe 2026-09-06) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        {/* Card 1 — PROJETOS */}
+        <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+          <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2">Projetos do mês</p>
+          <div className="flex items-baseline gap-3 mb-3">
+            <p className="text-4xl font-black text-sol">{dados.cardProjetos.abertos_mes}</p>
+            <p className="text-[10px] text-white/40 uppercase tracking-wider">abertos</p>
+          </div>
+          <div className="space-y-1 text-xs pt-3 border-t border-white/5">
+            <MiniLinha label="Com proposta" valor={String(dados.cardProjetos.com_proposta)} />
+            <MiniLinha label="Valor total" valor={fmtBRL(dados.cardProjetos.valor_total)} destaque="sol" />
+          </div>
+        </div>
+
+        {/* Card 2 — PERFIL DAS PROPOSTAS (substitui Telhados) */}
+        <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+          <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2">Perfil das propostas</p>
+          <div className="flex items-baseline gap-3 mb-3">
+            <p className="text-4xl font-black text-weg-azul">{dados.cardPerfil.total_propostas}</p>
+            <p className="text-[10px] text-white/40 uppercase tracking-wider">total (1 por lead)</p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] pt-3 border-t border-white/5">
+            <MiniLinha label="PJ" valor={String(dados.cardPerfil.pj)} />
+            <MiniLinha label="PF" valor={String(dados.cardPerfil.pf)} />
+            <MiniLinha label="On-grid" valor={String(dados.cardPerfil.on_grid)} />
+            <MiniLinha label="Híbrido" valor={String(dados.cardPerfil.hibrido)} />
+            <MiniLinha label="Limpeza" valor={String(dados.cardPerfil.limpeza)} />
+            <MiniLinha label="O&M" valor={String(dados.cardPerfil.om)} />
+          </div>
+        </div>
+
+        {/* Card 3 — NEGÓCIOS (era Contratos) */}
+        <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+          <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2">Negócios do mês</p>
+          <div className="flex items-baseline gap-3 mb-3">
+            <p className="text-4xl font-black text-verde">{dados.cardNegocios.total}</p>
+            <p className="text-[10px] text-white/40 uppercase tracking-wider">propostas</p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] pt-3 border-t border-white/5">
+            <MiniLinha label="Em negociação" valor={String(dados.cardNegocios.em_negociacao)} destaque="sol" />
+            <MiniLinha label="Fechadas" valor={String(dados.cardNegocios.fechados)} destaque="verde" />
+            <MiniLinha label="Perdidas" valor={String(dados.cardNegocios.perdidos)} destaque="coral" />
+            <MiniLinha label="Paradas (>7d)" valor={String(dados.cardNegocios.parados)} destaque="coral" />
+          </div>
+        </div>
+
+        {/* Card 4 — OS executadas (mantido) */}
+        <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+          <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2">OS executadas</p>
+          <div className="flex items-baseline gap-3 mb-3">
+            <p className="text-4xl font-black text-coral">{t.os_executadas}</p>
+            <p className="text-[10px] text-white/40 uppercase tracking-wider">no mês</p>
+          </div>
+          <div className="pt-3 border-t border-white/5">
+            <MiniLinha label="Faturamento" valor={fmtBRL(t.faturamento_execucao)} destaque="coral" />
+          </div>
+        </div>
       </div>
 
       {/* ═══ Painel executivo ═══ */}
@@ -468,6 +520,25 @@ function RankVendedores({ rank }: { rank: LinhaRank[] }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+/** Kalebe 2026-09-06: linha compacta pra breakdown dentro dos 4 KPIs do topo */
+function MiniLinha({ label, valor, destaque }: {
+  label: string
+  valor: string
+  destaque?: 'sol' | 'verde' | 'coral' | 'weg-azul'
+}) {
+  const cor = destaque === 'sol' ? 'text-sol'
+    : destaque === 'verde' ? 'text-verde'
+    : destaque === 'coral' ? 'text-coral'
+    : destaque === 'weg-azul' ? 'text-weg-azul'
+    : 'text-white'
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-white/50">{label}</span>
+      <span className={`${cor} font-mono font-semibold`}>{valor}</span>
     </div>
   )
 }

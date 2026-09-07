@@ -84,6 +84,30 @@ export type PainelEquipe = {
     os_executadas: number
     faturamento_execucao: number
   }
+  /** Kalebe 2026-09-06: reforma dos 4 cards do topo do PainelEquipeAdmin */
+  cardProjetos: {
+    abertos_mes: number       // total de projetos criados no mês
+    com_proposta: number      // qtos leads têm ao menos uma proposta enviada
+    valor_total: number       // soma das propostas (uma por lead: a de MENOR valor)
+  }
+  cardPerfil: {
+    total_propostas: number   // total de propostas no mês (1 por lead)
+    pj: number
+    pf: number
+    on_grid: number
+    hibrido: number
+    limpeza: number
+    om: number
+    ve: number
+    outros: number
+  }
+  cardNegocios: {
+    em_negociacao: number
+    fechados: number
+    perdidos: number
+    parados: number           // sem atualização há > 7 dias
+    total: number
+  }
   faturamentoPorLinha: FatiaFaturamento[]
   funil: EtapaFunil[]
   rankVendedores: LinhaRank[]
@@ -141,7 +165,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // consultor_id que aparece de fato.
   const projetosPromise = supabase
     .from('projetos')
-    .select('id, consultor_id, status, pv_total, created_at, updated_at, status_atualizado_em')
+    .select('id, consultor_id, cliente_id, cliente_tipo, cliente_razao_social, status, pv_total, orcamento_final, tipos_projeto, ve_recarga_selecionada, created_at, updated_at, status_atualizado_em')
 
   // Kalebe 2026-08-27: painel mostrava 0 pra Maria Eduarda porque só
   // buscava telhados de quem tem role vendedor_servicos. Como admins
@@ -353,10 +377,114 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     os_mes_passado: execPassado.length,
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // Kalebe 2026-09-06: 3 cards novos no topo (Projetos / Perfil / Negócios)
+  // ═══════════════════════════════════════════════════════════
+  const projetosMes = todosProjetos.filter((p: any) => p.created_at >= inicioMesIso)
+
+  // Card 1 — PROJETOS
+  //   abertos_mes: total no mês
+  //   com_proposta: qtos LEADS únicos têm >= 1 proposta enviada
+  //   valor_total: soma das propostas — uma por lead (a de MENOR valor)
+  const STATUS_PROPOSTA_EMITIDA = new Set([
+    'proposta_enviada', 'negociando', 'em_fechamento',
+    'vendido', 'aceito', 'em_homologacao', 'em_execucao',
+    'instalado', 'ativo_pos_venda', 'perdido',
+  ])
+  const propostasPorLead = new Map<string, number[]>()  // cliente_id → valores
+  for (const p of projetosMes) {
+    if (!STATUS_PROPOSTA_EMITIDA.has(p.status)) continue
+    const cid = String(p.cliente_id || p.cliente_razao_social || p.id)
+    const valor = Number(p.pv_total || p.orcamento_final?.pv_total) || 0
+    if (valor <= 0) continue
+    const arr = propostasPorLead.get(cid) || []
+    arr.push(valor)
+    propostasPorLead.set(cid, arr)
+  }
+  const cardProjetos = {
+    abertos_mes: projetosMes.length,
+    com_proposta: propostasPorLead.size,
+    valor_total: Array.from(propostasPorLead.values())
+      .reduce((s, valores) => s + Math.min(...valores), 0),
+  }
+
+  // Card 2 — PERFIL DAS PROPOSTAS (só leads com proposta enviada, 1 por lead)
+  //   PJ × PF · tipos (on-grid, híbrido, limpeza, O&M, VE)
+  //   Pega, pra cada lead, o projeto de MENOR valor (mesma regra)
+  const leadRepresentante = new Map<string, any>()
+  for (const p of projetosMes) {
+    if (!STATUS_PROPOSTA_EMITIDA.has(p.status)) continue
+    const cid = String(p.cliente_id || p.cliente_razao_social || p.id)
+    const valor = Number(p.pv_total || p.orcamento_final?.pv_total) || 0
+    if (valor <= 0) continue
+    const atual = leadRepresentante.get(cid)
+    if (!atual || valor < Number(atual.pv_total || 0)) leadRepresentante.set(cid, p)
+  }
+  const cardPerfil = {
+    total_propostas: leadRepresentante.size,
+    pj: 0, pf: 0,
+    on_grid: 0, hibrido: 0, limpeza: 0, om: 0, ve: 0, outros: 0,
+  }
+  for (const p of leadRepresentante.values()) {
+    // PJ vs PF — heurística: cliente_tipo = 'pj'|'pf', senão infere pelo CNPJ
+    const tipo = String(p.cliente_tipo || '').toLowerCase()
+    if (tipo === 'pj' || tipo === 'juridica') cardPerfil.pj += 1
+    else cardPerfil.pf += 1
+    // Tipo de projeto
+    const tipos: string[] = Array.isArray(p.tipos_projeto) ? p.tipos_projeto : []
+    const jaContou = new Set<string>()
+    for (const t of tipos) {
+      const k = String(t).toLowerCase()
+      if (k.includes('hibrido') || k.includes('híbrido') || k.includes('bess')) {
+        if (!jaContou.has('hibrido')) { cardPerfil.hibrido += 1; jaContou.add('hibrido') }
+      } else if (k.includes('limpeza')) {
+        if (!jaContou.has('limpeza')) { cardPerfil.limpeza += 1; jaContou.add('limpeza') }
+      } else if (k === 'om' || k.includes('o&m') || k.includes('manutencao') || k.includes('manutenção')) {
+        if (!jaContou.has('om')) { cardPerfil.om += 1; jaContou.add('om') }
+      } else if (k.includes('ve_') || k.includes('carregador') || k.includes('recarga')) {
+        if (!jaContou.has('ve')) { cardPerfil.ve += 1; jaContou.add('ve') }
+      } else if (k.includes('on_grid') || k.includes('on-grid') || k.includes('solar') || k.includes('sistema') || k === 'fv') {
+        if (!jaContou.has('on_grid')) { cardPerfil.on_grid += 1; jaContou.add('on_grid') }
+      }
+    }
+    // Se nenhum tipo bateu e o projeto tem valor, conta como on-grid (default histórico)
+    if (jaContou.size === 0 && !p.ve_recarga_selecionada) cardPerfil.on_grid += 1
+    else if (jaContou.size === 0 && p.ve_recarga_selecionada) cardPerfil.ve += 1
+  }
+
+  // Card 3 — NEGÓCIOS (breakdown de status das propostas no mês)
+  //   Parado = sem update há > 7 dias E ainda em status ativo (proposta/negociando)
+  const STATUS_PERDIDOS = new Set(['perdido', 'perdida', 'cancelado', 'cancelada', 'desistiu'])
+  const seteDiasAtras = Date.now() - 7 * 24 * 3600 * 1000
+  const cardNegocios = {
+    em_negociacao: 0,
+    fechados: 0,
+    perdidos: 0,
+    parados: 0,
+    total: 0,
+  }
+  for (const p of leadRepresentante.values()) {
+    const status = String(p.status || '').toLowerCase()
+    const emNegoc = STATUS_PROPOSTA.includes(status)
+    const fechado = STATUS_FECHADOS.includes(status)
+    const perdido = STATUS_PERDIDOS.has(status)
+    if (fechado) cardNegocios.fechados += 1
+    else if (perdido) cardNegocios.perdidos += 1
+    else if (emNegoc) {
+      cardNegocios.em_negociacao += 1
+      const updated = new Date(p.status_atualizado_em || p.updated_at || p.created_at).getTime()
+      if (updated < seteDiasAtras) cardNegocios.parados += 1
+    }
+    cardNegocios.total += 1
+  }
+
   return {
     representantes: metricasRepres,
     vendedoresServ: metricasVend,
     profissionaisCampo: metricasCampo,
+    cardProjetos,
+    cardPerfil,
+    cardNegocios,
     totais: {
       projetos_criados: metricasRepres.reduce((s, r) => s + r.projetos_criados, 0),
       propostas_enviadas: metricasRepres.reduce((s, r) => s + r.propostas_enviadas, 0),
