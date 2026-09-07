@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ClienteForm } from '@/components/ClienteForm'
 import { TimelineInteracoes } from '@/components/TimelineInteracoes'
 import { FichaClienteCard } from '@/components/FichaClienteCard'
+import { FichaComercialCliente } from '@/components/FichaComercialCliente'
 import { TelhadoClienteCard } from '@/components/TelhadoClienteCard'
 import { TelhadoRegistrosCard } from '@/components/TelhadoRegistrosCard'
 
@@ -128,6 +129,17 @@ export default async function ClienteDetalhePage({ params }: { params: { id: str
             ucGeradora={propostaRecente?.uc_geradora || null}
             contaContrato={propostaRecente?.conta_contrato || null}
             beneficiarias={beneficiariasFicha}
+          />
+        </div>
+
+        {/* Kalebe 2026-09-07: Ficha comercial — valor de referência,
+            etiquetas por tipo de proposta, histórico de PDFs. Trigger no
+            banco mantém tudo sincronizado. */}
+        <div className="mb-6">
+          <FichaComercialCliente
+            valorReferencia={Number((cliente as any).valor_referencia) || 0}
+            etiquetas={Array.isArray((cliente as any).etiquetas) ? (cliente as any).etiquetas : []}
+            pdfs={Array.isArray((cliente as any).pdfs_propostas) ? (cliente as any).pdfs_propostas : []}
           />
         </div>
 
