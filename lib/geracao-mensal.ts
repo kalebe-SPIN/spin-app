@@ -118,14 +118,44 @@ export function estimarGeracaoMensal(entrada: EntradaGeracao): ResultadoGeracao 
   }
 }
 
-/** Extrai o consumo mensal do projeto (12 meses) do JSONB de fatura. */
+/** Extrai o consumo mensal do projeto (12 meses) do JSONB de fatura.
+ *
+ * Formato REAL da análise de fatura (api/analisar-fatura/route.ts):
+ *   analise_fatura.historico_12_meses = [
+ *     { mes_ano: 'JAN/25', consumo_kwh: 380 }, ...
+ *   ]
+ *   analise_fatura.consumo_medio_12m_kwh = 420
+ *   analise_fatura.consumo_mes_kwh = 380
+ *
+ * Retorna array de 12 posições [jan..dez]. Se a fatura tem apenas alguns
+ * meses, os que faltam ficam 0.
+ */
+const MES_TO_IDX: Record<string, number> = {
+  jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
+  jul: 6, ago: 7, set: 8, out: 9, nov: 10, dez: 11,
+}
+
+function parseMesAno(mesAno: string): number | null {
+  const s = String(mesAno || '').toLowerCase().slice(0, 3)
+  return MES_TO_IDX[s] ?? null
+}
+
 export function extrairConsumoMensal(projeto: any): number[] | null {
   const analise = projeto?.analise_fatura
   if (!analise) return null
-  // Formatos suportados:
-  //   analise_fatura.consumo_mensal_12m = [k1..k12]
-  //   analise_fatura.historico = [{ mes, consumo_kwh }]
-  //   analise_fatura.consumo_por_mes = { jan: 100, fev: ... }
+
+  // Formato PRINCIPAL — o que a IA da fatura salva
+  if (Array.isArray(analise.historico_12_meses) && analise.historico_12_meses.length > 0) {
+    const meses = Array(12).fill(0)
+    for (const h of analise.historico_12_meses) {
+      const idx = parseMesAno(h.mes_ano || h.mes || '')
+      const v = Number(h.consumo_kwh) || 0
+      if (idx !== null) meses[idx] = v
+    }
+    if (meses.some(v => v > 0)) return meses
+  }
+
+  // Formatos alternativos (compat)
   if (Array.isArray(analise.consumo_mensal_12m) && analise.consumo_mensal_12m.length === 12) {
     return analise.consumo_mensal_12m.map((v: any) => Number(v) || 0)
   }
@@ -137,7 +167,12 @@ export function extrairConsumoMensal(projeto: any): number[] | null {
     const chaves = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
     return chaves.map(k => Number(porMes[k]) || 0)
   }
-  // Fallback: consumo médio mensal (se cadastrado no projeto)
+
+  // Fallback 1: consumo médio da própria análise → replica pros 12 meses
+  const mediaAnalise = Number(analise.consumo_medio_12m_kwh) || Number(analise.consumo_mes_kwh) || 0
+  if (mediaAnalise > 0) return Array(12).fill(mediaAnalise)
+
+  // Fallback 2: campo direto no projeto
   const media = Number(projeto?.consumo_kwh_mes) || 0
   if (media > 0) return Array(12).fill(media)
   return null

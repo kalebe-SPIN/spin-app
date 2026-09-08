@@ -71,13 +71,14 @@ export function GraficoGeracaoConsumo({
   const escalaY = ih / (maxValor * 1.1)  // 10% de folga em cima
 
   const barraW = iw / 12
-  const xBarra = (i: number) => padL + i * barraW + barraW * 0.15
-  const wBarra = barraW * 0.7
 
   const yFromValor = (v: number) => padT + ih - v * escalaY
   const xCentroBarra = (i: number) => padL + i * barraW + barraW / 2
 
-  // Área do consumo (linha ligando os centros das barras)
+  // Kalebe 2026-09-08: gráfico agora é LINHAS (não barras) — geração vs
+  // consumo sobrepostas, igual formato de fatura. Duas polylines + área
+  // sombreada abaixo de cada uma.
+  const pontosGeracao = geracaoMensal.map((v, i) => `${xCentroBarra(i)},${yFromValor(v)}`).join(' ')
   const pontosConsumo = temConsumo
     ? consumoMensal!.map((v, i) => `${xCentroBarra(i)},${yFromValor(v)}`).join(' ')
     : ''
@@ -151,32 +152,39 @@ export function GraficoGeracaoConsumo({
           )
         })}
 
-        {/* Barras de geração */}
-        {geracaoMensal.map((v, i) => {
-          const y = yFromValor(v)
-          const h = padT + ih - y
-          return (
-            <rect
-              key={`b${i}`}
-              x={xBarra(i)}
-              y={y}
-              width={wBarra}
-              height={Math.max(0, h)}
-              fill={paleta.geracaoFill}
-              rx={2}
-            />
-          )
-        })}
+        {/* Linha de geração (com área sombreada abaixo) */}
+        <polygon
+          points={`${padL + barraW / 2},${padT + ih} ${pontosGeracao} ${W - padR - barraW / 2},${padT + ih}`}
+          fill={paleta.geracaoFill}
+          opacity={0.25}
+        />
+        <polyline
+          points={pontosGeracao}
+          fill="none"
+          stroke={paleta.geracao}
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {geracaoMensal.map((v, i) => (
+          <circle
+            key={`g${i}`}
+            cx={xCentroBarra(i)}
+            cy={yFromValor(v)}
+            r={3.5}
+            fill={paleta.geracao}
+            stroke={tema === 'dark' ? '#050B16' : '#FFFFFF'}
+            strokeWidth={1.5}
+          />
+        ))}
 
         {/* Linha de consumo (se houver) */}
         {temConsumo && (
           <>
-            {/* Área sombreada abaixo da linha de consumo */}
             <polygon
-              points={`${padL},${padT + ih} ${pontosConsumo} ${W - padR},${padT + ih}`}
+              points={`${padL + barraW / 2},${padT + ih} ${pontosConsumo} ${W - padR - barraW / 2},${padT + ih}`}
               fill={paleta.consumoFill}
             />
-            {/* Linha */}
             <polyline
               points={pontosConsumo}
               fill="none"
@@ -184,8 +192,8 @@ export function GraficoGeracaoConsumo({
               strokeWidth={2.5}
               strokeLinejoin="round"
               strokeLinecap="round"
+              strokeDasharray="4,4"
             />
-            {/* Marcadores nos meses */}
             {consumoMensal!.map((v, i) => (
               <circle
                 key={`c${i}`}
@@ -224,12 +232,12 @@ export function GraficoGeracaoConsumo({
         fontSize: 11, color: paleta.eixoLabel,
       }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ display: 'inline-block', width: 12, height: 12, background: paleta.geracaoFill, borderRadius: 2 }} />
+          <span style={{ display: 'inline-block', width: 18, height: 3, background: paleta.geracao, borderRadius: 1 }} />
           Geração estimada · {fmt(geracaoAnual)} kWh/ano
         </span>
         {temConsumo && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ display: 'inline-block', width: 14, height: 3, background: paleta.consumo, borderRadius: 1 }} />
+            <span style={{ display: 'inline-block', width: 18, height: 3, background: paleta.consumo, borderRadius: 1, borderTop: `2px dashed ${paleta.consumo}` }} />
             Consumo do cliente · {fmt(consumoAnual)} kWh/ano
           </span>
         )}
