@@ -44,17 +44,28 @@ begin
      and p.excluida_em is null
      and p.url_pdf_proposta is not null;
 
-  -- Etiquetas = tipos únicos dos projeto_itens de todos os projetos do cliente
-  -- Kalebe 2026-09-07: pi.tipo é ENUM tipo_item_projeto — cast pra text
-  -- pra o coalesce com '{}'::text[] funcionar (Postgres não converte enum[]).
-  select coalesce(array_agg(distinct pi.tipo::text order by pi.tipo::text), '{}'::text[])
+  -- Etiquetas = UNION dos 2 sistemas de tipo:
+  --   1) projeto_itens.tipo (novo, modular — projetos com múltiplos itens)
+  --   2) projetos.tipo_projeto (legado singular — projetos antigos)
+  -- Kalebe 2026-09-07: cast pra text pra distinct + coalesce funcionar.
+  select coalesce(array_agg(distinct tipo order by tipo), '{}'::text[])
     into v_etiquetas
-    from public.projeto_itens pi
-    join public.projetos p on p.id = pi.projeto_id
-   where p.cliente_id = p_cliente_id
-     and p.excluida_em is null
-     and pi.status != 'removido'
-     and pi.tipo is not null;
+    from (
+      select pi.tipo::text as tipo
+        from public.projeto_itens pi
+        join public.projetos p on p.id = pi.projeto_id
+       where p.cliente_id = p_cliente_id
+         and p.excluida_em is null
+         and pi.status != 'removido'
+         and pi.tipo is not null
+      union
+      select p.tipo_projeto::text as tipo
+        from public.projetos p
+       where p.cliente_id = p_cliente_id
+         and p.excluida_em is null
+         and p.tipo_projeto is not null
+    ) t
+    where tipo is not null;
 
   -- PDFs = array de { projeto_id, projeto_codigo, url, valor, criado_em }
   select coalesce(jsonb_agg(jsonb_build_object(

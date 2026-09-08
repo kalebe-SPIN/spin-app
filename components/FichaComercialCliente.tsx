@@ -27,14 +27,19 @@ type Props = {
 }
 
 const ETIQUETA_LABEL: Record<string, { label: string; emoji: string; cor: string }> = {
-  on_grid:    { label: 'On-grid',   emoji: '☀️', cor: 'bg-sol/10 text-sol border-sol/30' },
-  ongrid:     { label: 'On-grid',   emoji: '☀️', cor: 'bg-sol/10 text-sol border-sol/30' },
-  hibrido:    { label: 'Híbrido',   emoji: '🔋', cor: 'bg-weg-azul/10 text-weg-azul border-weg-azul/30' },
-  bess:       { label: 'BESS',      emoji: '🔋', cor: 'bg-weg-azul/10 text-weg-azul border-weg-azul/30' },
-  ve_recarga: { label: 'Carregador VE', emoji: '🔌', cor: 'bg-verde/10 text-verde border-verde/30' },
-  limpeza:    { label: 'Limpeza',   emoji: '🧽', cor: 'bg-white/5 text-white/70 border-white/15' },
-  om:         { label: 'O&M',       emoji: '🛠', cor: 'bg-white/5 text-white/70 border-white/15' },
-  servico:    { label: 'Serviço avulso', emoji: '🔧', cor: 'bg-coral/10 text-coral border-coral/30' },
+  on_grid:            { label: 'On-grid',            emoji: '☀️', cor: 'bg-sol/10 text-sol border-sol/30' },
+  ongrid:             { label: 'On-grid',            emoji: '☀️', cor: 'bg-sol/10 text-sol border-sol/30' },
+  hibrido:            { label: 'Híbrido',            emoji: '🔋', cor: 'bg-weg-azul/10 text-weg-azul border-weg-azul/30' },
+  hibrido_bess:       { label: 'Híbrido + BESS',     emoji: '🔋', cor: 'bg-weg-azul/10 text-weg-azul border-weg-azul/30' },
+  bess:               { label: 'BESS',               emoji: '🔋', cor: 'bg-weg-azul/10 text-weg-azul border-weg-azul/30' },
+  expansao_ongrid:    { label: 'Ampliação on-grid',  emoji: '☀️', cor: 'bg-sol/10 text-sol border-sol/30' },
+  expansao_hibrido:   { label: 'Ampliação híbrido',  emoji: '🔋', cor: 'bg-weg-azul/10 text-weg-azul border-weg-azul/30' },
+  ve_recarga:         { label: 'Carregador VE',      emoji: '🔌', cor: 'bg-verde/10 text-verde border-verde/30' },
+  ve:                 { label: 'Carregador VE',      emoji: '🔌', cor: 'bg-verde/10 text-verde border-verde/30' },
+  limpeza:            { label: 'Limpeza',            emoji: '🧽', cor: 'bg-white/5 text-white/70 border-white/15' },
+  om:                 { label: 'O&M',                emoji: '🛠', cor: 'bg-white/5 text-white/70 border-white/15' },
+  servico:            { label: 'Serviço avulso',     emoji: '🔧', cor: 'bg-coral/10 text-coral border-coral/30' },
+  servico_avulso:     { label: 'Serviço avulso',     emoji: '🔧', cor: 'bg-coral/10 text-coral border-coral/30' },
 }
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
