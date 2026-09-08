@@ -1,7 +1,8 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { calcularProposta, paramsToRecord } from '@/lib/precificacao/calcular'
+import { paramsToRecord } from '@/lib/precificacao/calcular'
+import { calcularPropostaComFlag, carregarContextoV2 } from '@/lib/precificacao/calcular-adapter'
 import { OrcamentoClient } from '@/components/OrcamentoClient'
 import { OrcamentoServicosClient } from '@/components/OrcamentoServicosClient'
 import { apenasServicos, type TipoItem } from '@/lib/tipos-projeto'
@@ -168,6 +169,10 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
 
   const params = paramsToRecord(paramsRows || [])
 
+  // Kalebe 2026-09-08: contexto v2 — carregado 1× e reusado em cada calcProposta.
+  // Se flag precificacao_v2 = 0, `ctxV2.ativo` fica false e o adapter cai no v1.
+  const ctxV2 = await carregarContextoV2(supabase, projeto, params)
+
   // Kalebe 2026-09-01: fix "preços não puxam na proposta". Se o snapshot
   // do kit foi salvo com preço 0 (sem preço vigente na hora), re-consulta
   // preço vigente ATUAL dos IDs de placa/inversor. Assim, se o admin
@@ -264,9 +269,11 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
     return placaSub + invSub + (complementos.total || 0)
   }
 
-  // Helper: calcula proposta pra um par (kit, listaCa, brutoTotal)
+  // Helper: calcula proposta pra um par (kit, listaCa, brutoTotal).
+  // Passa por calcularPropostaComFlag: se flag precificacao_v2 = 1, roda motor v2
+  // (margem sobre nota SPIN, comissão efetiva, alíquota calculada). Senão v1.
   function calcProposta(k: any, lca: any[], brutoTotal?: number) {
-    return calcularProposta(
+    return calcularPropostaComFlag(
       {
         placa: {
           qtd: k.qtd_placas || 1,
@@ -291,6 +298,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
         distancia_km_extra: 0,
       },
       params,
+      ctxV2,
     )
   }
 

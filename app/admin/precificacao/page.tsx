@@ -85,6 +85,20 @@ export default async function HubPrecificacaoPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
           <Link
+            href="/admin/precificacao/motor-v2"
+            className="bg-gradient-to-br from-verde/10 to-sol/5 border border-verde/40 hover:border-verde/70 rounded-xl p-5 transition relative"
+          >
+            <span className="absolute top-3 right-3 text-[9px] font-bold uppercase text-verde bg-verde/10 border border-verde/30 px-1.5 py-0.5 rounded">
+              Prompt 12
+            </span>
+            <p className="text-2xl mb-2">⚡</p>
+            <p className="text-lg font-bold text-white mb-1">Motor v2</p>
+            <p className="text-xs text-white/60">
+              Ligar/desligar novo motor (margem sobre nota SPIN + comissão efetiva
+              + alíquota calculada). Feature flag em tempo real.
+            </p>
+          </Link>
+          <Link
             href="/admin/precificacao/fotovoltaico"
             className="bg-gradient-to-br from-sol/10 to-verde/5 border border-sol/40 hover:border-sol/70 rounded-xl p-5 transition relative"
           >
