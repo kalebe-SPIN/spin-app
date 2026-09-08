@@ -3,8 +3,7 @@
 import { forwardRef } from 'react'
 import { calcularFormasPagamento, type PropostaCalculada } from '@/lib/precificacao/calcular'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
-import { GraficoGeracaoConsumo } from './GraficoGeracaoConsumo'
-import { estimarGeracaoMensal, extrairConsumoMensal } from '@/lib/geracao-mensal'
+import { estimarGeracaoMensal } from '@/lib/geracao-mensal'
 
 type Props = {
   projeto: any
@@ -329,9 +328,6 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               </tbody>
             </table>
 
-            {/* Perfil de consumo (histórico da fatura CELESC + gráfico) */}
-            <PerfilConsumo analise={projeto.analise_fatura} />
-
             {/* Geração estimada */}
             <h3 style={{ ...E.subtituloSecao, marginTop: 40 }}>Geração estimada</h3>
             <div style={E.gridDados}>
@@ -342,26 +338,18 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <DadoLinha rot="Perdas assumidas" val={`${fmtNum(PERDAS * 100, 0)}%`} />
             </div>
 
-            {/* Kalebe 2026-09-06: gráfico Consumo × Geração (12 meses).
-                Substitui os dois "cards" de geração média/anual — mais rico. */}
+            {/* Kalebe 2026-09-08: UM gráfico unificado — histórico REAL da fatura
+                (amarelo) sobreposto à geração estimada mês a mês (azul). */}
             {(() => {
               const potCcKwp = ehPorUc
                 ? (propostasPorUc || []).reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
                 : (kit.potencia_cc_kwp || 0)
-              const uf = projeto.uf || projeto.cliente_uf
-              const est = estimarGeracaoMensal({ potencia_kwp: potCcKwp, uf })
-              const consumo = extrairConsumoMensal(projeto)
+              const est = estimarGeracaoMensal({ potencia_kwp: potCcKwp, uf: projeto.uf || projeto.cliente_uf })
               return (
-                <div style={{ marginTop: 20 }}>
-                  <GraficoGeracaoConsumo
-                    geracaoMensal={est.serie.map(s => s.geracao_kwh)}
-                    consumoMensal={consumo}
-                    titulo="Consumo × Geração ao longo do ano"
-                    tema="dark"
-                    altura={220}
-                  />
+                <>
+                  <PerfilConsumo analise={projeto.analise_fatura} potenciaKwp={potCcKwp} />
                   <div style={{
-                    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16,
+                    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 20,
                   }}>
                     <div>
                       <p style={E.rotuloDourado}>Geração média mensal</p>
@@ -372,7 +360,7 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
                       <p style={E.valorGigante}>{fmtInt(est.total_anual_kwh)} <span style={{ fontSize: 20, color: 'rgba(245,245,240,.6)' }}>kWh</span></p>
                     </div>
                   </div>
-                </div>
+                </>
               )
             })()}
 
@@ -660,56 +648,83 @@ function gerarHash(input: string): string {
 }
 
 /**
- * Bloco "Perfil de consumo" da proposta — resumo dos números da fatura
- * CELESC (média, total anual, mês pico/vale) + gráfico SVG dos 12 meses
- * com linha da média. Kalebe 2026-08-27: mostra o consumo pra reforçar
- * o dimensionamento na hora da venda.
+ * Bloco "Perfil de consumo × geração" — Kalebe 2026-09-08.
+ *
+ * UM gráfico unificado no eixo X do HISTÓRICO REAL da fatura (JUL/26, AGO/26,
+ * SET/26, …), com 4 linhas:
+ *   - AMARELA sólida    = consumo histórico do cliente
+ *   - AMARELA tracejada = MÉDIA desse consumo (horizontal)
+ *   - AZUL sólida       = expectativa de geração no mesmo mês (kit × HSP)
+ *   - AZUL tracejada    = MÉDIA da geração (horizontal)
  *
  * Só renderiza se analise_fatura tem histórico com ≥ 1 mês de dados.
+ * Substitui o antigo PerfilConsumo separado + o GraficoGeracaoConsumo
+ * separado — ambos em UM gráfico só.
  */
-function PerfilConsumo({ analise }: { analise: any }) {
+const HSP_MES_SC = [5.8, 5.5, 4.9, 4.1, 3.3, 3.0, 3.2, 4.0, 4.4, 5.0, 5.6, 5.9]  // Grande Florianópolis
+const DIAS_MES_ARR = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+const MES_STR_TO_IDX: Record<string, number> = {
+  jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
+  jul: 6, ago: 7, set: 8, out: 9, nov: 10, dez: 11,
+}
+
+function PerfilConsumo({ analise, potenciaKwp, perdasPct = 20 }: {
+  analise: any
+  potenciaKwp: number
+  perdasPct?: number
+}) {
   const historico: Array<{ mes_ano: string; consumo_kwh: number | string }> =
     Array.isArray(analise?.historico_12_meses) ? analise.historico_12_meses : []
   const pontos = historico
-    .map((h) => ({ mes_ano: h.mes_ano, consumo_kwh: Number(h.consumo_kwh) || 0 }))
+    .map((h) => ({ mes_ano: String(h.mes_ano || ''), consumo_kwh: Number(h.consumo_kwh) || 0 }))
     .filter((p) => p.consumo_kwh > 0)
 
   if (pontos.length === 0) return null
 
-  const media = Number(analise?.consumo_medio_kwh) || (pontos.reduce((s, p) => s + p.consumo_kwh, 0) / pontos.length)
+  // Geração estimada pra cada mês do histórico — usa HSP do mês do calendário
+  const geracaoPorPonto = pontos.map((p) => {
+    const key = p.mes_ano.toLowerCase().slice(0, 3)
+    const idx = MES_STR_TO_IDX[key]
+    if (idx === undefined) return 0
+    return potenciaKwp * HSP_MES_SC[idx] * DIAS_MES_ARR[idx] * (1 - perdasPct / 100)
+  })
+
+  const mediaConsumo = Number(analise?.consumo_medio_kwh) || (pontos.reduce((s, p) => s + p.consumo_kwh, 0) / pontos.length)
+  const mediaGeracao = geracaoPorPonto.reduce((s, v) => s + v, 0) / (geracaoPorPonto.length || 1)
   const maxReal = Math.max(...pontos.map((p) => p.consumo_kwh))
   const minReal = Math.min(...pontos.map((p) => p.consumo_kwh))
   const totalAno = pontos.reduce((s, p) => s + p.consumo_kwh, 0)
   const pico = pontos.find((p) => p.consumo_kwh === maxReal)
   const vale = pontos.find((p) => p.consumo_kwh === minReal)
 
-  // Dimensões SVG compactas pra caber no A4
-  const W = 640, H = 200
+  const W = 640, H = 220
   const pL = 40, pR = 12, pT = 16, pB = 32
   const plotW = W - pL - pR
   const plotH = H - pT - pB
-  const maxKwh = Math.max(maxReal, media) * 1.1
+  const maxKwh = Math.max(maxReal, mediaConsumo, ...geracaoPorPonto, mediaGeracao) * 1.1
   const yPx = (kwh: number) => pT + plotH - (kwh / maxKwh) * plotH
   const xPx = (idx: number) => pL + (pontos.length > 1 ? (idx / (pontos.length - 1)) * plotW : plotW / 2)
-  const linha = pontos.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xPx(i)} ${yPx(p.consumo_kwh)}`).join(' ')
+  const pathConsumo = pontos.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xPx(i)} ${yPx(p.consumo_kwh)}`).join(' ')
+  const pathGeracao = geracaoPorPonto.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xPx(i)} ${yPx(v)}`).join(' ')
   const yTicks = [0, 0.33, 0.66, 1].map((f) => Math.round(maxKwh * f))
+
+  const AMARELO = '#F5B400'
+  const AZUL = '#587FFF'
 
   return (
     <div style={{ marginTop: 40 }}>
-      <h3 style={E.subtituloSecao}>Perfil de consumo</h3>
+      <h3 style={E.subtituloSecao}>Perfil de consumo × geração</h3>
       <p style={{ margin: '0 0 12px', fontSize: 11, color: 'rgba(245,245,240,.7)', lineHeight: 1.5 }}>
-        Base pra dimensionar o sistema. Extraído do histórico dos últimos {pontos.length} meses da fatura CELESC.
+        Histórico real de {pontos.length} meses da fatura CELESC (amarelo) sobreposto à expectativa de geração do kit proposto (azul).
       </p>
 
-      {/* 4 números-chave em grid */}
       <div style={{ display: 'grid' as const, gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
-        <NumConsumo label="Média/mês" valor={Math.round(media)} unidade="kWh" destaque />
-        <NumConsumo label="Total anual" valor={Math.round(totalAno)} unidade="kWh" />
+        <NumConsumo label="Consumo médio/mês" valor={Math.round(mediaConsumo)} unidade="kWh" destaque />
+        <NumConsumo label="Geração média/mês" valor={Math.round(mediaGeracao)} unidade="kWh" />
         <NumConsumo label={`Pico · ${pico?.mes_ano || ''}`} valor={Math.round(maxReal)} unidade="kWh" />
         <NumConsumo label={`Vale · ${vale?.mes_ano || ''}`} valor={Math.round(minReal)} unidade="kWh" />
       </div>
 
-      {/* Gráfico SVG puro do consumo mês a mês com linha da média */}
       <div style={{ background: 'rgba(245,245,240,.03)', border: '1px solid rgba(245,245,240,.08)', borderRadius: 4, padding: 10 }}>
         <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
           {/* Grid horizontal */}
@@ -725,39 +740,43 @@ function PerfilConsumo({ analise }: { analise: any }) {
             </g>
           ))}
 
-          {/* Área sob a curva */}
-          <path d={`${linha} L ${xPx(pontos.length - 1)} ${yPx(0)} L ${xPx(0)} ${yPx(0)} Z`}
-            fill="rgba(88,127,255,0.10)" />
+          {/* Áreas sombreadas abaixo das curvas */}
+          <path d={`${pathConsumo} L ${xPx(pontos.length - 1)} ${yPx(0)} L ${xPx(0)} ${yPx(0)} Z`}
+            fill={AMARELO} opacity={0.10} />
+          <path d={`${pathGeracao} L ${xPx(pontos.length - 1)} ${yPx(0)} L ${xPx(0)} ${yPx(0)} Z`}
+            fill={AZUL} opacity={0.10} />
 
-          {/* Linha da média */}
-          <line x1={pL} y1={yPx(media)} x2={W - pR} y2={yPx(media)}
-            stroke="#F5B400" strokeWidth={1.5} strokeDasharray="5 3" />
-          <text x={W - pR - 4} y={yPx(media) - 4} fontSize={9}
-            fill="#F5B400" textAnchor="end" fontWeight={700}
+          {/* Linha da MÉDIA de consumo (amarela tracejada) */}
+          <line x1={pL} y1={yPx(mediaConsumo)} x2={W - pR} y2={yPx(mediaConsumo)}
+            stroke={AMARELO} strokeWidth={1.3} strokeDasharray="5 3" opacity={0.8} />
+          <text x={W - pR - 4} y={yPx(mediaConsumo) - 4} fontSize={9}
+            fill={AMARELO} textAnchor="end" fontWeight={700}
             fontFamily='"Inter", system-ui, sans-serif'>
-            Média {Math.round(media)} kWh
+            Média consumo {Math.round(mediaConsumo)}
           </text>
 
-          {/* Linha do consumo */}
-          <path d={linha} fill="none" stroke="#587FFF" strokeWidth={2}
-            strokeLinejoin="round" strokeLinecap="round" />
+          {/* Linha da MÉDIA de geração (azul tracejada) */}
+          <line x1={pL} y1={yPx(mediaGeracao)} x2={W - pR} y2={yPx(mediaGeracao)}
+            stroke={AZUL} strokeWidth={1.3} strokeDasharray="5 3" opacity={0.8} />
+          <text x={W - pR - 4} y={yPx(mediaGeracao) + 12} fontSize={9}
+            fill={AZUL} textAnchor="end" fontWeight={700}
+            fontFamily='"Inter", system-ui, sans-serif'>
+            Média geração {Math.round(mediaGeracao)}
+          </text>
 
-          {/* Pontos + valores */}
-          {pontos.map((p, i) => {
-            const cx = xPx(i)
-            const cy = yPx(p.consumo_kwh)
-            const acima = p.consumo_kwh > media
-            return (
-              <g key={i}>
-                <circle cx={cx} cy={cy} r={2.5} fill="#587FFF" />
-                <text x={cx} y={acima ? cy - 6 : cy + 12} fontSize={8}
-                  fill="rgba(245,245,240,0.75)" textAnchor="middle"
-                  fontFamily='"Inter", system-ui, sans-serif'>
-                  {Math.round(p.consumo_kwh)}
-                </text>
-              </g>
-            )
-          })}
+          {/* Linha do CONSUMO (amarela sólida) */}
+          <path d={pathConsumo} fill="none" stroke={AMARELO} strokeWidth={2.2}
+            strokeLinejoin="round" strokeLinecap="round" />
+          {pontos.map((p, i) => (
+            <circle key={`c${i}`} cx={xPx(i)} cy={yPx(p.consumo_kwh)} r={2.5} fill={AMARELO} />
+          ))}
+
+          {/* Linha da GERAÇÃO (azul sólida) */}
+          <path d={pathGeracao} fill="none" stroke={AZUL} strokeWidth={2.2}
+            strokeLinejoin="round" strokeLinecap="round" />
+          {geracaoPorPonto.map((v, i) => (
+            <circle key={`g${i}`} cx={xPx(i)} cy={yPx(v)} r={2.5} fill={AZUL} />
+          ))}
 
           {/* Rótulos do eixo X */}
           {pontos.map((p, i) => (
@@ -768,6 +787,25 @@ function PerfilConsumo({ analise }: { analise: any }) {
             </text>
           ))}
         </svg>
+
+        {/* Legenda */}
+        <div style={{
+          display: 'flex' as const, gap: 20, justifyContent: 'center' as const,
+          marginTop: 8, fontSize: 10, color: 'rgba(245,245,240,0.75)',
+        }}>
+          <span style={{ display: 'inline-flex' as const, alignItems: 'center' as const, gap: 6 }}>
+            <span style={{ display: 'inline-block' as const, width: 18, height: 2.5, background: AMARELO }} /> Consumo
+          </span>
+          <span style={{ display: 'inline-flex' as const, alignItems: 'center' as const, gap: 6 }}>
+            <span style={{ display: 'inline-block' as const, width: 18, height: 0, borderTop: `2px dashed ${AMARELO}` }} /> Média consumo
+          </span>
+          <span style={{ display: 'inline-flex' as const, alignItems: 'center' as const, gap: 6 }}>
+            <span style={{ display: 'inline-block' as const, width: 18, height: 2.5, background: AZUL }} /> Geração estimada
+          </span>
+          <span style={{ display: 'inline-flex' as const, alignItems: 'center' as const, gap: 6 }}>
+            <span style={{ display: 'inline-block' as const, width: 18, height: 0, borderTop: `2px dashed ${AZUL}` }} /> Média geração
+          </span>
+        </div>
       </div>
     </div>
   )
