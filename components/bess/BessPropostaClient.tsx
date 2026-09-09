@@ -39,6 +39,12 @@ type Props = {
     frete: number
     projeto_art: number
     instalacao: number
+    instalacao_detalhe?: {
+      qtd_inversor: number
+      qtd_bateria: number
+      valor_por_inversor: number
+      valor_por_bateria: number
+    }
     base_impostavel: number
     margem: number
     comissao_vendedor: number
@@ -132,8 +138,15 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
           </p>
           <div className="space-y-2 text-sm">
             <LinhaServico label="Frete regional" valor={proposta.frete} />
-            <LinhaServico label="Projeto + ART (BESS)" valor={proposta.projeto_art} />
-            <LinhaServico label="Instalação (mão de obra)" valor={proposta.instalacao} />
+            <LinhaServico label="Projeto + ART" valor={proposta.projeto_art} />
+            <LinhaServico
+              label={
+                proposta.instalacao_detalhe
+                  ? `Instalação (${proposta.instalacao_detalhe.qtd_inversor}× inversor R$ ${proposta.instalacao_detalhe.valor_por_inversor} + ${proposta.instalacao_detalhe.qtd_bateria}× bateria R$ ${proposta.instalacao_detalhe.valor_por_bateria})`
+                  : 'Instalação (mão de obra)'
+              }
+              valor={proposta.instalacao}
+            />
             <hr className="border-white/5 my-2" />
             <LinhaServico label="Base impostável" valor={proposta.base_impostavel} destaque />
           </div>

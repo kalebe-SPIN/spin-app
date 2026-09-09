@@ -73,12 +73,19 @@ export default async function BessPropostaPage(props: { params: { id: string } }
   const FATOR_KIT_WEG = 0.4182
   const kitComFator = kitBrutoBess * FATOR_KIT_WEG
 
-  // Serviços (sem placas: frete usa faixa "até 16 placas" como default,
-  // projeto/ART reduzido — mesma tabela mas potência 0)
+  // Serviços do projeto BESS puro.
+  // - Frete: mesma faixa "até 16 placas" do solar (menor porte)
+  // - Projeto/ART: valor cheio (mesma tabela do solar, faixa até 30 kWp)
+  // - Instalação (Kalebe 2026-09-09):
+  //     R$ 1.200 por inversor/controladora × qtd
+  //   + R$ 200   por bateria             × qtd
   const freteBase = getNum(params, 'frete_ate_16_placas', 300)
-  const projetoArt = getNum(params, 'projeto_valor_fixo_ate_30kwp', 400) * 0.5  // metade — sem dimensionamento CC
-  // Instalação BESS: sem tabela por placas, usa valor fixo até definir tabela própria
-  const instalacao = getNum(params, 'instalacao_bess_valor_fixo', 1200)
+  const projetoArt = getNum(params, 'projeto_valor_fixo_ate_30kwp', 400)
+  const qtdInversor = Number(kit.controladora?.qtd) || 0
+  const qtdBateria = Number(kit.bateria?.qtd) || 0
+  const maoObraPorInversor = getNum(params, 'bess_mo_por_inversor', 1200)
+  const maoObraPorBateria = getNum(params, 'bess_mo_por_bateria', 200)
+  const instalacao = qtdInversor * maoObraPorInversor + qtdBateria * maoObraPorBateria
   const baseImpostavel = freteBase + projetoArt + instalacao
 
   const margemPct = getNum(params, 'margem_contribuicao_perc', 20)
@@ -96,6 +103,12 @@ export default async function BessPropostaPage(props: { params: { id: string } }
     frete: freteBase,
     projeto_art: projetoArt,
     instalacao,
+    instalacao_detalhe: {
+      qtd_inversor: qtdInversor,
+      qtd_bateria: qtdBateria,
+      valor_por_inversor: maoObraPorInversor,
+      valor_por_bateria: maoObraPorBateria,
+    },
     base_impostavel: baseImpostavel,
     margem, comissao_vendedor: comissao, impostos_simples: imposto,
     pv_total: pvTotal,
