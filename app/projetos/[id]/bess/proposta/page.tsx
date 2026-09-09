@@ -107,6 +107,25 @@ export default async function BessPropostaPage(props: { params: { id: string } }
   const comissao = pvTotal * (comissaoPct / 100)
   const imposto = (pvTotal - kitComFator) * (impostosPct / 100)
 
+  // Kalebe 2026-09-09: paridade com PDF solar — extras livres da proposta
+  // (brinde, consultoria, treinamento etc) + desconto/acréscimo do admin.
+  // Sinal do desconto_admin_pct/valor: positivo desconta, negativo acresce.
+  const extras: Array<{ descricao: string; valor: number }> =
+    Array.isArray(projeto.extras_proposta) ? projeto.extras_proposta : []
+  const totalExtras = extras.reduce((s, e) => s + (Number(e.valor) || 0), 0)
+  const pvBruto = pvTotal + totalExtras
+
+  const descPct = Number(projeto.desconto_admin_pct) || 0
+  const descVal = Number(projeto.desconto_admin_valor) || 0
+  const deltaRaw = descPct !== 0
+    ? pvBruto * (descPct / 100)
+    : (descVal !== 0 ? descVal : 0)
+  const delta = deltaRaw > pvBruto ? pvBruto : deltaRaw
+  const pvFinal = pvBruto - delta
+  const valorAjuste = Math.abs(delta)
+  const sentidoAjuste: 'desconto' | 'acrescimo' | 'nenhum' =
+    delta > 0 ? 'desconto' : delta < 0 ? 'acrescimo' : 'nenhum'
+
   const proposta = {
     kit_bess_bruto: kitBrutoBess,
     kit_com_fator: kitComFator,
@@ -128,6 +147,14 @@ export default async function BessPropostaPage(props: { params: { id: string } }
     base_impostavel: baseImpostavel,
     margem, comissao_vendedor: comissao, impostos_simples: imposto,
     pv_total: pvTotal,
+    extras,
+    total_extras: totalExtras,
+    pv_bruto: pvBruto,
+    desconto_admin_pct: descPct,
+    desconto_admin_valor: descVal,
+    valor_ajuste: valorAjuste,
+    sentido_ajuste: sentidoAjuste,
+    pv_final: pvFinal,
     memoria: { fator_kit_weg_aplicado: FATOR_KIT_WEG, margem_pct: margemPct, comissao_pct: comissaoPct, impostos_pct: impostosPct },
   }
 

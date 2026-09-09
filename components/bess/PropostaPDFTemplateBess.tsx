@@ -49,6 +49,15 @@ type Props = {
       valor_por_inversor: number
       valor_por_bateria: number
     }
+    // Kalebe 2026-09-09: paridade com PDF solar
+    extras?: Array<{ descricao: string; valor: number }>
+    total_extras?: number
+    pv_bruto?: number
+    valor_ajuste?: number
+    sentido_ajuste?: 'desconto' | 'acrescimo' | 'nenhum'
+    pv_final?: number
+    desconto_admin_pct?: number
+    desconto_admin_valor?: number
   }
   configEmpresa: any
 }
@@ -71,8 +80,18 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
     const validade = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
     const cnpjFmt = formatarCpfCnpj(projeto.cliente_cpf_cnpj)
 
+    // Extras + ajuste do admin (paridade com PDF solar). pvFinal reflete
+    // extras somados menos o desconto (ou mais o acréscimo) aplicado.
+    const extras = Array.isArray(proposta.extras) ? proposta.extras : []
+    const totalExtras = Number(proposta.total_extras) || 0
+    const pvBruto = Number(proposta.pv_bruto) || proposta.pv_total
+    const valorAjuste = Number(proposta.valor_ajuste) || 0
+    const sentidoAjuste = proposta.sentido_ajuste || 'nenhum'
+    const pvFinal = Number(proposta.pv_final) || proposta.pv_total
+    const temExtras = extras.length > 0 && totalExtras > 0
+    const temAjuste = sentidoAjuste !== 'nenhum' && valorAjuste > 0
+
     // Formas de pagamento (mesma lógica do template solar)
-    const pvFinal = proposta.pv_total
     const aVistaPix = pvFinal * 0.97
     const parcelaCartao = (pvFinal * 1.0899) / 12
     const parcelaFinMin = (pvFinal * 1.35) / 60
@@ -142,6 +161,9 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
               <p style={E.valorGigante}>R$ {fmtInt(pvFinal)}</p>
               <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(245,245,240,.5)' }}>
                 Kit BESS + serviços · instalação inclusa
+                {temAjuste && sentidoAjuste === 'desconto' && (
+                  <span style={{ color: '#3FB278', fontWeight: 600 }}> · com desconto especial</span>
+                )}
               </p>
             </div>
 
@@ -242,7 +264,58 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
             <div style={{ marginTop: 24 }}>
               <p style={E.rotuloDourado}>Total do investimento</p>
               <p style={E.valorGigante}>R$ {fmtInt(pvFinal)}</p>
+              {(temExtras || temAjuste) && (
+                <p style={{ margin: '4px 0 0', fontSize: 10, color: 'rgba(245,245,240,.55)' }}>
+                  Kit + serviços {temExtras ? '+ extras ' : ''}
+                  {temAjuste && (sentidoAjuste === 'desconto'
+                    ? `− desconto R$ ${fmt(valorAjuste)}`
+                    : `+ acréscimo R$ ${fmt(valorAjuste)}`)}
+                </p>
+              )}
             </div>
+
+            {/* Bloco de extras + ajuste (só aparece se houver) */}
+            {(temExtras || temAjuste) && (
+              <div style={{
+                marginTop: 20,
+                padding: '14px 18px',
+                background: 'rgba(245,245,240,.03)',
+                border: '1px solid rgba(245,245,240,.08)',
+                borderRadius: 8,
+                fontSize: 11,
+              }}>
+                <p style={{ ...E.rotuloDourado, marginBottom: 8 }}>Detalhamento</p>
+                <div style={{ display: 'flex' as const, justifyContent: 'space-between', padding: '4px 0' }}>
+                  <span style={{ color: 'rgba(245,245,240,.7)' }}>Kit BESS + serviços</span>
+                  <span style={{ fontFamily: 'monospace', color: '#F5F5F0' }}>R$ {fmt(proposta.pv_total)}</span>
+                </div>
+                {extras.map((e, i) => (
+                  <div key={i} style={{ display: 'flex' as const, justifyContent: 'space-between', padding: '4px 0' }}>
+                    <span style={{ color: 'rgba(245,245,240,.7)' }}>+ {e.descricao || 'Extra'}</span>
+                    <span style={{ fontFamily: 'monospace', color: '#F5F5F0' }}>R$ {fmt(Number(e.valor) || 0)}</span>
+                  </div>
+                ))}
+                {temAjuste && (
+                  <div style={{
+                    display: 'flex' as const, justifyContent: 'space-between',
+                    padding: '4px 0', color: sentidoAjuste === 'desconto' ? '#3FB278' : '#EF6D6D',
+                  }}>
+                    <span>{sentidoAjuste === 'desconto' ? '− Desconto' : '+ Acréscimo'}</span>
+                    <span style={{ fontFamily: 'monospace' }}>R$ {fmt(valorAjuste)}</span>
+                  </div>
+                )}
+                <div style={{
+                  display: 'flex' as const, justifyContent: 'space-between',
+                  padding: '8px 0 0', marginTop: 4,
+                  borderTop: '1px solid rgba(245,180,0,.3)',
+                }}>
+                  <span style={{ color: '#F5B400', fontWeight: 700 }}>Total final</span>
+                  <span style={{ fontFamily: 'monospace', color: '#F5B400', fontWeight: 800 }}>
+                    R$ {fmt(pvFinal)}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <h3 style={{ ...E.subtituloSecao, marginTop: 40 }}>Formas de pagamento</h3>
 
