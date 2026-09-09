@@ -154,6 +154,22 @@ export default async function KitPage({ params }: { params: { id: string } }) {
   const extrasBess        = normalizar(opcionaisSlice)
   const todosProdutosBess = normalizar(todos)  // fallback: qualquer bucket vazio pode mostrar tudo
 
+  // Kalebe 2026-09-09: BESS puro precisa de MIN 2 placas por questão
+  // tributária (mantém CFOP/NCM de geração distribuída). Reusa o mesmo
+  // catálogo de placas do fluxo solar, mas normalizado pro formato ProdutoBess.
+  const placasBess = (placas || []).map((r: any) => {
+    const precos = (r.precos_produtos || []) as any[]
+    const vigentes = precos.filter(p => (!p.vigente_de || p.vigente_de <= hojeIso) && (!p.vigente_ate || p.vigente_ate >= hojeIso))
+    const preco = (vigentes[0] || precos[0])?.preco_venda ?? 0
+    return {
+      id: r.id, marca: r.fabricante || null, modelo: r.modelo,
+      categoria: 'placa', subcategoria: null,
+      potencia_kw: r.specs?.potencia_wp ? Number(r.specs.potencia_wp) / 1000 : null,
+      preco_venda: Number(preco) || 0,
+      disponivel_estoque: !!r.disponivel_estoque,
+    }
+  })
+
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
       <div className="max-w-screen-2xl mx-auto">
@@ -186,6 +202,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
             medidores: medidoresBess,
             caixasJuncao: caixasBess,
             opcionais: extrasBess,
+            placas: placasBess,
             todos: todosProdutosBess,
           }}
           padraoPrincipal={padrao}

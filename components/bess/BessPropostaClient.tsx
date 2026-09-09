@@ -33,6 +33,7 @@ type Props = {
     modo: 'bess_puro'
     // Kalebe 2026-09-09 v2: arrays (múltiplos itens por segmento).
     // Ainda aceita formato antigo (bateria/controladora/medidor singular) via normalização no consumidor.
+    placas?: ItemComp[]       // MIN 2 unidades por tributação
     baterias?: ItemComp[]
     controladoras?: ItemComp[]
     medidores?: ItemComp[]
@@ -169,6 +170,7 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
 
   // Normaliza formato singular (legado) → arrays
   const toArr = (x: any): ItemComp[] => Array.isArray(x) ? x : (x?.id ? [x] : [])
+  const placasArr        = toArr(kit.placas)
   const bateriasArr      = toArr(kit.baterias      ?? kit.bateria)
   const controladorasArr = toArr(kit.controladoras ?? kit.controladora)
   const medidoresArr     = toArr(kit.medidores     ?? kit.medidor)
@@ -194,6 +196,9 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
               </tr>
             </thead>
             <tbody>
+              {placasArr.map((p, i) => (
+                <LinhaKit key={`p${i}`} label={placasArr.length > 1 ? `☀️ Placa ${i + 1}` : '☀️ Placa fotovoltaica'} item={p} ehAdmin={ehAdmin} />
+              ))}
               {bateriasArr.map((b, i) => (
                 <LinhaKit key={`b${i}`} label={bateriasArr.length > 1 ? `🔋 Bateria ${i + 1}` : '🔋 Bateria'} item={b} ehAdmin={ehAdmin} />
               ))}

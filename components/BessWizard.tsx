@@ -45,9 +45,12 @@ type Props = {
   medidores: ProdutoBess[]
   caixasJuncao: ProdutoBess[]
   opcionais: ProdutoBess[]
+  placas?: ProdutoBess[]           // MIN 2 unidades por questão tributária (Kalebe 2026-09-09)
   todos?: ProdutoBess[]
   kitSalvo?: any | null
 }
+
+const MIN_PLACAS_TRIBUTARIA = 2  // regra fixa Kalebe
 
 const fmtBRL = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 })
@@ -65,7 +68,7 @@ function toItem(p: ProdutoBess, qtd = 1): ItemComposicao {
 
 export function BessWizard({
   projetoId,
-  baterias, controladoras, medidores, caixasJuncao, opcionais, todos,
+  baterias, controladoras, medidores, caixasJuncao, opcionais, placas, todos,
   kitSalvo,
 }: Props) {
   const bat = baterias.length > 0 ? baterias : (todos || [])
@@ -91,14 +94,23 @@ export function BessWizard({
   const [caixas, setCaixas] = useState<ItemComposicao[]>(kitPre?.caixas_juncao || [])
   const [extras, setExtras] = useState<ItemComposicao[]>(kitPre?.opcionais || [])
   const [listaCa, setListaCa] = useState<ItemComposicao[]>(kitPre?.lista_ca || [])
+  // Placa fotovoltaica: min 2 unidades por tributação. Single-select (só 1 modelo).
+  // Se já veio kit salvo com placas, pré-carrega a primeira.
+  const placaSalva: ItemComposicao | null = Array.isArray(kitPre?.placas) && kitPre.placas[0]?.id
+    ? { ...kitPre.placas[0], qtd: Math.max(MIN_PLACAS_TRIBUTARIA, Number(kitPre.placas[0].qtd) || MIN_PLACAS_TRIBUTARIA) }
+    : null
+  const [placaEsc, setPlacaEsc] = useState<ItemComposicao | null>(placaSalva)
 
   const total = useMemo(() => {
     const linha = (i: ItemComposicao) => (i.preco_venda || 0) * (i.qtd || 1)
     const arr = (a: ItemComposicao[]) => a.reduce((s, i) => s + linha(i), 0)
-    return arr(bats) + arr(ctrls) + arr(meds) + arr(caixas) + arr(extras) + arr(listaCa)
-  }, [bats, ctrls, meds, caixas, extras, listaCa])
+    const placaTot = placaEsc ? linha(placaEsc) : 0
+    return placaTot + arr(bats) + arr(ctrls) + arr(meds) + arr(caixas) + arr(extras) + arr(listaCa)
+  }, [placaEsc, bats, ctrls, meds, caixas, extras, listaCa])
 
-  const podeSalvar = bats.length > 0 && ctrls.length > 0 && meds.length > 0 && !pending
+  const podeSalvar = !!placaEsc
+    && placaEsc.qtd >= MIN_PLACAS_TRIBUTARIA
+    && bats.length > 0 && ctrls.length > 0 && meds.length > 0 && !pending
 
   function salvar() {
     setErro(null); setMsg(null)
@@ -110,6 +122,7 @@ export function BessWizard({
         caixas_juncao: caixas,
         opcionais: extras,
         lista_ca: listaCa,
+        placas: placaEsc ? [placaEsc] : [],
       })
       if ('erro' in r && r.erro) { setErro(r.erro); return }
       setMsg('Kit BESS salvo. Redirecionando pro orçamento…')
@@ -150,6 +163,13 @@ export function BessWizard({
           </details>
         )}
       </details>
+
+      {/* Placa fotovoltaica — mínimo 2 unidades por tributação */}
+      <BlocoPlacaTributaria
+        placas={placas || []}
+        selecionada={placaEsc}
+        onChange={setPlacaEsc}
+      />
 
       <BlocoBusca
         titulo="🔋 Bateria"
@@ -227,6 +247,174 @@ export function BessWizard({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Bloco especial da placa fotovoltaica no kit BESS puro. Kalebe 2026-09-09:
+ * mesmo em BESS puro precisa ter placa fotovoltaica pra manter tributação
+ * de geração distribuída (CFOP/NCM). Mínimo 2 unidades.
+ * Consultor escolhe UM MODELO só, e o sistema já sugere qtd = 2.
+ * Qtd pode aumentar (3, 4…) mas não pode cair abaixo de 2.
+ */
+function BlocoPlacaTributaria({
+  placas, selecionada, onChange,
+}: {
+  placas: ProdutoBess[]
+  selecionada: ItemComposicao | null
+  onChange: (i: ItemComposicao | null) => void
+}) {
+  const [busca, setBusca] = useState('')
+  const [aberto, setAberto] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const filtradas = useMemo(() => {
+    const t = busca.trim().toLowerCase()
+    const ord = placas.slice().sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '', 'pt-BR'))
+    if (!t) return ord
+    return ord.filter(p =>
+      p.modelo?.toLowerCase().includes(t) || p.marca?.toLowerCase().includes(t)
+    )
+  }, [placas, busca])
+
+  useEffect(() => {
+    if (!aberto) return
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setAberto(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [aberto])
+
+  function escolher(p: ProdutoBess) {
+    onChange(toItem(p, MIN_PLACAS_TRIBUTARIA))
+    setBusca('')
+    setAberto(false)
+  }
+
+  const subtotal = selecionada ? (selecionada.preco_venda || 0) * (selecionada.qtd || MIN_PLACAS_TRIBUTARIA) : 0
+
+  return (
+    <section className="bg-gradient-to-br from-sol/10 to-sol/[0.03] border border-sol/40 rounded-xl p-5 space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <h3 className="text-base font-bold text-white">
+            ☀️ Placa fotovoltaica <span className="text-coral ml-1">*</span>
+          </h3>
+          <p className="text-xs text-white/70 mt-0.5">
+            Obrigatória em BESS puro por questão tributária — mantém regime de geração
+            distribuída. Mínimo <strong className="text-sol">{MIN_PLACAS_TRIBUTARIA} unidades</strong>.
+            Você escolhe o modelo, o sistema já adiciona {MIN_PLACAS_TRIBUTARIA}× (pode aumentar depois).
+          </p>
+          <p className="text-[10px] text-white/40 mt-0.5">
+            {placas.length > 0
+              ? `${placas.length} placa${placas.length === 1 ? '' : 's'} no catálogo`
+              : 'nenhuma placa cadastrada'}
+          </p>
+        </div>
+        {subtotal > 0 && (
+          <p className="text-sm font-mono font-bold text-sol shrink-0">{fmtBRL(subtotal)}</p>
+        )}
+      </div>
+
+      {/* Item escolhido — mostra card + qtd editável */}
+      {selecionada && (
+        <div className="flex items-center gap-2 text-sm bg-sol/10 border border-sol/30 rounded-lg px-3 py-2">
+          <span className="flex-1 truncate">
+            {selecionada.marca ? <span className="text-white/50">{selecionada.marca} · </span> : null}
+            <span className="text-white font-semibold">{selecionada.modelo}</span>
+            {selecionada.potencia_kw ? (
+              <span className="text-white/40 ml-1">({(selecionada.potencia_kw * 1000).toFixed(0)}Wp)</span>
+            ) : null}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-white/50 font-bold">qtd</span>
+            <input
+              type="number" min={MIN_PLACAS_TRIBUTARIA} step={1}
+              value={selecionada.qtd}
+              onChange={(e) => {
+                const q = Math.max(MIN_PLACAS_TRIBUTARIA, Math.round(Number(e.target.value) || MIN_PLACAS_TRIBUTARIA))
+                onChange({ ...selecionada, qtd: q })
+              }}
+              className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-center text-xs text-white"
+              title={`Mínimo ${MIN_PLACAS_TRIBUTARIA} por tributação`}
+            />
+          </div>
+          <span className="text-xs font-mono text-sol shrink-0 w-24 text-right">{fmtBRL(subtotal)}</span>
+          <button
+            onClick={() => onChange(null)}
+            className="text-xs text-coral hover:text-coral/70 px-1"
+            title="Trocar modelo"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Combobox pra escolher (ou trocar) modelo */}
+      {!selecionada && (
+        <div ref={containerRef} className="relative">
+          <div className="relative">
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => { setBusca(e.target.value); setAberto(true) }}
+              onFocus={() => setAberto(true)}
+              placeholder="🔎 Buscar modelo de placa fotovoltaica…"
+              className="w-full bg-white/5 border border-sol/30 focus:border-sol/70 rounded-lg px-3 py-2 pr-9 text-white text-sm focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setAberto(v => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 text-xs"
+              tabIndex={-1}
+            >
+              {aberto ? '▲' : '▼'}
+            </button>
+          </div>
+
+          {aberto && (
+            <div className="absolute z-30 mt-1.5 left-0 right-0 bg-noite border border-sol/40 rounded-lg shadow-2xl overflow-hidden max-h-72 flex flex-col">
+              <div className="px-3 py-1.5 bg-white/[0.03] border-b border-white/10 text-[10px] uppercase tracking-widest font-bold text-white/50 flex items-center justify-between gap-2">
+                <span>
+                  {filtradas.length === 0
+                    ? (busca ? `nenhum resultado pra "${busca}"` : 'nenhuma placa disponível')
+                    : `${filtradas.length} placa${filtradas.length === 1 ? '' : 's'} disponíve${filtradas.length === 1 ? 'l' : 'is'}`}
+                </span>
+                {filtradas.length > 0 && (
+                  <span className="text-sol">clicar adiciona {MIN_PLACAS_TRIBUTARIA}× ao kit</span>
+                )}
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {filtradas.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => escolher(p)}
+                    className="w-full text-left px-3 py-2 hover:bg-sol/10 focus:bg-sol/15 border-b border-white/5 last:border-b-0 transition"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-white truncate">
+                          {p.marca ? <span className="text-white/50 text-xs">{p.marca} · </span> : null}
+                          <span className="font-semibold">{p.modelo}</span>
+                          {p.potencia_kw ? (
+                            <span className="text-white/50 ml-1 text-xs">({(p.potencia_kw * 1000).toFixed(0)}Wp)</span>
+                          ) : null}
+                        </p>
+                      </div>
+                      <p className="text-sm font-mono font-bold text-sol shrink-0">
+                        {fmtBRL(Number(p.preco_venda) || 0)}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 

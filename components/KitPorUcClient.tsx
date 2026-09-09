@@ -12,6 +12,7 @@ export type CatalogoBess = {
   medidores: ProdutoBess[]
   caixasJuncao: ProdutoBess[]
   opcionais: ProdutoBess[]
+  placas?: ProdutoBess[]     // placas fotovoltaicas — mínimo 2 por tributação (Kalebe 2026-09-09)
   todos?: ProdutoBess[]      // fallback: TODOS os ativos, se um bucket vier vazio
 }
 
@@ -93,6 +94,7 @@ export function KitPorUcClient(props: Props) {
             medidores={catalogoBess.medidores}
             caixasJuncao={catalogoBess.caixasJuncao}
             opcionais={catalogoBess.opcionais}
+            placas={catalogoBess.placas}
             todos={catalogoBess.todos}
             kitSalvo={kitSalvoCentralizado}
           />

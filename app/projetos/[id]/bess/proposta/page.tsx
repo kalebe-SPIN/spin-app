@@ -73,12 +73,15 @@ export default async function BessPropostaPage(props: { params: { id: string } }
   const caixasArr        = toArr(kit.caixas_juncao)
   const opcionaisArr     = toArr(kit.opcionais)
   const listaCaArr       = toArr(kit.lista_ca)  // Kalebe 2026-09-09: materiais elétricos → base impostável
+  const placasArr        = toArr(kit.placas)     // Kalebe 2026-09-09: MIN 2 unidades tributário
 
   const somarLinha = (i: any) => (Number(i?.preco_venda) || 0) * (Number(i?.qtd) || 1)
   const somarArr = (arr: any[]) => arr.reduce((s, i) => s + somarLinha(i), 0)
-  // Kit WEG bruto (pass-through, leva fator 0,4182). NÃO inclui Lista CA —
-  // ela é impostável no lado da SPIN, mesma regra do on-grid.
+  // Kit WEG bruto (pass-through, leva fator 0,4182). Placas + bateria +
+  // controladora + medidor + caixas + opcionais são todos WEG. NÃO inclui
+  // Lista CA — ela é impostável no lado da SPIN, mesma regra do on-grid.
   const kitBrutoBess =
+    somarArr(placasArr) +
     somarArr(bateriasArr) + somarArr(controladorasArr) + somarArr(medidoresArr)
     + somarArr(caixasArr) + somarArr(opcionaisArr)
   const subtotalListaCa = somarArr(listaCaArr)
@@ -145,6 +148,7 @@ export default async function BessPropostaPage(props: { params: { id: string } }
   const proposta = {
     kit_bess_bruto: kitBrutoBess,
     kit_com_fator: kitComFator,
+    placas: placasArr,
     subtotal_lista_ca: subtotalListaCa,
     lista_ca: listaCaArr,
     frete: freteBase,

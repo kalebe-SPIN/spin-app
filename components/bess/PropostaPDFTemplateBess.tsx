@@ -32,6 +32,7 @@ type Props = {
   kit: {
     modo: 'bess_puro'
     // v2: arrays. Compat com formato antigo (singular).
+    placas?: ItemComp[]       // MIN 2 unidades tributário
     baterias?: ItemComp[]
     controladoras?: ItemComp[]
     medidores?: ItemComp[]
@@ -105,6 +106,7 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
 
     // v2: normaliza arrays (aceita singular legado)
     const toArr = (x: any): ItemComp[] => Array.isArray(x) ? x : (x?.id ? [x] : [])
+    const placasArr        = toArr(kit.placas)
     const bateriasArr      = toArr(kit.baterias      ?? kit.bateria)
     const controladorasArr = toArr(kit.controladoras ?? kit.controladora)
     const medidoresArr     = toArr(kit.medidores     ?? kit.medidor)
@@ -239,6 +241,9 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
                 </tr>
               </thead>
               <tbody>
+                {placasArr.map((p, i) => (
+                  <LinhaKitPDF key={`p${i}`} label={placasArr.length > 1 ? `☀️ Placa ${i + 1}` : '☀️ Placa fotovoltaica'} item={p} />
+                ))}
                 {bateriasArr.map((b, i) => (
                   <LinhaKitPDF key={`b${i}`} label={bateriasArr.length > 1 ? `🔋 Bateria ${i + 1}` : '🔋 Bateria'} item={b} />
                 ))}

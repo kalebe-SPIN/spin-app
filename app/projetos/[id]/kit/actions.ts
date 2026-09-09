@@ -426,19 +426,25 @@ export async function salvarKitBessAction(projetoId: string, composicao: any) {
   const caixas        = toArr(composicao?.caixas_juncao)
   const opcionais     = toArr(composicao?.opcionais)
   const lista_ca      = toArr(composicao?.lista_ca)  // Kalebe 2026-09-09: materiais elétricos
+  const placas        = toArr(composicao?.placas)     // Kalebe 2026-09-09: MIN 2 unidades tributário
 
   if (baterias.length === 0)      return { sucesso: false as const, erro: 'Adicione pelo menos 1 bateria' }
   if (controladoras.length === 0) return { sucesso: false as const, erro: 'Adicione pelo menos 1 controladora' }
   if (medidores.length === 0)     return { sucesso: false as const, erro: 'Adicione pelo menos 1 medidor' }
+  if (placas.length === 0)        return { sucesso: false as const, erro: 'Escolha uma placa fotovoltaica (mín 2 unidades por tributação)' }
+  const qtdPlacas = placas.reduce((s: number, p: any) => s + (Number(p?.qtd) || 0), 0)
+  if (qtdPlacas < 2)              return { sucesso: false as const, erro: 'Mínimo de 2 placas por questão tributária' }
 
   const somarLinha = (i: any) => (Number(i?.preco_venda) || 0) * (Number(i?.qtd) || 1)
   const somarArr = (arr: any[]) => arr.reduce((s, i) => s + somarLinha(i), 0)
   const total =
+    somarArr(placas) +
     somarArr(baterias) + somarArr(controladoras) + somarArr(medidores) +
     somarArr(caixas) + somarArr(opcionais) + somarArr(lista_ca)
 
   const kit_selecionado = {
     modo: 'bess_puro' as const,
+    placas,
     baterias, controladoras, medidores,
     caixas_juncao: caixas,
     opcionais,
