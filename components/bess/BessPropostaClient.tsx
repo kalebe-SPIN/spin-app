@@ -1,8 +1,13 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useRef } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { salvarOrcamentoAction, marcarPropostaEnviadaAction } from '@/app/projetos/[id]/orcamento/actions'
+import { createClient } from '@/lib/supabase/client'
+import { PropostaPDFTemplateBess } from './PropostaPDFTemplateBess'
+
+const BUCKET_PROPOSTAS = 'propostas-fv'
 
 /**
  * Tela de proposta BESS puro — Kalebe 2026-09-09.
@@ -71,9 +76,13 @@ const fmtBRL = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 })
 
 export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAdmin }: Props) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const [gerandoPdf, setGerandoPdf] = useState(false)
+  const [urlPdf, setUrlPdf] = useState<string | null>(projeto.url_pdf_proposta || null)
   const [msg, setMsg] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const templateRef = useRef<HTMLDivElement>(null)
 
   function salvar() {
     setErro(null); setMsg(null)
@@ -91,6 +100,63 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
       if (!r.sucesso) { setErro(r.erro || 'Erro ao marcar'); return }
       setMsg('Proposta marcada como enviada — projeto avançou pro CRM')
     })
+  }
+
+  async function gerarPdf() {
+    if (!templateRef.current) { setErro('Template não pronto'); return }
+    setErro(null); setMsg(null); setGerandoPdf(true)
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const { jsPDF } = await import('jspdf')
+
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const paginas = Array.from(templateRef.current.querySelectorAll('section'))
+      for (let i = 0; i < paginas.length; i++) {
+        const canvas = await html2canvas(paginas[i] as HTMLElement, {
+          scale: 2, useCORS: true, allowTaint: false, logging: false, backgroundColor: '#050B16',
+        })
+        const imgData = canvas.toDataURL('image/jpeg', 0.92)
+        if (i > 0) pdf.addPage()
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
+      }
+
+      // Download local
+      const nomeArquivo = `PROPOSTA_BESS_${(projeto.cliente_razao_social || 'cliente').replace(/\s+/g, '_')}.pdf`
+      pdf.save(nomeArquivo)
+
+      // Upload no bucket + salva URL no projeto
+      const pdfBlob = pdf.output('blob')
+      const supabase = createClient()
+      const path = `${projeto.id}/bess-${Date.now()}.pdf`
+      const { error: upErr } = await supabase.storage
+        .from(BUCKET_PROPOSTAS)
+        .upload(path, pdfBlob, { contentType: 'application/pdf', upsert: false })
+      if (upErr) throw upErr
+
+      const { data: urlData } = supabase.storage.from(BUCKET_PROPOSTAS).getPublicUrl(path)
+      const publicUrl = urlData.publicUrl
+      const r = await salvarOrcamentoAction(projeto.id, proposta as any, publicUrl)
+      if (r.sucesso) {
+        setUrlPdf(publicUrl)
+        setMsg('PDF gerado e salvo no card do cliente')
+        router.refresh()
+      }
+    } catch (e: any) {
+      console.error('[gerarPdf BESS] erro:', e)
+      setErro(e.message || 'Falha ao gerar PDF')
+    } finally {
+      setGerandoPdf(false)
+    }
+  }
+
+  function enviarWhatsApp() {
+    if (!urlPdf) { setErro('Gere o PDF primeiro antes de enviar'); return }
+    const tel = (projeto.cliente_telefone || '').replace(/\D/g, '')
+    if (!tel) { setErro('Cliente sem WhatsApp cadastrado'); return }
+    const telDDI = tel.startsWith('55') ? tel : `55${tel}`
+    const nome = (projeto.cliente_razao_social || 'cliente').split(' ')[0]
+    const msg = `Olá ${nome}! Segue sua proposta de sistema BESS (backup de energia) da Spin Solar:\n\n${urlPdf}\n\nQualquer dúvida estou à disposição. — Kalebe`
+    window.open(`https://wa.me/${telDDI}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
   const todosOpcionais = [...(kit.caixas_juncao || []), ...(kit.opcionais || [])]
@@ -191,16 +257,39 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
 
           <div className="mt-6 space-y-2">
             <button
-              onClick={salvar}
-              disabled={pending}
+              onClick={gerarPdf}
+              disabled={gerandoPdf || pending}
               className="w-full px-4 py-3 rounded-lg bg-sol text-noite font-bold text-sm hover:bg-sol/80 disabled:opacity-40 transition"
             >
-              {pending ? 'Salvando…' : '💾 Salvar orçamento'}
+              {gerandoPdf ? 'Gerando PDF…' : '📄 Gerar PDF da proposta'}
+            </button>
+            {urlPdf && (
+              <>
+                <a
+                  href={urlPdf} target="_blank" rel="noreferrer"
+                  className="block text-center w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white/80 text-xs font-semibold transition"
+                >
+                  ↗ Abrir PDF salvo
+                </a>
+                <button
+                  onClick={enviarWhatsApp}
+                  className="w-full px-4 py-2 rounded-lg bg-verde/10 border border-verde/40 text-verde text-xs font-bold hover:bg-verde/20 transition"
+                >
+                  💬 Enviar por WhatsApp
+                </button>
+              </>
+            )}
+            <button
+              onClick={salvar}
+              disabled={pending}
+              className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 hover:bg-white/15 text-white text-xs font-semibold transition disabled:opacity-40"
+            >
+              💾 Só salvar orçamento (sem PDF)
             </button>
             <button
               onClick={marcarEnviada}
               disabled={pending}
-              className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 hover:bg-white/15 text-white text-sm font-bold transition disabled:opacity-40"
+              className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 hover:bg-white/15 text-white text-xs font-semibold transition disabled:opacity-40"
             >
               📤 Marcar como enviada
             </button>
@@ -230,11 +319,19 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
           {projeto.cliente_cpf_cnpj && (
             <p className="font-mono text-white/70 text-[11px] mt-0.5">{projeto.cliente_cpf_cnpj}</p>
           )}
-          <p className="mt-3 text-[11px]">
-            PDF da proposta BESS ainda em desenvolvimento — por enquanto salva o
-            orçamento e usa o PDF genérico até o template BESS ficar pronto.
-          </p>
         </section>
+      </div>
+
+      {/* Template PDF escondido — renderizado fora do viewport pra html2canvas
+          poder capturar sem que apareça na tela do consultor. */}
+      <div style={{ position: 'absolute', left: -99999, top: 0, width: 794 }} aria-hidden="true">
+        <PropostaPDFTemplateBess
+          ref={templateRef}
+          projeto={projeto}
+          kit={kit}
+          proposta={proposta}
+          configEmpresa={configEmpresa}
+        />
       </div>
     </div>
   )
