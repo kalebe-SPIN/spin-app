@@ -228,6 +228,7 @@ function BlocoBusca({
   onChange: (arr: ItemComposicao[]) => void
 }) {
   const [busca, setBusca] = useState('')
+  const [qtdNova, setQtdNova] = useState(1)  // qtd a ser aplicada ao próximo item adicionado
   const [aberto, setAberto] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -262,8 +263,9 @@ function BlocoBusca({
 
   function adicionar(p: ProdutoBess) {
     if (idsEscolhidos.has(p.id)) return
-    onChange([...itens, toItem(p)])
+    onChange([...itens, toItem(p, Math.max(1, Math.round(qtdNova) || 1))])
     setBusca('')
+    setQtdNova(1)
     setAberto(false)
   }
 
@@ -322,7 +324,8 @@ function BlocoBusca({
         </div>
       )}
 
-      {/* Combobox custom — dark, sem <select> nativo */}
+      {/* Combobox custom — dark, sem <select> nativo. Campo de qtd ao lado
+          define quantas unidades vão junto quando adicionar a próxima linha. */}
       <div ref={containerRef} className="relative">
         <div className="flex gap-2">
           <div className="flex-1 relative">
@@ -343,14 +346,29 @@ function BlocoBusca({
               {aberto ? '▲' : '▼'}
             </button>
           </div>
+          {/* Quantidade inicial — vai na próxima linha adicionada */}
+          <div className="flex items-center gap-1.5 shrink-0 bg-white/[0.02] border border-white/10 rounded-lg px-2">
+            <span className="text-[10px] uppercase tracking-wider text-white/40 font-bold">qtd</span>
+            <input
+              type="number" min={1} step={1} value={qtdNova}
+              onChange={(e) => setQtdNova(Math.max(1, Math.round(Number(e.target.value) || 1)))}
+              className="w-14 bg-transparent text-white text-sm text-center focus:outline-none py-2"
+              title="Quantidade da próxima linha adicionada"
+            />
+          </div>
         </div>
 
         {aberto && (
           <div className="absolute z-30 mt-1.5 left-0 right-0 bg-noite border border-sol/40 rounded-lg shadow-2xl overflow-hidden max-h-72 flex flex-col">
-            <div className="px-3 py-1.5 bg-white/[0.03] border-b border-white/10 text-[10px] uppercase tracking-widest font-bold text-white/50">
-              {filtrados.length === 0
-                ? (busca ? `nenhum resultado pra "${busca}"` : 'nenhum produto disponível')
-                : `${filtrados.length} opç${filtrados.length === 1 ? 'ão' : 'ões'} disponíve${filtrados.length === 1 ? 'l' : 'is'}`}
+            <div className="px-3 py-1.5 bg-white/[0.03] border-b border-white/10 text-[10px] uppercase tracking-widest font-bold text-white/50 flex items-center justify-between gap-2">
+              <span>
+                {filtrados.length === 0
+                  ? (busca ? `nenhum resultado pra "${busca}"` : 'nenhum produto disponível')
+                  : `${filtrados.length} opç${filtrados.length === 1 ? 'ão' : 'ões'} disponíve${filtrados.length === 1 ? 'l' : 'is'}`}
+              </span>
+              {filtrados.length > 0 && (
+                <span className="text-sol">clicar adiciona {qtdNova}× ao kit</span>
+              )}
             </div>
             <div className="overflow-y-auto flex-1">
               {filtrados.map(p => (
