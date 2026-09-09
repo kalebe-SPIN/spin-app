@@ -52,8 +52,18 @@ export async function getModoVisualizacao(): Promise<{
   const ehAdminReal = perfil?.role === 'admin'
 
   if (!ehAdminReal) {
+    // Kalebe 2026-09-09: usuário com role 'representante' comporta-se como
+    // 'consultor' em TODO o sistema (nav, dashboard, CRM solar, /projetos,
+    // /orcamento, PDF). O modelo de ganhos/comissão do representante ainda
+    // está em finalização — enquanto isso, ele reusa toda a esteira do
+    // consultor. Se você quer bifurcar comportamento por role real (ex:
+    // pra features de comissão, dashboard de ganhos), consulta `perfil.role`
+    // direto e NÃO `modo` — assim admin simulando ainda pode testar.
+    //
+    // Pra reativar semântica separada: trocar 'consultor' → 'representante'
+    // na linha marcada com ← abaixo.
     const modoDoRole: ModoVisualizacao =
-      perfil?.role === 'representante' || perfil?.role === 'vendedor_servicos' ? 'representante'
+      perfil?.role === 'representante' || perfil?.role === 'vendedor_servicos' ? 'consultor' /* ← trocar pra 'representante' pra reativar dashboard próprio */
       : perfil?.role === 'profissional_campo' ? 'profissional_campo'
       : 'consultor'
     return { modo: modoDoRole, ehAdminReal: false, perfil }
