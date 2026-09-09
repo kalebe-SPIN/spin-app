@@ -14,7 +14,7 @@
  * tipo_projeto='bess' via salvarKitBessAction.
  */
 
-import { useState, useMemo, useTransition } from 'react'
+import { useState, useMemo, useTransition, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { salvarKitBessAction } from '@/app/projetos/[id]/kit/actions'
 
@@ -228,7 +228,8 @@ function BlocoBusca({
   onChange: (arr: ItemComposicao[]) => void
 }) {
   const [busca, setBusca] = useState('')
-  const [selNovoId, setSelNovoId] = useState('')
+  const [aberto, setAberto] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const subtotal = itens.reduce((s, i) => s + (i.preco_venda || 0) * (i.qtd || 1), 0)
 
@@ -237,8 +238,9 @@ function BlocoBusca({
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase()
     const base = produtos.filter(p => !idsEscolhidos.has(p.id))
-    if (!t) return base
-    return base.filter(p =>
+    const ordenados = base.slice().sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '', 'pt-BR'))
+    if (!t) return ordenados
+    return ordenados.filter(p =>
       p.modelo?.toLowerCase().includes(t) ||
       p.marca?.toLowerCase().includes(t) ||
       p.subcategoria?.toLowerCase().includes(t) ||
@@ -246,13 +248,23 @@ function BlocoBusca({
     )
   }, [produtos, itens, busca, idsEscolhidos])
 
-  function adicionar() {
-    const p = filtrados.find(x => x.id === selNovoId) || produtos.find(x => x.id === selNovoId)
-    if (!p) return
+  // Fecha painel ao clicar fora
+  useEffect(() => {
+    if (!aberto) return
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setAberto(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [aberto])
+
+  function adicionar(p: ProdutoBess) {
     if (idsEscolhidos.has(p.id)) return
     onChange([...itens, toItem(p)])
-    setSelNovoId('')
     setBusca('')
+    setAberto(false)
   }
 
   return (
@@ -310,43 +322,71 @@ function BlocoBusca({
         </div>
       )}
 
-      {/* Busca + dropdown + adicionar */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr_auto] gap-2">
-        <input
-          type="search"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="🔎 Buscar modelo, marca…"
-          className="bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none"
-        />
-        <select
-          value={selNovoId}
-          onChange={(e) => setSelNovoId(e.target.value)}
-          className="bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none"
-        >
-          <option value="">
-            {filtrados.length === 0
-              ? (busca ? `— nenhum resultado pra "${busca}" —` : '— nenhum produto disponível —')
-              : `— selecionar (${filtrados.length} opção${filtrados.length === 1 ? '' : 'es'}) —`}
-          </option>
-          {filtrados
-            .slice().sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '', 'pt-BR'))
-            .map(p => (
-              <option key={p.id} value={p.id}>
-                {p.marca ? `${p.marca} · ` : ''}{p.modelo}
-                {p.potencia_kw ? ` (${p.potencia_kw}kW)` : ''}
-                {' — '}{fmtBRL(Number(p.preco_venda) || 0)}
-              </option>
-            ))
-          }
-        </select>
-        <button
-          onClick={adicionar}
-          disabled={!selNovoId}
-          className="px-4 py-2 rounded-lg bg-sol/15 border border-sol/40 text-sol text-sm font-bold hover:bg-sol/25 disabled:opacity-40 transition"
-        >
-          + Adicionar
-        </button>
+      {/* Combobox custom — dark, sem <select> nativo */}
+      <div ref={containerRef} className="relative">
+        <div className="flex gap-2">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => { setBusca(e.target.value); setAberto(true) }}
+              onFocus={() => setAberto(true)}
+              placeholder={`🔎 Buscar e adicionar${itens.length > 0 ? ' outro item' : ''}…`}
+              className="w-full bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 pr-9 text-white text-sm focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setAberto(v => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 text-xs"
+              tabIndex={-1}
+            >
+              {aberto ? '▲' : '▼'}
+            </button>
+          </div>
+        </div>
+
+        {aberto && (
+          <div className="absolute z-30 mt-1.5 left-0 right-0 bg-noite border border-sol/40 rounded-lg shadow-2xl overflow-hidden max-h-72 flex flex-col">
+            <div className="px-3 py-1.5 bg-white/[0.03] border-b border-white/10 text-[10px] uppercase tracking-widest font-bold text-white/50">
+              {filtrados.length === 0
+                ? (busca ? `nenhum resultado pra "${busca}"` : 'nenhum produto disponível')
+                : `${filtrados.length} opç${filtrados.length === 1 ? 'ão' : 'ões'} disponíve${filtrados.length === 1 ? 'l' : 'is'}`}
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {filtrados.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => adicionar(p)}
+                  className="w-full text-left px-3 py-2 hover:bg-sol/10 focus:bg-sol/15 border-b border-white/5 last:border-b-0 transition"
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-white truncate">
+                        {p.marca ? <span className="text-white/50 text-xs">{p.marca} · </span> : null}
+                        <span className="font-semibold">{p.modelo}</span>
+                        {p.potencia_kw ? <span className="text-white/50 ml-1 text-xs">({p.potencia_kw}kW)</span> : null}
+                      </p>
+                      <p className="text-[10px] text-white/40 mt-0.5 truncate">
+                        {p.categoria}{p.subcategoria ? ` · ${p.subcategoria}` : ''}
+                      </p>
+                    </div>
+                    <p className="text-sm font-mono font-bold text-sol shrink-0">
+                      {fmtBRL(Number(p.preco_venda) || 0)}
+                    </p>
+                  </div>
+                </button>
+              ))}
+              {filtrados.length === 0 && (
+                <div className="p-4 text-center text-white/40 text-xs">
+                  {busca
+                    ? <>Nada casou com "<span className="text-white/60">{busca}</span>". Limpe a busca ou tente outro termo.</>
+                    : 'Sem produtos disponíveis pra adicionar.'}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   )
