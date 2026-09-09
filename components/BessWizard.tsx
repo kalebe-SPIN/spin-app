@@ -1,20 +1,17 @@
 'use client'
 
 /**
- * BessWizard — Kalebe 2026-09-09.
+ * BessWizard — Kalebe 2026-09-09 (v2 multi-item + busca).
  *
- * Modo "kit BESS puro" (sem placas solares) do passo /kit. Ativado quando
- * o consultor escolhe "🔋 Sem placas — só BESS" no toggle superior do
- * KitPorUcClient. Composição:
+ * Modo "kit BESS puro" (sem placas solares). Ativado quando o consultor
+ * escolhe "🔋 Sem placas — só BESS" no toggle superior do KitPorUcClient.
  *
- *  1. Bateria       (obrigatório)  — categoria='bateria'
- *  2. Controladora  (obrigatório)  — categoria='controlador' ou inversor_hibrido
- *  3. Medidor       (obrigatório)  — categoria='multimedidor' ou smart_meter
- *  4. Caixas junção (opcional, N)  — categoria='caixa_juncao'
- *  5. Opcionais     (opcional, N)  — qualquer produto WEG (frete, EMBOX, cabos)
+ * Todas as 5 seções aceitam MÚLTIPLOS itens (Kalebe pediu: às vezes o
+ * cliente precisa de 2 baterias diferentes ou 3 controladoras). Cada
+ * seção tem campo de busca embutido pra filtrar produtos em tempo real.
  *
- * Persistência: kit_selecionado.modo='bess_puro' + tipo_projeto='bess' via
- * salvarKitBessAction. Preço total calculado ao vivo (custo/venda WEG).
+ * Persistência: kit_selecionado.modo='bess_puro' + arrays por segmento +
+ * tipo_projeto='bess' via salvarKitBessAction.
  */
 
 import { useState, useMemo, useTransition } from 'react'
@@ -47,9 +44,9 @@ type Props = {
   controladoras: ProdutoBess[]
   medidores: ProdutoBess[]
   caixasJuncao: ProdutoBess[]
-  opcionais: ProdutoBess[]        // frete, EMBOX, cabos, acessórios
-  todos?: ProdutoBess[]            // fallback: TODOS os ativos, se um bucket vier vazio
-  kitSalvo?: any | null            // pra pré-carregar quando editando
+  opcionais: ProdutoBess[]
+  todos?: ProdutoBess[]
+  kitSalvo?: any | null
 }
 
 const fmtBRL = (v: number) =>
@@ -71,42 +68,44 @@ export function BessWizard({
   baterias, controladoras, medidores, caixasJuncao, opcionais, todos,
   kitSalvo,
 }: Props) {
-  // Fallback: se um bucket específico veio vazio (nomenclatura fora do
-  // padrão ou catálogo incompleto), oferece TODOS os ativos pra escolha
-  // manual. Melhor mostrar tudo que travar o consultor.
   const bat = baterias.length > 0 ? baterias : (todos || [])
   const ctrl = controladoras.length > 0 ? controladoras : (todos || [])
   const med = medidores.length > 0 ? medidores : (todos || [])
   const caixa = caixasJuncao.length > 0 ? caixasJuncao : (todos || [])
-  // Opcionais: se meu bucket ficou vazio, mostra todos os ativos (menos os já
-  // reconhecidos nos buckets específicos que apareceram).
   const opts = opcionais.length > 0 ? opcionais : (todos || [])
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
 
-  // Pré-carrega se já existe kit salvo em modo BESS puro
+  // Pré-carrega kit salvo — aceita formato antigo (single) e novo (array)
   const kitPre = kitSalvo?.modo === 'bess_puro' ? kitSalvo : null
-  const [bateria, setBateria]         = useState<ItemComposicao | null>(kitPre?.bateria || null)
-  const [controladora, setControladora] = useState<ItemComposicao | null>(kitPre?.controladora || null)
-  const [medidor, setMedidor]         = useState<ItemComposicao | null>(kitPre?.medidor || null)
-  const [caixas, setCaixas]           = useState<ItemComposicao[]>(kitPre?.caixas_juncao || [])
-  const [extras, setExtras]           = useState<ItemComposicao[]>(kitPre?.opcionais || [])
+  const toArr = (x: any): ItemComposicao[] => {
+    if (Array.isArray(x)) return x
+    if (x && typeof x === 'object' && x.id) return [x]
+    return []
+  }
+  const [bats, setBats]   = useState<ItemComposicao[]>(toArr(kitPre?.baterias ?? kitPre?.bateria))
+  const [ctrls, setCtrls] = useState<ItemComposicao[]>(toArr(kitPre?.controladoras ?? kitPre?.controladora))
+  const [meds, setMeds]   = useState<ItemComposicao[]>(toArr(kitPre?.medidores ?? kitPre?.medidor))
+  const [caixas, setCaixas] = useState<ItemComposicao[]>(kitPre?.caixas_juncao || [])
+  const [extras, setExtras] = useState<ItemComposicao[]>(kitPre?.opcionais || [])
 
   const total = useMemo(() => {
-    const linha = (i: ItemComposicao | null) => (i ? (i.preco_venda || 0) * (i.qtd || 1) : 0)
+    const linha = (i: ItemComposicao) => (i.preco_venda || 0) * (i.qtd || 1)
     const arr = (a: ItemComposicao[]) => a.reduce((s, i) => s + linha(i), 0)
-    return linha(bateria) + linha(controladora) + linha(medidor) + arr(caixas) + arr(extras)
-  }, [bateria, controladora, medidor, caixas, extras])
+    return arr(bats) + arr(ctrls) + arr(meds) + arr(caixas) + arr(extras)
+  }, [bats, ctrls, meds, caixas, extras])
 
-  const podeSalvar = !!bateria && !!controladora && !!medidor && !pending
+  const podeSalvar = bats.length > 0 && ctrls.length > 0 && meds.length > 0 && !pending
 
   function salvar() {
     setErro(null); setMsg(null)
     startTransition(async () => {
       const r = await salvarKitBessAction(projetoId, {
-        bateria, controladora, medidor,
+        baterias: bats,
+        controladoras: ctrls,
+        medidores: meds,
         caixas_juncao: caixas,
         opcionais: extras,
       })
@@ -120,11 +119,10 @@ export function BessWizard({
     <div className="space-y-6">
       <div className="bg-sol/10 border border-sol/30 rounded-xl p-4 text-sm text-white/80 leading-relaxed">
         🔋 <strong className="text-sol">Modo BESS puro</strong> — kit de backup sem placas solares.
-        Bateria + controladora + medidor são obrigatórios. Caixa de junção e opcionais são complementares.
+        Bateria + controladora + medidor são obrigatórios (pode adicionar mais de 1).
+        Caixa de junção e opcionais são complementares.
       </div>
 
-      {/* Debug: contagem por bucket. Útil quando um bucket vem vazio e o
-          usuário precisa entender se é problema de catálogo ou nomenclatura. */}
       <details className="bg-white/[0.02] border border-white/10 rounded-xl px-4 py-2 text-xs">
         <summary className="cursor-pointer text-white/60 select-none">
           🔍 Diagnóstico do catálogo — {(todos || []).length} produtos ativos
@@ -151,58 +149,49 @@ export function BessWizard({
         )}
       </details>
 
-      {/* Bateria */}
-      <SelectItemBloco
+      <BlocoBusca
         titulo="🔋 Bateria"
-        subtitulo={baterias.length > 0 ? "Item central — SBW ou similar da WEG" : "Nenhuma bateria reconhecida — mostrando todos os produtos ativos"}
+        subtitulo={baterias.length > 0 ? "SBW ou similar da WEG — adicione quantas quiser" : "Nenhuma bateria reconhecida — mostrando todos ativos"}
         obrigatorio
         produtos={bat}
-        selecionado={bateria}
-        onSelecionar={(p) => setBateria(p ? toItem(p) : null)}
-        onQtdChange={(q) => setBateria(b => b ? { ...b, qtd: q } : null)}
+        itens={bats}
+        onChange={setBats}
       />
 
-      {/* Controladora / Inversor Híbrido */}
-      <SelectItemBloco
+      <BlocoBusca
         titulo="⚙️ Controladora / Inversor Híbrido"
-        subtitulo={controladoras.length > 0 ? "Converte DC da bateria pra AC — linha WEG SIW200H (mono) ou SIW400H (tri)" : "Nenhuma controladora reconhecida — mostrando todos os produtos ativos"}
+        subtitulo={controladoras.length > 0 ? "WEG SIW200H (mono) ou SIW400H (tri) — adicione quantas quiser" : "Nenhuma controladora reconhecida — mostrando todos ativos"}
         obrigatorio
         produtos={ctrl}
-        selecionado={controladora}
-        onSelecionar={(p) => setControladora(p ? toItem(p) : null)}
-        onQtdChange={(q) => setControladora(c => c ? { ...c, qtd: q } : null)}
+        itens={ctrls}
+        onChange={setCtrls}
       />
 
-      {/* Medidor */}
-      <SelectItemBloco
+      <BlocoBusca
         titulo="📊 Medidor"
-        subtitulo={medidores.length > 0 ? "Multimedidor CHINT DTSU666 ou similar pra monitoramento" : "Nenhum medidor reconhecido — mostrando todos os produtos ativos"}
+        subtitulo={medidores.length > 0 ? "CHINT DTSU666 ou similar pra monitoramento" : "Nenhum medidor reconhecido — mostrando todos ativos"}
         obrigatorio
         produtos={med}
-        selecionado={medidor}
-        onSelecionar={(p) => setMedidor(p ? toItem(p) : null)}
-        onQtdChange={(q) => setMedidor(m => m ? { ...m, qtd: q } : null)}
+        itens={meds}
+        onChange={setMeds}
       />
 
-      {/* Caixas de junção (múltiplas) */}
-      <MultiSelectBloco
+      <BlocoBusca
         titulo="🧰 Caixas de junção"
         subtitulo={caixasJuncao.length > 0 ? "EMBOX ou outras — opcional" : "Nenhuma caixa reconhecida — mostrando todos ativos"}
         produtos={caixa}
-        selecionados={caixas}
+        itens={caixas}
         onChange={setCaixas}
       />
 
-      {/* Opcionais (múltiplos) */}
-      <MultiSelectBloco
+      <BlocoBusca
         titulo="✨ Opcionais WEG"
         subtitulo={opcionais.length > 0 ? "Frete, cabos, acessórios da planilha WEG — opcional" : "Nenhum opcional reconhecido — mostrando todos ativos"}
         produtos={opts}
-        selecionados={extras}
+        itens={extras}
         onChange={setExtras}
       />
 
-      {/* Total + salvar */}
       <div className="sticky bottom-4 bg-noite/95 backdrop-blur border border-sol/40 rounded-xl p-5 flex items-center justify-between gap-4 shadow-xl">
         <div>
           <p className="text-[10px] uppercase tracking-wider font-bold text-white/50">Total estimado (custo WEG)</p>
@@ -224,47 +213,123 @@ export function BessWizard({
   )
 }
 
-function SelectItemBloco({
-  titulo, subtitulo, obrigatorio, produtos, selecionado, onSelecionar, onQtdChange,
+/**
+ * Bloco unificado: campo de busca + lista de itens escolhidos + dropdown pra
+ * adicionar. Aceita múltiplos itens do mesmo segmento (Kalebe 2026-09-09).
+ */
+function BlocoBusca({
+  titulo, subtitulo, obrigatorio, produtos, itens, onChange,
 }: {
-  titulo: string; subtitulo: string; obrigatorio?: boolean
+  titulo: string
+  subtitulo: string
+  obrigatorio?: boolean
   produtos: ProdutoBess[]
-  selecionado: ItemComposicao | null
-  onSelecionar: (p: ProdutoBess | null) => void
-  onQtdChange: (qtd: number) => void
+  itens: ItemComposicao[]
+  onChange: (arr: ItemComposicao[]) => void
 }) {
+  const [busca, setBusca] = useState('')
+  const [selNovoId, setSelNovoId] = useState('')
+
+  const subtotal = itens.reduce((s, i) => s + (i.preco_venda || 0) * (i.qtd || 1), 0)
+
+  // Filtra produtos por termo de busca + remove já escolhidos
+  const idsEscolhidos = new Set(itens.map(i => i.id))
+  const filtrados = useMemo(() => {
+    const t = busca.trim().toLowerCase()
+    const base = produtos.filter(p => !idsEscolhidos.has(p.id))
+    if (!t) return base
+    return base.filter(p =>
+      p.modelo?.toLowerCase().includes(t) ||
+      p.marca?.toLowerCase().includes(t) ||
+      p.subcategoria?.toLowerCase().includes(t) ||
+      p.categoria?.toLowerCase().includes(t)
+    )
+  }, [produtos, itens, busca, idsEscolhidos])
+
+  function adicionar() {
+    const p = filtrados.find(x => x.id === selNovoId) || produtos.find(x => x.id === selNovoId)
+    if (!p) return
+    if (idsEscolhidos.has(p.id)) return
+    onChange([...itens, toItem(p)])
+    setSelNovoId('')
+    setBusca('')
+  }
+
   return (
-    <section className="bg-white/[0.03] border border-white/10 rounded-xl p-5">
-      <div className="flex items-baseline justify-between mb-3">
+    <section className="bg-white/[0.03] border border-white/10 rounded-xl p-5 space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
         <div>
-          <h3 className="text-base font-bold text-white">{titulo}
+          <h3 className="text-base font-bold text-white">
+            {titulo}
             {obrigatorio && <span className="text-coral ml-1">*</span>}
           </h3>
           <p className="text-xs text-white/50 mt-0.5">{subtitulo}</p>
           <p className="text-[10px] text-white/40 mt-0.5">
             {produtos.length > 0
-              ? `${produtos.length} produto${produtos.length === 1 ? '' : 's'} no catálogo`
+              ? `${produtos.length} produto${produtos.length === 1 ? '' : 's'} no catálogo · ${itens.length} adicionado${itens.length === 1 ? '' : 's'}`
               : 'nenhum produto cadastrado'}
           </p>
         </div>
-        {selecionado && (
-          <p className="text-sm font-mono font-bold text-sol">
-            {fmtBRL((selecionado.preco_venda || 0) * (selecionado.qtd || 1))}
+        {subtotal > 0 && (
+          <p className="text-sm font-mono font-bold text-sol shrink-0">
+            {fmtBRL(subtotal)}
           </p>
         )}
       </div>
 
-      <div className="flex gap-3">
+      {/* Itens já adicionados */}
+      {itens.length > 0 && (
+        <div className="space-y-1.5">
+          {itens.map((it, idx) => (
+            <div key={`${it.id}-${idx}`} className="flex items-center gap-2 text-sm bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2">
+              <span className="flex-1 truncate">
+                {it.marca ? <span className="text-white/50">{it.marca} · </span> : null}
+                <span className="text-white font-semibold">{it.modelo}</span>
+                {it.potencia_kw ? <span className="text-white/40 ml-1">({it.potencia_kw}kW)</span> : null}
+              </span>
+              <input
+                type="number" min={1} step={1} value={it.qtd}
+                onChange={(e) => {
+                  const q = Math.max(1, Math.round(Number(e.target.value) || 1))
+                  onChange(itens.map((x, i) => i === idx ? { ...x, qtd: q } : x))
+                }}
+                className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-center text-xs text-white"
+              />
+              <span className="text-xs font-mono text-sol shrink-0 w-24 text-right">
+                {fmtBRL((it.preco_venda || 0) * (it.qtd || 1))}
+              </span>
+              <button
+                onClick={() => onChange(itens.filter((_, i) => i !== idx))}
+                className="text-xs text-coral hover:text-coral/70 px-1"
+                title="Remover"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Busca + dropdown + adicionar */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr_auto] gap-2">
+        <input
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="🔎 Buscar modelo, marca…"
+          className="bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none"
+        />
         <select
-          value={selecionado?.id || ''}
-          onChange={(e) => {
-            const p = produtos.find(x => x.id === e.target.value) || null
-            onSelecionar(p)
-          }}
-          className="flex-1 bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none"
+          value={selNovoId}
+          onChange={(e) => setSelNovoId(e.target.value)}
+          className="bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none"
         >
-          <option value="">— Selecione —</option>
-          {produtos
+          <option value="">
+            {filtrados.length === 0
+              ? (busca ? `— nenhum resultado pra "${busca}" —` : '— nenhum produto disponível —')
+              : `— selecionar (${filtrados.length} opção${filtrados.length === 1 ? '' : 'es'}) —`}
+          </option>
+          {filtrados
             .slice().sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '', 'pt-BR'))
             .map(p => (
               <option key={p.id} value={p.id}>
@@ -275,97 +340,10 @@ function SelectItemBloco({
             ))
           }
         </select>
-        {selecionado && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-white/50">qtd</span>
-            <input
-              type="number" min={1} step={1}
-              value={selecionado.qtd}
-              onChange={(e) => onQtdChange(Math.max(1, Math.round(Number(e.target.value) || 1)))}
-              className="w-16 bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-2 py-2 text-white text-sm text-center focus:outline-none"
-            />
-          </div>
-        )}
-      </div>
-
-      {produtos.length === 0 && (
-        <p className="text-xs text-coral mt-2">⚠️ Nenhum produto disponível nessa categoria. Cadastre em /admin/catalogo.</p>
-      )}
-    </section>
-  )
-}
-
-function MultiSelectBloco({
-  titulo, subtitulo, produtos, selecionados, onChange,
-}: {
-  titulo: string; subtitulo: string
-  produtos: ProdutoBess[]
-  selecionados: ItemComposicao[]
-  onChange: (arr: ItemComposicao[]) => void
-}) {
-  const [novoId, setNovoId] = useState('')
-  function adicionar() {
-    const p = produtos.find(x => x.id === novoId)
-    if (!p) return
-    if (selecionados.some(s => s.id === p.id)) return
-    onChange([...selecionados, toItem(p)])
-    setNovoId('')
-  }
-  return (
-    <section className="bg-white/[0.03] border border-white/10 rounded-xl p-5">
-      <div className="mb-3">
-        <h3 className="text-base font-bold text-white">{titulo}</h3>
-        <p className="text-xs text-white/50 mt-0.5">{subtitulo}</p>
-      </div>
-
-      {selecionados.length > 0 && (
-        <div className="space-y-2 mb-3">
-          {selecionados.map((s, idx) => (
-            <div key={s.id} className="flex items-center gap-2 text-sm bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2">
-              <span className="flex-1 truncate">{s.marca ? `${s.marca} · ` : ''}{s.modelo}</span>
-              <input
-                type="number" min={1} step={1} value={s.qtd}
-                onChange={(e) => {
-                  const q = Math.max(1, Math.round(Number(e.target.value) || 1))
-                  onChange(selecionados.map((x, i) => i === idx ? { ...x, qtd: q } : x))
-                }}
-                className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-center text-xs"
-              />
-              <span className="text-xs font-mono text-sol shrink-0 w-24 text-right">
-                {fmtBRL((s.preco_venda || 0) * (s.qtd || 1))}
-              </span>
-              <button
-                onClick={() => onChange(selecionados.filter((_, i) => i !== idx))}
-                className="text-xs text-coral hover:text-coral/70 px-1"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex gap-2">
-        <select
-          value={novoId}
-          onChange={(e) => setNovoId(e.target.value)}
-          className="flex-1 bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none"
-        >
-          <option value="">— Adicionar item —</option>
-          {produtos
-            .filter(p => !selecionados.some(s => s.id === p.id))
-            .slice().sort((a, b) => (a.modelo || '').localeCompare(b.modelo || '', 'pt-BR'))
-            .map(p => (
-              <option key={p.id} value={p.id}>
-                {p.marca ? `${p.marca} · ` : ''}{p.modelo} — {fmtBRL(Number(p.preco_venda) || 0)}
-              </option>
-            ))
-          }
-        </select>
         <button
           onClick={adicionar}
-          disabled={!novoId}
-          className="px-4 py-2 rounded-lg bg-sol/10 border border-sol/30 text-sol text-sm font-bold hover:bg-sol/20 disabled:opacity-40 transition"
+          disabled={!selNovoId}
+          className="px-4 py-2 rounded-lg bg-sol/15 border border-sol/40 text-sol text-sm font-bold hover:bg-sol/25 disabled:opacity-40 transition"
         >
           + Adicionar
         </button>

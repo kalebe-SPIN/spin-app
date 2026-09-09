@@ -64,11 +64,20 @@ export default async function BessPropostaPage(props: { params: { id: string } }
   const params = paramsToRecord(paramsRows || [])
 
   // Precificação BESS pura — mesma fórmula do v1, kit_weg_bruto = soma BESS.
+  // Kalebe 2026-09-09 v2: cada segmento é ARRAY (múltiplos itens).
+  // Compat com formato antigo (single object): normaliza pra array.
+  const toArr = (x: any): any[] => Array.isArray(x) ? x : (x?.id ? [x] : [])
+  const bateriasArr      = toArr(kit.baterias      ?? kit.bateria)
+  const controladorasArr = toArr(kit.controladoras ?? kit.controladora)
+  const medidoresArr     = toArr(kit.medidores     ?? kit.medidor)
+  const caixasArr        = toArr(kit.caixas_juncao)
+  const opcionaisArr     = toArr(kit.opcionais)
+
   const somarLinha = (i: any) => (Number(i?.preco_venda) || 0) * (Number(i?.qtd) || 1)
-  const somarArr = (arr: any[]) => (arr || []).reduce((s, i) => s + somarLinha(i), 0)
+  const somarArr = (arr: any[]) => arr.reduce((s, i) => s + somarLinha(i), 0)
   const kitBrutoBess =
-    somarLinha(kit.bateria) + somarLinha(kit.controladora) + somarLinha(kit.medidor)
-    + somarArr(kit.caixas_juncao) + somarArr(kit.opcionais)
+    somarArr(bateriasArr) + somarArr(controladorasArr) + somarArr(medidoresArr)
+    + somarArr(caixasArr) + somarArr(opcionaisArr)
 
   const FATOR_KIT_WEG = 0.4182
   const kitComFator = kitBrutoBess * FATOR_KIT_WEG
@@ -84,10 +93,12 @@ export default async function BessPropostaPage(props: { params: { id: string } }
   //     R$ 1.200 por inversor/controladora × qtd
   //   + R$ 200   por bateria             × qtd
   const freteBase = getNum(params, 'frete_ate_16_placas', 300)
-  const qtdInversor = Number(kit.controladora?.qtd) || 0
-  const qtdBateria = Number(kit.bateria?.qtd) || 0
-  const potenciaKwInversorUnit = Number(kit.controladora?.potencia_kw) || 0
-  const potenciaCaTotalKw = qtdInversor * potenciaKwInversorUnit
+  // Somas dos arrays — múltiplos itens por segmento
+  const qtdInversor = controladorasArr.reduce((s, c) => s + (Number(c?.qtd) || 0), 0)
+  const qtdBateria = bateriasArr.reduce((s, b) => s + (Number(b?.qtd) || 0), 0)
+  // Potência CA total = Σ (qtd × potência) de cada controladora
+  const potenciaCaTotalKw = controladorasArr.reduce((s, c) =>
+    s + (Number(c?.qtd) || 0) * (Number(c?.potencia_kw) || 0), 0)
   const projetoValorAte30 = getNum(params, 'projeto_valor_fixo_ate_30kwp', 400)
   const projetoRsPorKwAcima30 = getNum(params, 'projeto_rs_por_kwp_acima_30kwp', 30)
   const projetoArt = potenciaCaTotalKw <= 30

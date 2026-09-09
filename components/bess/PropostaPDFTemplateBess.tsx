@@ -31,9 +31,13 @@ type Props = {
   projeto: any
   kit: {
     modo: 'bess_puro'
-    bateria: ItemComp
-    controladora: ItemComp
-    medidor: ItemComp
+    // v2: arrays. Compat com formato antigo (singular).
+    baterias?: ItemComp[]
+    controladoras?: ItemComp[]
+    medidores?: ItemComp[]
+    bateria?: ItemComp
+    controladora?: ItemComp
+    medidor?: ItemComp
     caixas_juncao?: ItemComp[]
     opcionais?: ItemComp[]
   }
@@ -97,6 +101,11 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
     const parcelaFinMin = (pvFinal * 1.35) / 60
     const parcelaFinMax = (pvFinal * 1.85) / 60
 
+    // v2: normaliza arrays (aceita singular legado)
+    const toArr = (x: any): ItemComp[] => Array.isArray(x) ? x : (x?.id ? [x] : [])
+    const bateriasArr      = toArr(kit.baterias      ?? kit.bateria)
+    const controladorasArr = toArr(kit.controladoras ?? kit.controladora)
+    const medidoresArr     = toArr(kit.medidores     ?? kit.medidor)
     const opcionais = [...(kit.caixas_juncao || []), ...(kit.opcionais || [])]
 
     return (
@@ -202,11 +211,17 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
                 </tr>
               </thead>
               <tbody>
-                <LinhaKitPDF label="🔋 Bateria" item={kit.bateria} />
-                <LinhaKitPDF label="⚙️ Controladora / Inversor Híbrido" item={kit.controladora} />
-                <LinhaKitPDF label="📊 Medidor" item={kit.medidor} />
+                {bateriasArr.map((b, i) => (
+                  <LinhaKitPDF key={`b${i}`} label={bateriasArr.length > 1 ? `🔋 Bateria ${i + 1}` : '🔋 Bateria'} item={b} />
+                ))}
+                {controladorasArr.map((c, i) => (
+                  <LinhaKitPDF key={`ct${i}`} label={controladorasArr.length > 1 ? `⚙️ Controladora ${i + 1}` : '⚙️ Controladora / Inversor Híbrido'} item={c} />
+                ))}
+                {medidoresArr.map((m, i) => (
+                  <LinhaKitPDF key={`m${i}`} label={medidoresArr.length > 1 ? `📊 Medidor ${i + 1}` : '📊 Medidor'} item={m} />
+                ))}
                 {opcionais.map((it, i) => (
-                  <LinhaKitPDF key={i} label={i < (kit.caixas_juncao?.length || 0) ? '🧰 Caixa de junção' : '✨ Opcional'} item={it} />
+                  <LinhaKitPDF key={`o${i}`} label={i < (kit.caixas_juncao?.length || 0) ? '🧰 Caixa de junção' : '✨ Opcional'} item={it} />
                 ))}
               </tbody>
             </table>

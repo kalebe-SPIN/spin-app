@@ -31,9 +31,14 @@ type Props = {
   projeto: any
   kit: {
     modo: 'bess_puro'
-    bateria: ItemComp
-    controladora: ItemComp
-    medidor: ItemComp
+    // Kalebe 2026-09-09 v2: arrays (múltiplos itens por segmento).
+    // Ainda aceita formato antigo (bateria/controladora/medidor singular) via normalização no consumidor.
+    baterias?: ItemComp[]
+    controladoras?: ItemComp[]
+    medidores?: ItemComp[]
+    bateria?: ItemComp        // legado
+    controladora?: ItemComp   // legado
+    medidor?: ItemComp        // legado
     caixas_juncao?: ItemComp[]
     opcionais?: ItemComp[]
     preco_total_estimado?: number
@@ -159,7 +164,13 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
     window.open(`https://wa.me/${telDDI}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
-  const todosOpcionais = [...(kit.caixas_juncao || []), ...(kit.opcionais || [])]
+  // Normaliza formato singular (legado) → arrays
+  const toArr = (x: any): ItemComp[] => Array.isArray(x) ? x : (x?.id ? [x] : [])
+  const bateriasArr      = toArr(kit.baterias      ?? kit.bateria)
+  const controladorasArr = toArr(kit.controladoras ?? kit.controladora)
+  const medidoresArr     = toArr(kit.medidores     ?? kit.medidor)
+  const caixasArr        = kit.caixas_juncao || []
+  const opcionaisArr     = kit.opcionais || []
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -180,13 +191,19 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
               </tr>
             </thead>
             <tbody>
-              <LinhaKit label="🔋 Bateria" item={kit.bateria} ehAdmin={ehAdmin} />
-              <LinhaKit label="⚙️ Controladora" item={kit.controladora} ehAdmin={ehAdmin} />
-              <LinhaKit label="📊 Medidor" item={kit.medidor} ehAdmin={ehAdmin} />
-              {(kit.caixas_juncao || []).map((c, i) => (
+              {bateriasArr.map((b, i) => (
+                <LinhaKit key={`b${i}`} label={bateriasArr.length > 1 ? `🔋 Bateria ${i + 1}` : '🔋 Bateria'} item={b} ehAdmin={ehAdmin} />
+              ))}
+              {controladorasArr.map((c, i) => (
+                <LinhaKit key={`ct${i}`} label={controladorasArr.length > 1 ? `⚙️ Controladora ${i + 1}` : '⚙️ Controladora'} item={c} ehAdmin={ehAdmin} />
+              ))}
+              {medidoresArr.map((m, i) => (
+                <LinhaKit key={`m${i}`} label={medidoresArr.length > 1 ? `📊 Medidor ${i + 1}` : '📊 Medidor'} item={m} ehAdmin={ehAdmin} />
+              ))}
+              {caixasArr.map((c, i) => (
                 <LinhaKit key={`c${i}`} label={`🧰 Caixa junção ${i + 1}`} item={c} ehAdmin={ehAdmin} />
               ))}
-              {(kit.opcionais || []).map((o, i) => (
+              {opcionaisArr.map((o, i) => (
                 <LinhaKit key={`o${i}`} label={`✨ Opcional ${i + 1}`} item={o} ehAdmin={ehAdmin} />
               ))}
               {ehAdmin && (

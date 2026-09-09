@@ -417,23 +417,30 @@ export async function salvarKitBessAction(projetoId: string, composicao: any) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { sucesso: false as const, erro: 'Não autenticado' }
 
-  if (!composicao?.bateria?.id) return { sucesso: false as const, erro: 'Bateria é obrigatória' }
-  if (!composicao?.controladora?.id) return { sucesso: false as const, erro: 'Controladora é obrigatória' }
-  if (!composicao?.medidor?.id) return { sucesso: false as const, erro: 'Medidor é obrigatório' }
+  // Kalebe 2026-09-09 v2: cada segmento aceita MÚLTIPLOS itens (arrays).
+  // Compat com formato antigo (single): se veio como objeto, empacota em array.
+  const toArr = (x: any): any[] => Array.isArray(x) ? x : (x?.id ? [x] : [])
+  const baterias      = toArr(composicao?.baterias      ?? composicao?.bateria)
+  const controladoras = toArr(composicao?.controladoras ?? composicao?.controladora)
+  const medidores     = toArr(composicao?.medidores     ?? composicao?.medidor)
+  const caixas        = toArr(composicao?.caixas_juncao)
+  const opcionais     = toArr(composicao?.opcionais)
+
+  if (baterias.length === 0)      return { sucesso: false as const, erro: 'Adicione pelo menos 1 bateria' }
+  if (controladoras.length === 0) return { sucesso: false as const, erro: 'Adicione pelo menos 1 controladora' }
+  if (medidores.length === 0)     return { sucesso: false as const, erro: 'Adicione pelo menos 1 medidor' }
 
   const somarLinha = (i: any) => (Number(i?.preco_venda) || 0) * (Number(i?.qtd) || 1)
-  const somarArr = (arr: any[] | undefined) =>
-    (arr || []).reduce((s, i) => s + somarLinha(i), 0)
+  const somarArr = (arr: any[]) => arr.reduce((s, i) => s + somarLinha(i), 0)
   const total =
-    somarLinha(composicao.bateria) +
-    somarLinha(composicao.controladora) +
-    somarLinha(composicao.medidor) +
-    somarArr(composicao.caixas_juncao) +
-    somarArr(composicao.opcionais)
+    somarArr(baterias) + somarArr(controladoras) + somarArr(medidores) +
+    somarArr(caixas) + somarArr(opcionais)
 
   const kit_selecionado = {
-    ...composicao,
     modo: 'bess_puro' as const,
+    baterias, controladoras, medidores,
+    caixas_juncao: caixas,
+    opcionais,
     preco_total_estimado: total,
     salvo_em: new Date().toISOString(),
   }
