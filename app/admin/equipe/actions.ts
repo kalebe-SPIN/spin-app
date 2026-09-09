@@ -176,14 +176,22 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // Kalebe 2026-09-07: `tipos_projeto` (plural) NÃO existe na tabela.
   // Os tipos vêm de `projeto_itens.tipo` (relacional). Nested select
   // do PostgREST puxa os itens junto na mesma round-trip.
+  // Kalebe 2026-09-09: painel consolidado da organização inteira.
+  // Filtra excluida_em pra ignorar soft-deletes (migration 095) — projetos
+  // deletados por engano ou arquivados não devem inflar contagens.
+  // limit(10000) removê o cap default do PostgREST (1000), o que trunca
+  // silenciosamente depois de mil registros. Se algum dia passar disso,
+  // paginamos.
   const projetosPromise = supabase
     .from('projetos')
     .select(`
       id, consultor_id, cliente_id, cliente_razao_social, cliente_cpf_cnpj,
       status, pv_total, orcamento_final, tipo_projeto, ve_recarga_selecionada,
-      created_at, updated_at, status_atualizado_em,
+      created_at, updated_at, status_atualizado_em, excluida_em,
       projeto_itens(tipo, status)
     `)
+    .is('excluida_em', null)
+    .limit(10000)
 
   // Kalebe 2026-08-27: painel mostrava 0 pra Maria Eduarda porque só
   // buscava telhados de quem tem role vendedor_servicos. Como admins
@@ -192,15 +200,17 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   const telhadosPromise = supabase
     .from('telhados')
     .select('vendedor_id, fase, proposta_valor, created_at, updated_at')
+    .limit(10000)
 
-  const execPromise = profissionaisCampo.length > 0
-    ? supabase
-        .from('execucoes_servicos')
-        .select('responsavel_id, valor_final, data_conclusao')
-        .in('responsavel_id', profissionaisCampo.map((p) => p.id))
-        .not('data_conclusao', 'is', null)
-        .gte('data_conclusao', inicioMesPassadoIso)
-    : Promise.resolve({ data: [] as any[] })
+  // Kalebe 2026-09-09: painel consolidado — pega TODAS as OS concluídas
+  // da organização, não só as com responsavel_id em profissionais_campo.
+  // Um admin ou consultor que registrou execução também aparece agora.
+  const execPromise = supabase
+    .from('execucoes_servicos')
+    .select('responsavel_id, valor_final, data_conclusao')
+    .not('data_conclusao', 'is', null)
+    .gte('data_conclusao', inicioMesPassadoIso)
+    .limit(10000)
 
   const [{ data: projetosData }, { data: telhadosData }, { data: execData }] = await Promise.all([
     projetosPromise, telhadosPromise, execPromise,
@@ -403,7 +413,11 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     faturamento_mes_passado: faturamentoMesPassado,
     contratos_mes: metricasRepres.reduce((s, r) => s + r.contratos_assinados, 0),
     contratos_mes_passado: projetosFechadosPassado.length,
-    os_mes: metricasCampo.reduce((s, c) => s + c.os_executadas, 0),
+    // Kalebe 2026-09-09: OS do mês agora conta TODAS as execuções da
+    // organização (independente de role do responsável). Antes só somava
+    // execuções dos profissionais_campo, então OS registradas por admin/
+    // consultor sumiam do painel executivo.
+    os_mes: (execData || []).filter((e: any) => e.data_conclusao >= inicioMesIso).length,
     os_mes_passado: execPassado.length,
   }
 
@@ -530,8 +544,12 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
       telhados_prospectados: metricasVend.reduce((s, v) => s + v.telhados_prospectados + v.em_contato + v.em_proposta + v.fechados, 0),
       fechados_servicos: metricasVend.reduce((s, v) => s + v.fechados, 0),
       valor_propostas_servicos: metricasVend.reduce((s, v) => s + v.valor_propostas, 0),
-      os_executadas: metricasCampo.reduce((s, c) => s + c.os_executadas, 0),
-      faturamento_execucao: metricasCampo.reduce((s, c) => s + c.valor_faturado, 0),
+      // Kalebe 2026-09-09: consolidado da organização — todas as execuções
+      // do mês, independente do role de quem executou.
+      os_executadas: (execData || []).filter((e: any) => e.data_conclusao >= inicioMesIso).length,
+      faturamento_execucao: (execData || [])
+        .filter((e: any) => e.data_conclusao >= inicioMesIso)
+        .reduce((s: number, e: any) => s + (Number(e.valor_final) || 0), 0),
     },
     faturamentoPorLinha,
     funil,
