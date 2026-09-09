@@ -49,6 +49,15 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
     redirect(`/projetos/${projetoId}/ve/proposta`)
   }
 
+  // Kalebe 2026-09-09: kit BESS puro (sem placas solares) tem tela dedicada.
+  // Não passa pelo /orcamento genérico porque não tem geração solar, gráfico
+  // consumo × geração etc. Precificação usa mesma fórmula do v1 mas trata
+  // a soma dos itens BESS como "kit WEG bruto".
+  const ehBessPuro = projeto.kit_selecionado?.modo === 'bess_puro'
+  if (ehBessPuro) {
+    redirect(`/projetos/${projetoId}/bess/proposta`)
+  }
+
   if (soServicos && itensProjeto && itensProjeto.length > 0) {
     // Projeto so servico — renderiza fluxo simplificado
     const { data: configEmpresa } = await supabase
