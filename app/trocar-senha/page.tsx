@@ -20,6 +20,25 @@ import { createClient } from '@/lib/supabase/client'
  *     causava falso positivo em senhas legítimas com hífen)
  *   - Mensagem melhor quando Supabase recusa: sugere digitar sem copiar
  */
+/** Gera uma senha aleatória forte, legível (sem chars confundíveis).
+ *  Chamada pelo botão "🎲 Gerar senha forte" — garante colisão zero com
+ *  a senha temp anterior, hist. de senhas ou vazamentos comuns.
+ */
+function gerarSenhaForte(): string {
+  const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+  const especiais = '@#$%&*!?'
+  const bytes = new Uint8Array(14)
+  crypto.getRandomValues(bytes)
+  const base = Array.from(bytes.slice(0, 13), b => alfabeto[b % alfabeto.length])
+  base.push(especiais[bytes[13] % especiais.length])
+  // Embaralha pra não ficar sempre com especial no fim
+  for (let i = base.length - 1; i > 0; i--) {
+    const j = bytes[i % bytes.length] % (i + 1)
+    ;[base[i], base[j]] = [base[j], base[i]]
+  }
+  return base.join('')
+}
+
 export default function TrocarSenhaPage() {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -27,6 +46,7 @@ export default function TrocarSenhaPage() {
   const [confirmar, setConfirmar] = useState('')
   const [mostrar, setMostrar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [erroCru, setErroCru] = useState<string | null>(null)
   const [email, setEmail] = useState<string | null>(null)
 
   useEffect(() => {
@@ -37,8 +57,18 @@ export default function TrocarSenhaPage() {
     })
   }, [router])
 
+  function preencherAleatoria() {
+    const nova = gerarSenhaForte()
+    setSenha(nova)
+    setConfirmar(nova)
+    setMostrar(true)
+    setErro(null)
+    setErroCru(null)
+  }
+
   function handleSalvar() {
     setErro(null)
+    setErroCru(null)
     // Trim whitespace invisível — WhatsApp/copy-paste às vezes deixa espaço no fim
     const senhaLimpa = senha.trim()
     const confirmarLimpa = confirmar.trim()
@@ -52,12 +82,14 @@ export default function TrocarSenhaPage() {
         data: { must_change_password: false },
       })
       if (error) {
+        console.error('[trocar-senha] updateUser error:', error)
+        setErroCru(error.message)  // guarda literal pra mostrar no debug
         const msg = error.message.toLowerCase()
         if (msg.includes('different from the old') || msg.includes('same as the old') || msg.includes('same_password')) {
           setErro(
-            'Essa senha é a MESMA que você recebeu no WhatsApp. Crie uma nova, ' +
-            'só sua. Dica: digite manualmente em vez de copiar/colar — pode estar ' +
-            'colando a temp sem perceber. Exemplo: "MeuSolAmarelo2026".'
+            'O Supabase recusou porque essa senha bate com uma senha ANTERIOR ' +
+            'do seu histórico (a temp, ou alguma que você já usou). ' +
+            'Clique em "🎲 Gerar senha forte" acima pra uma senha aleatória — resolve na hora.'
           )
         } else if (msg.includes('at least') && msg.includes('character')) {
           setErro('Senha muito curta. Use pelo menos 8 caracteres.')
@@ -88,8 +120,20 @@ export default function TrocarSenhaPage() {
 
         <div className="p-3 bg-sol/10 border border-sol/30 rounded-lg text-xs text-white/80 leading-relaxed">
           ⚠️ <strong className="text-sol">Atenção:</strong> a nova senha NÃO pode ser igual à
-          senha temporária que você recebeu no WhatsApp. Digite MANUALMENTE (não copie e cole).
+          senha temporária que você recebeu no WhatsApp nem a nenhuma que você já usou antes.
         </div>
+
+        <button
+          type="button"
+          onClick={preencherAleatoria}
+          className="w-full py-2 bg-verde/10 border border-verde/30 hover:bg-verde/20 rounded-lg text-verde text-xs font-bold transition"
+        >
+          🎲 Gerar senha forte pra mim
+        </button>
+        <p className="text-[10px] text-white/40 -mt-2 leading-relaxed">
+          Cria uma senha aleatória forte, mostra na tela pra você anotar, e resolve
+          qualquer conflito com senha anterior. Anote no seu gerenciador antes de salvar.
+        </p>
 
         <div>
           <div className="flex items-center justify-between mb-1">
@@ -132,6 +176,12 @@ export default function TrocarSenhaPage() {
         {erro && (
           <div className="p-2.5 bg-coral/10 border border-coral/30 rounded text-xs text-coral leading-relaxed">
             ⚠️ {erro}
+            {erroCru && (
+              <details className="mt-2 opacity-70">
+                <summary className="cursor-pointer text-[10px] uppercase tracking-wider">Detalhe técnico</summary>
+                <code className="text-[10px] block mt-1 font-mono break-all">{erroCru}</code>
+              </details>
+            )}
           </div>
         )}
 
