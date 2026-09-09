@@ -117,10 +117,18 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
             {/* Cabeçalho */}
             <div style={E.header}>
               <div style={E.headerEsq}>
-                <div style={E.logoBox}>S</div>
+                {empresa.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={empresa.logo_url} alt="Spin Solar" style={{ height: 40, objectFit: 'contain' as const }} crossOrigin="anonymous" />
+                ) : (
+                  <div style={E.logoBox}>S</div>
+                )}
                 <div>
-                  <p style={E.tituloEmpresa}>{empresa.razao_social || 'Spin Solar'}</p>
-                  <p style={E.subEmpresa}>Kit BESS · backup de energia</p>
+                  <p style={E.tituloEmpresa}>SPIN SOLAR</p>
+                  <p style={E.subEmpresa}>
+                    {empresa.razao_social || 'Energias Renováveis Ltda'}
+                    {empresa.cnpj ? ` · CNPJ ${empresa.cnpj}` : ' · CNPJ 22.279.642/0001-04'}
+                  </p>
                 </div>
               </div>
               <div style={E.headerDir}>
@@ -157,11 +165,24 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
               </p>
             </div>
 
-            {/* Cliente */}
+            {/* Cliente — com endereço completo (Kalebe 2026-09-09) */}
             <div style={{ marginTop: 40, padding: '20px 24px', background: 'rgba(245,245,240,.03)', border: '1px solid rgba(245,245,240,.08)', borderRadius: 8 }}>
               <p style={E.rotuloDourado}>Preparada para</p>
               <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 700 }}>{projeto.cliente_razao_social || '—'}</p>
               {cnpjFmt && <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(245,245,240,.6)', fontFamily: 'monospace' }}>{cnpjFmt}</p>}
+              {(() => {
+                const end = projeto.cliente_endereco || {}
+                const linha1 = [end.logradouro, end.numero].filter(Boolean).join(', ')
+                const linha2 = [end.bairro, end.cidade, end.uf].filter(Boolean).join(' · ')
+                const cep = end.cep ? `CEP ${end.cep}` : ''
+                const linha3 = [cep, linha2].filter(Boolean).join(' · ')
+                return (
+                  <>
+                    {linha1 && <p style={{ margin: '10px 0 0', fontSize: 12, color: 'rgba(245,245,240,.7)' }}>{linha1}{end.complemento ? `, ${end.complemento}` : ''}</p>}
+                    {linha3 && <p style={{ margin: '2px 0 0', fontSize: 11, color: 'rgba(245,245,240,.55)' }}>{linha3}</p>}
+                  </>
+                )
+              })()}
             </div>
 
             {/* Investimento destaque */}
@@ -189,7 +210,12 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
           <div style={E.wrap}>
             <div style={E.header}>
               <div style={E.headerEsq}>
-                <div style={E.logoBox}>S</div>
+                {empresa.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={empresa.logo_url} alt="Spin Solar" style={{ height: 40, objectFit: 'contain' as const }} crossOrigin="anonymous" />
+                ) : (
+                  <div style={E.logoBox}>S</div>
+                )}
                 <div>
                   <p style={E.tituloEmpresa}>Composição técnica</p>
                   <p style={E.subEmpresa}>Kit BESS + serviços</p>
@@ -264,7 +290,12 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
           <div style={E.wrap}>
             <div style={E.header}>
               <div style={E.headerEsq}>
-                <div style={E.logoBox}>S</div>
+                {empresa.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={empresa.logo_url} alt="Spin Solar" style={{ height: 40, objectFit: 'contain' as const }} crossOrigin="anonymous" />
+                ) : (
+                  <div style={E.logoBox}>S</div>
+                )}
                 <div>
                   <p style={E.tituloEmpresa}>Investimento</p>
                   <p style={E.subEmpresa}>Formas de pagamento</p>
