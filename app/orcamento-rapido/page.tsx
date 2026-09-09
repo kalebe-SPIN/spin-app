@@ -22,7 +22,7 @@ export default async function OrcamentoRapidoPage({
   if (!user) redirect('/login')
 
   const { modo } = await getModoVisualizacao()
-  if (modo === 'representante') redirect('/crm/servicos')
+  // Kalebe 2026-09-09: representante vende solar igual consultor — libera acesso.
   if (modo === 'profissional_campo') redirect('/agenda')
 
   const { data: profile } = await supabase

@@ -15,12 +15,10 @@ export default async function CrmHubPage() {
     .eq('id', user.id)
     .single()
 
-  // Representante Spin tem CRM próprio (/crm/servicos) — redireciona pra lá.
-  if (perfil?.role === 'representante') redirect('/crm/servicos')
-
-  // Hub aberto pra admin e consultor (representante). Outros roles não têm
-  // fluxo comercial de solar, então bloqueia.
-  const rolesPermitidos = ['admin', 'representante']
+  // Kalebe 2026-09-09: representante usa o CRM solar igual consultor.
+  // Sem redirect pra /crm/servicos (aquele é CRM de telhados/O&M).
+  // Hub aberto pra admin, consultor e representante — vendem solar.
+  const rolesPermitidos = ['admin', 'consultor', 'representante']
   if (!rolesPermitidos.includes(perfil?.role || '')) {
     return (
       <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">

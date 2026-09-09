@@ -11,7 +11,11 @@ import { ProjetosListaClient } from '@/components/ProjetosListaClient'
  * com sub-lista dos projetos. Regra fixa da Spin: cliente é único, projetos
  * ficam sob o cadastro dele.
  *
- * Admin vê tudo. Representante Spin/campo NÃO têm projetos — redirect.
+ * Admin, consultor e representante têm projetos. profissional_campo NÃO
+ * tem — vai pra /agenda que é o foco operacional dele.
+ *
+ * Kalebe 2026-09-09: removido redirect do representante pra /crm/servicos
+ * (que era CRM de telhados/O&M). Representante vende solar igual consultor.
  *
  * A lista + filtro de busca ficam num client component pra permitir
  * pesquisa em memória sem round-trip ao servidor.
@@ -23,7 +27,6 @@ export default async function ProjetosPage() {
   if (!user) redirect('/login')
 
   const { modo } = await getModoVisualizacao()
-  if (modo === 'representante') redirect('/crm/servicos')
   if (modo === 'profissional_campo') redirect('/agenda')
 
   // Query tolerante: tenta filtrar excluída_em (migration 095); se a
