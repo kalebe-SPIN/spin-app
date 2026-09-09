@@ -10,6 +10,7 @@ import { StatsOperacoes } from '@/components/stats/StatsOperacoes'
 import { StatsPosVenda } from '@/components/stats/StatsPosVenda'
 import { PainelEquipeAdmin } from '@/components/admin/PainelEquipeAdmin'
 import { buscarPainelEquipeAction } from '@/app/admin/equipe/actions'
+import { CardBuscaCatalogo } from '@/components/dashboard/CardBuscaCatalogo'
 
 /**
  * Dashboard — OPERAÇÃO em tempo real.
@@ -138,14 +139,11 @@ export default async function DashboardPage() {
             </p>
           </div>
           <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${mostraAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-4'}`}>
-            <DashboardCard
-              etapa={1}
-              titulo="⚡ Orçamento Rápido"
-              desc="Estimativa em 30s a partir de kWh/mês, R$/mês ou qtd de placas. Envia WhatsApp e converte em projeto."
-              disponivel={true}
-              href="/orcamento-rapido"
-              destaque
-            />
+            {/* Kalebe 2026-09-09: substituiu o antigo "Orçamento Rápido" por
+                campo de busca do catálogo. O usuário encontra o kit ali e cria
+                projeto formal a partir dele. Motor de precificação simplificado
+                (R$/kWp por faixa) sai — só o motor completo do /orcamento roda. */}
+            <CardBuscaCatalogo etapa={1} />
             <DashboardCard
               etapa={2}
               titulo="📋 Projetos"
