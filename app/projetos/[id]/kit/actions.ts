@@ -395,6 +395,63 @@ export async function atualizarModoComposicaoAction(
   return { sucesso: true }
 }
 
+/**
+ * Kalebe 2026-09-09: salva kit BESS PURO (sem placas solares).
+ * Composição: bateria + controladora + medidor + caixas de junção + opcionais.
+ * Grava em projetos.kit_selecionado com estrutura própria e marca tipo_projeto='bess'.
+ *
+ * Estrutura persistida:
+ * {
+ *   modo: 'bess_puro',
+ *   bateria:      { id, marca, modelo, potencia_kw, qtd, preco_venda },
+ *   controladora: { id, marca, modelo, potencia_kw, qtd, preco_venda },
+ *   medidor:      { id, marca, modelo, qtd, preco_venda },
+ *   caixas_juncao: [{ id, marca, modelo, qtd, preco_venda }, ...],
+ *   opcionais:     [{ id, marca, modelo, qtd, preco_venda }, ...],
+ *   preco_total_estimado: number,
+ *   salvo_em: ISOString,
+ * }
+ */
+export async function salvarKitBessAction(projetoId: string, composicao: any) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { sucesso: false as const, erro: 'Não autenticado' }
+
+  if (!composicao?.bateria?.id) return { sucesso: false as const, erro: 'Bateria é obrigatória' }
+  if (!composicao?.controladora?.id) return { sucesso: false as const, erro: 'Controladora é obrigatória' }
+  if (!composicao?.medidor?.id) return { sucesso: false as const, erro: 'Medidor é obrigatório' }
+
+  const somarLinha = (i: any) => (Number(i?.preco_venda) || 0) * (Number(i?.qtd) || 1)
+  const somarArr = (arr: any[] | undefined) =>
+    (arr || []).reduce((s, i) => s + somarLinha(i), 0)
+  const total =
+    somarLinha(composicao.bateria) +
+    somarLinha(composicao.controladora) +
+    somarLinha(composicao.medidor) +
+    somarArr(composicao.caixas_juncao) +
+    somarArr(composicao.opcionais)
+
+  const kit_selecionado = {
+    ...composicao,
+    modo: 'bess_puro' as const,
+    preco_total_estimado: total,
+    salvo_em: new Date().toISOString(),
+  }
+
+  const { error } = await supabase
+    .from('projetos')
+    .update({
+      kit_selecionado,
+      tipo_projeto: 'bess',
+    })
+    .eq('id', projetoId)
+  if (error) return { sucesso: false as const, erro: error.message }
+
+  revalidatePath(`/projetos/${projetoId}/kit`)
+  revalidatePath(`/projetos/${projetoId}`)
+  return { sucesso: true as const, total_estimado: total }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Complementos WEG (cabo solar, estrutura, MC4, disjuntor CA, DPS CA)
 // puxa do /admin/catalogo — TODOS levam fator 0,4182 no /orcamento.

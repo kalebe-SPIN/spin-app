@@ -2,8 +2,17 @@
 
 import { useState, useTransition } from 'react'
 import { KitFluxoClient } from './KitFluxoClient'
+import { BessWizard, type ProdutoBess } from './BessWizard'
 import { atualizarModoComposicaoAction } from '@/app/projetos/[id]/kit/actions'
 import { fmtNum } from '@/lib/formatters'
+
+export type CatalogoBess = {
+  baterias: ProdutoBess[]
+  controladoras: ProdutoBess[]
+  medidores: ProdutoBess[]
+  caixasJuncao: ProdutoBess[]
+  opcionais: ProdutoBess[]
+}
 
 type ProdutoRow = {
   id: string
@@ -42,6 +51,7 @@ type Props = {
   projetoCodigo?: string
   placas: ProdutoRow[]
   inversores: ProdutoRow[]
+  catalogoBess?: CatalogoBess       // Kalebe 2026-09-09: pra modo BESS puro
   padraoPrincipal: any
   tipoTelhadoPrincipal?: string
   potCcAlvoAutoCentralizado: number
@@ -54,7 +64,7 @@ type Props = {
 
 export function KitPorUcClient(props: Props) {
   const {
-    projetoId, placas, inversores, padraoPrincipal, tipoTelhadoPrincipal,
+    projetoId, placas, inversores, catalogoBess, padraoPrincipal, tipoTelhadoPrincipal,
     potCcAlvoAutoCentralizado, consumoMedioCentralizado, kitSalvoCentralizado,
     modoComposicao, ucs, kitsPorUc,
   } = props
@@ -63,19 +73,40 @@ export function KitPorUcClient(props: Props) {
   const [ucAtivaRef, setUcAtivaRef] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  // Sem beneficiárias → fluxo padrão (sem toggle)
+  // Kalebe 2026-09-09: toggle "☀️ Solar" vs "🔋 BESS puro" (sem placas).
+  // Pré-seleciona 'bess' se o kit salvo já é BESS puro.
+  const [tipoKit, setTipoKit] = useState<'solar' | 'bess'>(
+    kitSalvoCentralizado?.modo === 'bess_puro' ? 'bess' : 'solar'
+  )
+
+  // Sem beneficiárias → fluxo padrão (sem toggle de composicao mas com toggle solar/bess)
   if (ucs.length <= 1) {
     return (
-      <KitFluxoClient
-        projetoId={projetoId}
-        placas={placas as any}
-        inversores={inversores as any}
-        padrao={padraoPrincipal}
-        potCcAlvoAuto={potCcAlvoAutoCentralizado}
-        consumoMedio={consumoMedioCentralizado}
-        kitSalvo={kitSalvoCentralizado}
-        tipoTelhado={tipoTelhadoPrincipal}
-      />
+      <div className="space-y-8">
+        <ToggleSolarBess valor={tipoKit} onChange={setTipoKit} temCatalogoBess={!!catalogoBess} />
+        {tipoKit === 'bess' && catalogoBess ? (
+          <BessWizard
+            projetoId={projetoId}
+            baterias={catalogoBess.baterias}
+            controladoras={catalogoBess.controladoras}
+            medidores={catalogoBess.medidores}
+            caixasJuncao={catalogoBess.caixasJuncao}
+            opcionais={catalogoBess.opcionais}
+            kitSalvo={kitSalvoCentralizado}
+          />
+        ) : (
+          <KitFluxoClient
+            projetoId={projetoId}
+            placas={placas as any}
+            inversores={inversores as any}
+            padrao={padraoPrincipal}
+            potCcAlvoAuto={potCcAlvoAutoCentralizado}
+            consumoMedio={consumoMedioCentralizado}
+            kitSalvo={kitSalvoCentralizado}
+            tipoTelhado={tipoTelhadoPrincipal}
+          />
+        )}
+      </div>
     )
   }
 
@@ -435,6 +466,65 @@ function UcConfigurador({
         padraoEntradaProprio={enderecoProprio ? padraoEfetivo : undefined}
         telhadoSecoesProprio={enderecoProprio ? [{ tipo_cobertura: tipoTelhado }] : undefined}
       />
+    </section>
+  )
+}
+
+/**
+ * Toggle "☀️ Solar" vs "🔋 BESS puro" no topo do /kit (Kalebe 2026-09-09).
+ * Se catálogo BESS não foi carregado, desabilita a segunda opção pra evitar
+ * clique morto.
+ */
+function ToggleSolarBess({
+  valor, onChange, temCatalogoBess,
+}: {
+  valor: 'solar' | 'bess'
+  onChange: (v: 'solar' | 'bess') => void
+  temCatalogoBess: boolean
+}) {
+  return (
+    <section className="bg-white/[0.03] border border-sol/30 rounded-xl p-5">
+      <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold mb-3">
+        Que tipo de kit você quer montar?
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => onChange('solar')}
+          className={`text-left p-4 rounded-lg border transition ${
+            valor === 'solar'
+              ? 'bg-sol/15 border-sol/60 ring-1 ring-sol/40'
+              : 'bg-white/[0.02] border-white/10 hover:border-white/20'
+          }`}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl">☀️</span>
+            <span className="text-sm font-bold text-white">Solar (com placas)</span>
+          </div>
+          <p className="text-xs text-white/60 leading-relaxed">
+            On-grid, híbrido ou zero-grid. Escolha placa e inversor, o sistema sugere o kit.
+          </p>
+        </button>
+        <button
+          type="button"
+          disabled={!temCatalogoBess}
+          onClick={() => onChange('bess')}
+          className={`text-left p-4 rounded-lg border transition ${
+            valor === 'bess'
+              ? 'bg-verde/15 border-verde/60 ring-1 ring-verde/40'
+              : 'bg-white/[0.02] border-white/10 hover:border-white/20'
+          } ${!temCatalogoBess ? 'opacity-40 cursor-not-allowed' : ''}`}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl">🔋</span>
+            <span className="text-sm font-bold text-white">BESS puro (sem placas)</span>
+          </div>
+          <p className="text-xs text-white/60 leading-relaxed">
+            Só backup de energia — bateria + controladora + medidor + opcionais WEG.
+            {!temCatalogoBess && ' Catálogo BESS indisponível.'}
+          </p>
+        </button>
+      </div>
     </section>
   )
 }

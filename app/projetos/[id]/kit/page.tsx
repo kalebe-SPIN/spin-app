@@ -83,6 +83,53 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .in('subcategoria', ['inversor_string', 'microinversor'])
     .eq('ativo', true)
 
+  // Kalebe 2026-09-09: catálogo BESS puro — pra modo "🔋 Sem placas — só BESS".
+  // Baterias (SBW), controladoras (SIW400H + categoria='controlador'),
+  // medidores (multimedidor/smart_meter), caixa de junção (EMBOX), opcionais.
+  const { data: baterias } = await supabase
+    .from('produtos')
+    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
+    .eq('categoria', 'bateria').eq('ativo', true).order('modelo')
+  const { data: controladoras } = await supabase
+    .from('produtos')
+    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
+    .or('categoria.eq.controlador,and(categoria.eq.inversor,subcategoria.eq.inversor_hibrido)')
+    .eq('ativo', true).order('modelo')
+  const { data: medidores } = await supabase
+    .from('produtos')
+    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
+    .in('categoria', ['multimedidor', 'smart_meter']).eq('ativo', true).order('modelo')
+  const { data: caixasJuncao } = await supabase
+    .from('produtos')
+    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
+    .eq('categoria', 'caixa_juncao').eq('ativo', true).order('modelo')
+  const { data: opcionaisBess } = await supabase
+    .from('produtos')
+    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
+    .in('categoria', ['frete', 'conector', 'acessorio', 'cabo', 'monitoramento']).eq('ativo', true).order('modelo')
+
+  // Aplaina preços vigentes (o mesmo padrão que o resto da /kit usa)
+  const hojeIso = new Date().toISOString().slice(0, 10)
+  function normalizar(rows: any[] | null): any[] {
+    return (rows || []).map(r => {
+      const precos = (r.precos_produtos || []) as any[]
+      const vigentes = precos.filter(p => (!p.vigente_de || p.vigente_de <= hojeIso) && (!p.vigente_ate || p.vigente_ate >= hojeIso))
+      const preco = (vigentes[0] || precos[0])?.preco_venda ?? 0
+      return {
+        id: r.id, marca: r.marca, modelo: r.modelo,
+        categoria: r.categoria, subcategoria: r.subcategoria,
+        potencia_kw: r.specs?.potencia_kw || r.specs?.capacidade_kwh || null,
+        preco_venda: Number(preco) || 0,
+        disponivel_estoque: !!r.disponivel_estoque,
+      }
+    })
+  }
+  const bateriasBess     = normalizar(baterias)
+  const controladorasBess = normalizar(controladoras)
+  const medidoresBess    = normalizar(medidores)
+  const caixasBess       = normalizar(caixasJuncao)
+  const extrasBess       = normalizar(opcionaisBess)
+
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
       <div className="max-w-screen-2xl mx-auto">
@@ -109,6 +156,13 @@ export default async function KitPage({ params }: { params: { id: string } }) {
           projetoCodigo={projeto.codigo}
           placas={(placas || []) as any}
           inversores={(inversores || []) as any}
+          catalogoBess={{
+            baterias: bateriasBess,
+            controladoras: controladorasBess,
+            medidores: medidoresBess,
+            caixasJuncao: caixasBess,
+            opcionais: extrasBess,
+          }}
           padraoPrincipal={padrao}
           tipoTelhadoPrincipal={projeto.telhado_secoes?.[0]?.tipo_cobertura}
           potCcAlvoAutoCentralizado={potCcAlvoAuto}
