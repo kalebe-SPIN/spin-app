@@ -334,14 +334,21 @@ export function OrcamentoClient({
             ? `Resumo — ${ucAtiva.label}${ucAtiva.endereco_label ? ` · ${ucAtiva.endereco_label}` : ''}`
             : 'Resumo da proposta calculada'}
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Kalebe 2026-09-09: Kit WEG (com fator) e Lista CA + serviços são
+            dados INTERNOS de precificação — só admin vê. Consultor/representante
+            recebe apenas Potência CC (técnica) e PV FINAL (preço ao cliente). */}
+        <div className={`grid grid-cols-2 gap-3 ${ehAdmin ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
           <Metric
             label="Potência CC"
             value={`${((modoComposicao === 'por_uc' ? ucAtiva?.kit : projeto.kit_selecionado)?.potencia_cc_kwp || 0).toFixed(2)} kWp`}
             highlight
           />
-          <Metric label="Kit WEG (com fator)" value={`R$ ${fmt(propostaEfetiva.kit_weg_com_fator)}`} />
-          <Metric label="Lista CA + serviços" value={`R$ ${fmt(propostaEfetiva.subtotal_lista_ca + propostaEfetiva.frete + propostaEfetiva.projeto_art + propostaEfetiva.instalacao)}`} />
+          {ehAdmin && (
+            <>
+              <Metric label="Kit WEG (com fator)" value={`R$ ${fmt(propostaEfetiva.kit_weg_com_fator)}`} />
+              <Metric label="Lista CA + serviços" value={`R$ ${fmt(propostaEfetiva.subtotal_lista_ca + propostaEfetiva.frete + propostaEfetiva.projeto_art + propostaEfetiva.instalacao)}`} />
+            </>
+          )}
           <Metric
             label={modoComposicao === 'por_uc'
               ? 'PV desta UC'
