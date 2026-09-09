@@ -12,6 +12,7 @@ export type CatalogoBess = {
   medidores: ProdutoBess[]
   caixasJuncao: ProdutoBess[]
   opcionais: ProdutoBess[]
+  todos?: ProdutoBess[]      // fallback: TODOS os ativos, se um bucket vier vazio
 }
 
 type ProdutoRow = {
@@ -92,6 +93,7 @@ export function KitPorUcClient(props: Props) {
             medidores={catalogoBess.medidores}
             caixasJuncao={catalogoBess.caixasJuncao}
             opcionais={catalogoBess.opcionais}
+            todos={catalogoBess.todos}
             kitSalvo={kitSalvoCentralizado}
           />
         ) : (

@@ -96,25 +96,40 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .order('modelo')
 
   // Classifica em buckets por padrão de modelo (defensivo) + fallback categoria.
-  // Um mesmo produto pode aparecer em opcionais se não bater com bucket específico.
   const todos = todosProdutosAtivos || []
-  const modeloRe = (r: RegExp) => (p: any) => r.test(String(p.modelo || '').toUpperCase())
+
+  // Normaliza modelo: uppercase + remove acentos + remove espaço/hífen/underscore.
+  // "SIW-400 H" e "Híbrido" e "SIW_400H" viram todos "SIW400H" e "HIBRIDO".
+  function norm(s: any): string {
+    return String(s || '')
+      .toUpperCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[\s\-_.]/g, '')
+  }
+  const contem = (...termos: string[]) => (p: any) => {
+    const n = norm(p.modelo)
+    return termos.some(t => n.includes(t))
+  }
   const catIn = (...cs: string[]) => (p: any) => cs.includes(String(p.categoria || ''))
 
-  const bateriasSlice     = todos.filter(p => modeloRe(/LUNA|SBW|BESS|PLW|BATERIA/)(p)      || catIn('bateria')(p))
-  const controladorasSlice = todos.filter(p => modeloRe(/^SIW\s?\d{3}H|SIW200H|SIW400H|HIBRID|INVERSOR.*HIBRID|CONTROLADOR/)(p) || catIn('controlador','inversor_hibrido')(p))
-  const medidoresSlice     = todos.filter(p => modeloRe(/DTSU|DTS\d|MMW|SMART.*METER|MEDIDOR/)(p) || catIn('multimedidor','smart_meter','monitoramento')(p))
-  const caixasSlice        = todos.filter(p => modeloRe(/EMBOX|CAIXA.*JUN|STRING\s?BOX/)(p)       || catIn('caixa_juncao')(p))
-  // Opcionais: qualquer complemento (frete, cabo, conector, DPS, disjuntor, etc)
-  // — inclui produtos que não caíram em nenhum dos buckets acima.
+  const bateriasSlice      = todos.filter(p => contem('LUNA','SBW','BESS','PLW','BATERIA')(p)
+                                                || catIn('bateria')(p))
+  const controladorasSlice = todos.filter(p => contem('SIW200H','SIW400H','SIW300H','HIBRIDO','HIBRID','CONTROLADOR','SIW200','SIW400')(p)
+                                                || catIn('controlador','inversor_hibrido')(p))
+  const medidoresSlice     = todos.filter(p => contem('DTSU','DTS100','DTS200','DTS3','MMW','SMARTMETER','MEDIDOR')(p)
+                                                || catIn('multimedidor','smart_meter','monitoramento')(p))
+  const caixasSlice        = todos.filter(p => contem('EMBOX','CAIXAJUN','STRINGBOX')(p)
+                                                || catIn('caixa_juncao')(p))
+
   const idsClassificados = new Set([
     ...bateriasSlice, ...controladorasSlice, ...medidoresSlice, ...caixasSlice,
   ].map(p => p.id))
-  const opcionaisSlice = todos.filter(p =>
-    !idsClassificados.has(p.id) &&
-    (catIn('frete','conector','acessorio','cabo','monitoramento','protecao','dps','disjuntor')(p)
-     || modeloRe(/FRETE|CABO|CONECTOR|DPS|DISJUNTOR|MC4|SUPORT/)(p))
-  )
+
+  // Opcionais: TUDO que não foi classificado. Assim se um SIW400H estiver
+  // cadastrado com nome estranho ("Inversor 400H" sem SIW), ainda cai aqui
+  // e o consultor consegue usar. Ver Kalebe 2026-09-09 tarde: os dropdowns
+  // vinham vazios porque o catálogo tinha nomenclatura fora do padrão.
+  const opcionaisSlice = todos.filter(p => !idsClassificados.has(p.id))
 
   // Aplaina preços vigentes (o mesmo padrão que o resto da /kit usa)
   const hojeIso = new Date().toISOString().slice(0, 10)
@@ -137,6 +152,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
   const medidoresBess     = normalizar(medidoresSlice)
   const caixasBess        = normalizar(caixasSlice)
   const extrasBess        = normalizar(opcionaisSlice)
+  const todosProdutosBess = normalizar(todos)  // fallback: qualquer bucket vazio pode mostrar tudo
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -170,6 +186,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
             medidores: medidoresBess,
             caixasJuncao: caixasBess,
             opcionais: extrasBess,
+            todos: todosProdutosBess,
           }}
           padraoPrincipal={padrao}
           tipoTelhadoPrincipal={projeto.telhado_secoes?.[0]?.tipo_cobertura}

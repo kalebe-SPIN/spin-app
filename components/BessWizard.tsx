@@ -48,6 +48,7 @@ type Props = {
   medidores: ProdutoBess[]
   caixasJuncao: ProdutoBess[]
   opcionais: ProdutoBess[]        // frete, EMBOX, cabos, acessórios
+  todos?: ProdutoBess[]            // fallback: TODOS os ativos, se um bucket vier vazio
   kitSalvo?: any | null            // pra pré-carregar quando editando
 }
 
@@ -67,9 +68,19 @@ function toItem(p: ProdutoBess, qtd = 1): ItemComposicao {
 
 export function BessWizard({
   projetoId,
-  baterias, controladoras, medidores, caixasJuncao, opcionais,
+  baterias, controladoras, medidores, caixasJuncao, opcionais, todos,
   kitSalvo,
 }: Props) {
+  // Fallback: se um bucket específico veio vazio (nomenclatura fora do
+  // padrão ou catálogo incompleto), oferece TODOS os ativos pra escolha
+  // manual. Melhor mostrar tudo que travar o consultor.
+  const bat = baterias.length > 0 ? baterias : (todos || [])
+  const ctrl = controladoras.length > 0 ? controladoras : (todos || [])
+  const med = medidores.length > 0 ? medidores : (todos || [])
+  const caixa = caixasJuncao.length > 0 ? caixasJuncao : (todos || [])
+  // Opcionais: se meu bucket ficou vazio, mostra todos os ativos (menos os já
+  // reconhecidos nos buckets específicos que apareceram).
+  const opts = opcionais.length > 0 ? opcionais : (todos || [])
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
@@ -112,12 +123,40 @@ export function BessWizard({
         Bateria + controladora + medidor são obrigatórios. Caixa de junção e opcionais são complementares.
       </div>
 
+      {/* Debug: contagem por bucket. Útil quando um bucket vem vazio e o
+          usuário precisa entender se é problema de catálogo ou nomenclatura. */}
+      <details className="bg-white/[0.02] border border-white/10 rounded-xl px-4 py-2 text-xs">
+        <summary className="cursor-pointer text-white/60 select-none">
+          🔍 Diagnóstico do catálogo — {(todos || []).length} produtos ativos
+        </summary>
+        <div className="mt-2 grid grid-cols-2 md:grid-cols-5 gap-2 text-white/70">
+          <span>🔋 Baterias: <strong className="text-sol">{baterias.length}</strong></span>
+          <span>⚙️ Controladoras: <strong className="text-sol">{controladoras.length}</strong></span>
+          <span>📊 Medidores: <strong className="text-sol">{medidores.length}</strong></span>
+          <span>🧰 Caixas: <strong className="text-sol">{caixasJuncao.length}</strong></span>
+          <span>✨ Opcionais: <strong className="text-sol">{opcionais.length}</strong></span>
+        </div>
+        {(todos || []).length > 0 && (
+          <details className="mt-2">
+            <summary className="cursor-pointer text-white/50 text-[11px]">Ver lista completa</summary>
+            <ul className="mt-1.5 max-h-40 overflow-y-auto text-[11px] text-white/60 font-mono space-y-0.5">
+              {(todos || []).map(p => (
+                <li key={p.id} className="truncate">
+                  {p.marca ? `${p.marca} · ` : ''}{p.modelo}
+                  <span className="text-white/30 ml-2">[{p.categoria}{p.subcategoria ? `/${p.subcategoria}` : ''}]</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </details>
+
       {/* Bateria */}
       <SelectItemBloco
         titulo="🔋 Bateria"
-        subtitulo="Item central — SBW ou similar da WEG"
+        subtitulo={baterias.length > 0 ? "Item central — SBW ou similar da WEG" : "Nenhuma bateria reconhecida — mostrando todos os produtos ativos"}
         obrigatorio
-        produtos={baterias}
+        produtos={bat}
         selecionado={bateria}
         onSelecionar={(p) => setBateria(p ? toItem(p) : null)}
         onQtdChange={(q) => setBateria(b => b ? { ...b, qtd: q } : null)}
@@ -126,9 +165,9 @@ export function BessWizard({
       {/* Controladora / Inversor Híbrido */}
       <SelectItemBloco
         titulo="⚙️ Controladora / Inversor Híbrido"
-        subtitulo="Converte DC da bateria pra AC — linha WEG SIW200H (monofásico) ou SIW400H (trifásico)"
+        subtitulo={controladoras.length > 0 ? "Converte DC da bateria pra AC — linha WEG SIW200H (mono) ou SIW400H (tri)" : "Nenhuma controladora reconhecida — mostrando todos os produtos ativos"}
         obrigatorio
-        produtos={controladoras}
+        produtos={ctrl}
         selecionado={controladora}
         onSelecionar={(p) => setControladora(p ? toItem(p) : null)}
         onQtdChange={(q) => setControladora(c => c ? { ...c, qtd: q } : null)}
@@ -137,9 +176,9 @@ export function BessWizard({
       {/* Medidor */}
       <SelectItemBloco
         titulo="📊 Medidor"
-        subtitulo="Multimedidor CHINT DTSU666 ou similar pra monitoramento"
+        subtitulo={medidores.length > 0 ? "Multimedidor CHINT DTSU666 ou similar pra monitoramento" : "Nenhum medidor reconhecido — mostrando todos os produtos ativos"}
         obrigatorio
-        produtos={medidores}
+        produtos={med}
         selecionado={medidor}
         onSelecionar={(p) => setMedidor(p ? toItem(p) : null)}
         onQtdChange={(q) => setMedidor(m => m ? { ...m, qtd: q } : null)}
@@ -148,8 +187,8 @@ export function BessWizard({
       {/* Caixas de junção (múltiplas) */}
       <MultiSelectBloco
         titulo="🧰 Caixas de junção"
-        subtitulo="EMBOX ou outras — opcional"
-        produtos={caixasJuncao}
+        subtitulo={caixasJuncao.length > 0 ? "EMBOX ou outras — opcional" : "Nenhuma caixa reconhecida — mostrando todos ativos"}
+        produtos={caixa}
         selecionados={caixas}
         onChange={setCaixas}
       />
@@ -157,8 +196,8 @@ export function BessWizard({
       {/* Opcionais (múltiplos) */}
       <MultiSelectBloco
         titulo="✨ Opcionais WEG"
-        subtitulo="Frete, cabos, acessórios da planilha WEG — opcional"
-        produtos={opcionais}
+        subtitulo={opcionais.length > 0 ? "Frete, cabos, acessórios da planilha WEG — opcional" : "Nenhum opcional reconhecido — mostrando todos ativos"}
+        produtos={opts}
         selecionados={extras}
         onChange={setExtras}
       />
