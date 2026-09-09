@@ -38,6 +38,12 @@ type Props = {
     kit_com_fator: number
     frete: number
     projeto_art: number
+    projeto_art_detalhe?: {
+      potencia_ca_total_kw: number
+      valor_fixo_ate_30kw: number
+      rs_por_kw_acima_30: number
+      dentro_faixa_fixa: boolean
+    }
     instalacao: number
     instalacao_detalhe?: {
       qtd_inversor: number
@@ -138,7 +144,16 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
           </p>
           <div className="space-y-2 text-sm">
             <LinhaServico label="Frete regional" valor={proposta.frete} />
-            <LinhaServico label="Projeto + ART" valor={proposta.projeto_art} />
+            <LinhaServico
+              label={
+                proposta.projeto_art_detalhe
+                  ? proposta.projeto_art_detalhe.dentro_faixa_fixa
+                    ? `Projeto + ART (${proposta.projeto_art_detalhe.potencia_ca_total_kw.toFixed(1).replace('.', ',')} kW · faixa até 30 kW)`
+                    : `Projeto + ART (${proposta.projeto_art_detalhe.potencia_ca_total_kw.toFixed(1).replace('.', ',')} kW · R$ ${proposta.projeto_art_detalhe.valor_fixo_ate_30kw} + ${(proposta.projeto_art_detalhe.potencia_ca_total_kw - 30).toFixed(1).replace('.', ',')} kW × R$ ${proposta.projeto_art_detalhe.rs_por_kw_acima_30})`
+                  : 'Projeto + ART'
+              }
+              valor={proposta.projeto_art}
+            />
             <LinhaServico
               label={
                 proposta.instalacao_detalhe

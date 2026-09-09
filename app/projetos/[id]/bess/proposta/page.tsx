@@ -75,14 +75,24 @@ export default async function BessPropostaPage(props: { params: { id: string } }
 
   // Serviços do projeto BESS puro.
   // - Frete: mesma faixa "até 16 placas" do solar (menor porte)
-  // - Projeto/ART: valor cheio (mesma tabela do solar, faixa até 30 kWp)
-  // - Instalação (Kalebe 2026-09-09):
+  // - Projeto/ART: MESMA LÓGICA do on-grid (Kalebe 2026-09-09) —
+  //     R$ 400 fixo até 30 kW + R$ 30/kW acima disso, onde a "potência"
+  //     do BESS é a soma da potência CA das controladoras/inversores
+  //     (qtd × potência_kw). Reusa exatamente os mesmos parâmetros:
+  //     projeto_valor_fixo_ate_30kwp e projeto_rs_por_kwp_acima_30kwp.
+  // - Instalação:
   //     R$ 1.200 por inversor/controladora × qtd
   //   + R$ 200   por bateria             × qtd
   const freteBase = getNum(params, 'frete_ate_16_placas', 300)
-  const projetoArt = getNum(params, 'projeto_valor_fixo_ate_30kwp', 400)
   const qtdInversor = Number(kit.controladora?.qtd) || 0
   const qtdBateria = Number(kit.bateria?.qtd) || 0
+  const potenciaKwInversorUnit = Number(kit.controladora?.potencia_kw) || 0
+  const potenciaCaTotalKw = qtdInversor * potenciaKwInversorUnit
+  const projetoValorAte30 = getNum(params, 'projeto_valor_fixo_ate_30kwp', 400)
+  const projetoRsPorKwAcima30 = getNum(params, 'projeto_rs_por_kwp_acima_30kwp', 30)
+  const projetoArt = potenciaCaTotalKw <= 30
+    ? projetoValorAte30
+    : projetoValorAte30 + (potenciaCaTotalKw - 30) * projetoRsPorKwAcima30
   const maoObraPorInversor = getNum(params, 'bess_mo_por_inversor', 1200)
   const maoObraPorBateria = getNum(params, 'bess_mo_por_bateria', 200)
   const instalacao = qtdInversor * maoObraPorInversor + qtdBateria * maoObraPorBateria
@@ -102,6 +112,12 @@ export default async function BessPropostaPage(props: { params: { id: string } }
     kit_com_fator: kitComFator,
     frete: freteBase,
     projeto_art: projetoArt,
+    projeto_art_detalhe: {
+      potencia_ca_total_kw: potenciaCaTotalKw,
+      valor_fixo_ate_30kw: projetoValorAte30,
+      rs_por_kw_acima_30: projetoRsPorKwAcima30,
+      dentro_faixa_fixa: potenciaCaTotalKw <= 30,
+    },
     instalacao,
     instalacao_detalhe: {
       qtd_inversor: qtdInversor,
