@@ -70,7 +70,11 @@ export async function getModoVisualizacao(): Promise<{
   }
 
   const cookieValor = cookies().get(COOKIE_NAME)?.value
-  const modo: ModoVisualizacao = normalizarModo(cookieValor) || 'admin'
+  let modo: ModoVisualizacao = normalizarModo(cookieValor) || 'admin'
+  // Kalebe 2026-09-09: admin simulando 'representante' também cai no
+  // caminho do consultor (mesma regra do não-admin). Se quisermos que o
+  // admin veja o dashboard próprio do representante depois, mudar aqui.
+  if (modo === 'representante') modo = 'consultor'
 
   return { modo, ehAdminReal: true, perfil }
 }
