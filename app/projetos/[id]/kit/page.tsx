@@ -83,40 +83,38 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .in('subcategoria', ['inversor_string', 'microinversor'])
     .eq('ativo', true)
 
-  // Kalebe 2026-09-09: catálogo BESS puro — pra modo "🔋 Sem placas — só BESS".
-  // Filtros RELAXADOS (2026-09-09 tarde): o filtro estrito por subcategoria
-  // não estava achando produtos reais (os SIW400H estão cadastrados sob
-  // subcategorias diversas — inversor_hibrido, hibrido, hibrido_bess etc).
-  // Melhor: puxa tudo da categoria ampla e deixa o consultor filtrar
-  // visualmente pelo modelo no dropdown. Melhor mostrar tudo que faltar.
-  const SELECT_PROD = 'id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)'
+  // Kalebe 2026-09-09 (v3): filtrar por categoria não estava confiável — os
+  // SIW200H/SIW400H, DTSU666 etc podem estar cadastrados sob subcategorias
+  // variadas. Estratégia agora: 1 QUERY GRANDE trazendo todo produto ativo,
+  // classificação em buckets pelo NOME DO MODELO (regex) — não depende
+  // do enum categoria estar certo. Se um SIW200H foi cadastrado como
+  // 'monitoramento' por engano, ainda cai na bucket controladora pelo nome.
+  const { data: todosProdutosAtivos } = await supabase
+    .from('produtos')
+    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, ativo, precos_produtos(preco_venda, vigente_de, vigente_ate)')
+    .eq('ativo', true)
+    .order('modelo')
 
-  const { data: baterias } = await supabase
-    .from('produtos').select(SELECT_PROD)
-    .eq('categoria', 'bateria').eq('ativo', true).order('modelo')
+  // Classifica em buckets por padrão de modelo (defensivo) + fallback categoria.
+  // Um mesmo produto pode aparecer em opcionais se não bater com bucket específico.
+  const todos = todosProdutosAtivos || []
+  const modeloRe = (r: RegExp) => (p: any) => r.test(String(p.modelo || '').toUpperCase())
+  const catIn = (...cs: string[]) => (p: any) => cs.includes(String(p.categoria || ''))
 
-  // Controladora / inversor híbrido: mostra qualquer coisa em 'controlador'
-  // OU 'inversor' (inclui inversor solar — consultor identifica o SIW400H
-  // pelo nome no dropdown; melhor que zero opção).
-  const { data: controladoras } = await supabase
-    .from('produtos').select(SELECT_PROD)
-    .in('categoria', ['controlador', 'inversor']).eq('ativo', true).order('modelo')
-
-  // Medidores: amplia pra 3 categorias possíveis do enum.
-  const { data: medidores } = await supabase
-    .from('produtos').select(SELECT_PROD)
-    .in('categoria', ['multimedidor', 'smart_meter', 'monitoramento']).eq('ativo', true).order('modelo')
-
-  // Caixas de junção: EMBOX + caixa_juncao. Se seu enum só tem uma dessas,
-  // .in() ignora silenciosamente a que não existe.
-  const { data: caixasJuncao } = await supabase
-    .from('produtos').select(SELECT_PROD)
-    .in('categoria', ['caixa_juncao']).eq('ativo', true).order('modelo')
-
-  // Opcionais WEG: qualquer coisa de complemento que ajude na instalação.
-  const { data: opcionaisBess } = await supabase
-    .from('produtos').select(SELECT_PROD)
-    .in('categoria', ['frete', 'conector', 'acessorio', 'cabo', 'monitoramento', 'protecao', 'dps', 'disjuntor']).eq('ativo', true).order('modelo')
+  const bateriasSlice     = todos.filter(p => modeloRe(/LUNA|SBW|BESS|PLW|BATERIA/)(p)      || catIn('bateria')(p))
+  const controladorasSlice = todos.filter(p => modeloRe(/^SIW\s?\d{3}H|SIW200H|SIW400H|HIBRID|INVERSOR.*HIBRID|CONTROLADOR/)(p) || catIn('controlador','inversor_hibrido')(p))
+  const medidoresSlice     = todos.filter(p => modeloRe(/DTSU|DTS\d|MMW|SMART.*METER|MEDIDOR/)(p) || catIn('multimedidor','smart_meter','monitoramento')(p))
+  const caixasSlice        = todos.filter(p => modeloRe(/EMBOX|CAIXA.*JUN|STRING\s?BOX/)(p)       || catIn('caixa_juncao')(p))
+  // Opcionais: qualquer complemento (frete, cabo, conector, DPS, disjuntor, etc)
+  // — inclui produtos que não caíram em nenhum dos buckets acima.
+  const idsClassificados = new Set([
+    ...bateriasSlice, ...controladorasSlice, ...medidoresSlice, ...caixasSlice,
+  ].map(p => p.id))
+  const opcionaisSlice = todos.filter(p =>
+    !idsClassificados.has(p.id) &&
+    (catIn('frete','conector','acessorio','cabo','monitoramento','protecao','dps','disjuntor')(p)
+     || modeloRe(/FRETE|CABO|CONECTOR|DPS|DISJUNTOR|MC4|SUPORT/)(p))
+  )
 
   // Aplaina preços vigentes (o mesmo padrão que o resto da /kit usa)
   const hojeIso = new Date().toISOString().slice(0, 10)
@@ -134,11 +132,11 @@ export default async function KitPage({ params }: { params: { id: string } }) {
       }
     })
   }
-  const bateriasBess     = normalizar(baterias)
-  const controladorasBess = normalizar(controladoras)
-  const medidoresBess    = normalizar(medidores)
-  const caixasBess       = normalizar(caixasJuncao)
-  const extrasBess       = normalizar(opcionaisBess)
+  const bateriasBess      = normalizar(bateriasSlice)
+  const controladorasBess = normalizar(controladorasSlice)
+  const medidoresBess     = normalizar(medidoresSlice)
+  const caixasBess        = normalizar(caixasSlice)
+  const extrasBess        = normalizar(opcionaisSlice)
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
