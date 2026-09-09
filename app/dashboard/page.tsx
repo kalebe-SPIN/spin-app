@@ -43,33 +43,19 @@ export default async function DashboardPage() {
   // executar OS na agenda. Manda direto pra /agenda até criarmos DashboardCampo.
   if (modo === 'profissional_campo') redirect('/agenda')
 
-  // Kalebe 2026-09-06: Dashboard do Representante Spin — perfil unificado
-  // (substitui o antigo vendedor_servicos). Espelha a proposta de
-  // credenciamento: header "Meu ganho", acelerador de volume, portfólio
-  // segmentado (residencial/comercial/usina/carregador/O&M), MRR da
-  // carteira, breakdown por origem do lead, progresso pro próximo nível.
-  if (modo === 'representante') {
-    const { DashboardRepresentante } = await import('@/components/DashboardRepresentante')
-    const { agregarDashboardRepresentante } = await import('@/lib/representante-agregacoes')
-    const dados = await agregarDashboardRepresentante(supabase, user.id)
-    if (dados) {
-      return (
-        <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
-          <div className="max-w-screen-2xl mx-auto">
-            <header className="mb-8">
-              <h1 className="text-3xl md:text-4xl font-black text-white">
-                Olá, <span className="text-sol">{profile?.nome_completo?.split(' ')[0] || 'parceiro'}</span>
-              </h1>
-              <p className="text-white/60 mt-1 text-sm">
-                Painel do Representante Spin · atualizado em tempo real
-              </p>
-            </header>
-            <DashboardRepresentante dados={dados} />
-          </div>
-        </main>
-      )
-    }
-  }
+  // Kalebe 2026-09-09: Dashboard dedicado do Representante temporariamente
+  // desativado — o componente DashboardRepresentante exibe cards de ganhos
+  // (comissão, acelerador, portfólio, MRR) que dependem da proposta
+  // comercial ainda em finalização. Enquanto isso, o representante usa o
+  // MESMO dashboard genérico do consultor (nav do PortalHeader também
+  // igual). Pra reativar: descomentar o branch abaixo.
+  //
+  // if (modo === 'representante') {
+  //   const { DashboardRepresentante } = await import('@/components/DashboardRepresentante')
+  //   const { agregarDashboardRepresentante } = await import('@/lib/representante-agregacoes')
+  //   const dados = await agregarDashboardRepresentante(supabase, user.id)
+  //   if (dados) return ( ... )
+  // }
 
   // Painel de equipe (só admin) — fetch inicial. Depois o client subscribe
   // em postgres_changes e atualiza em tempo real.

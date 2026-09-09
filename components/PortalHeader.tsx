@@ -45,14 +45,15 @@ export async function PortalHeader() {
   } catch {}
 
   // Monta links pra passar tanto pro desktop quanto pro drawer mobile
+  // Kalebe 2026-09-09: representante = navegação idêntica ao consultor.
+  // O portal só diverge de verdade pra profissional_campo (foco execução) e admin.
   const linksNav = [
     { href: '/dashboard', label: '📊 Dashboard' },
-    ...(modoAtivo !== 'representante' && modoAtivo !== 'profissional_campo'
+    ...(modoAtivo !== 'profissional_campo'
       ? [{ href: '/projetos', label: '📋 Projetos' }] : []),
     {
       href:
-        modoAtivo === 'representante' ? '/crm/servicos'
-        : modoAtivo === 'admin' ? '/crm/pipeline'
+        modoAtivo === 'admin' ? '/crm/pipeline'
         : '/crm',
       label: '🎯 CRM',
     },
