@@ -43,6 +43,8 @@ type Props = {
   }
   proposta: {
     pv_total: number
+    subtotal_lista_ca?: number
+    lista_ca?: ItemComp[]
     frete: number
     projeto_art: number
     instalacao: number
@@ -252,8 +254,25 @@ export const PropostaPDFTemplateBess = forwardRef<HTMLDivElement, Props>(
               </tbody>
             </table>
 
+            {/* Lista CA (só aparece se houver) */}
+            {(proposta.lista_ca?.length || 0) > 0 && (
+              <>
+                <h3 style={{ ...E.subtituloSecao, marginTop: 40 }}>🔌 Lista CA — materiais elétricos</h3>
+                <table style={E.tabela}>
+                  <tbody>
+                    {(proposta.lista_ca || []).map((it, i) => (
+                      <LinhaKitPDF key={i} label={`Item ${i + 1}`} item={it} />
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+
             <h3 style={{ ...E.subtituloSecao, marginTop: 40 }}>Serviços inclusos</h3>
             <div style={E.gridDados}>
+              {(proposta.subtotal_lista_ca || 0) > 0 && (
+                <DadoLinha rot="Lista CA (materiais elétricos)" val={`R$ ${fmt(proposta.subtotal_lista_ca || 0)}`} />
+              )}
               <DadoLinha rot="Frete regional" val={`R$ ${fmt(proposta.frete)}`} />
               <DadoLinha
                 rot={proposta.projeto_art_detalhe

@@ -41,11 +41,14 @@ type Props = {
     medidor?: ItemComp        // legado
     caixas_juncao?: ItemComp[]
     opcionais?: ItemComp[]
+    lista_ca?: ItemComp[]        // Kalebe 2026-09-09: materiais elétricos
     preco_total_estimado?: number
   }
   proposta: {
     kit_bess_bruto: number
     kit_com_fator: number
+    subtotal_lista_ca?: number
+    lista_ca?: ItemComp[]
     frete: number
     projeto_art: number
     projeto_art_detalhe?: {
@@ -221,11 +224,38 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
         </section>
 
         {/* Serviços */}
+        {/* Lista CA — materiais elétricos complementares */}
+        {(proposta.lista_ca?.length || 0) > 0 && (
+          <section className="bg-white/[0.03] border border-white/10 rounded-xl overflow-hidden">
+            <p className="px-4 py-2.5 bg-white/5 text-[10px] uppercase tracking-widest font-bold text-white/60 border-b border-white/5">
+              🔌 Lista CA — materiais elétricos
+            </p>
+            <table className="w-full text-sm">
+              <tbody>
+                {(proposta.lista_ca || []).map((it, i) => (
+                  <LinhaKit key={i} label={`Item ${i + 1}`} item={it} ehAdmin={ehAdmin} />
+                ))}
+                <tr className="border-t border-sol/20 bg-sol/5">
+                  <td colSpan={ehAdmin ? 4 : 3} className="p-3 text-right text-[10px] uppercase tracking-wider font-bold text-sol">
+                    Subtotal Lista CA (entra na base impostável)
+                  </td>
+                  <td className="p-3 text-right font-mono font-black text-sol">
+                    R$ {(proposta.subtotal_lista_ca || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        )}
+
         <section className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
           <p className="text-[10px] uppercase tracking-widest font-bold text-white/60 mb-3">
             Serviços e complementos
           </p>
           <div className="space-y-2 text-sm">
+            {(proposta.subtotal_lista_ca || 0) > 0 && (
+              <LinhaServico label="Lista CA (materiais elétricos)" valor={proposta.subtotal_lista_ca || 0} />
+            )}
             <LinhaServico label="Frete regional" valor={proposta.frete} />
             <LinhaServico
               label={

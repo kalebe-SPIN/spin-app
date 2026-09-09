@@ -425,6 +425,7 @@ export async function salvarKitBessAction(projetoId: string, composicao: any) {
   const medidores     = toArr(composicao?.medidores     ?? composicao?.medidor)
   const caixas        = toArr(composicao?.caixas_juncao)
   const opcionais     = toArr(composicao?.opcionais)
+  const lista_ca      = toArr(composicao?.lista_ca)  // Kalebe 2026-09-09: materiais elétricos
 
   if (baterias.length === 0)      return { sucesso: false as const, erro: 'Adicione pelo menos 1 bateria' }
   if (controladoras.length === 0) return { sucesso: false as const, erro: 'Adicione pelo menos 1 controladora' }
@@ -434,13 +435,14 @@ export async function salvarKitBessAction(projetoId: string, composicao: any) {
   const somarArr = (arr: any[]) => arr.reduce((s, i) => s + somarLinha(i), 0)
   const total =
     somarArr(baterias) + somarArr(controladoras) + somarArr(medidores) +
-    somarArr(caixas) + somarArr(opcionais)
+    somarArr(caixas) + somarArr(opcionais) + somarArr(lista_ca)
 
   const kit_selecionado = {
     modo: 'bess_puro' as const,
     baterias, controladoras, medidores,
     caixas_juncao: caixas,
     opcionais,
+    lista_ca,
     preco_total_estimado: total,
     salvo_em: new Date().toISOString(),
   }

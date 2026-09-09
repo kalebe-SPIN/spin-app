@@ -90,12 +90,13 @@ export function BessWizard({
   const [meds, setMeds]   = useState<ItemComposicao[]>(toArr(kitPre?.medidores ?? kitPre?.medidor))
   const [caixas, setCaixas] = useState<ItemComposicao[]>(kitPre?.caixas_juncao || [])
   const [extras, setExtras] = useState<ItemComposicao[]>(kitPre?.opcionais || [])
+  const [listaCa, setListaCa] = useState<ItemComposicao[]>(kitPre?.lista_ca || [])
 
   const total = useMemo(() => {
     const linha = (i: ItemComposicao) => (i.preco_venda || 0) * (i.qtd || 1)
     const arr = (a: ItemComposicao[]) => a.reduce((s, i) => s + linha(i), 0)
-    return arr(bats) + arr(ctrls) + arr(meds) + arr(caixas) + arr(extras)
-  }, [bats, ctrls, meds, caixas, extras])
+    return arr(bats) + arr(ctrls) + arr(meds) + arr(caixas) + arr(extras) + arr(listaCa)
+  }, [bats, ctrls, meds, caixas, extras, listaCa])
 
   const podeSalvar = bats.length > 0 && ctrls.length > 0 && meds.length > 0 && !pending
 
@@ -108,6 +109,7 @@ export function BessWizard({
         medidores: meds,
         caixas_juncao: caixas,
         opcionais: extras,
+        lista_ca: listaCa,
       })
       if ('erro' in r && r.erro) { setErro(r.erro); return }
       setMsg('Kit BESS salvo. Redirecionando pro orçamento…')
@@ -190,6 +192,21 @@ export function BessWizard({
         produtos={opts}
         itens={extras}
         onChange={setExtras}
+      />
+
+      {/* Lista CA — materiais elétricos complementares (mesmo modelo do on-grid).
+          Diferente dos opcionais WEG (kit): entram na base impostável, sofrem
+          margem + comissão + imposto na proposta. */}
+      <BlocoBusca
+        titulo="🔌 Lista CA (materiais elétricos)"
+        subtitulo={
+          `Disjuntor, DPS, cabos, conectores, condulete etc — entra na base impostável (${
+            (todos || []).length
+          } produtos ativos)`
+        }
+        produtos={todos || []}
+        itens={listaCa}
+        onChange={setListaCa}
       />
 
       <div className="sticky bottom-4 bg-noite/95 backdrop-blur border border-sol/40 rounded-xl p-5 flex items-center justify-between gap-4 shadow-xl">
