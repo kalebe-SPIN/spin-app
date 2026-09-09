@@ -511,7 +511,7 @@ function ToggleSolarBess({
           onClick={() => onChange('bess')}
           className={`text-left p-4 rounded-lg border transition ${
             valor === 'bess'
-              ? 'bg-verde/15 border-verde/60 ring-1 ring-verde/40'
+              ? 'bg-sol/15 border-sol/60 ring-1 ring-sol/40'
               : 'bg-white/[0.02] border-white/10 hover:border-white/20'
           } ${!temCatalogoBess ? 'opacity-40 cursor-not-allowed' : ''}`}
         >

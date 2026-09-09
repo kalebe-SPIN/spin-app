@@ -107,8 +107,8 @@ export function BessWizard({
 
   return (
     <div className="space-y-6">
-      <div className="bg-verde/10 border border-verde/30 rounded-xl p-4 text-sm text-white/80 leading-relaxed">
-        🔋 <strong className="text-verde">Modo BESS puro</strong> — kit de backup sem placas solares.
+      <div className="bg-sol/10 border border-sol/30 rounded-xl p-4 text-sm text-white/80 leading-relaxed">
+        🔋 <strong className="text-sol">Modo BESS puro</strong> — kit de backup sem placas solares.
         Bateria + controladora + medidor são obrigatórios. Caixa de junção e opcionais são complementares.
       </div>
 
@@ -126,7 +126,7 @@ export function BessWizard({
       {/* Controladora / Inversor Híbrido */}
       <SelectItemBloco
         titulo="⚙️ Controladora / Inversor Híbrido"
-        subtitulo="Converte DC da bateria pra AC — SIW400H, etc"
+        subtitulo="Converte DC da bateria pra AC — linha WEG SIW200H (monofásico) ou SIW400H (trifásico)"
         obrigatorio
         produtos={controladoras}
         selecionado={controladora}
@@ -202,6 +202,11 @@ function SelectItemBloco({
             {obrigatorio && <span className="text-coral ml-1">*</span>}
           </h3>
           <p className="text-xs text-white/50 mt-0.5">{subtitulo}</p>
+          <p className="text-[10px] text-white/40 mt-0.5">
+            {produtos.length > 0
+              ? `${produtos.length} produto${produtos.length === 1 ? '' : 's'} no catálogo`
+              : 'nenhum produto cadastrado'}
+          </p>
         </div>
         {selecionado && (
           <p className="text-sm font-mono font-bold text-sol">

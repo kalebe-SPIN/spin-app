@@ -84,29 +84,39 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .eq('ativo', true)
 
   // Kalebe 2026-09-09: catálogo BESS puro — pra modo "🔋 Sem placas — só BESS".
-  // Baterias (SBW), controladoras (SIW400H + categoria='controlador'),
-  // medidores (multimedidor/smart_meter), caixa de junção (EMBOX), opcionais.
+  // Filtros RELAXADOS (2026-09-09 tarde): o filtro estrito por subcategoria
+  // não estava achando produtos reais (os SIW400H estão cadastrados sob
+  // subcategorias diversas — inversor_hibrido, hibrido, hibrido_bess etc).
+  // Melhor: puxa tudo da categoria ampla e deixa o consultor filtrar
+  // visualmente pelo modelo no dropdown. Melhor mostrar tudo que faltar.
+  const SELECT_PROD = 'id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)'
+
   const { data: baterias } = await supabase
-    .from('produtos')
-    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
+    .from('produtos').select(SELECT_PROD)
     .eq('categoria', 'bateria').eq('ativo', true).order('modelo')
+
+  // Controladora / inversor híbrido: mostra qualquer coisa em 'controlador'
+  // OU 'inversor' (inclui inversor solar — consultor identifica o SIW400H
+  // pelo nome no dropdown; melhor que zero opção).
   const { data: controladoras } = await supabase
-    .from('produtos')
-    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
-    .or('categoria.eq.controlador,and(categoria.eq.inversor,subcategoria.eq.inversor_hibrido)')
-    .eq('ativo', true).order('modelo')
+    .from('produtos').select(SELECT_PROD)
+    .in('categoria', ['controlador', 'inversor']).eq('ativo', true).order('modelo')
+
+  // Medidores: amplia pra 3 categorias possíveis do enum.
   const { data: medidores } = await supabase
-    .from('produtos')
-    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
-    .in('categoria', ['multimedidor', 'smart_meter']).eq('ativo', true).order('modelo')
+    .from('produtos').select(SELECT_PROD)
+    .in('categoria', ['multimedidor', 'smart_meter', 'monitoramento']).eq('ativo', true).order('modelo')
+
+  // Caixas de junção: EMBOX + caixa_juncao. Se seu enum só tem uma dessas,
+  // .in() ignora silenciosamente a que não existe.
   const { data: caixasJuncao } = await supabase
-    .from('produtos')
-    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
-    .eq('categoria', 'caixa_juncao').eq('ativo', true).order('modelo')
+    .from('produtos').select(SELECT_PROD)
+    .in('categoria', ['caixa_juncao']).eq('ativo', true).order('modelo')
+
+  // Opcionais WEG: qualquer coisa de complemento que ajude na instalação.
   const { data: opcionaisBess } = await supabase
-    .from('produtos')
-    .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, precos_produtos(preco_venda, vigente_de, vigente_ate)')
-    .in('categoria', ['frete', 'conector', 'acessorio', 'cabo', 'monitoramento']).eq('ativo', true).order('modelo')
+    .from('produtos').select(SELECT_PROD)
+    .in('categoria', ['frete', 'conector', 'acessorio', 'cabo', 'monitoramento', 'protecao', 'dps', 'disjuntor']).eq('ativo', true).order('modelo')
 
   // Aplaina preços vigentes (o mesmo padrão que o resto da /kit usa)
   const hojeIso = new Date().toISOString().slice(0, 10)
