@@ -40,6 +40,18 @@ export async function calcularOrcamentoAction(
   if (!adaptador) {
     return { erro: `Adaptador não encontrado pra tipo "${tipo}"` }
   }
+  // Kalebe 2026-09-09: custos internos (custo bruto WEG, R$/kWp praticado)
+  // NUNCA podem aparecer pra consultor/representante — só admin. Regra da
+  // dupla-visão da precificação SPIN. Determina aqui no server pra que o
+  // client nem receba os valores no payload.
+  const supabase = createClient()
+  const { data: { user: userAtual } } = await supabase.auth.getUser()
+  let ehAdmin = false
+  if (userAtual) {
+    const { data: perfilAtual } = await supabase
+      .from('profiles').select('role').eq('id', userAtual.id).maybeSingle()
+    ehAdmin = perfilAtual?.role === 'admin'
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resultado = (adaptador as any).calcular(entrada, PARAMETROS_DEFAULT) as ResultadoOrcamento
@@ -57,10 +69,13 @@ export async function calcularOrcamentoAction(
         const faixaBanco = await buscarPrecoKwpPorFaixa(kwpEstimado)
         if (faixaBanco) {
           resultado.valor_estimado = Math.round(kwpEstimado * faixaBanco.preco_kwp)
-          resultado.detalhes.push({
-            label: 'R$/kWp praticado',
-            valor: `R$ ${faixaBanco.preco_kwp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${faixaBanco.descricao})`,
-          })
+          // R$/kWp praticado é dado interno de precificação — só admin vê.
+          if (ehAdmin) {
+            resultado.detalhes.push({
+              label: 'R$/kWp praticado',
+              valor: `R$ ${faixaBanco.preco_kwp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${faixaBanco.descricao})`,
+            })
+          }
         }
       }
 
@@ -73,16 +88,27 @@ export async function calcularOrcamentoAction(
         if (kit.placa && kit.inversor) {
           // Substitui o valor_estimado (chute) pelo custo bruto REAL WEG.
           // O R$/kWp do fallback vira só uma referência inicial — nunca o final.
-          resultado.detalhes = [
+          // Kalebe 2026-09-09: "Custo bruto WEG" só aparece pra admin (dado
+          // interno). Placa/inversor/potência ficam pra todos — dados técnicos.
+          const detalhesBase = [
             { label: 'Placa selecionada', valor: `${kit.qtd_placas} × ${kit.placa.modelo} (${kit.placa.potencia_wp}Wp)` },
             { label: 'Inversor selecionado', valor: `${kit.inversor.modelo} (${kit.inversor.potencia_kw}kW ${infoRede.label})` },
             { label: 'Potência real do kit', valor: `${kit.kwp_real.toFixed(2).replace('.', ',')} kWp` },
             ...resultado.detalhes.filter(d => !d.label.startsWith('Placa') && !d.label.startsWith('Quantidade')),
-            { label: 'Custo bruto WEG (placa+inv)', valor: `R$ ${kit.custo_bruto_weg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` },
           ]
+          if (ehAdmin) {
+            detalhesBase.push({
+              label: 'Custo bruto WEG (placa+inv)',
+              valor: `R$ ${kit.custo_bruto_weg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            })
+          }
+          resultado.detalhes = detalhesBase
           // ⚠️ valor_estimado = custo BRUTO (sem MO, frete, projeto, ART, margem, impostos).
           // Vai continuar mostrando o valor do fallback como referência até Kalebe
           // definir os parâmetros comerciais reais (task #79 item F).
+          //
+          // kit_real: só serializa custo/preço WEG pra admin — evita vazar pelo
+          // payload mesmo que o front não renderize (proteção defense-in-depth).
           resultado.estimativa_tecnica = {
             ...(resultado.estimativa_tecnica || {}),
             kit_real: {
@@ -93,8 +119,10 @@ export async function calcularOrcamentoAction(
               inversor_id: kit.inversor.id,
               inversor_modelo: kit.inversor.modelo,
               inversor_kw: kit.inversor.potencia_kw,
-              custo_bruto_weg: kit.custo_bruto_weg,
-              preco_tabela_weg: kit.preco_tabela_weg,
+              ...(ehAdmin ? {
+                custo_bruto_weg: kit.custo_bruto_weg,
+                preco_tabela_weg: kit.preco_tabela_weg,
+              } : {}),
             },
           }
         } else if (kit.aviso_estoque) {
