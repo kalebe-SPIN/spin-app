@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { MotorV2Controls } from './MotorV2Controls'
+import { SimuladorV1xV2 } from './SimuladorV1xV2'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -79,6 +80,13 @@ export default async function MotorV2Page() {
           comissaoFixa7={comissaoFixa7}
           rbt12={rbt12}
           anexoAtual={anexoAtual}
+        />
+
+        {/* Simulador v1 × v2 — permite validar impacto ANTES de ligar a flag */}
+        <SimuladorV1xV2
+          multiplicadoresDisponiveis={(multRes.data || []).map((m: any) => ({
+            codigo: m.codigo, nome: m.nome, tipo: m.tipo, valor: Number(m.valor),
+          }))}
         />
 
         {/* Tabelas do motor — só leitura por enquanto (edição fica pro próximo prompt) */}
