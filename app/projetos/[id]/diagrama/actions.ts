@@ -540,14 +540,26 @@ function montarRelatorioTecnico(args: {
   const linhaEnderecoObra = formatarLinhaEndereco(enderecoObra)
 
   // ═══ Cálculos derivados ═══
+  // Kalebe 2026-09-10: kit pode ter MÚLTIPLOS inversores diferentes
+  // (ex: 1× SIW100G M010 W00 1 kW + 3× SIW100G M024 W10 2,4 kW = 8,2 kW CA).
+  // Antes só olhava kit.inversor (singular) → contava só o principal e
+  // reportava 1 kW CA em kit de 8,2 kW. Bug fix: soma o array kit.inversores
+  // quando presente; se não tiver, cai no cálculo antigo (compat).
   const placa = kit.placa || {}
   const inversor = kit.inversor || {}
+  const inversoresArr: any[] = Array.isArray(kit.inversores) ? kit.inversores : []
   const potWpMod = num(placa.potencia_wp)
   const qtdMod = num(kit.qtd_placas)
   const potCcKwp = qtdMod && potWpMod ? (qtdMod * potWpMod) / 1000 : num(kit.potencia_cc_kwp)
   const potInvKw = num(inversor.potencia_kw)
-  const qtdInv = num(kit.qtd_inversores) || 1
-  const potCaKw = potInvKw * qtdInv
+  const qtdInv = inversoresArr.length > 0
+    ? inversoresArr.reduce((s, i) => s + (num(i?.qtd) || 1), 0)
+    : (num(kit.qtd_inversores) || 1)
+  // Soma potência CA de TODOS os inversores × suas qtds.
+  // Fallback: potencia_ca_kw já salvo → potência do inversor principal × qtd.
+  const potCaKw = inversoresArr.length > 0
+    ? inversoresArr.reduce((s, i) => s + (num(i?.potencia_kw) * (num(i?.qtd) || 1)), 0)
+    : (num(kit.potencia_ca_kw) || potInvKw * (num(kit.qtd_inversores) || 1))
   const fciPct = potCcKwp && potCaKw ? (potCcKwp / potCaKw) * 100 : num(kit.fci_pct)
 
   const ligacao = normLigacao(padrao.tipo_ligacao)
@@ -605,6 +617,22 @@ function montarRelatorioTecnico(args: {
     `- Quantidade total:   ${qtdMod} unidades`,
     ``,
     ...secaoInversorOuMicro({ inversor, potInvKw, qtdInv, correnteCaA, tensaoRede: tensaoFornec, ligacaoRede: ligacao }),
+    // Kalebe 2026-09-10: se o kit tem MÚLTIPLOS inversores/modelos, lista
+    // adicional discriminando cada um (a seção acima cobre o principal).
+    // Assim a skill projetista sabe que existem outros modelos no CA.
+    ...(inversoresArr.length > 1
+      ? [
+          ``,
+          `### Composição CA completa (${inversoresArr.length} modelo${inversoresArr.length > 1 ? 's' : ''})`,
+          ``,
+          ...inversoresArr.map((inv, i) => {
+            const q = num(inv?.qtd) || 1
+            const p = num(inv?.potencia_kw)
+            return `- ${i + 1}. ${inv?.modelo || '—'} · ${q}× · ${fmt(p, 2)} kW/un · subtotal ${fmt(p * q, 2)} kW`
+          }),
+          `- Soma total CA: ${fmt(potCaKw, 2)} kW`,
+        ]
+      : []),
   ]
 
   // Arranjo de strings — se telhado_secoes tiver a estrutura
