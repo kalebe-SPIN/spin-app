@@ -38,7 +38,7 @@ export function FaturaSemFaturaTabs({
               : 'text-white/60 hover:bg-white/5'
           }`}
         >
-          📄 Com fatura (upload PDF)
+          📄 Com fatura (PDF, foto ou manual)
         </button>
         <button
           type="button"

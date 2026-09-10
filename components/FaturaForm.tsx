@@ -26,12 +26,17 @@ const CORES_UC = ['#587FFF', '#5FCF80', '#F17A5C', '#B78BFF', '#4EC5C9', '#F5A62
 
 export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Props) {
   const router = useRouter()
-  const inputRef = useRef<HTMLInputElement>(null)
+  // Kalebe 2026-09-10: 2 refs de input pra separar câmera (mobile) de arquivo.
+  // capture="environment" força a câmera traseira no mobile.
+  const inputArquivoRef = useRef<HTMLInputElement>(null)
+  const inputCameraRef = useRef<HTMLInputElement>(null)
   const [isPending, startTransition] = useTransition()
   const [arquivo, setArquivo] = useState<File | null>(null)
   const [analisando, setAnalisando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [analise, setAnalise] = useState<any>(analiseSalva || null)
+  // Kalebe 2026-09-10: modo manual pra quando IA falhar ou usuário preferir digitar
+  const [modoManual, setModoManual] = useState(false)
 
   // Beneficiárias
   const [qtdBeneficiarias, setQtdBeneficiarias] = useState<number>(beneficiariasSalvas?.length || 0)
@@ -161,20 +166,65 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
 
   return (
     <div className="space-y-6">
-      {/* Upload principal */}
-      {!arquivo && !analise && (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="w-full p-8 border-2 border-dashed border-white/20 rounded-lg text-center hover:border-sol/40 hover:bg-white/[0.02] transition"
-        >
-          <p className="text-lg font-bold text-white mb-1">📤 Anexar fatura CELESC principal</p>
-          <p className="text-sm text-white/60">PDF ou imagem — a IA analisa em ~15s</p>
-        </button>
+      {/* Upload principal — 3 opções: câmera / arquivo / manual */}
+      {!arquivo && !analise && !modoManual && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => inputCameraRef.current?.click()}
+              className="p-5 border-2 border-dashed border-white/20 rounded-lg text-center hover:border-sol/40 hover:bg-white/[0.02] transition"
+            >
+              <p className="text-lg font-bold text-white mb-0.5">📷 Câmera</p>
+              <p className="text-[11px] text-white/50">Tirar foto da fatura</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => inputArquivoRef.current?.click()}
+              className="p-5 border-2 border-dashed border-white/20 rounded-lg text-center hover:border-sol/40 hover:bg-white/[0.02] transition"
+            >
+              <p className="text-lg font-bold text-white mb-0.5">📁 Arquivo</p>
+              <p className="text-[11px] text-white/50">PDF ou imagem do dispositivo</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModoManual(true)}
+              className="p-5 border-2 border-dashed border-white/20 rounded-lg text-center hover:border-weg-azul/40 hover:bg-white/[0.02] transition"
+            >
+              <p className="text-lg font-bold text-white mb-0.5">✏ Cadastrar manualmente</p>
+              <p className="text-[11px] text-white/50">Digitar os dados sem enviar fatura</p>
+            </button>
+          </div>
+          <p className="text-[11px] text-white/40 text-center">
+            A IA lê fatura CELESC em ~15s. Se falhar, dá pra cadastrar manualmente.
+          </p>
+        </div>
       )}
 
+      {/* Formulário manual (aparece quando usuário escolhe ou fallback de erro) */}
+      {modoManual && !analise && (
+        <FaturaManualForm
+          onSalvar={(dados) => {
+            setAnalise(dados)
+            setModoManual(false)
+            setErro(null)
+          }}
+          onCancelar={() => setModoManual(false)}
+        />
+      )}
+
+      {/* Input de câmera (força captura pela câmera traseira no mobile) */}
       <input
-        ref={inputRef}
+        ref={inputCameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+      {/* Input de arquivo (PDF ou imagem da galeria) */}
+      <input
+        ref={inputArquivoRef}
         type="file"
         accept="application/pdf,image/*"
         className="hidden"
@@ -195,7 +245,11 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
           </div>
           <button
             type="button"
-            onClick={() => { setArquivo(null); setAnalise(null); if (inputRef.current) inputRef.current.value = '' }}
+            onClick={() => {
+              setArquivo(null); setAnalise(null); setErro(null)
+              if (inputArquivoRef.current) inputArquivoRef.current.value = ''
+              if (inputCameraRef.current) inputCameraRef.current.value = ''
+            }}
             className="text-xs text-coral hover:text-coral/80"
           >
             Remover
@@ -287,6 +341,20 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
                   key={idx}
                   beneficiaria={b}
                   onFileSelect={file => analisarBeneficiaria(idx, file)}
+                  onManual={(dados) => {
+                    // Fallback manual: monta a beneficiária como se IA tivesse lido
+                    setBeneficiarias(prev => prev.map((row, i) =>
+                      i === idx ? {
+                        ...row,
+                        status: 'ok',
+                        arquivo_nome: 'Cadastro manual',
+                        uc: dados.uc || row.uc,
+                        titular: dados.razao_social || row.titular,
+                        analise: dados,
+                        erro: undefined,
+                      } : row
+                    ))
+                  }}
                 />
               ))}
             </div>
@@ -320,8 +388,21 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
       )}
 
       {erro && (
-        <div className="bg-coral/10 border border-coral/30 rounded-lg p-4 text-sm text-coral">
-          ❌ {erro}
+        <div className="bg-coral/10 border border-coral/30 rounded-lg p-4 space-y-3">
+          <p className="text-sm text-coral">❌ {erro}</p>
+          {!analise && !modoManual && (
+            <button
+              type="button"
+              onClick={() => {
+                setArquivo(null); setErro(null); setModoManual(true)
+                if (inputArquivoRef.current) inputArquivoRef.current.value = ''
+                if (inputCameraRef.current) inputCameraRef.current.value = ''
+              }}
+              className="w-full px-4 py-2.5 bg-weg-azul/20 border border-weg-azul/40 rounded text-sm font-bold text-weg-azul hover:bg-weg-azul/30 transition"
+            >
+              ✏ Cadastrar dados manualmente
+            </button>
+          )}
         </div>
       )}
 
@@ -348,18 +429,22 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
 function BeneficiariaRow({
   beneficiaria,
   onFileSelect,
+  onManual,
 }: {
   beneficiaria: Beneficiaria
   onFileSelect: (file: File) => void
+  onManual: (dados: any) => void
 }) {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputArquivoRef = useRef<HTMLInputElement>(null)
+  const inputCameraRef = useRef<HTMLInputElement>(null)
+  const [manualAberto, setManualAberto] = useState(false)
   const b = beneficiaria
 
   return (
-    <div className="p-3 bg-white/[0.02] border border-white/10 rounded-lg">
+    <div className="p-3 bg-white/[0.02] border border-white/10 rounded-lg space-y-2">
       <div className="flex items-center gap-3">
         {/* Bolinha colorida */}
-        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-noite" style={{ background: b.cor_grafico }}>
+        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-noite shrink-0" style={{ background: b.cor_grafico }}>
           {b.ordem}
         </div>
 
@@ -369,7 +454,7 @@ function BeneficiariaRow({
             <>
               <p className="text-sm font-bold text-white truncate">{b.titular || 'Sem titular'}</p>
               <p className="text-xs text-white/60">
-                UC {b.uc || '—'} · <span className="text-verde">✓ Analisada</span>
+                UC {b.uc || '—'} · <span className="text-verde">✓ {b.analise?.origem === 'manual' ? 'Manual' : 'Analisada'}</span>
                 {b.analise?.consumo_medio_12m_kwh && (
                   <> · Média: <strong className="text-sol">{Math.round(b.analise.consumo_medio_12m_kwh)} kWh/mês</strong></>
                 )}
@@ -383,22 +468,54 @@ function BeneficiariaRow({
               <p className="text-[10px] text-white/40">{b.arquivo_nome}</p>
             </>
           ) : (
-            <p className="text-xs text-white/50">Aguardando upload da fatura...</p>
+            <p className="text-xs text-white/50">Aguardando cadastro...</p>
           )}
         </div>
 
-        {/* Botão upload */}
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={b.status === 'analisando'}
-          className="px-3 py-1.5 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10 disabled:opacity-40"
-        >
-          {b.status === 'ok' ? 'Trocar' : 'Upload'}
-        </button>
+        {/* Botões: câmera + arquivo + manual */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => inputCameraRef.current?.click()}
+            disabled={b.status === 'analisando'}
+            title="Tirar foto"
+            className="px-2 py-1.5 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10 disabled:opacity-40"
+          >
+            📷
+          </button>
+          <button
+            type="button"
+            onClick={() => inputArquivoRef.current?.click()}
+            disabled={b.status === 'analisando'}
+            title="Escolher arquivo"
+            className="px-2 py-1.5 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10 disabled:opacity-40"
+          >
+            📁
+          </button>
+          <button
+            type="button"
+            onClick={() => setManualAberto((v) => !v)}
+            disabled={b.status === 'analisando'}
+            title="Cadastrar manualmente"
+            className="px-2 py-1.5 bg-white/5 border border-white/10 rounded text-xs text-white/70 hover:bg-white/10 disabled:opacity-40"
+          >
+            ✏
+          </button>
+        </div>
 
         <input
-          ref={inputRef}
+          ref={inputCameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={e => {
+            const f = e.target.files?.[0]
+            if (f) onFileSelect(f)
+          }}
+        />
+        <input
+          ref={inputArquivoRef}
           type="file"
           accept="application/pdf,image/*"
           className="hidden"
@@ -408,6 +525,227 @@ function BeneficiariaRow({
           }}
         />
       </div>
+
+      {/* Fallback manual pra essa beneficiária — aparece ao clicar em ✏ ou em erro */}
+      {(manualAberto || b.status === 'erro') && (
+        <div className="pt-2 border-t border-white/10">
+          <FaturaManualForm
+            compacto
+            onSalvar={(dados) => {
+              onManual(dados)
+              setManualAberto(false)
+            }}
+            onCancelar={() => setManualAberto(false)}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==========================================================
+// FORMULÁRIO MANUAL — fallback quando IA não lê ou usuário prefere digitar
+// ==========================================================
+// Kalebe 2026-09-10: monta um objeto `analise` compatível com o que a IA
+// retornaria, pra o resto do fluxo (histograma, salvamento, dimensionamento)
+// não precisar saber a origem.
+function FaturaManualForm({
+  onSalvar,
+  onCancelar,
+  compacto = false,
+}: {
+  onSalvar: (dados: any) => void
+  onCancelar?: () => void
+  compacto?: boolean
+}) {
+  const [titular, setTitular] = useState('')
+  const [uc, setUc] = useState('')
+  const [grupo, setGrupo] = useState<'B' | 'A'>('B')
+  const [tipoLigacao, setTipoLigacao] = useState<'monofasico' | 'bifasico' | 'trifasico'>('trifasico')
+  const [consumoMedio, setConsumoMedio] = useState('')
+  const [demanda, setDemanda] = useState('')
+  const [temGeracao, setTemGeracao] = useState(false)
+  const [cidade, setCidade] = useState('')
+  const [uf, setUf] = useState('SC')
+  const [observacao, setObservacao] = useState('')
+
+  const consumoNum = parseFloat(consumoMedio.replace(',', '.')) || 0
+  const demandaNum = parseFloat(demanda.replace(',', '.')) || 0
+
+  const podeSalvar = consumoNum > 0
+
+  function salvar() {
+    if (!podeSalvar) return
+    // Monta objeto compatível com IA. `origem: 'manual'` marca a origem.
+    // historico_12_meses fica vazio (não temos, é manual) — gráfico usa só a média.
+    const dados: any = {
+      origem: 'manual',
+      razao_social: titular || undefined,
+      titular: titular || undefined,
+      uc: uc || undefined,
+      unidade_consumidora: uc || undefined,
+      grupo,
+      grupo_tarifario: grupo,
+      tipo_ligacao: tipoLigacao,
+      consumo_medio_12m_kwh: consumoNum,
+      consumo_mes_kwh: consumoNum,
+      meses_com_dados: 12,
+      demanda_contratada_kw: grupo === 'A' && demandaNum > 0 ? demandaNum : undefined,
+      tem_geracao_propria: temGeracao,
+      endereco: {
+        cidade: cidade || undefined,
+        uf: uf || undefined,
+      },
+      cidade: cidade || undefined,
+      uf: uf || undefined,
+      observacao: observacao || undefined,
+      historico_12_meses: [],
+      _avisos: ['Dados inseridos manualmente — sem histórico de 12 meses da CELESC.'],
+    }
+    onSalvar(dados)
+  }
+
+  return (
+    <div className={compacto ? 'space-y-3' : 'space-y-4 p-1'}>
+      {!compacto && (
+        <div className="bg-weg-azul/10 border border-weg-azul/30 rounded-lg p-3">
+          <p className="text-xs text-white/80">
+            ✏ <strong className="text-weg-azul">Cadastro manual</strong> — informe os dados essenciais da fatura.
+            O consumo médio é obrigatório; o resto ajuda no dimensionamento.
+          </p>
+        </div>
+      )}
+
+      <div className={`grid ${compacto ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2'} gap-3`}>
+        <ManualField label="Titular / Razão social">
+          <input
+            value={titular}
+            onChange={(e) => setTitular(e.target.value)}
+            placeholder="Nome de quem consta na fatura"
+            className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white"
+          />
+        </ManualField>
+        <ManualField label="Unidade consumidora (UC)">
+          <input
+            value={uc}
+            onChange={(e) => setUc(e.target.value.replace(/\D/g, ''))}
+            placeholder="Ex. 1234567890"
+            className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white font-mono"
+          />
+        </ManualField>
+        <ManualField label="Grupo tarifário">
+          <select
+            value={grupo}
+            onChange={(e) => setGrupo(e.target.value as 'B' | 'A')}
+            className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white"
+          >
+            <option value="B">B (residencial / pequeno comercial)</option>
+            <option value="A">A (indústria / grandes comerciais)</option>
+          </select>
+        </ManualField>
+        <ManualField label="Tipo de ligação">
+          <select
+            value={tipoLigacao}
+            onChange={(e) => setTipoLigacao(e.target.value as any)}
+            className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white"
+          >
+            <option value="monofasico">Monofásico</option>
+            <option value="bifasico">Bifásico</option>
+            <option value="trifasico">Trifásico</option>
+          </select>
+        </ManualField>
+        <ManualField label="Consumo médio mensal (kWh) *" destaque>
+          <input
+            value={consumoMedio}
+            onChange={(e) => setConsumoMedio(e.target.value)}
+            placeholder="Ex. 850"
+            inputMode="decimal"
+            className="w-full px-3 py-2 bg-sol/10 border border-sol/30 rounded text-sm text-white font-bold"
+          />
+        </ManualField>
+        {grupo === 'A' && (
+          <ManualField label="Demanda contratada (kW)">
+            <input
+              value={demanda}
+              onChange={(e) => setDemanda(e.target.value)}
+              placeholder="Ex. 75"
+              inputMode="decimal"
+              className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white"
+            />
+          </ManualField>
+        )}
+        <ManualField label="Cidade">
+          <input
+            value={cidade}
+            onChange={(e) => setCidade(e.target.value)}
+            placeholder="Ex. Florianópolis"
+            className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white"
+          />
+        </ManualField>
+        <ManualField label="UF">
+          <input
+            value={uf}
+            onChange={(e) => setUf(e.target.value.toUpperCase().slice(0, 2))}
+            placeholder="SC"
+            className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white font-mono uppercase"
+          />
+        </ManualField>
+      </div>
+
+      <label className="flex items-center gap-2 text-xs text-white/70 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={temGeracao}
+          onChange={(e) => setTemGeracao(e.target.checked)}
+          className="w-4 h-4 accent-sol"
+        />
+        Cliente já tem geração própria (ampliação de sistema existente)
+      </label>
+
+      {!compacto && (
+        <ManualField label="Observação (opcional)">
+          <textarea
+            value={observacao}
+            onChange={(e) => setObservacao(e.target.value)}
+            rows={2}
+            placeholder="Contexto útil pro dimensionamento — piscina aquecida, ar-condicionado, plano de expansão etc."
+            className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white"
+          />
+        </ManualField>
+      )}
+
+      <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+        {onCancelar && (
+          <button
+            type="button"
+            onClick={onCancelar}
+            className="px-3 py-2 text-xs text-white/60 hover:text-white/80"
+          >
+            Cancelar
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={!podeSalvar}
+          className="px-4 py-2 bg-sol text-noite font-bold text-xs rounded disabled:opacity-40"
+        >
+          Salvar dados manualmente
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ManualField({
+  label, children, destaque,
+}: { label: string; children: React.ReactNode; destaque?: boolean }) {
+  return (
+    <div>
+      <label className={`block text-[10px] uppercase tracking-wider font-bold mb-1 ${destaque ? 'text-sol' : 'text-white/50'}`}>
+        {label}
+      </label>
+      {children}
     </div>
   )
 }
