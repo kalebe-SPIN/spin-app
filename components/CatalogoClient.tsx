@@ -299,6 +299,48 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
         </div>
       )}
 
+      {/* Busca em destaque — Kalebe 2026-09-10: aparece logo depois dos
+          uploads pra ficar sempre visível. Filtra a lista abaixo (usa o
+          mesmo state 'busca' do input detalhado) e faz scroll até ela.
+          Botão "✏ Editar" fica em cada linha da lista de produtos. */}
+      <section>
+        <div className="bg-gradient-to-br from-sol/10 to-sol/[0.03] border border-sol/40 rounded-xl p-5">
+          <label className="block">
+            <p className="text-xs font-bold text-sol uppercase tracking-widest mb-2">
+              🔎 Buscar produto no catálogo
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={busca}
+                onChange={e => {
+                  setBusca(e.target.value)
+                  if (e.target.value.trim().length >= 2) {
+                    setTimeout(() => {
+                      document.getElementById('lista-produtos')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }, 150)
+                  }
+                }}
+                placeholder="Digite modelo, SKU, marca…"
+                className="flex-1 px-4 py-3 bg-white/5 border border-white/10 focus:border-sol/60 rounded-lg text-white text-sm focus:outline-none"
+              />
+              {busca && (
+                <button
+                  onClick={() => setBusca('')}
+                  className="px-4 py-3 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-white/60 text-xs font-bold transition"
+                >
+                  ✕ Limpar
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-white/50 mt-2">
+              A lista abaixo filtra em tempo real. Em cada linha há botão
+              <span className="text-sol font-semibold"> ✏ Editar</span> pra ajustar dados do produto.
+            </p>
+          </label>
+        </div>
+      </section>
+
       {/* Distribuição por categoria — badges clicáveis que aplicam o filtro */}
       {porCategoria && Object.keys(porCategoria).length > 0 && (
         <section>
@@ -376,7 +418,7 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
       </section>
 
       {/* Datasheets individuais */}
-      <section>
+      <section id="lista-produtos" className="scroll-mt-4">
         <div className="flex items-center justify-between gap-3 mb-3">
           <h2 className="text-lg font-bold text-white">📄 Produtos do catálogo</h2>
           <div className="flex items-center gap-2 flex-wrap">
