@@ -213,7 +213,14 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
     if (filtroAtivo === 'inativos' && p.ativo) return false
     if (busca) {
       const q = busca.toLowerCase()
-      if (!p.modelo.toLowerCase().includes(q) && !p.codigo_weg.includes(q)) return false
+      // Coerce pra string — modelo/codigo_weg podem ser null em produtos
+      // cadastrados via datasheet (IA) ou sem SKU externo. Sem isso o
+      // .toLowerCase() explodia toda a página. Também busca por
+      // fabricante/marca pra facilitar (Kalebe 2026-09-10).
+      const modelo = String(p.modelo || '').toLowerCase()
+      const codigo = String(p.codigo_weg || '').toLowerCase()
+      const marca  = String((p as any).fabricante || '').toLowerCase()
+      if (!modelo.includes(q) && !codigo.includes(q) && !marca.includes(q)) return false
     }
     return true
   })
