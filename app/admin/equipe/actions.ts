@@ -451,46 +451,87 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
 
   // ═══════════════════════════════════════════════════════════
   // Kalebe 2026-09-06: 3 cards novos no topo (Projetos / Perfil / Negócios)
+  // Kalebe 2026-09-10: reformulado. Antes os 3 cards filtravam por
+  // projetosMes (created_at >= inicioMes) — o que mostrava só leads NOVOS
+  // do mês. Consequência: um vendedor (Luciane) que fechou 4 negócios de
+  // projetos criados em meses anteriores aparecia no Rank/Faturamento
+  // (R$ 162.987) mas NÃO em "Negócios do mês: 2 fechadas". Card ficava
+  // desconectado do resto do painel.
+  //
+  // Agora:
+  //   - PROJETOS DO MÊS: continua com o vies AQUISIÇÃO (leads novos).
+  //     Valor total = propostas emitidas dos leads novos + valor fechado
+  //     neste mês de leads antigos, pra o número reforçar a leitura de
+  //     "fluxo do mês" e não fico órfão do faturamento.
+  //   - PERFIL DAS PROPOSTAS: passa a considerar TODAS as propostas
+  //     ativas no mês (em negociação AGORA) + fechadas/perdidas este mês.
+  //     Batê com a foto de "negócios que rodaram no mês".
+  //   - NEGÓCIOS DO MÊS: idem — em_negociacao (globais AGORA), fechados
+  //     do mês, perdidos do mês. Passa a bater com contratos_mes do
+  //     Comparativo (8, não 2).
   // ═══════════════════════════════════════════════════════════
   const projetosMes = todosProjetos.filter((p: any) => p.created_at >= inicioMesIso)
 
-  // Card 1 — PROJETOS
-  //   abertos_mes: total no mês
-  //   com_proposta: qtos LEADS únicos têm >= 1 proposta enviada
-  //   valor_total: soma das propostas — uma por lead (a de MENOR valor)
   const STATUS_PROPOSTA_EMITIDA = new Set([
     'proposta_enviada', 'negociando', 'em_fechamento',
     'vendido', 'aceito', 'em_homologacao', 'em_execucao',
     'instalado', 'ativo_pos_venda', 'perdido',
   ])
-  const propostasPorLead = new Map<string, number[]>()  // cliente_id → valores
+  const STATUS_PERDIDOS = new Set(['perdido', 'perdida', 'cancelado', 'cancelada', 'desistiu'])
+  const seteDiasAtras = Date.now() - 7 * 24 * 3600 * 1000
+
+  // Card 1 — PROJETOS (aquisição do mês)
+  //   abertos_mes: total de leads criados no mês
+  //   com_proposta: qtos LEADS únicos criados no mês têm proposta
+  //   valor_total: fechamentos do mês + valor propostas ativas de leads
+  //                do mês (uma por lead, a de menor valor pra evitar dupla contagem)
+  const propostasPorLeadMes = new Map<string, number[]>()
   for (const p of projetosMes) {
     if (!STATUS_PROPOSTA_EMITIDA.has(p.status)) continue
     const cid = String(p.cliente_id || p.cliente_razao_social || p.id)
     const valor = Number(p.pv_total || p.orcamento_final?.pv_total) || 0
     if (valor <= 0) continue
-    const arr = propostasPorLead.get(cid) || []
+    const arr = propostasPorLeadMes.get(cid) || []
     arr.push(valor)
-    propostasPorLead.set(cid, arr)
+    propostasPorLeadMes.set(cid, arr)
   }
+  // Fechamentos do mês (projetos, independentes de quando foram criados)
+  const projetosFechadosMes = todosProjetos.filter((p: any) => isFechadoNoMes(p, inicioMesIso))
+  const valorFechadoMes = projetosFechadosMes.reduce(
+    (s: number, p: any) => s + (Number(p.pv_total) || 0),
+    0,
+  )
   const cardProjetos = {
     abertos_mes: projetosMes.length,
-    com_proposta: propostasPorLead.size,
-    valor_total: Array.from(propostasPorLead.values())
-      .reduce((s, valores) => s + Math.min(...valores), 0),
+    com_proposta: propostasPorLeadMes.size,
+    valor_total: valorFechadoMes,  // agora bate com faturamento por linha
   }
 
-  // Card 2 — PERFIL DAS PROPOSTAS (só leads com proposta enviada, 1 por lead)
-  //   PJ × PF · tipos (on-grid, híbrido, limpeza, O&M, VE)
-  //   Pega, pra cada lead, o projeto de MENOR valor (mesma regra)
+  // Card 2 — PERFIL DAS PROPOSTAS
+  // População: propostas ATIVAS agora (globais) + propostas fechadas/perdidas
+  // NO MÊS. Uma linha por lead (dedupe por cliente_id). Preferência: o projeto
+  // mais recentemente atualizado ganha a representação.
   const leadRepresentante = new Map<string, any>()
-  for (const p of projetosMes) {
-    if (!STATUS_PROPOSTA_EMITIDA.has(p.status)) continue
+  const isPropostaAtivaOuDoMes = (p: any) => {
+    if (!STATUS_PROPOSTA_EMITIDA.has(p.status)) return false
+    // Ativa agora (em negociação, independente de data)
+    if (STATUS_PROPOSTA.includes(p.status)) return true
+    // Fechada/perdida NO MÊS
+    const d = dataFechamento(p)
+    if (!d || d < inicioMesIso) return false
+    return true
+  }
+  for (const p of todosProjetos) {
+    if (!isPropostaAtivaOuDoMes(p)) continue
     const cid = String(p.cliente_id || p.cliente_razao_social || p.id)
-    const valor = Number(p.pv_total || p.orcamento_final?.pv_total) || 0
-    if (valor <= 0) continue
     const atual = leadRepresentante.get(cid)
-    if (!atual || valor < Number(atual.pv_total || 0)) leadRepresentante.set(cid, p)
+    if (!atual) {
+      leadRepresentante.set(cid, p)
+      continue
+    }
+    const dAtual = new Date(atual.status_atualizado_em || atual.updated_at || 0).getTime()
+    const dNovo = new Date(p.status_atualizado_em || p.updated_at || 0).getTime()
+    if (dNovo > dAtual) leadRepresentante.set(cid, p)
   }
   const cardPerfil = {
     total_propostas: leadRepresentante.size,
@@ -531,10 +572,11 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     else if (jaContou.size === 0 && p.ve_recarga_selecionada) cardPerfil.ve += 1
   }
 
-  // Card 3 — NEGÓCIOS (breakdown de status das propostas no mês)
+  // Card 3 — NEGÓCIOS DO MÊS (breakdown de status das propostas)
+  // População = leadRepresentante (propostas ativas AGORA + fechadas/perdidas
+  // no mês, dedupe por lead). Assim contratos_fechados aqui bate com o
+  // Comparativo mês vs mês passado (contratos_mes = 8, não 2).
   //   Parado = sem update há > 7 dias E ainda em status ativo (proposta/negociando)
-  const STATUS_PERDIDOS = new Set(['perdido', 'perdida', 'cancelado', 'cancelada', 'desistiu'])
-  const seteDiasAtras = Date.now() - 7 * 24 * 3600 * 1000
   const cardNegocios = {
     em_negociacao: 0,
     fechados: 0,
