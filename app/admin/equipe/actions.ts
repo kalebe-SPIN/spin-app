@@ -146,10 +146,13 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // pra compat com usuários legados que ainda não foram migrados no banco.
   // 'vendedoresServ' fica vazio pra não duplicar — bloco vai sumir da UI
   // se não houver ninguém com role exclusivamente 'vendedor_servicos'.
+  // Kalebe 2026-09-10: tira o filtro por role no fetch — pega TODOS os
+  // profiles ativos + inativos, pra depois no memória saber o nome de
+  // qualquer consultor_id que apareça em projetos (mesmo role=consultor
+  // fora dos 4 buckets originais, ou representantes desativados).
   const { data: perfis } = await supabase
     .from('profiles')
     .select('id, nome_completo, role, ativo')
-    .in('role', ['admin', 'representante', 'vendedor_servicos', 'profissional_campo'])
 
   const perfilPorId = new Map<string, { nome: string; role: string }>()
   for (const p of perfis || []) {
@@ -166,8 +169,11 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   const vendedoresServ: any[] = []
   const profissionaisCampo = (perfis || []).filter((p) => p.role === 'profissional_campo' && p.ativo)
 
-  // Vendedores solar = representantes + admins (admin também fecha venda).
-  const vendedoresSolar = [...admins, ...representantes]
+  // Kalebe 2026-09-10: vendedoresSolar amplia adiante pra incluir QUALQUER
+  // consultor_id que apareça em `todosProjetos` (mesmo com role='consultor'
+  // ou desativado). Assim ninguém que já lançou projeto some do rank/soma.
+  // A união final acontece depois do await das promises.
+  const vendedoresSolar_base = [...admins, ...representantes]
 
   // ─── Puxa TODOS os projetos (não filtra por consultor_id) ─────────────────
   // Sem filtro pra não perder projetos criados por admins nem por representantes
@@ -217,6 +223,28 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   ])
 
   const todosProjetos = projetosData || []
+
+  // Kalebe 2026-09-10: amplia vendedoresSolar com QUALQUER consultor_id
+  // presente em todosProjetos que ainda não estava na lista base — assim
+  // um role='consultor' comum, um representante desativado ou até um
+  // usuário fora dos 4 buckets originais aparece no rank e nas somas.
+  const idsJaListados = new Set(vendedoresSolar_base.map((v) => v.id))
+  const idsConsultoresEmProjetos = new Set<string>()
+  for (const p of todosProjetos) {
+    if (p.consultor_id && !idsJaListados.has(p.consultor_id)) {
+      idsConsultoresEmProjetos.add(p.consultor_id)
+    }
+  }
+  const vendedoresExtras = (perfis || []).filter((p) => idsConsultoresEmProjetos.has(p.id))
+  // Um consultor pode ter projetos MAS ter sido apagado do profiles (raro).
+  // Cria stub pra ele não sumir da agregação.
+  const idsExtrasComPerfil = new Set(vendedoresExtras.map((v) => v.id))
+  for (const id of idsConsultoresEmProjetos) {
+    if (!idsExtrasComPerfil.has(id)) {
+      vendedoresExtras.push({ id, nome_completo: 'Sem cadastro', role: 'desconhecido', ativo: false } as any)
+    }
+  }
+  const vendedoresSolar = [...vendedoresSolar_base, ...vendedoresExtras]
 
   // Helper: um projeto "fechou no mês X" se hoje está em status fechado E
   // a última mudança de status caiu na janela. Se status_atualizado_em não
