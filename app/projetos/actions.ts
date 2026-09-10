@@ -202,6 +202,39 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
 
   const enderecoInstalacao = input.endereco_instalacao || null
 
+  // Kalebe 2026-09-10: quando vem produto do /catalogo (link "Criar
+  // projeto com esse item"), pré-preenche kit_selecionado.
+  //   placa   → { placa: {…}, qtd_placas: 0 }  (consultor confirma qtd em /kit)
+  //   inversor → { inversor: {…}, qtd_inversores: 1 }
+  //   bateria  → kit_selecionado.modo='bess_puro' + baterias:[{…}]
+  //   outros   → registra em kit_selecionado.__produto_sugerido pra referência
+  const prodIni = (input as any).produto_inicial as {
+    id: string; modelo: string; marca: string | null
+    categoria: string; subcategoria: string | null
+    potencia_wp: number | null; potencia_kw: number | null
+    preco_venda: number
+  } | undefined
+  let kit_selecionado: any = null
+  if (prodIni?.id) {
+    const item = {
+      id: prodIni.id,
+      modelo: prodIni.modelo,
+      marca: prodIni.marca,
+      preco_venda: prodIni.preco_venda,
+      potencia_wp: prodIni.potencia_wp,
+      potencia_kw: prodIni.potencia_kw,
+    }
+    if (prodIni.categoria === 'placa') {
+      kit_selecionado = { placa: item, qtd_placas: 0 }
+    } else if (prodIni.categoria === 'inversor') {
+      kit_selecionado = { inversor: item, qtd_inversores: 1 }
+    } else if (prodIni.categoria === 'bateria') {
+      kit_selecionado = { modo: 'bess_puro', baterias: [{ ...item, qtd: 1 }] }
+    } else {
+      kit_selecionado = { __produto_sugerido: item }
+    }
+  }
+
   const { data: novoProjeto, error } = await supabase
     .from('projetos')
     .insert({
@@ -219,6 +252,8 @@ export async function criarProjetoAction(input: NovoProjetoInput) {
       cliente_endereco: enderecoInstalacao,
       observacoes_consultor: input.observacoes || null,
       status: 'rascunho',
+      ...(kit_selecionado ? { kit_selecionado } : {}),
+      ...(prodIni?.categoria === 'bateria' ? { tipo_projeto: 'bess' } : {}),
     })
     .select('id')
     .single()

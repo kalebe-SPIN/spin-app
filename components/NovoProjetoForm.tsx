@@ -35,9 +35,20 @@ type ProjetoExistente = {
  */
 export function NovoProjetoForm({
   projetoExistente,
+  produtoInicial,
 }: {
   consultorId?: string  // não usa mais mas mantém pra compat
   projetoExistente?: ProjetoExistente
+  produtoInicial?: {
+    id: string
+    modelo: string
+    marca: string | null
+    categoria: string
+    subcategoria: string | null
+    potencia_wp: number | null
+    potencia_kw: number | null
+    preco_venda: number
+  } | null
 }) {
   const router = useRouter()
   const isEdit = !!projetoExistente
@@ -262,7 +273,8 @@ export function NovoProjetoForm({
           endereco_instalacao: enderecoInst,
           telhado_secoes: telhadoSecoes.length > 0 ? telhadoSecoes : undefined,
           observacoes: observacoes.trim() || null,
-        })
+          produto_inicial: produtoInicial || undefined,
+        } as any)
         if (result && 'erro' in result) setErro(result.erro)
       })
     } else {
@@ -308,7 +320,8 @@ export function NovoProjetoForm({
           endereco_instalacao: enderecoInst,
           telhado_secoes: telhadoSecoes.length > 0 ? telhadoSecoes : undefined,
           observacoes: observacoes.trim() || null,
-        })
+          produto_inicial: produtoInicial || undefined,
+        } as any)
         if (result && 'erro' in result) setErro(result.erro)
       })
     }
