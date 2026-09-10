@@ -257,6 +257,14 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
             hintProcessando="⏳ Processando planilha... (~15-30s)"
             onClick={() => inputPlanilhaRef.current?.click()}
           />
+          {/* Histórico deste upload (Kalebe 2026-09-10) */}
+          <a
+            href="/admin/catalogo/historico?tipo=planilha_precos"
+            className="mt-3 flex items-center justify-between text-[11px] text-white/40 hover:text-sol transition group"
+          >
+            <span>📜 Ver histórico ({historico.filter(h => h.tipo === 'planilha_precos').length})</span>
+            <span className="opacity-0 group-hover:opacity-100 transition">→</span>
+          </a>
         </div>
 
         {/* PDF estoque */}
@@ -290,6 +298,14 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
             hintProcessando="⏳ Processando PDF..."
             onClick={() => inputEstoqueRef.current?.click()}
           />
+          {/* Histórico deste upload (Kalebe 2026-09-10) */}
+          <a
+            href="/admin/catalogo/historico?tipo=pdf_estoque"
+            className="mt-3 flex items-center justify-between text-[11px] text-white/40 hover:text-sol transition group"
+          >
+            <span>📜 Ver histórico ({historico.filter(h => h.tipo === 'pdf_estoque').length})</span>
+            <span className="opacity-0 group-hover:opacity-100 transition">→</span>
+          </a>
         </div>
       </section>
 
@@ -341,81 +357,10 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
         </div>
       </section>
 
-      {/* Distribuição por categoria — badges clicáveis que aplicam o filtro */}
-      {porCategoria && Object.keys(porCategoria).length > 0 && (
-        <section>
-          <div className="flex items-baseline justify-between mb-2">
-            <h2 className="text-xs uppercase tracking-wider font-bold text-sol">
-              📊 Produtos por categoria
-            </h2>
-            <span className="text-[10px] text-white/40">
-              {Object.values(porCategoria).reduce((s, n) => s + n, 0)} produtos ativos ·
-              clique num card pra filtrar
-            </span>
-          </div>
-          <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-8 gap-2">
-            {Object.entries(porCategoria)
-              .sort((a, b) => b[1] - a[1])
-              .map(([cat, qtd]) => {
-                const info = CATEGORIA_INFO[cat] || { label: cat, emoji: '📦', cor: 'text-white/60 bg-white/5 border-white/10' }
-                const ativo = filtroCategoria === cat
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setFiltroCategoria(ativo ? 'todos' : cat)}
-                    className={`px-2.5 py-2 rounded-lg border text-left transition ${
-                      ativo
-                        ? 'bg-sol/15 border-sol text-white'
-                        : `${info.cor} hover:opacity-100 opacity-90`
-                    }`}
-                    title={ativo ? 'Clique pra remover filtro' : `Filtrar por ${info.label}`}
-                  >
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-lg leading-none">{info.emoji}</span>
-                      <span className="text-lg font-black leading-none">{qtd}</span>
-                    </div>
-                    <p className="text-[9px] uppercase tracking-wide font-bold mt-1 truncate">
-                      {info.label}
-                    </p>
-                  </button>
-                )
-              })}
-          </div>
-        </section>
-      )}
-
-      {/* Botão de acesso ao histórico completo (era lista inline) */}
-      <section>
-        <a
-          href="/admin/catalogo/historico"
-          className="flex items-center justify-between gap-4 bg-white/[0.03] border border-white/10 hover:border-sol/40 hover:bg-white/[0.06] rounded-xl p-4 transition group"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">📜</span>
-            <div>
-              <p className="text-sm font-bold text-white group-hover:text-sol transition">
-                Histórico de uploads
-              </p>
-              <p className="text-xs text-white/50">
-                {historico.length === 0
-                  ? 'Nenhum upload registrado ainda'
-                  : `${historico.length} upload${historico.length > 1 ? 's' : ''} registrado${historico.length > 1 ? 's' : ''}`}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {historico[0] && (
-              <span className="text-[10px] text-white/40 hidden md:inline">
-                último: {new Date(historico[0].created_at).toLocaleString('pt-BR', {
-                  day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
-                })}
-              </span>
-            )}
-            <span className="text-white/40 group-hover:text-sol transition text-xl">→</span>
-          </div>
-        </a>
-      </section>
+      {/* Kalebe 2026-09-10: bloco "Produtos por categoria" (badges) removido
+          — a contagem por categoria agora aparece no próprio <select> abaixo.
+          Bloco "Histórico de uploads" separado também removido — cada card
+          de upload acima já tem seu próprio link "📜 Ver histórico". */}
 
       {/* Datasheets individuais */}
       <section id="lista-produtos" className="scroll-mt-4">
@@ -461,33 +406,51 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
             }}
             className="px-3 py-2 bg-noite border border-white/10 rounded text-sm text-white"
           >
-            <option style={OPT_STYLE} value="todos">Todas categorias</option>
-            <optgroup style={OPTGROUP_STYLE} label="Geracao">
-              <option style={OPT_STYLE} value="placa">Placas fotovoltaicas</option>
-              <option style={OPT_STYLE} value="inversor">Inversores</option>
-              <option style={OPT_STYLE} value="bateria">Baterias (BESS)</option>
-            </optgroup>
-            <optgroup style={OPTGROUP_STYLE} label="Estrutura & CA">
-              <option style={OPT_STYLE} value="estrutura">Estrutura</option>
-              <option style={OPT_STYLE} value="cabo_cc">Cabos CC</option>
-              <option style={OPT_STYLE} value="cabo_ca">Cabos CA</option>
-              <option style={OPT_STYLE} value="conector">Conectores (MC4)</option>
-              <option style={OPT_STYLE} value="string_box">String Box (SB, JBW)</option>
-              <option style={OPT_STYLE} value="disjuntor">Disjuntores</option>
-              <option style={OPT_STYLE} value="dps">DPS</option>
-              <option style={OPT_STYLE} value="eletroduto">Eletrodutos</option>
-              <option style={OPT_STYLE} value="aterramento">Aterramento</option>
-              <option style={OPT_STYLE} value="quadro">Quadros (SmartGuard, TBW)</option>
-              <option style={OPT_STYLE} value="smart_meter">Smart Meter (MMW03, DTSU)</option>
-              <option style={OPT_STYLE} value="monitoramento">Monitoramento (EMBOX, Dongle)</option>
-            </optgroup>
-            <optgroup style={OPTGROUP_STYLE} label="Servicos">
-              <option style={OPT_STYLE} value="mao_de_obra">Mao de obra</option>
-              <option style={OPT_STYLE} value="projeto_engenharia">Projeto / ART</option>
-              <option style={OPT_STYLE} value="frete">Frete</option>
-              <option style={OPT_STYLE} value="identificacao">Identificacao</option>
-              <option style={OPT_STYLE} value="outro">Outro</option>
-            </optgroup>
+            {/* Kalebe 2026-09-10: contagem por categoria mostrada dentro do
+                próprio select (bloco de badges acima foi removido). Sufixo
+                "· N" só aparece se a categoria tem N > 0 no catálogo. */}
+            {(() => {
+              const totalAtivos = porCategoria
+                ? Object.values(porCategoria).reduce((s, n) => s + n, 0)
+                : 0
+              const rot = (val: string, label: string) => {
+                const n = porCategoria?.[val] || 0
+                return n > 0 ? `${label} · ${n}` : label
+              }
+              return (
+                <>
+                  <option style={OPT_STYLE} value="todos">
+                    {totalAtivos > 0 ? `Todas categorias · ${totalAtivos}` : 'Todas categorias'}
+                  </option>
+                  <optgroup style={OPTGROUP_STYLE} label="Geracao">
+                    <option style={OPT_STYLE} value="placa">{rot('placa', 'Placas fotovoltaicas')}</option>
+                    <option style={OPT_STYLE} value="inversor">{rot('inversor', 'Inversores')}</option>
+                    <option style={OPT_STYLE} value="bateria">{rot('bateria', 'Baterias (BESS)')}</option>
+                  </optgroup>
+                  <optgroup style={OPTGROUP_STYLE} label="Estrutura & CA">
+                    <option style={OPT_STYLE} value="estrutura">{rot('estrutura', 'Estrutura')}</option>
+                    <option style={OPT_STYLE} value="cabo_cc">{rot('cabo_cc', 'Cabos CC')}</option>
+                    <option style={OPT_STYLE} value="cabo_ca">{rot('cabo_ca', 'Cabos CA')}</option>
+                    <option style={OPT_STYLE} value="conector">{rot('conector', 'Conectores (MC4)')}</option>
+                    <option style={OPT_STYLE} value="string_box">{rot('string_box', 'String Box (SB, JBW)')}</option>
+                    <option style={OPT_STYLE} value="disjuntor">{rot('disjuntor', 'Disjuntores')}</option>
+                    <option style={OPT_STYLE} value="dps">{rot('dps', 'DPS')}</option>
+                    <option style={OPT_STYLE} value="eletroduto">{rot('eletroduto', 'Eletrodutos')}</option>
+                    <option style={OPT_STYLE} value="aterramento">{rot('aterramento', 'Aterramento')}</option>
+                    <option style={OPT_STYLE} value="quadro">{rot('quadro', 'Quadros (SmartGuard, TBW)')}</option>
+                    <option style={OPT_STYLE} value="smart_meter">{rot('smart_meter', 'Smart Meter (MMW03, DTSU)')}</option>
+                    <option style={OPT_STYLE} value="monitoramento">{rot('monitoramento', 'Monitoramento (EMBOX, Dongle)')}</option>
+                  </optgroup>
+                  <optgroup style={OPTGROUP_STYLE} label="Servicos">
+                    <option style={OPT_STYLE} value="mao_de_obra">{rot('mao_de_obra', 'Mao de obra')}</option>
+                    <option style={OPT_STYLE} value="projeto_engenharia">{rot('projeto_engenharia', 'Projeto / ART')}</option>
+                    <option style={OPT_STYLE} value="frete">{rot('frete', 'Frete')}</option>
+                    <option style={OPT_STYLE} value="identificacao">{rot('identificacao', 'Identificacao')}</option>
+                    <option style={OPT_STYLE} value="outro">{rot('outro', 'Outro')}</option>
+                  </optgroup>
+                </>
+              )
+            })()}
           </select>
 
           {subcategoriasDaCat.length > 1 && (

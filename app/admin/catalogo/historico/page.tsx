@@ -10,7 +10,11 @@ export const revalidate = 0
  * Foi separado da /admin/catalogo pra não inchar a tela principal —
  * agora vive aqui como página dedicada, acessível pelo botão de acesso.
  */
-export default async function HistoricoCatalogoPage() {
+export default async function HistoricoCatalogoPage({
+  searchParams,
+}: {
+  searchParams: { tipo?: string }
+}) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -30,13 +34,24 @@ export default async function HistoricoCatalogoPage() {
     )
   }
 
-  const { data: historico } = await supabase
+  // Kalebe 2026-09-10: aceita ?tipo=planilha_precos ou ?tipo=pdf_estoque
+  // pra filtrar histórico de um upload específico.
+  const tipoFiltro = ['planilha_precos', 'pdf_estoque'].includes(searchParams.tipo || '')
+    ? searchParams.tipo!
+    : null
+
+  let query = supabase
     .from('catalogo_uploads_historico')
     .select('id, tipo, arquivo_nome_original, status, produtos_atualizados, produtos_criados, erro_mensagem, created_at, processado_em')
     .order('created_at', { ascending: false })
     .limit(200)
+  if (tipoFiltro) query = query.eq('tipo', tipoFiltro)
 
+  const { data: historico } = await query
   const lista = historico || []
+  const rotuloFiltro = tipoFiltro === 'planilha_precos' ? 'Planilha de preços WEG'
+                     : tipoFiltro === 'pdf_estoque'     ? 'Informativo de estoque WEG'
+                     : null
 
   return (
     <main className="min-h-screen p-6 md:p-10">
@@ -50,10 +65,20 @@ export default async function HistoricoCatalogoPage() {
         <header className="mb-8">
           <h1 className="text-3xl md:text-4xl font-black text-white">
             📜 Histórico de <span className="text-sol">uploads</span>
+            {rotuloFiltro && (
+              <span className="ml-3 text-base text-white/60 font-normal">
+                · {rotuloFiltro}
+              </span>
+            )}
           </h1>
           <p className="text-white/60 mt-2 text-sm leading-relaxed">
-            Registro cronológico de todas as planilhas e PDFs enviados pro catálogo WEG.
+            {rotuloFiltro
+              ? `Uploads registrados de "${rotuloFiltro}". `
+              : 'Registro cronológico de todas as planilhas e PDFs enviados pro catálogo WEG. '}
             Últimos {Math.min(lista.length, 200)} uploads.
+            {rotuloFiltro && (
+              <> <Link href="/admin/catalogo/historico" className="text-sol hover:underline">Ver todos →</Link></>
+            )}
           </p>
         </header>
 
