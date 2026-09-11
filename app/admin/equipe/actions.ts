@@ -89,6 +89,12 @@ export type PainelEquipe = {
     abertos_mes: number       // total de projetos criados no mês
     com_proposta: number      // qtos leads têm ao menos uma proposta enviada
     valor_total: number       // soma das propostas (uma por lead: a de MENOR valor)
+    /** Kalebe 2026-09-11: agrupa origem_lead em 3 baldes (campanha, pós-venda, prospecção direta). */
+    por_origem: {
+      campanha: number
+      pos_venda: number
+      prospeccao: number
+    }
   }
   cardPerfil: {
     total_propostas: number   // total de propostas no mês (1 por lead)
@@ -193,6 +199,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     .select(`
       id, consultor_id, cliente_id, cliente_razao_social, cliente_cpf_cnpj,
       status, pv_total, orcamento_final, tipo_projeto, ve_recarga_selecionada,
+      origem_lead,
       created_at, updated_at, status_atualizado_em, excluida_em,
       projeto_itens(tipo, status)
     `)
@@ -501,10 +508,21 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     (s: number, p: any) => s + (Number(p.pv_total) || 0),
     0,
   )
+  // Kalebe 2026-09-11: breakdown por origem_lead → 3 baldes visuais.
+  // Se origem_lead vier vazio (projetos antigos), cai como campanha (lead_spin
+  // é o default do trigger em migration 104).
+  const projetosPorOrigem = { campanha: 0, pos_venda: 0, prospeccao: 0 }
+  for (const p of projetosMes) {
+    const o = String(p.origem_lead || 'lead_spin')
+    if (o === 'prospeccao') projetosPorOrigem.prospeccao += 1
+    else if (o === 'resgate' || o === 'indicacao') projetosPorOrigem.pos_venda += 1
+    else projetosPorOrigem.campanha += 1
+  }
   const cardProjetos = {
     abertos_mes: projetosMes.length,
     com_proposta: propostasPorLeadMes.size,
     valor_total: valorFechadoMes,  // agora bate com faturamento por linha
+    por_origem: projetosPorOrigem,
   }
 
   // Card 2 — PERFIL DAS PROPOSTAS

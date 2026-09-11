@@ -84,18 +84,8 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
 
       {/* KPIs consolidados — 4 cards do mês (Kalebe 2026-09-06) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        {/* Card 1 — PROJETOS */}
-        <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
-          <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2">Projetos do mês</p>
-          <div className="flex items-baseline gap-3 mb-3">
-            <p className="text-4xl font-black text-sol">{dados.cardProjetos.abertos_mes}</p>
-            <p className="text-[10px] text-white/40 uppercase tracking-wider">abertos</p>
-          </div>
-          <div className="space-y-1 text-xs pt-3 border-t border-white/5">
-            <MiniLinha label="Com proposta" valor={String(dados.cardProjetos.com_proposta)} />
-            <MiniLinha label="Valor total" valor={fmtBRL(dados.cardProjetos.valor_total)} destaque="sol" />
-          </div>
-        </div>
+        {/* Card 1 — PROJETOS (Kalebe 2026-09-11: reformado) */}
+        <CardProjetosDoMes card={dados.cardProjetos} />
 
         {/* Card 2 — PERFIL DAS PROPOSTAS (substitui Telhados) */}
         <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
@@ -543,6 +533,103 @@ function MiniLinha({ label, valor, destaque }: {
     <div className="flex items-baseline justify-between gap-2">
       <span className="text-white/50">{label}</span>
       <span className={`${cor} font-mono font-semibold`}>{valor}</span>
+    </div>
+  )
+}
+
+// ==========================================================
+// CARD PROJETOS DO MÊS (Kalebe 2026-09-11)
+// Layout: valor total (grande) + qtd abertos (grande) lado a lado no topo.
+// Breakdown por origem (campanha/pós-venda/prospecção) com barra empilhada
+// horizontal e legenda em baixo.
+// ==========================================================
+function CardProjetosDoMes({ card }: {
+  card: {
+    abertos_mes: number
+    com_proposta: number
+    valor_total: number
+    por_origem: { campanha: number; pos_venda: number; prospeccao: number }
+  }
+}) {
+  const { por_origem, abertos_mes, com_proposta, valor_total } = card
+  const totalOrigem = por_origem.campanha + por_origem.pos_venda + por_origem.prospeccao
+  const pct = (n: number) => totalOrigem === 0 ? 0 : Math.round((n / totalOrigem) * 100)
+
+  // Formata valor grande — se valor total >= 100k, usa fonte um pouco menor pra caber.
+  const valorStr = fmtBRL(valor_total)
+  const valorFonte = valor_total >= 1000000 ? 'text-xl'
+    : valor_total >= 100000 ? 'text-2xl'
+    : 'text-3xl'
+
+  return (
+    <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+      <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-3">Projetos do mês</p>
+
+      {/* Topo: valor total (grande) + qtd abertos (grande) */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <p className={`${valorFonte} font-black text-sol leading-none whitespace-nowrap`}>{valorStr}</p>
+          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Valor total</p>
+        </div>
+        <div className="text-right">
+          <p className="text-3xl font-black text-white leading-none">{abertos_mes}</p>
+          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Abertos</p>
+        </div>
+      </div>
+
+      {/* Barra empilhada — proporção por origem */}
+      {totalOrigem > 0 ? (
+        <>
+          <div className="h-2 rounded-full bg-white/5 overflow-hidden flex mb-2.5">
+            {por_origem.campanha > 0 && (
+              <div
+                title={`Campanha · ${por_origem.campanha}`}
+                style={{ width: `${(por_origem.campanha / totalOrigem) * 100}%` }}
+                className="bg-sol"
+              />
+            )}
+            {por_origem.pos_venda > 0 && (
+              <div
+                title={`Pós-venda · ${por_origem.pos_venda}`}
+                style={{ width: `${(por_origem.pos_venda / totalOrigem) * 100}%` }}
+                className="bg-verde"
+              />
+            )}
+            {por_origem.prospeccao > 0 && (
+              <div
+                title={`Prospecção · ${por_origem.prospeccao}`}
+                style={{ width: `${(por_origem.prospeccao / totalOrigem) * 100}%` }}
+                className="bg-weg-azul"
+              />
+            )}
+          </div>
+
+          {/* Legenda */}
+          <div className="space-y-1 text-[11px]">
+            <OrigemLinha cor="bg-sol" label="Campanha" n={por_origem.campanha} pct={pct(por_origem.campanha)} />
+            <OrigemLinha cor="bg-verde" label="Pós-venda" n={por_origem.pos_venda} pct={pct(por_origem.pos_venda)} />
+            <OrigemLinha cor="bg-weg-azul" label="Prospecção" n={por_origem.prospeccao} pct={pct(por_origem.prospeccao)} />
+          </div>
+        </>
+      ) : (
+        <p className="text-[11px] text-white/40 italic">Sem projetos abertos este mês.</p>
+      )}
+
+      {/* Rodapé — com proposta */}
+      <div className="pt-3 mt-3 border-t border-white/5 text-[11px]">
+        <MiniLinha label="Com proposta" valor={String(com_proposta)} destaque="sol" />
+      </div>
+    </div>
+  )
+}
+
+function OrigemLinha({ cor, label, n, pct }: { cor: string; label: string; n: number; pct: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${cor}`} />
+      <span className="text-white/70 flex-1 truncate">{label}</span>
+      <span className="text-white font-mono font-semibold tabular-nums w-6 text-right">{n}</span>
+      <span className="text-white/40 font-mono tabular-nums w-9 text-right">{pct}%</span>
     </div>
   )
 }
