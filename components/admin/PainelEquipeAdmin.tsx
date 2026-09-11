@@ -87,22 +87,8 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
         {/* Card 1 — PROJETOS (Kalebe 2026-09-11: reformado) */}
         <CardProjetosDoMes card={dados.cardProjetos} />
 
-        {/* Card 2 — PERFIL DAS PROPOSTAS (substitui Telhados) */}
-        <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
-          <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2">Perfil das propostas</p>
-          <div className="flex items-baseline gap-3 mb-3">
-            <p className="text-4xl font-black text-weg-azul">{dados.cardPerfil.total_propostas}</p>
-            <p className="text-[10px] text-white/40 uppercase tracking-wider">total (1 por lead)</p>
-          </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] pt-3 border-t border-white/5">
-            <MiniLinha label="PJ" valor={String(dados.cardPerfil.pj)} />
-            <MiniLinha label="PF" valor={String(dados.cardPerfil.pf)} />
-            <MiniLinha label="On-grid" valor={String(dados.cardPerfil.on_grid)} />
-            <MiniLinha label="Híbrido" valor={String(dados.cardPerfil.hibrido)} />
-            <MiniLinha label="Limpeza" valor={String(dados.cardPerfil.limpeza)} />
-            <MiniLinha label="O&M" valor={String(dados.cardPerfil.om)} />
-          </div>
-        </div>
+        {/* Card 2 — PERFIL DAS PROPOSTAS (Kalebe 2026-09-11: reformado) */}
+        <CardPerfilDasPropostas card={dados.cardPerfil} />
 
         {/* Card 3 — NEGÓCIOS (era Contratos) */}
         <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
@@ -630,6 +616,158 @@ function OrigemLinha({ cor, label, n, pct }: { cor: string; label: string; n: nu
       <span className="text-white/70 flex-1 truncate">{label}</span>
       <span className="text-white font-mono font-semibold tabular-nums w-6 text-right">{n}</span>
       <span className="text-white/40 font-mono tabular-nums w-9 text-right">{pct}%</span>
+    </div>
+  )
+}
+
+// ==========================================================
+// CARD PERFIL DAS PROPOSTAS (Kalebe 2026-09-11)
+// Topo: qtd propostas + % de conversão do funil do mês (propostas ÷ leads).
+// Mini donut PJ × PF (com propostas) + legenda com efetividade de cada tipo.
+// Removido: breakdown de tipo (on-grid/híbrido/limpeza/O&M).
+// ==========================================================
+function CardPerfilDasPropostas({ card }: {
+  card: {
+    total_propostas: number
+    pj: number
+    pf: number
+    leads_pj_mes: number
+    leads_pf_mes: number
+    leads_total_mes: number
+    efetividade_pct: number
+    efetividade_pj_pct: number
+    efetividade_pf_pct: number
+  }
+}) {
+  const { total_propostas, pj, pf, leads_pj_mes, leads_pf_mes, leads_total_mes } = card
+  const totalNoDonut = pj + pf
+  const pctPj = totalNoDonut === 0 ? 0 : Math.round((pj / totalNoDonut) * 100)
+  const pctPf = totalNoDonut === 0 ? 0 : Math.round((pf / totalNoDonut) * 100)
+
+  return (
+    <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+      <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-3">Perfil das propostas</p>
+
+      {/* Topo: propostas + conversão */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <p className="text-3xl font-black text-weg-azul leading-none">{total_propostas}</p>
+          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Propostas</p>
+        </div>
+        <div className="text-right">
+          <p className={`text-3xl font-black leading-none ${card.efetividade_pct >= 50 ? 'text-verde' : card.efetividade_pct >= 25 ? 'text-sol' : 'text-coral'}`}>
+            {card.efetividade_pct}%
+          </p>
+          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">
+            Conversão · {total_propostas}/{leads_total_mes}
+          </p>
+        </div>
+      </div>
+
+      {/* Donut PJ × PF + legenda com efetividade */}
+      {totalNoDonut > 0 ? (
+        <div className="flex items-center gap-3">
+          <MiniDonutPjPf pj={pj} pf={pf} />
+          <div className="flex-1 space-y-1.5 text-[11px]">
+            <TipoLinha
+              cor="bg-weg-azul"
+              label="PF"
+              n={pf}
+              pct={pctPf}
+              efetividade={card.efetividade_pf_pct}
+              denominador={leads_pf_mes}
+            />
+            <TipoLinha
+              cor="bg-sol"
+              label="PJ"
+              n={pj}
+              pct={pctPj}
+              efetividade={card.efetividade_pj_pct}
+              denominador={leads_pj_mes}
+            />
+          </div>
+        </div>
+      ) : (
+        <p className="text-[11px] text-white/40 italic">Sem propostas emitidas este mês.</p>
+      )}
+    </div>
+  )
+}
+
+function MiniDonutPjPf({ pj, pf }: { pj: number; pf: number }) {
+  const total = pj + pf
+  if (total === 0) return null
+  const size = 72
+  const stroke = 10
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  // PF primeiro (weg-azul), PJ depois (sol)
+  const pfLen = (pf / total) * c
+  const pjLen = (pj / total) * c
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="shrink-0">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
+      {/* PF (weg-azul) — começa no topo, sentido horário */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="#587FFF"
+        strokeWidth={stroke}
+        strokeDasharray={`${pfLen} ${c - pfLen}`}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        strokeLinecap="butt"
+      />
+      {/* PJ (sol) — começa depois do PF */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="#F5B400"
+        strokeWidth={stroke}
+        strokeDasharray={`${pjLen} ${c - pjLen}`}
+        strokeDashoffset={-pfLen}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        strokeLinecap="butt"
+      />
+      <text
+        x={size / 2}
+        y={size / 2}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize="16"
+        fontWeight="900"
+        fill="rgba(255,255,255,0.9)"
+        fontFamily="system-ui"
+      >
+        {total}
+      </text>
+    </svg>
+  )
+}
+
+function TipoLinha({ cor, label, n, pct, efetividade, denominador }: {
+  cor: string
+  label: string
+  n: number
+  pct: number
+  efetividade: number
+  denominador: number
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full shrink-0 ${cor}`} />
+        <span className="text-white/80 font-semibold">{label}</span>
+        <span className="text-white font-mono tabular-nums ml-1">{n}</span>
+        <span className="text-white/40 font-mono tabular-nums">({pct}%)</span>
+      </div>
+      <p className="text-[10px] text-white/50 pl-4">
+        conv. <span className={`font-mono font-semibold ${efetividade >= 50 ? 'text-verde' : efetividade >= 25 ? 'text-sol' : 'text-coral'}`}>{efetividade}%</span>
+        <span className="text-white/30 ml-1">({n}/{denominador})</span>
+      </p>
     </div>
   )
 }

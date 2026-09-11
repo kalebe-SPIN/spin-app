@@ -98,14 +98,15 @@ export type PainelEquipe = {
   }
   cardPerfil: {
     total_propostas: number   // total de propostas no mês (1 por lead)
-    pj: number
-    pf: number
-    on_grid: number
-    hibrido: number
-    limpeza: number
-    om: number
-    ve: number
-    outros: number
+    pj: number                // qtos PJ com proposta
+    pf: number                // qtos PF com proposta
+    /** Kalebe 2026-09-11: efetividade = quantos leads viraram proposta. */
+    leads_pj_mes: number      // total PJ que entraram como lead no mês
+    leads_pf_mes: number      // total PF que entraram como lead no mês
+    leads_total_mes: number   // total de leads que entraram no mês (denominador)
+    efetividade_pct: number   // propostas / leads_total_mes
+    efetividade_pj_pct: number  // pj / leads_pj_mes
+    efetividade_pf_pct: number  // pf / leads_pf_mes
   }
   cardNegocios: {
     em_negociacao: number
@@ -551,43 +552,56 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     const dNovo = new Date(p.status_atualizado_em || p.updated_at || 0).getTime()
     if (dNovo > dAtual) leadRepresentante.set(cid, p)
   }
-  const cardPerfil = {
-    total_propostas: leadRepresentante.size,
-    pj: 0, pf: 0,
-    on_grid: 0, hibrido: 0, limpeza: 0, om: 0, ve: 0, outros: 0,
+  // Kalebe 2026-09-11: Perfil das propostas ganha efetividade (propostas ÷ entradas)
+  // e ratio PJ×PF. Tira o breakdown de tipo (on-grid/híbrido/etc).
+  //
+  // Helpers pra classificar PJ vs PF pelo doc do cliente.
+  const isPJ = (p: any) =>
+    String(p.cliente_cpf_cnpj || '').replace(/\D/g, '').length === 14
+
+  // Denominador: leads únicos entrados no mês (dedupe por cliente_id).
+  // Um cliente pode ter 2 projetos no mês; conta como 1 lead.
+  const leadsPorCliente = new Map<string, any>()
+  for (const p of projetosMes) {
+    const cid = String(p.cliente_id || p.cliente_razao_social || p.id)
+    if (!leadsPorCliente.has(cid)) leadsPorCliente.set(cid, p)
   }
-  for (const p of leadRepresentante.values()) {
-    // PJ vs PF — heurística: campo cliente_cpf_cnpj é unificado.
-    // Se tem 14 dígitos = CNPJ (PJ); se tem 11 = CPF (PF); vazio = PF default.
-    const doc = String(p.cliente_cpf_cnpj || '').replace(/\D/g, '')
-    if (doc.length === 14) cardPerfil.pj += 1
-    else cardPerfil.pf += 1
-    // Tipos de projeto: prioridade projeto_itens (múltiplos), fallback
-    // tipo_projeto (singular, legado). Filtra itens removidos.
-    const itensAtivos = Array.isArray(p.projeto_itens)
-      ? p.projeto_itens.filter((i: any) => i.status !== 'removido')
-      : []
-    const tipos: string[] = itensAtivos.length > 0
-      ? itensAtivos.map((i: any) => String(i.tipo || ''))
-      : (p.tipo_projeto ? [String(p.tipo_projeto)] : [])
-    const jaContou = new Set<string>()
-    for (const t of tipos) {
-      const k = String(t).toLowerCase()
-      if (k.includes('hibrido') || k.includes('híbrido') || k.includes('bess')) {
-        if (!jaContou.has('hibrido')) { cardPerfil.hibrido += 1; jaContou.add('hibrido') }
-      } else if (k.includes('limpeza')) {
-        if (!jaContou.has('limpeza')) { cardPerfil.limpeza += 1; jaContou.add('limpeza') }
-      } else if (k === 'om' || k.includes('o&m') || k.includes('manutencao') || k.includes('manutenção')) {
-        if (!jaContou.has('om')) { cardPerfil.om += 1; jaContou.add('om') }
-      } else if (k.includes('ve_') || k.includes('carregador') || k.includes('recarga')) {
-        if (!jaContou.has('ve')) { cardPerfil.ve += 1; jaContou.add('ve') }
-      } else if (k.includes('on_grid') || k.includes('on-grid') || k.includes('solar') || k.includes('sistema') || k === 'fv') {
-        if (!jaContou.has('on_grid')) { cardPerfil.on_grid += 1; jaContou.add('on_grid') }
-      }
-    }
-    // Se nenhum tipo bateu e o projeto tem valor, conta como on-grid (default histórico)
-    if (jaContou.size === 0 && !p.ve_recarga_selecionada) cardPerfil.on_grid += 1
-    else if (jaContou.size === 0 && p.ve_recarga_selecionada) cardPerfil.ve += 1
+  let leadsPj = 0
+  let leadsPf = 0
+  for (const p of leadsPorCliente.values()) {
+    if (isPJ(p)) leadsPj += 1
+    else leadsPf += 1
+  }
+  const leadsTotal = leadsPorCliente.size
+
+  // Numerador: propostas emitidas — mesma lógica que já roda em leadRepresentante,
+  // mas só considerando leads CUJOS projetos entraram no mês (dedupe por cliente).
+  // O card mede efetividade do funil do mês; leads antigos com proposta viva
+  // caem no card NEGÓCIOS, não aqui.
+  let propostasPj = 0
+  let propostasPf = 0
+  let propostasTotal = 0
+  const clientesComPropostaMes = new Set<string>()
+  for (const p of projetosMes) {
+    if (!STATUS_PROPOSTA_EMITIDA.has(p.status)) continue
+    const cid = String(p.cliente_id || p.cliente_razao_social || p.id)
+    if (clientesComPropostaMes.has(cid)) continue
+    clientesComPropostaMes.add(cid)
+    propostasTotal += 1
+    if (isPJ(p)) propostasPj += 1
+    else propostasPf += 1
+  }
+
+  const cardPerfil = {
+    total_propostas: propostasTotal,
+    pj: propostasPj,
+    pf: propostasPf,
+    leads_pj_mes: leadsPj,
+    leads_pf_mes: leadsPf,
+    leads_total_mes: leadsTotal,
+    efetividade_pct: leadsTotal === 0 ? 0 : Math.round((propostasTotal / leadsTotal) * 100),
+    efetividade_pj_pct: leadsPj === 0 ? 0 : Math.round((propostasPj / leadsPj) * 100),
+    efetividade_pf_pct: leadsPf === 0 ? 0 : Math.round((propostasPf / leadsPf) * 100),
   }
 
   // Card 3 — NEGÓCIOS DO MÊS (breakdown de status das propostas)
