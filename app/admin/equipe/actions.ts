@@ -109,11 +109,16 @@ export type PainelEquipe = {
     efetividade_pf_pct: number  // pf / leads_pf_mes
   }
   cardNegocios: {
-    em_negociacao: number
-    fechados: number
-    perdidos: number
-    parados: number           // sem atualização há > 7 dias
-    total: number
+    /** Kalebe 2026-09-11: agora headline = fechados no mês + valor acumulado. */
+    fechados_qtd: number           // qtd de projetos com status fechado + fechamento no mês
+    fechados_valor: number         // soma pv_total desses fechados
+    fechados_novos_qtd: number     // dos fechados, os que foram CRIADOS neste mês
+    fechados_novos_valor: number
+    fechados_antigos_qtd: number   // dos fechados, os que foram criados em meses anteriores
+    fechados_antigos_valor: number
+    em_negociacao: number          // projetos em STATUS_PROPOSTA hoje
+    perdidos: number               // projetos perdidos no mês
+    parados: number                // em negociação sem update há > 7 dias
   }
   faturamentoPorLinha: FatiaFaturamento[]
   funil: EtapaFunil[]
@@ -604,31 +609,52 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     efetividade_pf_pct: leadsPf === 0 ? 0 : Math.round((propostasPf / leadsPf) * 100),
   }
 
-  // Card 3 — NEGÓCIOS DO MÊS (breakdown de status das propostas)
-  // População = leadRepresentante (propostas ativas AGORA + fechadas/perdidas
-  // no mês, dedupe por lead). Assim contratos_fechados aqui bate com o
-  // Comparativo mês vs mês passado (contratos_mes = 8, não 2).
+  // Card 3 — NEGÓCIOS DO MÊS (Kalebe 2026-09-11: reformado)
+  // Headline agora = FECHADOS no mês + valor acumulado. Contagem project-level
+  // (não dedupe por cliente) pra bater com contratos_mes do Comparativo e com
+  // Faturamento por linha. Split adicional: dos fechados no mês, quantos foram
+  // de projetos CRIADOS no mês (venda rápida) × antigos.
+  //
   //   Parado = sem update há > 7 dias E ainda em status ativo (proposta/negociando)
-  const cardNegocios = {
-    em_negociacao: 0,
-    fechados: 0,
-    perdidos: 0,
-    parados: 0,
-    total: 0,
-  }
-  for (const p of leadRepresentante.values()) {
-    const status = String(p.status || '').toLowerCase()
-    const emNegoc = STATUS_PROPOSTA.includes(status)
-    const fechado = STATUS_FECHADOS.includes(status)
-    const perdido = STATUS_PERDIDOS.has(status)
-    if (fechado) cardNegocios.fechados += 1
-    else if (perdido) cardNegocios.perdidos += 1
-    else if (emNegoc) {
-      cardNegocios.em_negociacao += 1
-      const updated = new Date(p.status_atualizado_em || p.updated_at || p.created_at).getTime()
-      if (updated < seteDiasAtras) cardNegocios.parados += 1
+  let fechadosNovosQtd = 0
+  let fechadosNovosValor = 0
+  let fechadosAntigosQtd = 0
+  let fechadosAntigosValor = 0
+  for (const p of projetosFechadosMes) {
+    const valor = Number(p.pv_total) || 0
+    if (p.created_at >= inicioMesIso) {
+      fechadosNovosQtd += 1
+      fechadosNovosValor += valor
+    } else {
+      fechadosAntigosQtd += 1
+      fechadosAntigosValor += valor
     }
-    cardNegocios.total += 1
+  }
+
+  // Contagem project-level dos status ativos e perdidos do mês
+  const emNegociacaoTodos = todosProjetos.filter((p: any) =>
+    STATUS_PROPOSTA.includes(p.status)
+  )
+  const perdidosDoMes = todosProjetos.filter((p: any) => {
+    if (!STATUS_PERDIDOS.has(String(p.status || '').toLowerCase())) return false
+    const d = dataFechamento(p)
+    return d && d >= inicioMesIso
+  })
+  const paradosCount = emNegociacaoTodos.filter((p: any) => {
+    const updated = new Date(p.status_atualizado_em || p.updated_at || p.created_at).getTime()
+    return updated < seteDiasAtras
+  }).length
+
+  const cardNegocios = {
+    fechados_qtd: projetosFechadosMes.length,
+    fechados_valor: valorFechadoMes,
+    fechados_novos_qtd: fechadosNovosQtd,
+    fechados_novos_valor: fechadosNovosValor,
+    fechados_antigos_qtd: fechadosAntigosQtd,
+    fechados_antigos_valor: fechadosAntigosValor,
+    em_negociacao: emNegociacaoTodos.length,
+    perdidos: perdidosDoMes.length,
+    parados: paradosCount,
   }
 
   return {

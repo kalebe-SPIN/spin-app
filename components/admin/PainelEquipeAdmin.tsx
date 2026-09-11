@@ -90,20 +90,8 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
         {/* Card 2 — PERFIL DAS PROPOSTAS (Kalebe 2026-09-11: reformado) */}
         <CardPerfilDasPropostas card={dados.cardPerfil} />
 
-        {/* Card 3 — NEGÓCIOS (era Contratos) */}
-        <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
-          <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2">Negócios do mês</p>
-          <div className="flex items-baseline gap-3 mb-3">
-            <p className="text-4xl font-black text-verde">{dados.cardNegocios.total}</p>
-            <p className="text-[10px] text-white/40 uppercase tracking-wider">propostas</p>
-          </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] pt-3 border-t border-white/5">
-            <MiniLinha label="Em negociação" valor={String(dados.cardNegocios.em_negociacao)} destaque="sol" />
-            <MiniLinha label="Fechadas" valor={String(dados.cardNegocios.fechados)} destaque="verde" />
-            <MiniLinha label="Perdidas" valor={String(dados.cardNegocios.perdidos)} destaque="coral" />
-            <MiniLinha label="Paradas (>7d)" valor={String(dados.cardNegocios.parados)} destaque="coral" />
-          </div>
-        </div>
+        {/* Card 3 — NEGÓCIOS DO MÊS (Kalebe 2026-09-11: reformado) */}
+        <CardNegociosDoMes card={dados.cardNegocios} />
 
         {/* Card 4 — OS executadas (mantido) */}
         <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
@@ -768,6 +756,118 @@ function TipoLinha({ cor, label, n, pct, efetividade, denominador }: {
         conv. <span className={`font-mono font-semibold ${efetividade >= 50 ? 'text-verde' : efetividade >= 25 ? 'text-sol' : 'text-coral'}`}>{efetividade}%</span>
         <span className="text-white/30 ml-1">({n}/{denominador})</span>
       </p>
+    </div>
+  )
+}
+
+// ==========================================================
+// CARD NEGÓCIOS DO MÊS (Kalebe 2026-09-11)
+// Topo: qtd fechados + valor acumulado (grande).
+// Barra empilhada horizontal por VALOR: quanto do R$ vem de projetos
+// criados neste mês × criados em meses anteriores.
+// Rodapé: em negociação · perdidos · parados.
+// ==========================================================
+function CardNegociosDoMes({ card }: {
+  card: {
+    fechados_qtd: number
+    fechados_valor: number
+    fechados_novos_qtd: number
+    fechados_novos_valor: number
+    fechados_antigos_qtd: number
+    fechados_antigos_valor: number
+    em_negociacao: number
+    perdidos: number
+    parados: number
+  }
+}) {
+  const totalValor = card.fechados_valor
+  const totalQtd = card.fechados_qtd
+  const pctNovosValor = totalValor === 0 ? 0 : Math.round((card.fechados_novos_valor / totalValor) * 100)
+  const pctAntigosValor = totalValor === 0 ? 0 : 100 - pctNovosValor
+
+  // Fonte do valor grande escala pra caber
+  const valorStr = fmtBRL(totalValor)
+  const valorFonte = totalValor >= 1000000 ? 'text-xl'
+    : totalValor >= 100000 ? 'text-2xl'
+    : 'text-3xl'
+
+  return (
+    <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+      <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-3">Negócios do mês</p>
+
+      {/* Topo: qtd fechados + valor acumulado */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <p className="text-3xl font-black text-verde leading-none">{totalQtd}</p>
+          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Fechados</p>
+        </div>
+        <div className="text-right">
+          <p className={`${valorFonte} font-black text-verde leading-none whitespace-nowrap`}>{valorStr}</p>
+          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Valor acumulado</p>
+        </div>
+      </div>
+
+      {/* Barra empilhada por VALOR + legenda */}
+      {totalValor > 0 ? (
+        <>
+          <div className="h-2 rounded-full bg-white/5 overflow-hidden flex mb-2.5">
+            {card.fechados_novos_valor > 0 && (
+              <div
+                title={`Projetos novos · ${fmtBRL(card.fechados_novos_valor)}`}
+                style={{ width: `${(card.fechados_novos_valor / totalValor) * 100}%` }}
+                className="bg-sol"
+              />
+            )}
+            {card.fechados_antigos_valor > 0 && (
+              <div
+                title={`Projetos antigos · ${fmtBRL(card.fechados_antigos_valor)}`}
+                style={{ width: `${(card.fechados_antigos_valor / totalValor) * 100}%` }}
+                className="bg-weg-azul"
+              />
+            )}
+          </div>
+
+          <div className="space-y-1 text-[11px]">
+            <OrigemTemporalLinha
+              cor="bg-sol"
+              label="Projetos novos"
+              qtd={card.fechados_novos_qtd}
+              valor={card.fechados_novos_valor}
+              pct={pctNovosValor}
+            />
+            <OrigemTemporalLinha
+              cor="bg-weg-azul"
+              label="Projetos antigos"
+              qtd={card.fechados_antigos_qtd}
+              valor={card.fechados_antigos_valor}
+              pct={pctAntigosValor}
+            />
+          </div>
+        </>
+      ) : (
+        <p className="text-[11px] text-white/40 italic">Sem negócios fechados este mês.</p>
+      )}
+
+      {/* Rodapé — situação do pipeline */}
+      <div className="pt-3 mt-3 border-t border-white/5 grid grid-cols-3 gap-2 text-[10px]">
+        <MiniLinha label="Em nego." valor={String(card.em_negociacao)} destaque="sol" />
+        <MiniLinha label="Perdidos" valor={String(card.perdidos)} destaque="coral" />
+        <MiniLinha label="Parados" valor={String(card.parados)} destaque="coral" />
+      </div>
+    </div>
+  )
+}
+
+function OrigemTemporalLinha({ cor, label, qtd, valor, pct }: {
+  cor: string; label: string; qtd: number; valor: number; pct: number
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${cor}`} />
+      <span className="text-white/70 flex-1 truncate">{label}</span>
+      <span className="text-white/60 font-mono tabular-nums text-[10px]">{qtd}</span>
+      <span className="text-white font-mono font-semibold tabular-nums">{fmtBRL(valor)}</span>
+      <span className="text-white/40 font-mono tabular-nums w-9 text-right">{pct}%</span>
     </div>
   )
 }
