@@ -85,6 +85,20 @@ export type PainelEquipe = {
     faturamento_execucao: number
   }
   /** Kalebe 2026-09-06: reforma dos 4 cards do topo do PainelEquipeAdmin */
+  /** Kalebe 2026-09-11: card LEADS DO MÊS (posição 1, esquerda). */
+  cardLeads: {
+    total_mes: number             // leads únicos criados no mês (dedupe por cliente)
+    pj: number
+    pf: number
+    por_representante: Array<{
+      id: string
+      nome: string
+      role: string
+      qtd: number
+      pj: number
+      pf: number
+    }>
+  }
   cardProjetos: {
     abertos_mes: number       // total de projetos criados no mês
     com_proposta: number      // qtos leads têm ao menos uma proposta enviada
@@ -493,6 +507,59 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   const STATUS_PERDIDOS = new Set(['perdido', 'perdida', 'cancelado', 'cancelada', 'desistiu'])
   const seteDiasAtras = Date.now() - 7 * 24 * 3600 * 1000
 
+  // ═══════════════════════════════════════════════════════════
+  // Kalebe 2026-09-11: Card LEADS DO MÊS (posição 1, esquerda).
+  // Substitui o card OS Executadas. Métrica de aquisição pura:
+  // quantos leads únicos entraram no mês, split PJ×PF e por representante
+  // (consultor_id) que trouxe o lead. Um cliente com 2 projetos = 1 lead
+  // (dedupe por cliente_id); o representante é o do PRIMEIRO projeto
+  // desse cliente por created_at.
+  // ═══════════════════════════════════════════════════════════
+  const leadsPorClienteGlobal = new Map<string, any>()
+  const projetosMesOrdenados = [...projetosMes].sort(
+    (a: any, b: any) => (a.created_at || '').localeCompare(b.created_at || ''),
+  )
+  for (const p of projetosMesOrdenados) {
+    const cid = String(p.cliente_id || p.cliente_razao_social || p.id)
+    if (!leadsPorClienteGlobal.has(cid)) leadsPorClienteGlobal.set(cid, p)
+  }
+  const _isPJ = (p: any) =>
+    String(p.cliente_cpf_cnpj || '').replace(/\D/g, '').length === 14
+  let leadsPjGlobal = 0
+  let leadsPfGlobal = 0
+  const porRepAgg = new Map<string, { qtd: number; pj: number; pf: number }>()
+  for (const p of leadsPorClienteGlobal.values()) {
+    const pj = _isPJ(p)
+    if (pj) leadsPjGlobal += 1
+    else leadsPfGlobal += 1
+    const consultorId = String(p.consultor_id || '')
+    if (!consultorId) continue
+    const cur = porRepAgg.get(consultorId) || { qtd: 0, pj: 0, pf: 0 }
+    cur.qtd += 1
+    if (pj) cur.pj += 1
+    else cur.pf += 1
+    porRepAgg.set(consultorId, cur)
+  }
+  const porRepresentante = Array.from(porRepAgg.entries())
+    .map(([id, agg]) => {
+      const perfil = perfilPorId.get(id)
+      return {
+        id,
+        nome: perfil?.nome || 'Sem cadastro',
+        role: perfil?.role || 'desconhecido',
+        qtd: agg.qtd,
+        pj: agg.pj,
+        pf: agg.pf,
+      }
+    })
+    .sort((a, b) => b.qtd - a.qtd)
+  const cardLeads = {
+    total_mes: leadsPorClienteGlobal.size,
+    pj: leadsPjGlobal,
+    pf: leadsPfGlobal,
+    por_representante: porRepresentante,
+  }
+
   // Card 1 — PROJETOS (aquisição do mês)
   //   abertos_mes: total de leads criados no mês
   //   com_proposta: qtos LEADS únicos criados no mês têm proposta
@@ -661,6 +728,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     representantes: metricasRepres,
     vendedoresServ: metricasVend,
     profissionaisCampo: metricasCampo,
+    cardLeads,
     cardProjetos,
     cardPerfil,
     cardNegocios,

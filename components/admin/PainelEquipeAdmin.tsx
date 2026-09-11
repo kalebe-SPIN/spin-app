@@ -82,28 +82,22 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
         </div>
       </div>
 
-      {/* KPIs consolidados — 4 cards do mês (Kalebe 2026-09-06) */}
+      {/* KPIs consolidados — 4 cards do mês.
+          Kalebe 2026-09-11: ordem alinhada à jornada — leads → projetos →
+          propostas → negócios. Card OS Executadas saiu daqui; a métrica
+          continua acessível no Faturamento por linha e no Comparativo. */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        {/* Card 1 — PROJETOS (Kalebe 2026-09-11: reformado) */}
+        {/* Card 1 — LEADS DO MÊS (Kalebe 2026-09-11) */}
+        <CardLeadsDoMes card={dados.cardLeads} />
+
+        {/* Card 2 — PROJETOS */}
         <CardProjetosDoMes card={dados.cardProjetos} />
 
-        {/* Card 2 — PERFIL DAS PROPOSTAS (Kalebe 2026-09-11: reformado) */}
+        {/* Card 3 — PERFIL DAS PROPOSTAS */}
         <CardPerfilDasPropostas card={dados.cardPerfil} />
 
-        {/* Card 3 — NEGÓCIOS DO MÊS (Kalebe 2026-09-11: reformado) */}
+        {/* Card 4 — NEGÓCIOS DO MÊS */}
         <CardNegociosDoMes card={dados.cardNegocios} />
-
-        {/* Card 4 — OS executadas (mantido) */}
-        <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
-          <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2">OS executadas</p>
-          <div className="flex items-baseline gap-3 mb-3">
-            <p className="text-4xl font-black text-coral">{t.os_executadas}</p>
-            <p className="text-[10px] text-white/40 uppercase tracking-wider">no mês</p>
-          </div>
-          <div className="pt-3 border-t border-white/5">
-            <MiniLinha label="Faturamento" valor={fmtBRL(t.faturamento_execucao)} destaque="coral" />
-          </div>
-        </div>
       </div>
 
       {/* ═══ Painel executivo ═══ */}
@@ -868,6 +862,108 @@ function OrigemTemporalLinha({ cor, label, qtd, valor, pct }: {
       <span className="text-white/60 font-mono tabular-nums text-[10px]">{qtd}</span>
       <span className="text-white font-mono font-semibold tabular-nums">{fmtBRL(valor)}</span>
       <span className="text-white/40 font-mono tabular-nums w-9 text-right">{pct}%</span>
+    </div>
+  )
+}
+
+// ==========================================================
+// CARD LEADS DO MÊS (Kalebe 2026-09-11)
+// Posição 1 (esquerda). Substitui OS Executadas.
+// Topo: total de leads únicos entrados no mês + split PJ/PF em números.
+// Barrinha empilhada PJ×PF. Lista de representantes (top 5) com barra
+// horizontal proporcional e qtd.
+// ==========================================================
+function CardLeadsDoMes({ card }: {
+  card: {
+    total_mes: number
+    pj: number
+    pf: number
+    por_representante: Array<{
+      id: string; nome: string; role: string; qtd: number; pj: number; pf: number
+    }>
+  }
+}) {
+  const { total_mes, pj, pf, por_representante } = card
+  const total = pj + pf
+  const pctPj = total === 0 ? 0 : Math.round((pj / total) * 100)
+  const pctPf = total === 0 ? 0 : 100 - pctPj
+  const topN = por_representante.slice(0, 5)
+  const maiorQtd = topN[0]?.qtd || 1
+
+  return (
+    <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
+      <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-3">Leads do mês</p>
+
+      {/* Topo: total + PF/PJ em números */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <p className="text-3xl font-black text-sol leading-none">{total_mes}</p>
+          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Até hoje</p>
+        </div>
+        <div className="text-right space-y-0.5">
+          <p className="text-xs text-white/60">
+            <span className="text-weg-azul font-bold">PF</span> <span className="font-mono font-bold text-white">{pf}</span>
+            <span className="text-white/40 font-mono ml-1">({pctPf}%)</span>
+          </p>
+          <p className="text-xs text-white/60">
+            <span className="text-sol font-bold">PJ</span> <span className="font-mono font-bold text-white">{pj}</span>
+            <span className="text-white/40 font-mono ml-1">({pctPj}%)</span>
+          </p>
+        </div>
+      </div>
+
+      {/* Barra PJ × PF */}
+      {total > 0 && (
+        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden flex mb-3">
+          {pf > 0 && <div style={{ width: `${pctPf}%` }} className="bg-weg-azul" title={`PF · ${pf}`} />}
+          {pj > 0 && <div style={{ width: `${pctPj}%` }} className="bg-sol" title={`PJ · ${pj}`} />}
+        </div>
+      )}
+
+      {/* Por representante — top 5 */}
+      <div className="pt-2 border-t border-white/5">
+        <p className="text-[9px] uppercase tracking-wider text-white/40 font-bold mb-2">Por representante</p>
+        {topN.length === 0 ? (
+          <p className="text-[11px] text-white/40 italic">Sem leads distribuídos.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {topN.map((r) => (
+              <RepresentanteLinha
+                key={r.id}
+                nome={r.nome}
+                qtd={r.qtd}
+                pj={r.pj}
+                pf={r.pf}
+                pctBarra={(r.qtd / maiorQtd) * 100}
+              />
+            ))}
+            {por_representante.length > 5 && (
+              <p className="text-[10px] text-white/30 pt-1">
+                +{por_representante.length - 5} outros
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RepresentanteLinha({ nome, qtd, pj, pf, pctBarra }: {
+  nome: string; qtd: number; pj: number; pf: number; pctBarra: number
+}) {
+  const total = pj + pf
+  const pfW = total === 0 ? 0 : (pf / total) * pctBarra
+  const pjW = total === 0 ? 0 : (pj / total) * pctBarra
+  const primeiroNome = nome.split(' ')[0]
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] text-white/80 w-16 truncate" title={nome}>{primeiroNome}</span>
+      <div className="flex-1 h-2 rounded-full bg-white/5 overflow-hidden flex">
+        {pf > 0 && <div style={{ width: `${pfW}%` }} className="bg-weg-azul" title={`PF · ${pf}`} />}
+        {pj > 0 && <div style={{ width: `${pjW}%` }} className="bg-sol" title={`PJ · ${pj}`} />}
+      </div>
+      <span className="text-[11px] font-mono font-semibold text-white tabular-nums w-5 text-right">{qtd}</span>
     </div>
   )
 }
