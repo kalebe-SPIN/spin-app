@@ -12,6 +12,7 @@ import {
   type LinhaRank,
   type EtapaFunil,
   type ComparativoMes,
+  type ComposicaoFvMes,
 } from '@/app/admin/equipe/actions'
 import { GraficoPizza } from '@/components/GraficoPizza'
 
@@ -102,14 +103,14 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
 
       {/* ═══ Painel executivo ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        {/* Pizza — faturamento por linha */}
-        <BlocoExec titulo="💰 Faturamento por linha" hint="mês corrente" cor="sol">
-          <GraficoPizza
-            fatias={dados.faturamentoPorLinha.map((f) => ({ rotulo: f.linha, valor: f.valor, cor: f.cor }))}
-            tamanho={160}
-            donut
-            fmtValor={fmtBRL}
-          />
+        {/* Composição FV — custos, margem, desconto das vendas do mês.
+            Kalebe 2026-09-11: substituiu a pizza 'Faturamento por linha'. */}
+        <BlocoExec
+          titulo="💰 Composição das vendas FV"
+          hint={`padrão on-grid/híbrido · ${dados.composicaoFvMes.qtd_vendas} venda${dados.composicaoFvMes.qtd_vendas === 1 ? '' : 's'}`}
+          cor="sol"
+        >
+          <ComposicaoFvBloco c={dados.composicaoFvMes} />
         </BlocoExec>
 
         {/* Comparativo mês vs mês passado */}
@@ -964,6 +965,108 @@ function RepresentanteLinha({ nome, qtd, pj, pf, pctBarra }: {
         {pj > 0 && <div style={{ width: `${pjW}%` }} className="bg-sol" title={`PJ · ${pj}`} />}
       </div>
       <span className="text-[11px] font-mono font-semibold text-white tabular-nums w-5 text-right">{qtd}</span>
+    </div>
+  )
+}
+
+// ==========================================================
+// COMPOSIÇÃO FV — donut + resumo custos/margem/desconto (Kalebe 2026-09-11)
+// ==========================================================
+function ComposicaoFvBloco({ c }: { c: ComposicaoFvMes }) {
+  if (c.qtd_vendas === 0) {
+    return (
+      <div className="text-center py-6">
+        <p className="text-sm text-white/50">Nenhuma venda FV com padrão de precificação fechada este mês.</p>
+        {c.ignorados_qtd > 0 && (
+          <p className="text-[11px] text-white/40 mt-2">
+            ({c.ignorados_qtd} venda{c.ignorados_qtd === 1 ? '' : 's'} fora do padrão FV — VE, limpeza ou O&M.)
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // Corrige margem_efetiva = margem − desconto (o desconto sai do bolso da Spin)
+  const margemBrutaFatia = c.fatias.find((f) => f.chave === 'margem')?.valor || 0
+  const margemEfetiva = margemBrutaFatia - c.desconto_total
+  const margemEfetivaPct = c.pv_total === 0 ? 0 : Math.round((margemEfetiva / c.pv_total) * 100)
+
+  return (
+    <div className="space-y-3">
+      {/* Header — PV total */}
+      <div className="flex items-baseline justify-between">
+        <div>
+          <p className="text-2xl font-black text-sol leading-none">{fmtBRL(c.pv_total)}</p>
+          <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">PV bruto total</p>
+        </div>
+        <div className="text-right">
+          <p className={`text-lg font-black leading-none ${margemEfetivaPct >= 15 ? 'text-verde' : margemEfetivaPct >= 8 ? 'text-sol' : 'text-coral'}`}>
+            {margemEfetivaPct}%
+          </p>
+          <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Margem efetiva</p>
+        </div>
+      </div>
+
+      {/* Donut + legenda */}
+      <div className="flex items-center gap-4">
+        <GraficoPizza
+          fatias={c.fatias.map((f) => ({ rotulo: f.rotulo, valor: f.valor, cor: f.cor }))}
+          tamanho={140}
+          donut
+          fmtValor={fmtBRL}
+        />
+      </div>
+
+      {/* Bloco desconto — separado, em coral */}
+      {c.desconto_total > 0 && (
+        <div className="p-2.5 bg-coral/10 border border-coral/30 rounded flex items-center justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider font-bold text-coral">Descontos concedidos</p>
+            <p className="text-[10px] text-white/50">Sai da margem</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-mono font-bold text-coral">−{fmtBRL(c.desconto_total)}</p>
+            <p className="text-[10px] text-white/50">{c.desconto_pct_medio.toFixed(1)}% do PV</p>
+          </div>
+        </div>
+      )}
+
+      {/* Resumo Custos × Margem — texto compacto */}
+      <div className="pt-2 border-t border-white/10 grid grid-cols-2 gap-3 text-[11px]">
+        <ResumoLinha
+          label="Custos internos"
+          valor={c.fatias.filter((f) => f.chave !== 'margem').reduce((s, f) => s + f.valor, 0)}
+          pv={c.pv_total}
+          cor="text-white/70"
+        />
+        <ResumoLinha
+          label="Margem bruta"
+          valor={margemBrutaFatia}
+          pv={c.pv_total}
+          cor="text-verde"
+          alinhamento="right"
+        />
+      </div>
+
+      {c.ignorados_qtd > 0 && (
+        <p className="text-[10px] text-white/40 pt-1">
+          ⓘ {c.ignorados_qtd} venda{c.ignorados_qtd === 1 ? '' : 's'} fora do padrão FV não incluída{c.ignorados_qtd === 1 ? '' : 's'}.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ResumoLinha({ label, valor, pv, cor, alinhamento }: {
+  label: string; valor: number; pv: number; cor: string; alinhamento?: 'right'
+}) {
+  const pct = pv === 0 ? 0 : Math.round((valor / pv) * 100)
+  return (
+    <div className={alinhamento === 'right' ? 'text-right' : ''}>
+      <p className="text-[10px] uppercase tracking-wider text-white/50">{label}</p>
+      <p className={`font-mono font-semibold ${cor}`}>
+        {fmtBRL(valor)} <span className="text-white/40 font-normal">({pct}%)</span>
+      </p>
     </div>
   )
 }

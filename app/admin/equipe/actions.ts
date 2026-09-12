@@ -44,6 +44,26 @@ export type FatiaFaturamento = {
   cor: string
 }
 
+/** Kalebe 2026-09-11: composição das vendas FV que usam o mesmo padrão de
+ *  precificação (motor on-grid / híbrido / BESS puro — todos com
+ *  kit_weg_com_fator em orcamento_final). Serve pra ver custos vs margem. */
+export type ComposicaoFvMes = {
+  qtd_vendas: number             // vendas fechadas no mês com padrão FV
+  pv_total: number               // soma dos preços de venda
+  fatias: Array<{
+    chave: 'kit_weg' | 'lista_ca' | 'projeto_art' | 'instalacao' | 'frete' | 'comissao' | 'impostos' | 'margem'
+    rotulo: string
+    valor: number
+    pct: number                  // % do pv_total
+    cor: string
+  }>
+  /** Kalebe 2026-09-11: desconto concedido (fica fora do pv_total pra não
+   *  distorcer a soma dos custos internos). Aparece separado, em coral. */
+  desconto_total: number
+  desconto_pct_medio: number     // desconto / pv_total × 100
+  ignorados_qtd: number          // vendas do mês SEM orcamento_final completo (VE, limpeza, OM etc.)
+}
+
 export type EtapaFunil = {
   chave: 'prospeccao' | 'contato' | 'proposta' | 'fechado'
   rotulo: string
@@ -135,6 +155,8 @@ export type PainelEquipe = {
     parados: number                // em negociação sem update há > 7 dias
   }
   faturamentoPorLinha: FatiaFaturamento[]
+  /** Kalebe 2026-09-11: substitui o bloco 'Faturamento por linha'. */
+  composicaoFvMes: ComposicaoFvMes
   funil: EtapaFunil[]
   rankVendedores: LinhaRank[]
   comparativo: ComparativoMes
@@ -220,6 +242,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
       id, consultor_id, cliente_id, cliente_razao_social, cliente_cpf_cnpj,
       status, pv_total, orcamento_final, tipo_projeto, ve_recarga_selecionada,
       origem_lead,
+      desconto_admin_pct, desconto_admin_valor,
       created_at, updated_at, status_atualizado_em, excluida_em,
       projeto_itens(tipo, status)
     `)
@@ -285,6 +308,14 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     if (ateIso && d >= ateIso) return false
     return true
   }
+
+  // Kalebe 2026-09-11: extraído pra usar em faturamentoPorLinha,
+  // composicaoFvMes e cardNegocios (antes redeclarava em cada bloco).
+  const projetosFechadosMes = todosProjetos.filter((p: any) => isFechadoNoMes(p, inicioMesIso))
+  const valorFechadoMes = projetosFechadosMes.reduce(
+    (s: number, p: any) => s + (Number(p.pv_total) || 0),
+    0,
+  )
 
   // ─── Agrega por consultor solar (representantes + admins) ─────────────────
   const metricasRepres: MetricasRepresentante[] = vendedoresSolar.map((r) => {
@@ -367,6 +398,74 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
       { linha: 'Execução de OS', valor: totalExecucao, cor: '#0047BB' },
     ] as FatiaFaturamento[]
   ).filter((f) => f.valor > 0)
+
+  // ─── Composição das vendas FV (padrão de precificação) ───────────────────
+  // Kalebe 2026-09-11: dos fechados do mês, separa quem tem orcamento_final
+  // COMPLETO (motor on-grid / híbrido / BESS puro — todos com kit_weg_com_fator
+  // + subtotal_lista_ca + margem etc.). VE, limpeza e OM ficam de fora (motores
+  // diferentes) e contam em ignorados_qtd.
+  const acc = {
+    kit_weg: 0, lista_ca: 0, projeto_art: 0, instalacao: 0, frete: 0,
+    comissao: 0, impostos: 0, margem: 0,
+    pv_total: 0, qtd: 0, ignorados: 0,
+    desconto: 0,
+  }
+  const eNumero = (v: any) => typeof v === 'number' && !isNaN(v) && isFinite(v)
+  for (const p of projetosFechadosMes) {
+    const of = (p as any).orcamento_final || {}
+    // Precisa ter kit_weg_com_fator pra ser considerado "padrão FV".
+    // Alternativa: kit_weg_com_fator OU subtotal_kit_weg_bruto > 0.
+    const kit = Number(of.kit_weg_com_fator ?? of.subtotal_kit_weg_bruto ?? 0)
+    if (!eNumero(kit) || kit <= 0) {
+      acc.ignorados += 1
+      continue
+    }
+    const pv = Number(of.pv_total ?? p.pv_total ?? 0)
+    if (!eNumero(pv) || pv <= 0) {
+      acc.ignorados += 1
+      continue
+    }
+    acc.qtd += 1
+    acc.pv_total += pv
+    acc.kit_weg += kit
+    acc.lista_ca += Number(of.subtotal_lista_ca ?? 0)
+    acc.projeto_art += Number(of.projeto_art ?? 0)
+    acc.instalacao += Number(of.instalacao ?? 0)
+    acc.frete += Number(of.frete ?? 0)
+    acc.comissao += Number(of.comissao_vendedor ?? 0)
+    acc.impostos += Number(of.impostos_simples ?? 0)
+    acc.margem += Number(of.margem ?? 0)
+    // Kalebe 2026-09-11: desconto concedido. pct positivo = desconto,
+    // negativo = acréscimo (usamos só descontos pra o card). Prioridade
+    // do pct sobre valor absoluto (mesma regra da aplicarDescontoAdminAction).
+    const descPct = Number((p as any).desconto_admin_pct ?? 0)
+    const descValor = Number((p as any).desconto_admin_valor ?? 0)
+    const descontoAplicado = descPct > 0
+      ? pv * (descPct / 100)
+      : (descValor > 0 ? descValor : 0)
+    acc.desconto += descontoAplicado
+  }
+  const compTotal = acc.pv_total || 1  // evita /0
+  const fatiasComp: ComposicaoFvMes['fatias'] = ([
+    { chave: 'kit_weg',     rotulo: 'Kit WEG',       valor: acc.kit_weg,     pct: 0, cor: '#F5B400' },
+    { chave: 'lista_ca',    rotulo: 'Lista CA',      valor: acc.lista_ca,    pct: 0, cor: '#587FFF' },
+    { chave: 'instalacao',  rotulo: 'Instalação',    valor: acc.instalacao,  pct: 0, cor: '#4EDC8A' },
+    { chave: 'projeto_art', rotulo: 'Projeto / ART', valor: acc.projeto_art, pct: 0, cor: '#B78BFF' },
+    { chave: 'frete',       rotulo: 'Frete',         valor: acc.frete,       pct: 0, cor: '#4EC5C9' },
+    { chave: 'comissao',    rotulo: 'Comissão',      valor: acc.comissao,    pct: 0, cor: '#F17A5C' },
+    { chave: 'impostos',    rotulo: 'Impostos',      valor: acc.impostos,    pct: 0, cor: '#EC4899' },
+    { chave: 'margem',      rotulo: 'Margem Spin',   valor: acc.margem,      pct: 0, cor: '#5FCF80' },
+  ] as ComposicaoFvMes['fatias'])
+    .map((f) => ({ ...f, pct: Math.round((f.valor / compTotal) * 100) }))
+    .filter((f) => f.valor > 0)
+  const composicaoFvMes: ComposicaoFvMes = {
+    qtd_vendas: acc.qtd,
+    pv_total: acc.pv_total,
+    fatias: fatiasComp,
+    desconto_total: acc.desconto,
+    desconto_pct_medio: acc.pv_total === 0 ? 0 : (acc.desconto / acc.pv_total) * 100,
+    ignorados_qtd: acc.ignorados,
+  }
 
   // ─── Funil consolidado (todos os projetos + todos os telhados) ────────────
   const projetosProspeccao = todosProjetos.filter((p: any) => STATUS_PROJETO_PROSPECCAO.includes(p.status))
@@ -575,12 +674,8 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     arr.push(valor)
     propostasPorLeadMes.set(cid, arr)
   }
-  // Fechamentos do mês (projetos, independentes de quando foram criados)
-  const projetosFechadosMes = todosProjetos.filter((p: any) => isFechadoNoMes(p, inicioMesIso))
-  const valorFechadoMes = projetosFechadosMes.reduce(
-    (s: number, p: any) => s + (Number(p.pv_total) || 0),
-    0,
-  )
+  // projetosFechadosMes e valorFechadoMes já foram computados no topo
+  // (Kalebe 2026-09-11) — usados também em composicaoFvMes e faturamentoPorLinha.
   // Kalebe 2026-09-11: breakdown por origem_lead → 3 baldes visuais.
   // Se origem_lead vier vazio (projetos antigos), cai como campanha (lead_spin
   // é o default do trigger em migration 104).
@@ -748,6 +843,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
         .reduce((s: number, e: any) => s + (Number(e.valor_final) || 0), 0),
     },
     faturamentoPorLinha,
+    composicaoFvMes,
     funil,
     rankVendedores,
     comparativo,
