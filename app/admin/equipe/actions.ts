@@ -262,7 +262,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
       origem_lead,
       desconto_admin_pct, desconto_admin_valor,
       created_at, updated_at, status_atualizado_em, excluida_em,
-      projeto_itens(tipo, status)
+      projeto_itens(tipo, status, valor_estimado)
     `)
     .is('excluida_em', null)
     .limit(10000)
@@ -279,11 +279,12 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // Kalebe 2026-09-09: painel consolidado — pega TODAS as OS concluídas
   // da organização, não só as com responsavel_id em profissionais_campo.
   // Um admin ou consultor que registrou execução também aparece agora.
-  // Kalebe 2026-09-11: incluir tipo_servico + valor_contratado pra
-  // breakdown 'Demais serviços do mês' (fora do padrão FV).
+  // Kalebe 2026-09-11: incluir tipo_servico + valor_contratado + projeto_id
+  // pra breakdown 'Demais serviços do mês' (fora do padrão FV) e pra dedupe
+  // contra projeto_itens.
   const execPromise = supabase
     .from('execucoes_servicos')
-    .select('responsavel_id, valor_final, valor_contratado, tipo_servico, data_conclusao')
+    .select('responsavel_id, projeto_id, valor_final, valor_contratado, tipo_servico, data_conclusao')
     .not('data_conclusao', 'is', null)
     .gte('data_conclusao', inicioMesPassadoIso)
     .limit(10000)
@@ -557,6 +558,9 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     e.data_conclusao >= inicioMesIso && String(e.tipo_servico || '') !== 'fv_ongrid',
   )
   const porTipo = new Map<string, { qtd: number; valor: number }>()
+  // Set (projeto_id + tipo_servico) das exec já contadas — pra evitar dupla
+  // contagem quando o mesmo projeto/item também aparecer em projeto_itens.
+  const paresJaContados = new Set<string>()
   for (const e of execsMes) {
     const tipo = String(e.tipo_servico || 'outros')
     const valor = Number(e.valor_final ?? e.valor_contratado ?? 0) || 0
@@ -564,7 +568,34 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     cur.qtd += 1
     cur.valor += valor
     porTipo.set(tipo, cur)
+    if (e.projeto_id) paresJaContados.add(`${e.projeto_id}::${tipo}`)
   }
+
+  // Kalebe 2026-09-11 (fix Jota Ka): projetos fechados NO MÊS com itens
+  // não-FV (limpeza, revisão, O&M, obras…) precisam aparecer aqui, mesmo
+  // sem execucao_servicos registrada. Fonte: projeto_itens.tipo +
+  // valor_estimado, status != 'removido'. Dedupe contra execData via par
+  // (projeto_id, tipo_servico) — se já tem execução com o mesmo tipo,
+  // deixa a exec ser a fonte de verdade (tem responsavel, data etc).
+  const TIPOS_ITEM_FV = new Set(['fv_ongrid', 'fv_hibrido', 'bess_puro', 've_recarga', 've_recarga_wallbox', 'placa', 'inversor', 'bateria'])
+  for (const p of projetosFechadosMes) {
+    const itens = Array.isArray((p as any).projeto_itens) ? (p as any).projeto_itens : []
+    for (const it of itens) {
+      const tipo = String(it.tipo || '')
+      if (!tipo || TIPOS_ITEM_FV.has(tipo)) continue
+      if (String(it.status || '') === 'removido') continue
+      const par = `${p.id}::${tipo}`
+      if (paresJaContados.has(par)) continue
+      const valor = Number(it.valor_estimado) || 0
+      if (valor <= 0) continue
+      const cur = porTipo.get(tipo) || { qtd: 0, valor: 0 }
+      cur.qtd += 1
+      cur.valor += valor
+      porTipo.set(tipo, cur)
+      paresJaContados.add(par)
+    }
+  }
+
   // Kalebe 2026-09-11: injeta vendas manuais de serviço.
   const vendasServManuais = (vendasManuaisData as any[]).filter((v) => v.categoria === 'servico')
   for (const v of vendasServManuais) {
