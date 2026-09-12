@@ -13,6 +13,7 @@ import {
   type EtapaFunil,
   type ComparativoMes,
   type ComposicaoFvMes,
+  type DemaisServicosMes,
 } from '@/app/admin/equipe/actions'
 import { GraficoPizza } from '@/components/GraficoPizza'
 
@@ -113,9 +114,16 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
           <ComposicaoFvBloco c={dados.composicaoFvMes} />
         </BlocoExec>
 
-        {/* Comparativo mês vs mês passado */}
-        <BlocoExec titulo="📈 Mês corrente vs mês passado" hint="fechamentos + OS" cor="verde">
-          <ComparativoBloco c={dados.comparativo} />
+        {/* Demais serviços do mês — execuções concluídas fora do padrão FV.
+            Kalebe 2026-09-11: substituiu 'Mês corrente vs mês passado'.
+            A comparação mensal continua acessível no dashboard geral e
+            no rodapé do rank. */}
+        <BlocoExec
+          titulo="🛠 Demais serviços do mês"
+          hint={`${dados.demaisServicosMes.qtd_total} execução${dados.demaisServicosMes.qtd_total === 1 ? '' : 'ões'} · por tipo`}
+          cor="verde"
+        >
+          <DemaisServicosBloco d={dados.demaisServicosMes} />
         </BlocoExec>
 
         {/* Funil comercial */}
@@ -1075,6 +1083,134 @@ function ResumoLinha({ label, valor, pv, cor, alinhamento }: {
       <p className={`text-xs font-mono text-white/40 mt-0.5`}>
         {pct}% do PV
       </p>
+    </div>
+  )
+}
+
+// ==========================================================
+// DEMAIS SERVIÇOS DO MÊS (Kalebe 2026-09-11)
+// Execuções concluídas fora do padrão FV, por tipo de serviço.
+// Cada tipo mostra: qtd, valor total faturado, valor médio por serviço,
+// e proporção no total do mês.
+// ==========================================================
+function DemaisServicosBloco({ d }: { d: DemaisServicosMes }) {
+  const valorFonte = d.valor_total >= 1000000 ? 'text-3xl'
+    : d.valor_total >= 100000 ? 'text-4xl'
+    : 'text-5xl'
+
+  const maiorValor = d.itens[0]?.valor || 1
+  const qtdComExecucao = d.itens.filter((it) => it.qtd > 0).length
+  const qtdSemExecucao = d.itens.length - qtdComExecucao
+
+  return (
+    <div className="space-y-4">
+      {/* Header — total faturado + qtd */}
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <p className={`${valorFonte} font-black ${d.valor_total > 0 ? 'text-verde' : 'text-white/40'} leading-none whitespace-nowrap`}>
+            {fmtBRL(d.valor_total)}
+          </p>
+          <p className="text-xs text-white/50 uppercase tracking-wider mt-2 font-semibold">
+            Faturado no mês
+          </p>
+        </div>
+        <div className="text-right">
+          <p className={`text-3xl font-black leading-none ${d.qtd_total > 0 ? 'text-white' : 'text-white/40'}`}>
+            {d.qtd_total}
+          </p>
+          <p className="text-xs text-white/50 uppercase tracking-wider mt-2 font-semibold">
+            {d.qtd_total === 1 ? 'Execução' : 'Execuções'}
+          </p>
+        </div>
+      </div>
+
+      {/* Barra empilhada horizontal — proporção de cada tipo por valor */}
+      {d.valor_total > 0 && (
+        <div className="h-2.5 rounded-full bg-white/5 overflow-hidden flex">
+          {d.itens.filter((it) => it.valor > 0).map((it) => (
+            <div
+              key={it.chave}
+              title={`${it.rotulo} · ${fmtBRL(it.valor)}`}
+              style={{ width: `${it.pct}%`, background: it.cor }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Portfólio completo — todos os serviços, mesmo com 0 execução.
+          Kalebe 2026-09-11: 'quero que todos os itens estejam descritos'. */}
+      <div className="space-y-2 pt-1">
+        {d.itens.map((it) => (
+          <ServicoLinha
+            key={it.chave}
+            cor={it.cor}
+            rotulo={it.rotulo}
+            qtd={it.qtd}
+            valor={it.valor}
+            valorMedio={it.valor_medio}
+            pct={it.pct}
+            pctBarra={(it.valor / maiorValor) * 100}
+          />
+        ))}
+      </div>
+
+      {/* Rodapé — resumo de atividade */}
+      <p className="pt-2 border-t border-white/5 text-[11px] text-white/40">
+        {qtdComExecucao} de {d.itens.length} tipos com execução este mês
+        {qtdSemExecucao > 0 ? ` · ${qtdSemExecucao} sem venda` : ''}
+      </p>
+    </div>
+  )
+}
+
+function ServicoLinha({ cor, rotulo, qtd, valor, valorMedio, pct, pctBarra }: {
+  cor: string
+  rotulo: string
+  qtd: number
+  valor: number
+  valorMedio: number
+  pct: number
+  pctBarra: number
+}) {
+  const inativo = qtd === 0
+  return (
+    <div className={`space-y-1.5 ${inativo ? 'opacity-50' : ''}`}>
+      <div className="flex items-center gap-2.5">
+        <span
+          className="w-3 h-3 rounded-sm shrink-0"
+          style={{ background: cor }}
+        />
+        <span className={`text-sm font-semibold flex-1 truncate ${inativo ? 'text-white/50' : 'text-white/85'}`}>
+          {rotulo}
+        </span>
+        {inativo ? (
+          <span className="text-[10px] text-white/40 font-mono uppercase tracking-wider italic">
+            sem venda
+          </span>
+        ) : (
+          <>
+            <span className="text-xs text-white/50 font-mono tabular-nums">
+              {qtd}×
+            </span>
+            <span className="text-sm text-white font-mono font-bold tabular-nums">
+              {fmtBRL(valor)}
+            </span>
+            <span className="text-xs text-white/40 font-mono tabular-nums w-10 text-right">
+              {pct}%
+            </span>
+          </>
+        )}
+      </div>
+      {!inativo && (
+        <div className="pl-5.5 flex items-center gap-2">
+          <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
+            <div style={{ width: `${pctBarra}%`, background: cor }} className="h-full" />
+          </div>
+          <span className="text-[10px] text-white/40 font-mono tabular-nums whitespace-nowrap">
+            ticket médio {fmtBRL(valorMedio)}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

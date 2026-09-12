@@ -44,6 +44,22 @@ export type FatiaFaturamento = {
   cor: string
 }
 
+/** Kalebe 2026-09-11: composição dos DEMAIS serviços executados no mês
+ *  (fora do padrão FV). Vem de execucoes_servicos.data_conclusao. */
+export type DemaisServicosMes = {
+  qtd_total: number
+  valor_total: number
+  itens: Array<{
+    chave: string
+    rotulo: string
+    qtd: number
+    valor: number
+    valor_medio: number
+    pct: number
+    cor: string
+  }>
+}
+
 /** Kalebe 2026-09-11: composição das vendas FV que usam o mesmo padrão de
  *  precificação (motor on-grid / híbrido / BESS puro — todos com
  *  kit_weg_com_fator em orcamento_final). Serve pra ver custos vs margem. */
@@ -157,6 +173,8 @@ export type PainelEquipe = {
   faturamentoPorLinha: FatiaFaturamento[]
   /** Kalebe 2026-09-11: substitui o bloco 'Faturamento por linha'. */
   composicaoFvMes: ComposicaoFvMes
+  /** Kalebe 2026-09-11: substitui o bloco 'Mês corrente vs mês passado'. */
+  demaisServicosMes: DemaisServicosMes
   funil: EtapaFunil[]
   rankVendedores: LinhaRank[]
   comparativo: ComparativoMes
@@ -261,9 +279,11 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // Kalebe 2026-09-09: painel consolidado — pega TODAS as OS concluídas
   // da organização, não só as com responsavel_id em profissionais_campo.
   // Um admin ou consultor que registrou execução também aparece agora.
+  // Kalebe 2026-09-11: incluir tipo_servico + valor_contratado pra
+  // breakdown 'Demais serviços do mês' (fora do padrão FV).
   const execPromise = supabase
     .from('execucoes_servicos')
-    .select('responsavel_id, valor_final, data_conclusao')
+    .select('responsavel_id, valor_final, valor_contratado, tipo_servico, data_conclusao')
     .not('data_conclusao', 'is', null)
     .gte('data_conclusao', inicioMesPassadoIso)
     .limit(10000)
@@ -465,6 +485,72 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     desconto_total: acc.desconto,
     desconto_pct_medio: acc.pv_total === 0 ? 0 : (acc.desconto / acc.pv_total) * 100,
     ignorados_qtd: acc.ignorados,
+  }
+
+  // ─── Demais serviços do mês (fora do padrão FV) ──────────────────────────
+  // Kalebe 2026-09-11: substitui o bloco 'Mês corrente vs mês passado'.
+  // Fonte: execucoes_servicos.data_conclusao no mês, excluindo fv_ongrid
+  // (esse já entra na Composição FV). Agrupa por tipo_servico, soma valor.
+  const RÓTULOS_SERVICO: Record<string, { rotulo: string; cor: string }> = {
+    srv_limpeza:            { rotulo: 'Limpeza de placas',      cor: '#4EDC8A' },
+    srv_instalacao_placas:  { rotulo: 'Instalação FV avulsa',   cor: '#F5B400' },
+    srv_revisao:            { rotulo: 'Revisão FV',             cor: '#B78BFF' },
+    srv_retirada_recolocacao:{ rotulo: 'Retirada/Recolocação',  cor: '#4EC5C9' },
+    srv_om:                 { rotulo: 'O&M',                    cor: '#587FFF' },
+    srv_alvenaria:          { rotulo: 'Alvenaria',              cor: '#F17A5C' },
+    srv_serralheria:        { rotulo: 'Serralheria',            cor: '#EC4899' },
+    srv_carpintaria:        { rotulo: 'Carpintaria',            cor: '#FBBF77' },
+    aluguel_maquinas:       { rotulo: 'Aluguel de máquinas',    cor: '#94A3B8' },
+  }
+  const execsMes = (execData || []).filter((e: any) =>
+    e.data_conclusao >= inicioMesIso && String(e.tipo_servico || '') !== 'fv_ongrid',
+  )
+  const porTipo = new Map<string, { qtd: number; valor: number }>()
+  for (const e of execsMes) {
+    const tipo = String(e.tipo_servico || 'outros')
+    const valor = Number(e.valor_final ?? e.valor_contratado ?? 0) || 0
+    const cur = porTipo.get(tipo) || { qtd: 0, valor: 0 }
+    cur.qtd += 1
+    cur.valor += valor
+    porTipo.set(tipo, cur)
+  }
+  const totalDemais = Array.from(porTipo.values()).reduce((s, x) => s + x.valor, 0)
+  const totalQtdDemais = Array.from(porTipo.values()).reduce((s, x) => s + x.qtd, 0)
+  // Kalebe 2026-09-11: LISTA TODOS os tipos conhecidos — mesmo com 0 execuções.
+  // Assim Kalebe vê o portfólio completo (o que a Spin vende) e identifica
+  // quais serviços estão parados no mês. Tipos desconhecidos (aparecerem
+  // em execData mas fora do RÓTULOS_SERVICO) também entram.
+  const chavesConhecidas = new Set(Object.keys(RÓTULOS_SERVICO))
+  const chavesEmExec = Array.from(porTipo.keys()).filter((k) => !chavesConhecidas.has(k))
+  const todasChaves = [...Object.keys(RÓTULOS_SERVICO), ...chavesEmExec]
+  const itensDemais = todasChaves
+    .map((tipo) => {
+      const stats = porTipo.get(tipo) || { qtd: 0, valor: 0 }
+      const meta = RÓTULOS_SERVICO[tipo] || {
+        rotulo: tipo.replace(/^srv_/, '').replace(/_/g, ' '),
+        cor: '#94A3B8',
+      }
+      return {
+        chave: tipo,
+        rotulo: meta.rotulo,
+        qtd: stats.qtd,
+        valor: stats.valor,
+        valor_medio: stats.qtd === 0 ? 0 : stats.valor / stats.qtd,
+        pct: totalDemais === 0 ? 0 : Math.round((stats.valor / totalDemais) * 100),
+        cor: meta.cor,
+      }
+    })
+    .sort((a, b) => {
+      // Com execução primeiro, ordenado por valor DESC; depois zeros por rótulo A→Z
+      if (a.qtd === 0 && b.qtd === 0) return a.rotulo.localeCompare(b.rotulo, 'pt-BR')
+      if (a.qtd === 0) return 1
+      if (b.qtd === 0) return -1
+      return b.valor - a.valor
+    })
+  const demaisServicosMes: DemaisServicosMes = {
+    qtd_total: totalQtdDemais,
+    valor_total: totalDemais,
+    itens: itensDemais,
   }
 
   // ─── Funil consolidado (todos os projetos + todos os telhados) ────────────
@@ -844,6 +930,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     },
     faturamentoPorLinha,
     composicaoFvMes,
+    demaisServicosMes,
     funil,
     rankVendedores,
     comparativo,
