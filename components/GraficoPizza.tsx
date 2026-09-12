@@ -115,11 +115,11 @@ export function GraficoPizza({
 
 function LegendaLinha({ rotulo, cor, valor, pct }: { rotulo: string; cor: string; valor: string; pct: number }) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: cor }} />
-      <span className="text-white/70 truncate flex-1 min-w-0">{rotulo}</span>
+    <div className="flex items-center gap-2.5 text-sm">
+      <span className="inline-block w-3 h-3 rounded-sm flex-shrink-0" style={{ background: cor }} />
+      <span className="text-white/80 truncate flex-1 min-w-0 font-medium">{rotulo}</span>
       <span className="text-white font-bold tabular-nums">{pct.toFixed(0)}%</span>
-      <span className="text-white/40 tabular-nums text-[10px] ml-1">{valor}</span>
+      <span className="text-white/50 tabular-nums text-xs ml-1 font-mono">{valor}</span>
     </div>
   )
 }

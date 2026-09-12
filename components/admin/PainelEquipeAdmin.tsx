@@ -526,9 +526,9 @@ function CardProjetosDoMes({ card }: {
 
   // Formata valor grande — se valor total >= 100k, usa fonte um pouco menor pra caber.
   const valorStr = fmtBRL(valor_total)
-  const valorFonte = valor_total >= 1000000 ? 'text-xl'
-    : valor_total >= 100000 ? 'text-2xl'
-    : 'text-3xl'
+  const valorFonte = valor_total >= 1000000 ? 'text-2xl'
+    : valor_total >= 100000 ? 'text-3xl'
+    : 'text-4xl'
 
   return (
     <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
@@ -538,11 +538,11 @@ function CardProjetosDoMes({ card }: {
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
           <p className={`${valorFonte} font-black text-sol leading-none whitespace-nowrap`}>{valorStr}</p>
-          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Valor total</p>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Valor total</p>
         </div>
         <div className="text-right">
-          <p className="text-3xl font-black text-white leading-none">{abertos_mes}</p>
-          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Abertos</p>
+          <p className="text-4xl font-black text-white leading-none">{abertos_mes}</p>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Abertos</p>
         </div>
       </div>
 
@@ -634,14 +634,14 @@ function CardPerfilDasPropostas({ card }: {
       {/* Topo: propostas + conversão */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
-          <p className="text-3xl font-black text-weg-azul leading-none">{total_propostas}</p>
-          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Propostas</p>
+          <p className="text-4xl font-black text-weg-azul leading-none">{total_propostas}</p>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Propostas</p>
         </div>
         <div className="text-right">
-          <p className={`text-3xl font-black leading-none ${card.efetividade_pct >= 50 ? 'text-verde' : card.efetividade_pct >= 25 ? 'text-sol' : 'text-coral'}`}>
+          <p className={`text-4xl font-black leading-none ${card.efetividade_pct >= 50 ? 'text-verde' : card.efetividade_pct >= 25 ? 'text-sol' : 'text-coral'}`}>
             {card.efetividade_pct}%
           </p>
-          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">
             Conversão · {total_propostas}/{leads_total_mes}
           </p>
         </div>
@@ -782,9 +782,9 @@ function CardNegociosDoMes({ card }: {
 
   // Fonte do valor grande escala pra caber
   const valorStr = fmtBRL(totalValor)
-  const valorFonte = totalValor >= 1000000 ? 'text-xl'
-    : totalValor >= 100000 ? 'text-2xl'
-    : 'text-3xl'
+  const valorFonte = totalValor >= 1000000 ? 'text-2xl'
+    : totalValor >= 100000 ? 'text-3xl'
+    : 'text-4xl'
 
   return (
     <div className="p-4 bg-white/[0.03] border border-white/10 rounded-xl">
@@ -793,12 +793,12 @@ function CardNegociosDoMes({ card }: {
       {/* Topo: qtd fechados + valor acumulado */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
-          <p className="text-3xl font-black text-verde leading-none">{totalQtd}</p>
-          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Fechados</p>
+          <p className="text-4xl font-black text-verde leading-none">{totalQtd}</p>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Fechados</p>
         </div>
         <div className="text-right">
           <p className={`${valorFonte} font-black text-verde leading-none whitespace-nowrap`}>{valorStr}</p>
-          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Valor acumulado</p>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Valor acumulado</p>
         </div>
       </div>
 
@@ -896,19 +896,21 @@ function CardLeadsDoMes({ card }: {
       <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-3">Leads do mês</p>
 
       {/* Topo: total + PF/PJ em números */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4 items-center">
         <div>
-          <p className="text-3xl font-black text-sol leading-none">{total_mes}</p>
-          <p className="text-[9px] text-white/40 uppercase tracking-wider mt-1.5">Até hoje</p>
+          <p className="text-4xl font-black text-sol leading-none">{total_mes}</p>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Até hoje</p>
         </div>
-        <div className="text-right space-y-0.5">
-          <p className="text-xs text-white/60">
-            <span className="text-weg-azul font-bold">PF</span> <span className="font-mono font-bold text-white">{pf}</span>
-            <span className="text-white/40 font-mono ml-1">({pctPf}%)</span>
+        <div className="text-right space-y-1">
+          <p className="text-base leading-tight">
+            <span className="text-weg-azul font-bold">PF</span>
+            <span className="font-mono font-black text-white ml-1.5">{pf}</span>
+            <span className="text-white/50 font-mono ml-1 text-sm">({pctPf}%)</span>
           </p>
-          <p className="text-xs text-white/60">
-            <span className="text-sol font-bold">PJ</span> <span className="font-mono font-bold text-white">{pj}</span>
-            <span className="text-white/40 font-mono ml-1">({pctPj}%)</span>
+          <p className="text-base leading-tight">
+            <span className="text-sol font-bold">PJ</span>
+            <span className="font-mono font-black text-white ml-1.5">{pj}</span>
+            <span className="text-white/50 font-mono ml-1 text-sm">({pctPj}%)</span>
           </p>
         </div>
       </div>
@@ -991,53 +993,56 @@ function ComposicaoFvBloco({ c }: { c: ComposicaoFvMes }) {
   const margemEfetiva = margemBrutaFatia - c.desconto_total
   const margemEfetivaPct = c.pv_total === 0 ? 0 : Math.round((margemEfetiva / c.pv_total) * 100)
 
+  // Kalebe 2026-09-11: fontes escalam pelo PV pra caber em cards grandes/pequenos.
+  const pvFonte = c.pv_total >= 1000000 ? 'text-3xl'
+    : c.pv_total >= 100000 ? 'text-4xl'
+    : 'text-5xl'
+
   return (
-    <div className="space-y-3">
-      {/* Header — PV total */}
-      <div className="flex items-baseline justify-between">
+    <div className="space-y-4">
+      {/* Header — PV total + margem efetiva */}
+      <div className="flex items-baseline justify-between gap-3">
         <div>
-          <p className="text-2xl font-black text-sol leading-none">{fmtBRL(c.pv_total)}</p>
-          <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">PV bruto total</p>
+          <p className={`${pvFonte} font-black text-sol leading-none whitespace-nowrap`}>{fmtBRL(c.pv_total)}</p>
+          <p className="text-xs text-white/50 uppercase tracking-wider mt-2 font-semibold">PV bruto total</p>
         </div>
         <div className="text-right">
-          <p className={`text-lg font-black leading-none ${margemEfetivaPct >= 15 ? 'text-verde' : margemEfetivaPct >= 8 ? 'text-sol' : 'text-coral'}`}>
+          <p className={`text-3xl font-black leading-none ${margemEfetivaPct >= 15 ? 'text-verde' : margemEfetivaPct >= 8 ? 'text-sol' : 'text-coral'}`}>
             {margemEfetivaPct}%
           </p>
-          <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Margem efetiva</p>
+          <p className="text-xs text-white/50 uppercase tracking-wider mt-2 font-semibold">Margem efetiva</p>
         </div>
       </div>
 
       {/* Donut + legenda */}
-      <div className="flex items-center gap-4">
-        <GraficoPizza
-          fatias={c.fatias.map((f) => ({ rotulo: f.rotulo, valor: f.valor, cor: f.cor }))}
-          tamanho={140}
-          donut
-          fmtValor={fmtBRL}
-        />
-      </div>
+      <GraficoPizza
+        fatias={c.fatias.map((f) => ({ rotulo: f.rotulo, valor: f.valor, cor: f.cor }))}
+        tamanho={180}
+        donut
+        fmtValor={fmtBRL}
+      />
 
       {/* Bloco desconto — separado, em coral */}
       {c.desconto_total > 0 && (
-        <div className="p-2.5 bg-coral/10 border border-coral/30 rounded flex items-center justify-between">
+        <div className="p-3.5 bg-coral/10 border border-coral/30 rounded-lg flex items-center justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-coral">Descontos concedidos</p>
-            <p className="text-[10px] text-white/50">Sai da margem</p>
+            <p className="text-xs uppercase tracking-wider font-bold text-coral">Descontos concedidos</p>
+            <p className="text-[11px] text-white/60 mt-0.5">Sai da margem</p>
           </div>
           <div className="text-right">
-            <p className="text-sm font-mono font-bold text-coral">−{fmtBRL(c.desconto_total)}</p>
-            <p className="text-[10px] text-white/50">{c.desconto_pct_medio.toFixed(1)}% do PV</p>
+            <p className="text-lg font-mono font-black text-coral">−{fmtBRL(c.desconto_total)}</p>
+            <p className="text-[11px] text-white/60 mt-0.5">{c.desconto_pct_medio.toFixed(1)}% do PV</p>
           </div>
         </div>
       )}
 
-      {/* Resumo Custos × Margem — texto compacto */}
-      <div className="pt-2 border-t border-white/10 grid grid-cols-2 gap-3 text-[11px]">
+      {/* Resumo Custos × Margem */}
+      <div className="pt-3 border-t border-white/10 grid grid-cols-2 gap-4">
         <ResumoLinha
           label="Custos internos"
           valor={c.fatias.filter((f) => f.chave !== 'margem').reduce((s, f) => s + f.valor, 0)}
           pv={c.pv_total}
-          cor="text-white/70"
+          cor="text-white"
         />
         <ResumoLinha
           label="Margem bruta"
@@ -1049,7 +1054,7 @@ function ComposicaoFvBloco({ c }: { c: ComposicaoFvMes }) {
       </div>
 
       {c.ignorados_qtd > 0 && (
-        <p className="text-[10px] text-white/40 pt-1">
+        <p className="text-[11px] text-white/40 pt-1">
           ⓘ {c.ignorados_qtd} venda{c.ignorados_qtd === 1 ? '' : 's'} fora do padrão FV não incluída{c.ignorados_qtd === 1 ? '' : 's'}.
         </p>
       )}
@@ -1063,9 +1068,12 @@ function ResumoLinha({ label, valor, pv, cor, alinhamento }: {
   const pct = pv === 0 ? 0 : Math.round((valor / pv) * 100)
   return (
     <div className={alinhamento === 'right' ? 'text-right' : ''}>
-      <p className="text-[10px] uppercase tracking-wider text-white/50">{label}</p>
-      <p className={`font-mono font-semibold ${cor}`}>
-        {fmtBRL(valor)} <span className="text-white/40 font-normal">({pct}%)</span>
+      <p className="text-xs uppercase tracking-wider text-white/50 font-semibold">{label}</p>
+      <p className={`font-mono font-bold text-lg mt-1 ${cor}`}>
+        {fmtBRL(valor)}
+      </p>
+      <p className={`text-xs font-mono text-white/40 mt-0.5`}>
+        {pct}% do PV
       </p>
     </div>
   )
