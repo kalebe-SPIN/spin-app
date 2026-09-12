@@ -101,6 +101,12 @@ export default async function AdminHomePage() {
             titulo="Programa de Representantes"
             desc="Ranking, métricas do mês, folha estimada, alertas fiscais (RBT12 × faixa Simples). Espelha a proposta de credenciamento."
           />
+          <AdminCard
+            href="/admin/vendas"
+            icon="💸"
+            titulo="Vendas manuais"
+            desc="Cadastrar vendas fechadas fora do fluxo (WhatsApp, offline, evento). Soma automaticamente no painel do mês."
+          />
         </Grupo>
 
         {/* Grupo 3: Automação e IA */}

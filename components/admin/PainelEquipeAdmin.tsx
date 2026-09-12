@@ -57,6 +57,9 @@ export function PainelEquipeAdmin({ dadosIniciais }: { dadosIniciais: PainelEqui
       .on('postgres_changes', { event: '*', schema: 'public', table: 'projetos' }, refetchDebounced)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'telhados' }, refetchDebounced)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'execucoes_servicos' }, refetchDebounced)
+      // Kalebe 2026-09-11: vendas manuais também disparam refetch pra
+      // o painel se atualizar quando admin cadastra/descadastra.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vendas_manuais' }, refetchDebounced)
       .subscribe()
 
     return () => {

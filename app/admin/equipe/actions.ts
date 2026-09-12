@@ -288,9 +288,28 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     .gte('data_conclusao', inicioMesPassadoIso)
     .limit(10000)
 
-  const [{ data: projetosData }, { data: telhadosData }, { data: execData }] = await Promise.all([
-    projetosPromise, telhadosPromise, execPromise,
+  // Kalebe 2026-09-11: vendas manuais cadastradas pelo admin.
+  // Migration 107. Filtra soft-deletes. Se a tabela não existir ainda,
+  // o catch abaixo pula sem quebrar o painel.
+  const vendasManuaisPromise = supabase
+    .from('vendas_manuais')
+    .select('categoria, tipo_detalhado, valor_venda, custo_estimado, data_venda')
+    .is('deletada_em', null)
+    .gte('data_venda', inicioMesIso.slice(0, 10))
+    .limit(10000)
+
+  const [
+    { data: projetosData },
+    { data: telhadosData },
+    { data: execData },
+    vendasManuaisResult,
+  ] = await Promise.all([
+    projetosPromise, telhadosPromise, execPromise, vendasManuaisPromise,
   ])
+  // Se tabela vendas_manuais ainda não foi migrada, ignora sem falhar.
+  const vendasManuaisData = (vendasManuaisResult as any)?.error
+    ? []
+    : ((vendasManuaisResult as any)?.data || [])
 
   const todosProjetos = projetosData || []
 
@@ -478,12 +497,44 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   ] as ComposicaoFvMes['fatias'])
     .map((f) => ({ ...f, pct: Math.round((f.valor / compTotal) * 100) }))
     .filter((f) => f.valor > 0)
+  // Kalebe 2026-09-11: injeta vendas manuais FV. Sem breakdown de custo
+  // detalhado (apenas custo_estimado × margem_estimada), então soma no
+  // 'Kit WEG' (proxy do custo bruto) e o resto na 'Margem Spin'. Fica
+  // aproximação boa o suficiente pra a agregação do mês bater com o
+  // faturamento real.
+  const vendasFvManuais = (vendasManuaisData as any[]).filter((v) => v.categoria === 'fv')
+  let acc_pv_manual = 0
+  let acc_qtd_manual = 0
+  let acc_custo_manual = 0
+  for (const v of vendasFvManuais) {
+    const val = Number(v.valor_venda) || 0
+    const custo = Number(v.custo_estimado) || 0
+    if (val <= 0) continue
+    acc_pv_manual += val
+    acc_qtd_manual += 1
+    acc_custo_manual += custo
+  }
+  const acc_margem_manual = Math.max(0, acc_pv_manual - acc_custo_manual)
+  const fvKitFatia = fatiasComp.find((f) => f.chave === 'kit_weg')
+  const fvMargemFatia = fatiasComp.find((f) => f.chave === 'margem')
+  if (acc_pv_manual > 0) {
+    if (fvKitFatia) fvKitFatia.valor += acc_custo_manual
+    else fatiasComp.push({ chave: 'kit_weg', rotulo: 'Kit WEG', valor: acc_custo_manual, pct: 0, cor: '#F5B400' })
+    if (fvMargemFatia) fvMargemFatia.valor += acc_margem_manual
+    else fatiasComp.push({ chave: 'margem', rotulo: 'Margem Spin', valor: acc_margem_manual, pct: 0, cor: '#5FCF80' })
+    // Recalcula pct das fatias com o novo pv_total (bruto de valorFechadoMes + manual)
+    const novoPvBruto = acc.pv_total + acc_pv_manual
+    for (const f of fatiasComp) {
+      f.pct = novoPvBruto === 0 ? 0 : Math.round((f.valor / novoPvBruto) * 100)
+    }
+  }
+
   const composicaoFvMes: ComposicaoFvMes = {
-    qtd_vendas: acc.qtd,
-    pv_total: acc.pv_total,
+    qtd_vendas: acc.qtd + acc_qtd_manual,
+    pv_total: acc.pv_total + acc_pv_manual,
     fatias: fatiasComp,
     desconto_total: acc.desconto,
-    desconto_pct_medio: acc.pv_total === 0 ? 0 : (acc.desconto / acc.pv_total) * 100,
+    desconto_pct_medio: (acc.pv_total + acc_pv_manual) === 0 ? 0 : (acc.desconto / (acc.pv_total + acc_pv_manual)) * 100,
     ignorados_qtd: acc.ignorados,
   }
 
@@ -509,6 +560,17 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   for (const e of execsMes) {
     const tipo = String(e.tipo_servico || 'outros')
     const valor = Number(e.valor_final ?? e.valor_contratado ?? 0) || 0
+    const cur = porTipo.get(tipo) || { qtd: 0, valor: 0 }
+    cur.qtd += 1
+    cur.valor += valor
+    porTipo.set(tipo, cur)
+  }
+  // Kalebe 2026-09-11: injeta vendas manuais de serviço.
+  const vendasServManuais = (vendasManuaisData as any[]).filter((v) => v.categoria === 'servico')
+  for (const v of vendasServManuais) {
+    const tipo = String(v.tipo_detalhado || 'outros')
+    const valor = Number(v.valor_venda) || 0
+    if (valor <= 0) continue
     const cur = porTipo.get(tipo) || { qtd: 0, valor: 0 }
     cur.qtd += 1
     cur.valor += valor
