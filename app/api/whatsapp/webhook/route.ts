@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { dispararGatilho } from '@/lib/bianca/gatilhos'
+import {
+  upsertContato,
+  findOrCreateConversaAtiva,
+  gravarMensagem,
+  atualizarStatusPorMetaId,
+  normalizarTelefone,
+} from '@/lib/whatsapp/conversas'
 
 /**
  * Webhook do WhatsApp Meta Cloud API.
@@ -11,6 +18,11 @@ import { dispararGatilho } from '@/lib/bianca/gatilhos'
  * Env vars:
  *   - WHATSAPP_VERIFY_TOKEN: string custom que você define. Usa no
  *     Meta Business Manager ao configurar o webhook.
+ *
+ * Kalebe 2026-09-12 (Sprint 1 do canal WhatsApp integrado):
+ *   Além de manter a lógica antiga de bianca_comunicacoes (compat),
+ *   agora TODA mensagem entra em wa_contatos/wa_conversas/wa_mensagens.
+ *   Isso vira a fonte de verdade do inbox unificado.
  */
 
 // ═══════════════════ VERIFICAÇÃO (GET) ═══════════════════
@@ -68,12 +80,59 @@ export async function POST(req: NextRequest) {
               .update(patch)
               .eq('meta_message_id', metaId)
           }
+
+          // Sprint 1: reflete no novo modelo wa_mensagens
+          const patchWa: any = {}
+          if (evento === 'sent') patchWa.status_entrega = 'enviada'
+          if (evento === 'delivered') { patchWa.status_entrega = 'entregue'; patchWa.entregue_em = timestamp }
+          if (evento === 'read') { patchWa.status_entrega = 'lida'; patchWa.lida_em = timestamp }
+          if (evento === 'failed') { patchWa.status_entrega = 'falhou'; patchWa.erro = status.errors?.[0]?.title || 'Falhou (webhook)' }
+          if (Object.keys(patchWa).length > 0) {
+            await atualizarStatusPorMetaId(supabaseAdmin, metaId, patchWa)
+          }
         }
 
         // ─── MENSAGEM recebida do cliente (resposta) ───
+        // Extrai metadados de contato (nome do wpp) — vem em value.contacts
+        const contatosMeta = value?.contacts || []
+        const nomeExibicaoPorTelefone: Record<string, string> = {}
+        for (const c of contatosMeta) {
+          const wa = normalizarTelefone(c.wa_id)
+          if (wa) nomeExibicaoPorTelefone[wa] = c.profile?.name || null
+        }
+
         for (const msg of value?.messages || []) {
           const from = msg.from // telefone sem +
           const texto = msg.text?.body || msg.button?.text || '[mídia não-texto]'
+
+          // Sprint 1: modelo canônico de conversa
+          const tipoMsg: any = msg.type || 'text'
+          const contato = await upsertContato(supabaseAdmin, {
+            telefone: from,
+            nome_exibicao: nomeExibicaoPorTelefone[normalizarTelefone(from)] || null,
+            tipo_default: 'lead',
+          })
+          let conversaId: string | null = null
+          if (contato) {
+            const conversa = await findOrCreateConversaAtiva(supabaseAdmin, contato.id, {
+              status_inicial: 'nova',
+            })
+            conversaId = conversa?.id || null
+            if (conversaId) {
+              const midiaObj = (msg as any)[tipoMsg] || {}
+              await gravarMensagem(supabaseAdmin, {
+                conversa_id: conversaId,
+                direcao: 'inbound',
+                tipo: tipoMsg === 'text' ? 'text' : tipoMsg,
+                texto: msg.text?.body || msg.button?.text || null,
+                meta_message_id: msg.id || null,
+                midia_meta_id: midiaObj.id || null,
+                midia_mime: midiaObj.mime_type || null,
+                midia_duracao_seg: tipoMsg === 'audio' ? Number(midiaObj.voice_duration || 0) || null : null,
+                status_entrega: 'lida',
+              })
+            }
+          }
 
           // Marca comunicações recentes com esse número como respondidas
           const { data: recentes } = await supabaseAdmin

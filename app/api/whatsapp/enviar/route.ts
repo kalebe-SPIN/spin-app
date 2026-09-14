@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  upsertContato,
+  findOrCreateConversaAtiva,
+  gravarMensagem,
+} from '@/lib/whatsapp/conversas'
 
 /**
  * Envia WhatsApp via Meta Cloud API.
@@ -112,6 +117,39 @@ export async function POST(req: NextRequest) {
         meta_message_id: metaMessageId,
       })
       .eq('id', comunicacao_id)
+
+    // Sprint 1: reflete no novo modelo canônico. Grava a msg outbound
+    // apontando pra bianca_comunicacao_id — o inbox mostra tudo unificado.
+    try {
+      const contato = await upsertContato(supabaseAdmin, { telefone: tel })
+      if (contato) {
+        const conversa = await findOrCreateConversaAtiva(supabaseAdmin, contato.id, {
+          status_inicial: 'em_atendimento',
+        })
+        if (conversa) {
+          // Nome do agente (humano) que apertou o botão
+          const { data: perfilRemetente } = await supabaseAdmin
+            .from('profiles')
+            .select('nome_completo')
+            .eq('id', user.id)
+            .maybeSingle()
+          await gravarMensagem(supabaseAdmin, {
+            conversa_id: conversa.id,
+            direcao: 'outbound',
+            tipo: 'text',
+            texto: com.mensagem,
+            meta_message_id: metaMessageId,
+            remetente_id: user.id,
+            origem_agente_nome: perfilRemetente?.nome_completo || null,
+            status_entrega: 'enviada',
+            bianca_comunicacao_id: comunicacao_id,
+          })
+        }
+      }
+    } catch (e) {
+      console.error('[whatsapp/enviar wa_mensagens]', e)
+      // Não falha o envio se o mirror falhar
+    }
 
     return NextResponse.json({
       sucesso: true,
