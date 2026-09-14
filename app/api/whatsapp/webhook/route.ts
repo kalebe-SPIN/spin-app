@@ -9,6 +9,7 @@ import {
   normalizarTelefone,
 } from '@/lib/whatsapp/conversas'
 import { processarMensagemQualificacao } from '@/lib/whatsapp/agente-qualificacao'
+import { aceitarLead } from '@/lib/whatsapp/broadcast'
 
 /**
  * Webhook do WhatsApp Meta Cloud API.
@@ -132,6 +133,42 @@ export async function POST(req: NextRequest) {
                 midia_duracao_seg: tipoMsg === 'audio' ? Number(midiaObj.voice_duration || 0) || null : null,
                 status_entrega: 'lida',
               })
+            }
+          }
+
+          // Sprint 3: se o contato é REPRESENTANTE, checar se ele mandou
+          // "aceitar" pra broadcast aberto. Broadcast tem ordem-FIFO por aceite.
+          if (contato && contato.criado === false) {
+            // Contato já existia — pode ser rep
+            const textoBruto = String(msg.text?.body || msg.button?.text || '').trim().toLowerCase()
+            const acionoou = textoBruto === 'aceitar' || textoBruto === 'aceito'
+              || textoBruto === '1' || textoBruto.startsWith('aceit')
+            if (acionoou) {
+              // Busca perfil pelo telefone (representantes têm profiles.telefone cadastrado)
+              const telNorm = normalizarTelefone(from)
+              const telSemDDI = telNorm.startsWith('55') ? telNorm.slice(2) : telNorm
+              const { data: perfilRep } = await supabaseAdmin
+                .from('profiles')
+                .select('id, role, ativo')
+                .or(`telefone.eq.${telNorm},telefone.eq.${telSemDDI}`)
+                .in('role', ['representante', 'admin', 'consultor'])
+                .maybeSingle()
+              if (perfilRep?.ativo) {
+                // Pega broadcast mais recente aguardando/atribuído — MVP: 1 broadcast ativo por vez
+                // Realidade: poderia ter múltiplos concorrentes — Kalebe pode expandir depois.
+                const { data: bc } = await supabaseAdmin
+                  .from('lead_broadcasts')
+                  .select('id')
+                  .in('status', ['aguardando_aceites', 'atribuido'])
+                  .order('criado_em', { ascending: false })
+                  .limit(1)
+                  .maybeSingle()
+                if (bc) {
+                  aceitarLead({ broadcast_id: bc.id, representante_id: perfilRep.id })
+                    .catch((err) => console.error('[webhook aceitarLead]', err))
+                  continue  // não passa pra qualificação — é aceite de rep
+                }
+              }
             }
           }
 
