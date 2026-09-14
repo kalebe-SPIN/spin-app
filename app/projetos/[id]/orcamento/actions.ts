@@ -169,9 +169,27 @@ export async function aplicarDescontoAdminAction(
  * Descrição + valor, sem passar pelo dimensionamento. Soma ao PV bruto
  * antes do ajuste final. Só admin.
  */
+export type SecaoExtra = 'kit_weg' | 'lista_ca' | 'servicos'
+
+/**
+ * Kalebe 2026-09-14: extras agora são contextuais por seção (Kit WEG,
+ * Lista CA, Serviços). Em Kit WEG e Lista CA a UI busca no catálogo e
+ * puxa preço automático da tabela WEG. Em Serviços é livre.
+ * Cada item guarda: { secao, descricao, valor, qtd?, unidade?, produto_id?, criado_em }.
+ * Retrocompat: itens antigos sem `secao` → tratados como 'servicos' na UI.
+ */
 export async function adicionarExtraAction(
   projetoId: string,
-  entrada: { descricao: string; valor: number },
+  entrada: {
+    descricao: string
+    valor: number
+    secao?: SecaoExtra
+    qtd?: number
+    unidade?: string
+    produto_id?: string
+    modelo?: string
+    fabricante?: string
+  },
 ): Promise<{ sucesso: true } | { erro: string }> {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -182,19 +200,95 @@ export async function adicionarExtraAction(
 
   const desc = String(entrada.descricao || '').trim()
   const val = Number(entrada.valor) || 0
+  const secao: SecaoExtra = (entrada.secao === 'kit_weg' || entrada.secao === 'lista_ca' || entrada.secao === 'servicos')
+    ? entrada.secao : 'servicos'
+  const qtd = entrada.qtd && entrada.qtd > 0 ? Number(entrada.qtd) : 1
   if (!desc) return { erro: 'Descrição obrigatória' }
   if (val === 0) return { erro: 'Valor não pode ser zero' }
 
   const { data: proj } = await supabase
     .from('projetos').select('extras_proposta').eq('id', projetoId).single()
   const atuais: any[] = Array.isArray(proj?.extras_proposta) ? proj.extras_proposta : []
-  const novos = [...atuais, { descricao: desc, valor: val, criado_em: new Date().toISOString() }]
+
+  const novoItem = {
+    secao,
+    descricao: desc,
+    valor: val,
+    qtd,
+    unidade: entrada.unidade || 'un',
+    produto_id: entrada.produto_id || null,
+    modelo: entrada.modelo || null,
+    fabricante: entrada.fabricante || null,
+    criado_em: new Date().toISOString(),
+  }
+  const novos = [...atuais, novoItem]
 
   const { error } = await supabase
     .from('projetos').update({ extras_proposta: novos }).eq('id', projetoId)
   if (error) return { erro: error.message }
   revalidatePath(`/projetos/${projetoId}/orcamento`)
   return { sucesso: true }
+}
+
+/**
+ * Busca produtos do catálogo WEG por categoria + termo livre.
+ * Retorna preço vigente hoje. Usado pelos modais de Kit WEG e Lista CA.
+ */
+export async function buscarProdutosCatalogoAction(entrada: {
+  categoria?: string   // 'placa'|'inversor'|'bateria'|... — filtro opcional
+  q?: string           // termo livre (nome, modelo, fabricante)
+  limit?: number
+}): Promise<{ produtos: Array<any> } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  const { data: perfil } = await supabase
+    .from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (perfil?.role !== 'admin') return { erro: 'Só admin' }
+
+  const hoje = new Date().toISOString().slice(0, 10)
+  const q = String(entrada.q || '').trim()
+  const limit = Math.min(entrada.limit || 50, 100)
+
+  let query = supabase
+    .from('produtos')
+    .select(`
+      id, modelo, fabricante, categoria, subcategoria, specs, disponivel_estoque,
+      precos_produtos(preco_venda, vigente_de, vigente_ate)
+    `)
+    .eq('ativo', true)
+    .limit(limit)
+
+  if (entrada.categoria) query = query.eq('categoria', entrada.categoria)
+  if (q) {
+    // Busca por modelo, fabricante ou codigo_weg (or)
+    query = query.or(`modelo.ilike.%${q}%,fabricante.ilike.%${q}%,codigo_weg.ilike.%${q}%`)
+  }
+
+  const { data, error } = await query
+  if (error) return { erro: error.message }
+
+  // Anexa preço vigente pra cada produto
+  const produtos = (data || []).map((p: any) => {
+    const precos = (p.precos_produtos || []) as any[]
+    const vigentes = precos.filter((pr) =>
+      (!pr.vigente_de || pr.vigente_de <= hoje)
+      && (!pr.vigente_ate || pr.vigente_ate >= hoje),
+    )
+    const preco_venda = Number((vigentes[0] || precos[0])?.preco_venda) || 0
+    return {
+      id: p.id,
+      modelo: p.modelo,
+      fabricante: p.fabricante,
+      categoria: p.categoria,
+      subcategoria: p.subcategoria,
+      specs: p.specs,
+      disponivel_estoque: p.disponivel_estoque,
+      preco_venda,
+    }
+  })
+
+  return { produtos }
 }
 
 export async function removerExtraAction(

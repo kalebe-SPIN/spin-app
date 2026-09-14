@@ -4,6 +4,7 @@ import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { salvarOrcamentoAction, marcarPropostaEnviadaAction, aplicarDescontoAdminAction, adicionarExtraAction, removerExtraAction } from '@/app/projetos/[id]/orcamento/actions'
+import { BotaoAdicionarItemExtra } from '@/components/BotaoAdicionarItemExtra'
 import { PropostaPDFTemplate } from './PropostaPDFTemplate'
 import { GraficoGeracaoConsumo } from './GraficoGeracaoConsumo'
 import { estimarGeracaoMensal, extrairConsumoMensal } from '@/lib/geracao-mensal'
@@ -102,9 +103,15 @@ export function OrcamentoClient({
 
   // Kalebe 2026-09-02: extras livres (brindes, consultoria, serviços extras)
   // Somam ao bruto ANTES do ajuste final.
-  const extras: Array<{ descricao: string; valor: number }> =
+  // Kalebe 2026-09-14: extras agora podem ter `secao` ('kit_weg'|'lista_ca'|
+  // 'servicos'). Itens sem secao (legado) caem no bloco antigo do fim.
+  const extras: Array<{ descricao: string; valor: number; secao?: string; qtd?: number; unidade?: string; modelo?: string; fabricante?: string; produto_id?: string }> =
     Array.isArray(projeto.extras_proposta) ? projeto.extras_proposta : []
   const totalExtras = extras.reduce((s, e) => s + (Number(e.valor) || 0), 0)
+  const extrasKitWeg = extras.map((e, i) => ({ ...e, __i: i })).filter((e) => e.secao === 'kit_weg')
+  const extrasListaCa = extras.map((e, i) => ({ ...e, __i: i })).filter((e) => e.secao === 'lista_ca')
+  const extrasServicos = extras.map((e, i) => ({ ...e, __i: i })).filter((e) => e.secao === 'servicos')
+  const extrasLegado = extras.map((e, i) => ({ ...e, __i: i })).filter((e) => !e.secao)
 
   // Totais consolidados (soma de todas as UCs no modo por_uc) + extras
   const pvBaseCalculado = modoComposicao === 'por_uc' && propostasPorUc
@@ -394,11 +401,13 @@ export function OrcamentoClient({
         )
       })()}
 
-      {/* Kalebe 2026-09-02: itens extras livres (brinde, consultoria) — só admin */}
-      {ehAdmin && (
+      {/* Kalebe 2026-09-14: extras legados (sem seção). Bloco só aparece se
+          tiver algum item antigo do jeito velho. Novos itens vão pros botões
+          contextuais em cada seção do bloco Admin. */}
+      {ehAdmin && extrasLegado.length > 0 && (
         <CampoExtrasProposta
           projetoId={projeto.id}
-          extras={extras}
+          extras={extrasLegado as any}
           fmt={fmt}
         />
       )}
@@ -527,6 +536,12 @@ function ComposicaoCustosAdmin({
   const complementos = projeto.lista_complementos_cc?.itens || []
   const avisos = projeto.lista_complementos_cc?.avisos || []
 
+  // Kalebe 2026-09-14: extras contextuais por seção — Kit WEG, Lista CA, Serviços
+  const _extrasArr: any[] = Array.isArray(projeto.extras_proposta) ? projeto.extras_proposta : []
+  const extrasKitWeg = _extrasArr.map((e, i) => ({ ...e, __i: i })).filter((e: any) => e.secao === 'kit_weg')
+  const extrasListaCa = _extrasArr.map((e, i) => ({ ...e, __i: i })).filter((e: any) => e.secao === 'lista_ca')
+  const extrasServicos = _extrasArr.map((e, i) => ({ ...e, __i: i })).filter((e: any) => e.secao === 'servicos')
+
   // Monta linhas do kit WEG: placa + inversor(es) + complementos
   type LinhaWeg = { descricao: string; qtd: number; unidade: string; precoUnit: number; subtotal: number; comFator: number }
   const linhasWeg: LinhaWeg[] = []
@@ -648,7 +663,10 @@ function ComposicaoCustosAdmin({
 
       {/* Bloco 1 — Kit WEG */}
       <div className="mb-6">
-        <h3 className="text-xs uppercase tracking-wider font-bold text-white/60 mb-2">1. Kit WEG (revenda × fator 0,4182)</h3>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h3 className="text-xs uppercase tracking-wider font-bold text-white/60">1. Kit WEG (revenda × fator 0,4182)</h3>
+          <BotaoAdicionarItemExtra projetoId={projeto.id} secao="kit_weg" />
+        </div>
         <div className="overflow-x-auto -mx-2 sm:mx-0">
           <table className="w-full text-xs">
             <thead>
@@ -670,6 +688,21 @@ function ComposicaoCustosAdmin({
                   <td className="py-1.5 px-2 text-right whitespace-nowrap text-sol">R$ {fmt(l.comFator)}</td>
                 </tr>
               ))}
+              {extrasKitWeg.map((e) => (
+                <tr key={`ek-${e.__i}`} className="text-white/70 bg-sol/[0.04]">
+                  <td className="py-1.5 px-2">
+                    <span className="text-[9px] uppercase tracking-wider text-sol font-bold mr-1.5">EXTRA</span>
+                    {e.descricao}
+                  </td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">{e.qtd || 1} {e.unidade || 'un'}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(Number(e.valor || 0) / (e.qtd || 1))}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(Number(e.valor) || 0)}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap text-sol">
+                    R$ {fmt(Number(e.valor) || 0)}
+                    <BotaoRemoverExtra projetoId={projeto.id} index={e.__i} />
+                  </td>
+                </tr>
+              ))}
               <tr className="text-white font-bold border-t border-white/20">
                 <td className="py-2 px-2" colSpan={3}>Total Kit WEG</td>
                 <td className="py-2 px-2 text-right whitespace-nowrap">R$ {fmt(totalWegBruto)}</td>
@@ -682,9 +715,12 @@ function ComposicaoCustosAdmin({
 
       {/* Bloco 2 — Lista CA */}
       <div className="mb-6">
-        <h3 className="text-xs uppercase tracking-wider font-bold text-white/60 mb-2">
-          2. Lista CA (materiais complementares tributáveis)
-        </h3>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h3 className="text-xs uppercase tracking-wider font-bold text-white/60">
+            2. Lista CA (materiais complementares tributáveis)
+          </h3>
+          <BotaoAdicionarItemExtra projetoId={projeto.id} secao="lista_ca" />
+        </div>
         <div className="overflow-x-auto -mx-2 sm:mx-0">
           <table className="w-full text-xs">
             <thead>
@@ -707,6 +743,20 @@ function ComposicaoCustosAdmin({
                   </td>
                 </tr>
               ))}
+              {extrasListaCa.map((e) => (
+                <tr key={`el-${e.__i}`} className="text-white/70 bg-sol/[0.04]">
+                  <td className="py-1.5 px-2">
+                    <span className="text-[9px] uppercase tracking-wider text-sol font-bold mr-1.5">EXTRA</span>
+                    {e.descricao}
+                  </td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">{e.qtd || 1} {e.unidade || 'un'}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(Number(e.valor || 0) / (e.qtd || 1))}</td>
+                  <td className="py-1.5 px-2 text-right whitespace-nowrap text-sol font-semibold">
+                    R$ {fmt(Number(e.valor) || 0)}
+                    <BotaoRemoverExtra projetoId={projeto.id} index={e.__i} />
+                  </td>
+                </tr>
+              ))}
               <tr className="text-white font-bold border-t border-white/20">
                 <td className="py-2 px-2" colSpan={3}>Total Lista CA</td>
                 <td className="py-2 px-2 text-right whitespace-nowrap text-sol">R$ {fmt(totalListaCa)}</td>
@@ -718,11 +768,26 @@ function ComposicaoCustosAdmin({
 
       {/* Bloco 3 — Serviços & logística */}
       <div className="mb-6">
-        <h3 className="text-xs uppercase tracking-wider font-bold text-white/60 mb-2">3. Serviços e logística (também tributáveis)</h3>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h3 className="text-xs uppercase tracking-wider font-bold text-white/60">3. Serviços e logística (também tributáveis)</h3>
+          <BotaoAdicionarItemExtra projetoId={projeto.id} secao="servicos" />
+        </div>
         <div className="space-y-1 text-xs text-white/70">
           <Linha label="Frete regional" valor={fmt(proposta.frete)} />
           <Linha label="Projeto + ART" valor={fmt(proposta.projeto_art)} />
           <Linha label="Instalação (mão de obra)" valor={fmt(proposta.instalacao)} />
+          {extrasServicos.map((e) => (
+            <div key={`es-${e.__i}`} className="flex items-baseline justify-between gap-2 bg-sol/[0.04] -mx-2 px-2 py-1 rounded">
+              <span className="text-white/80">
+                <span className="text-[9px] uppercase tracking-wider text-sol font-bold mr-1.5">EXTRA</span>
+                {e.descricao} {e.qtd && e.qtd > 1 ? <span className="text-white/40">({e.qtd} un)</span> : null}
+              </span>
+              <span className="whitespace-nowrap flex items-center gap-1">
+                <span className="text-sol font-mono">R$ {fmt(Number(e.valor) || 0)}</span>
+                <BotaoRemoverExtra projetoId={projeto.id} index={e.__i} />
+              </span>
+            </div>
+          ))}
           <div className="pt-2 mt-2 border-t border-white/10">
             <Linha label="Base impostável (Lista CA + serviços)" valor={fmt(proposta.base_impostavel)} destaque />
           </div>
@@ -1078,6 +1143,33 @@ function CampoDescontoAdmin({
         {msg && <span className="text-xs text-white/70">{msg}</span>}
       </div>
     </section>
+  )
+}
+
+/**
+ * Kalebe 2026-09-14: mini-botão pra remover um item extra (por index).
+ * Aparece inline nas tabelas dos blocos Kit WEG, Lista CA e Serviços.
+ */
+function BotaoRemoverExtra({ projetoId, index }: { projetoId: string; index: number }) {
+  const [rodando, setRodando] = useState(false)
+  async function remover() {
+    if (!confirm('Remover esse item extra?')) return
+    setRodando(true)
+    try {
+      const r = await removerExtraAction(projetoId, index)
+      if ('sucesso' in r) window.location.reload()
+    } finally { setRodando(false) }
+  }
+  return (
+    <button
+      type="button"
+      onClick={remover}
+      disabled={rodando}
+      title="Remover item"
+      className="ml-2 text-coral hover:text-coral/70 text-[11px] disabled:opacity-40"
+    >
+      🗑
+    </button>
   )
 }
 
