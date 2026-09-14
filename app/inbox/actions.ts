@@ -7,6 +7,7 @@ import {
   findOrCreateConversaAtiva,
   upsertContato,
 } from '@/lib/whatsapp/conversas'
+import { marcarContatoConfirmado } from '@/lib/whatsapp/broadcast'
 import { revalidatePath } from 'next/cache'
 
 /**
@@ -214,6 +215,25 @@ export async function enviarTextoAction(entrada: {
     .update({ status: 'em_atendimento', responsavel_id: check.user.id, agente_ativo: null })
     .eq('id', entrada.conversa_id)
     .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
+
+  // Detecta broadcast atribuído a esse humano → marca contatou
+  // (msg dele pelo canal Spin conta como cumprimento de SLA)
+  try {
+    const { data: bcAtribuido } = await admin
+      .from('lead_broadcasts')
+      .select('id')
+      .eq('conversa_id', entrada.conversa_id)
+      .in('status', ['atribuido'])
+      .maybeSingle()
+    if (bcAtribuido) {
+      await marcarContatoConfirmado({
+        broadcast_id: bcAtribuido.id,
+        representante_id: check.user.id,
+      })
+    }
+  } catch (e) {
+    console.error('[enviarTextoAction/marcarContato]', e)
+  }
 
   revalidatePath('/inbox')
   return { sucesso: true, meta_message_id: metaMessageId }
