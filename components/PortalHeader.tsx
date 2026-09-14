@@ -58,6 +58,7 @@ export async function PortalHeader() {
       label: '🎯 CRM',
     },
     { href: '/agenda', label: '📅 Agenda' },
+    { href: '/inbox', label: '💬 Inbox' },
     ...(modoAtivo === 'admin' && ehAdminReal
       ? [{ href: '/admin', label: '⚙️ Admin' }] : []),
   ]

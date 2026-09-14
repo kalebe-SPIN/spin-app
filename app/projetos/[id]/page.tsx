@@ -8,6 +8,7 @@ import { CardCampanhaProjeto } from '@/components/CardCampanhaProjeto'
 import { MudarEtapaCard } from '@/components/MudarEtapaCard'
 import { ItensPropostaCard } from '@/components/ItensPropostaCard'
 import { AcoesRapidasCard } from '@/components/AcoesRapidasCard'
+import { BotaoAbrirCanalCliente } from '@/components/BotaoAbrirCanalCliente'
 import { ValorItemManual } from '@/components/ValorItemManual'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
@@ -289,7 +290,12 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
         <Section title="Cliente">
           <Info label="Razão social" value={projeto.cliente_razao_social} />
           <Info label="CPF/CNPJ" value={projeto.cliente_cpf_cnpj} />
-          <Info label="WhatsApp" value={projeto.cliente_telefone} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <Info label="WhatsApp" value={projeto.cliente_telefone} />
+            {projeto.cliente_telefone && (
+              <BotaoAbrirCanalCliente projetoId={projeto.id} />
+            )}
+          </div>
           {projeto.cliente_email && <Info label="Email" value={projeto.cliente_email} />}
           {projeto.cliente_endereco?.cidade && (
             <Info label="Cidade" value={`${projeto.cliente_endereco.cidade}/${projeto.cliente_endereco.uf || 'SC'}`} />

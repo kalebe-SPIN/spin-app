@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
+import { BotaoAbrirCanalCliente } from '@/components/BotaoAbrirCanalCliente'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
 import { criarNovaPropostaMesmoClienteAction } from '@/app/projetos/actions'
 
@@ -298,8 +299,9 @@ function ProjetoLinha({ projeto }: { projeto: Projeto }) {
         </div>
         <TimelineProjeto status={projeto.status} />
       </Link>
-      {/* Botão excluir — aparece só no hover, canto sup direito */}
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Ações rápidas — canto sup direito. Kalebe 2026-09-14: botão canal WhatsApp */}
+      <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <BotaoAbrirCanalCliente projetoId={projeto.id} variante="icone" />
         <BotaoExcluirProposta projetoId={projeto.id} codigo={projeto.codigo} />
       </div>
     </div>

@@ -240,6 +240,63 @@ export async function enviarTextoAction(entrada: {
 }
 
 /**
+ * Kalebe 2026-09-14: 'em cada card de cliente ter o botão de acesso ao
+ * canal de comunicação já dentro'.
+ *
+ * Abre (ou cria) a conversa WhatsApp de um projeto. Se o cliente
+ * ainda não tem contato/conversa, cria automaticamente.
+ * Retorna o conversa_id pra redirecionar pro /inbox?c=<id>.
+ */
+export async function abrirCanalDoProjetoAction(
+  projeto_id: string,
+): Promise<{ conversa_id: string } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+
+  const admin = createAdminClient()
+
+  const { data: projeto } = await admin
+    .from('projetos')
+    .select('id, cliente_razao_social, cliente_telefone, consultor_id')
+    .eq('id', projeto_id)
+    .maybeSingle()
+  if (!projeto) return { erro: 'Projeto não encontrado' }
+
+  // Gate: admin/representante/consultor podem abrir qualquer projeto;
+  // consultor comum só o próprio.
+  if (check.perfil?.role === 'consultor' && projeto.consultor_id !== check.user.id) {
+    return { erro: 'Não é seu projeto' }
+  }
+
+  const telefone = String(projeto.cliente_telefone || '').replace(/\D/g, '')
+  if (!telefone || telefone.length < 10) {
+    return { erro: 'Cliente sem telefone válido no cadastro.' }
+  }
+  let tel = telefone
+  if (tel.length === 11 || tel.length === 10) tel = '55' + tel
+
+  const contato = await upsertContato(admin, {
+    telefone: tel,
+    nome_exibicao: projeto.cliente_razao_social || undefined,
+    tipo_default: 'lead',
+  })
+  if (!contato) return { erro: 'Falha ao criar contato' }
+
+  // Se contato ainda não linkava projeto, linka agora
+  await admin
+    .from('wa_contatos')
+    .update({ projeto_id })
+    .eq('id', contato.id)
+
+  const conversa = await findOrCreateConversaAtiva(admin, contato.id, {
+    status_inicial: 'em_atendimento',
+  })
+  if (!conversa) return { erro: 'Falha ao abrir conversa' }
+
+  return { conversa_id: conversa.id }
+}
+
+/**
  * Cria conversa manualmente iniciando pelo telefone (pra testar sem cliente
  * mandar msg primeiro). Só admin.
  */
