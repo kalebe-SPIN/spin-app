@@ -112,6 +112,19 @@ export default async function AdminHomePage() {
         {/* Grupo 3: Automação e IA */}
         <Grupo titulo="🤖 Automação e inteligência">
           <AdminCard
+            href="/admin/whatsapp"
+            icon="💬"
+            titulo="Canal WhatsApp Spin"
+            desc="Painel operacional do canal +55 48 3263-0182. Conversas em tempo real, broadcasts pros reps, fila FIFO, agentes IA. Substitui o TROIA."
+            destaque
+          />
+          <AdminCard
+            href="/inbox"
+            icon="📨"
+            titulo="Inbox WhatsApp"
+            desc="Timeline das conversas, envio de mensagens (multi-persona), assumir/encerrar. Para atendimento humano no dia a dia."
+          />
+          <AdminCard
             href="/admin/bianca/gatilhos"
             icon="⚡"
             titulo="Gatilhos da Bianca"
