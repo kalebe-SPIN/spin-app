@@ -6,6 +6,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import {
   buscarPainelWaAction,
   cancelarBroadcastAction,
+  atualizarTelefoneUsuarioAction,
   type PainelWa,
 } from '@/app/admin/whatsapp/actions'
 
@@ -59,12 +60,18 @@ export function PainelWaClient({ dadosIniciais }: { dadosIniciais: PainelWa }) {
         {refetching && ' · atualizando...'}
       </p>
 
-      {/* 4 contadores */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* 5 contadores */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <CardContador label="Conversas ativas" valor={c.conversas_ativas} cor="text-weg-azul" hint="não encerradas" />
         <CardContador label="Broadcasts abertos" valor={c.broadcasts_abertos} cor="text-sol" hint="lead em atribuição" />
         <CardContador label="Leads na fila" valor={c.leads_na_fila} cor="text-verde" hint="pendentes + no volante" />
         <CardContador label="Agentes IA" valor={`${c.agentes_ativos}/${c.agentes_total}`} cor="text-coral" hint="ativos" />
+        <CardContador
+          label="Reps com telefone"
+          valor={`${c.usuarios_com_telefone}/${c.usuarios_com_telefone + c.usuarios_sem_telefone}`}
+          cor={c.usuarios_sem_telefone === 0 ? 'text-verde' : 'text-coral'}
+          hint={c.usuarios_sem_telefone > 0 ? `⚠ ${c.usuarios_sem_telefone} sem telefone` : 'todos cadastrados'}
+        />
       </div>
 
       {/* Broadcasts */}
@@ -95,6 +102,23 @@ export function PainelWaClient({ dadosIniciais }: { dadosIniciais: PainelWa }) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {dados.agentes.map((a) => <CardAgente key={a.id} a={a} />)}
+          </div>
+        )}
+      </section>
+
+      {/* Cadastro de telefones dos usuários — Kalebe 2026-09-14 */}
+      <section className="bg-white/[0.03] border border-white/10 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-white">📞 Telefones dos usuários</h2>
+          <p className="text-[10px] text-white/40">
+            Sem telefone cadastrado o usuário não recebe broadcast de novo lead.
+          </p>
+        </div>
+        {dados.usuarios.length === 0 ? (
+          <p className="text-sm text-white/40 italic py-6 text-center">Nenhum usuário ativo.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {dados.usuarios.map((u) => <LinhaUsuario key={u.id} u={u} />)}
           </div>
         )}
       </section>
@@ -254,6 +278,66 @@ function CardAgente({ a }: { a: any }) {
           </p>
         </div>
       </div>
+    </div>
+  )
+}
+
+function LinhaUsuario({ u }: { u: any }) {
+  const [valor, setValor] = useState(u.telefone || '')
+  const [salvando, startSalvar] = useTransition()
+  const [erro, setErro] = useState<string | null>(null)
+  const [ok, setOk] = useState(false)
+
+  const original = String(u.telefone || '')
+  const dirty = valor !== original
+
+  function salvar() {
+    setErro(null); setOk(false)
+    startSalvar(async () => {
+      const r = await atualizarTelefoneUsuarioAction(u.id, valor)
+      if ('erro' in r) { setErro(r.erro); return }
+      setValor(r.telefone)
+      setOk(true)
+      setTimeout(() => setOk(false), 1500)
+    })
+  }
+
+  const primeiroNome = (u.nome_completo || '').split(' ')[0]
+
+  return (
+    <div className="p-2.5 bg-white/[0.02] border border-white/10 rounded-lg">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-sm font-bold text-white truncate flex-1" title={u.nome_completo}>
+          {u.nome_completo || 'Sem nome'}
+        </span>
+        <span className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${
+          u.role === 'admin' ? 'bg-sol/20 text-sol'
+          : u.role === 'representante' ? 'bg-verde/20 text-verde'
+          : 'bg-weg-azul/20 text-weg-azul'
+        }`}>{u.role}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && dirty) salvar() }}
+          placeholder="55DDD9NNNNNNNN"
+          className={`flex-1 px-2 py-1 bg-noite/40 border rounded text-xs text-white font-mono ${
+            !u.telefone ? 'border-coral/30' : 'border-white/10'
+          }`}
+        />
+        {dirty && (
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="px-2 py-1 rounded bg-sol/20 border border-sol/40 text-sol text-[10px] font-bold uppercase disabled:opacity-40"
+          >
+            {salvando ? '...' : 'Salvar'}
+          </button>
+        )}
+        {ok && <span className="text-verde text-xs">✓</span>}
+      </div>
+      {erro && <p className="text-[10px] text-coral mt-1">{erro}</p>}
     </div>
   )
 }

@@ -23,10 +23,19 @@ export type PainelWa = {
     leads_na_fila: number
     agentes_ativos: number
     agentes_total: number
+    usuarios_com_telefone: number
+    usuarios_sem_telefone: number
   }
   broadcasts: any[]
   agentes: any[]
   conversas_recentes: any[]
+  usuarios: Array<{
+    id: string
+    nome_completo: string | null
+    role: string
+    telefone: string | null
+    ativo: boolean
+  }>
 }
 
 export async function buscarPainelWaAction(): Promise<PainelWa | { erro: string }> {
@@ -34,8 +43,8 @@ export async function buscarPainelWaAction(): Promise<PainelWa | { erro: string 
   if ('erro' in check) return { erro: check.erro as string }
   const supabase = createClient()
 
-  // 4 queries em paralelo
-  const [broadcastsResp, agentesResp, conversasResp, aceitesResp] = await Promise.all([
+  // 5 queries em paralelo
+  const [broadcastsResp, agentesResp, conversasResp, aceitesResp, usuariosResp] = await Promise.all([
     supabase
       .from('lead_broadcasts')
       .select(`
@@ -72,12 +81,23 @@ export async function buscarPainelWaAction(): Promise<PainelWa | { erro: string 
       `)
       .order('aceito_em', { ascending: false })
       .limit(200),
+
+    // Kalebe 2026-09-14: cadastro de telefones dos usuários pra broadcast.
+    // Só quem participa do canal comercial (admin + representante + consultor
+    // + sdr + vendedor_servicos). Ordenado por nome.
+    supabase
+      .from('profiles')
+      .select('id, nome_completo, role, telefone, ativo')
+      .in('role', ['admin', 'representante', 'consultor', 'sdr', 'vendedor_servicos'])
+      .eq('ativo', true)
+      .order('nome_completo', { ascending: true }),
   ])
 
   const broadcasts = broadcastsResp.data || []
   const agentes = agentesResp.data || []
   const conversas_recentes = conversasResp.data || []
   const aceites = aceitesResp.data || []
+  const usuarios = (usuariosResp.data || []) as any[]
 
   // Anexa aceites ao broadcast correspondente + ordena por posição
   const broadcastsComFila = broadcasts.map((bc: any) => ({
@@ -88,12 +108,17 @@ export async function buscarPainelWaAction(): Promise<PainelWa | { erro: string 
   }))
 
   // Contadores
+  const usuariosComTelefone = usuarios.filter((u) =>
+    u.telefone && String(u.telefone).replace(/\D/g, '').length >= 10,
+  ).length
   const contadores = {
     conversas_ativas: conversas_recentes.filter((c: any) => !['encerrada'].includes(c.status)).length,
     broadcasts_abertos: broadcasts.filter((b: any) => ['aguardando_aceites', 'atribuido'].includes(b.status)).length,
     leads_na_fila: aceites.filter((a: any) => ['pendente', 'no_volante'].includes(a.status)).length,
     agentes_ativos: agentes.filter((a: any) => a.ativo).length,
     agentes_total: agentes.length,
+    usuarios_com_telefone: usuariosComTelefone,
+    usuarios_sem_telefone: usuarios.length - usuariosComTelefone,
   }
 
   return {
@@ -101,7 +126,43 @@ export async function buscarPainelWaAction(): Promise<PainelWa | { erro: string 
     broadcasts: broadcastsComFila,
     agentes,
     conversas_recentes,
+    usuarios,
   }
+}
+
+/**
+ * Kalebe 2026-09-14: atualiza telefone do usuário direto do painel WhatsApp.
+ * Aceita formato livre (com/sem 55, com/sem parenteses). Normaliza pra
+ * armazenar só dígitos com prefixo 55.
+ * Retorna telefone normalizado ou erro.
+ */
+export async function atualizarTelefoneUsuarioAction(
+  user_id: string,
+  telefone_bruto: string,
+): Promise<{ telefone: string } | { erro: string }> {
+  const check = await verificarAdmin()
+  if ('erro' in check) return { erro: check.erro as string }
+  const supabase = createClient()
+
+  const digitos = String(telefone_bruto || '').replace(/\D/g, '')
+  if (digitos.length === 0) {
+    // Permite limpar
+    const { error } = await supabase.from('profiles').update({ telefone: null }).eq('id', user_id)
+    if (error) return { erro: error.message }
+    return { telefone: '' }
+  }
+  if (digitos.length < 10) {
+    return { erro: 'Telefone precisa ter ao menos DDD + número.' }
+  }
+  let tel = digitos
+  if (tel.length === 10 || tel.length === 11) tel = '55' + tel
+  if (tel.length < 12 || tel.length > 13) {
+    return { erro: 'Telefone inválido — use formato 55DDD9NNNNNNNN.' }
+  }
+
+  const { error } = await supabase.from('profiles').update({ telefone: tel }).eq('id', user_id)
+  if (error) return { erro: error.message }
+  return { telefone: tel }
 }
 
 /**

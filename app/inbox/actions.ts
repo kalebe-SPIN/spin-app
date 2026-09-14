@@ -240,6 +240,229 @@ export async function enviarTextoAction(entrada: {
 }
 
 /**
+ * Kalebe 2026-09-14: 'botão para enviar arquivos, fazer ligação e
+ * videochamada como se fosse no whatsapp'.
+ *
+ * iniciarChamadaAction gera sala Jitsi Meet única e envia link pelo canal
+ * Spin pra o cliente. Kalebe abre o link no navegador dele; cliente abre
+ * pelo WhatsApp. Sala funciona no browser sem instalar nada.
+ *
+ * Marca contato confirmado no broadcast (SLA cumprido).
+ */
+export async function iniciarChamadaAction(entrada: {
+  conversa_id: string
+  tipo: 'voz' | 'video'
+}): Promise<{ url_sala: string; texto_enviado: string } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+
+  const admin = createAdminClient()
+
+  const { data: conv } = await admin
+    .from('wa_conversas')
+    .select('id, contato:contato_id(telefone, nome_exibicao)')
+    .eq('id', entrada.conversa_id)
+    .maybeSingle()
+  if (!conv) return { erro: 'Conversa não encontrada' }
+  const tel = (conv.contato as any)?.telefone
+  if (!tel) return { erro: 'Contato sem telefone' }
+
+  // Sala Jitsi Meet única (sem senha) — nome longo/aleatório evita colisão.
+  // Formato: spin-{tipo}-{8char aleatórios}
+  const salaId = `spin-${entrada.tipo}-${Math.random().toString(36).slice(2, 10)}`
+  const url_sala = `https://meet.jit.si/${salaId}`
+
+  const nomeAgente = check.perfil?.nome_completo || 'Spin'
+  const emoji = entrada.tipo === 'video' ? '📹' : '📞'
+  const titulo = entrada.tipo === 'video' ? 'Videochamada' : 'Chamada de voz'
+  const nomeLead = ((conv.contato as any)?.nome_exibicao || '').split(' ')[0] || 'você'
+
+  const texto = [
+    `${emoji} *${titulo} Spin*`,
+    ``,
+    `Oi ${nomeLead}, sou o ${nomeAgente}. Preparei uma sala pra gente conversar agora.`,
+    ``,
+    `Toca no link pra entrar:`,
+    url_sala,
+    ``,
+    `Funciona no navegador do celular ou computador, sem instalar nada.`,
+  ].join('\n')
+
+  // Envia pelo canal
+  const token = process.env.WHATSAPP_ACCESS_TOKEN
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada.' }
+  const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: tel,
+      type: 'text',
+      text: { body: texto, preview_url: true },
+    }),
+  })
+  const data = await resp.json()
+  if (!resp.ok) {
+    return { erro: data?.error?.message || 'Erro Meta API' }
+  }
+  const metaMessageId: string | null = data?.messages?.[0]?.id || null
+
+  await gravarMensagem(admin, {
+    conversa_id: entrada.conversa_id,
+    direcao: 'outbound',
+    tipo: 'text',
+    texto,
+    meta_message_id: metaMessageId,
+    remetente_id: check.user.id,
+    origem_agente_nome: nomeAgente,
+    status_entrega: 'enviada',
+  })
+
+  // Marca contato no broadcast atribuído a esse humano (SLA cumprido)
+  try {
+    const { data: bc } = await admin
+      .from('lead_broadcasts')
+      .select('id')
+      .eq('conversa_id', entrada.conversa_id)
+      .in('status', ['atribuido'])
+      .maybeSingle()
+    if (bc) {
+      await marcarContatoConfirmado({ broadcast_id: bc.id, representante_id: check.user.id })
+    }
+  } catch (e) {
+    console.error('[iniciarChamadaAction/marcarContato]', e)
+  }
+
+  // Muda conversa pra em_atendimento
+  await admin
+    .from('wa_conversas')
+    .update({ status: 'em_atendimento', responsavel_id: check.user.id, agente_ativo: null })
+    .eq('id', entrada.conversa_id)
+    .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
+
+  revalidatePath('/inbox')
+  return { url_sala, texto_enviado: texto }
+}
+
+/**
+ * Envia arquivo (imagem, documento, áudio) pelo canal Spin.
+ * Upload pro Meta Media API + envia com media_id.
+ */
+export async function enviarArquivoAction(formData: FormData): Promise<
+  { sucesso: true; meta_message_id: string | null; tipo: string } | { erro: string }
+> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+
+  const conversa_id = String(formData.get('conversa_id') || '')
+  const arquivo = formData.get('arquivo') as File | null
+  const legenda = String(formData.get('legenda') || '')
+  if (!conversa_id || !arquivo) return { erro: 'Faltam conversa_id ou arquivo' }
+
+  const token = process.env.WHATSAPP_ACCESS_TOKEN
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada.' }
+
+  const admin = createAdminClient()
+
+  const { data: conv } = await admin
+    .from('wa_conversas')
+    .select('id, contato:contato_id(telefone)')
+    .eq('id', conversa_id)
+    .maybeSingle()
+  if (!conv) return { erro: 'Conversa não encontrada' }
+  const tel = (conv.contato as any)?.telefone
+  if (!tel) return { erro: 'Contato sem telefone' }
+
+  // Descobre tipo da msg pelo mime
+  const mime = arquivo.type || 'application/octet-stream'
+  const tipoMsg: 'image' | 'document' | 'audio' | 'video' =
+    mime.startsWith('image/') ? 'image'
+    : mime.startsWith('audio/') ? 'audio'
+    : mime.startsWith('video/') ? 'video'
+    : 'document'
+
+  // 1) Upload da mídia pro Meta Media API
+  const uploadForm = new FormData()
+  uploadForm.append('file', arquivo)
+  uploadForm.append('type', mime)
+  uploadForm.append('messaging_product', 'whatsapp')
+  const uploadResp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: uploadForm,
+  })
+  const uploadData = await uploadResp.json()
+  if (!uploadResp.ok) {
+    return { erro: `Upload falhou: ${uploadData?.error?.message || 'erro Meta'}` }
+  }
+  const mediaId: string = uploadData?.id
+  if (!mediaId) return { erro: 'Meta não retornou media id' }
+
+  // 2) Envia mensagem com o media_id
+  const payload: any = {
+    messaging_product: 'whatsapp',
+    to: tel,
+    type: tipoMsg,
+  }
+  payload[tipoMsg] = { id: mediaId }
+  if (legenda && (tipoMsg === 'image' || tipoMsg === 'document' || tipoMsg === 'video')) {
+    payload[tipoMsg].caption = legenda
+  }
+  if (tipoMsg === 'document') payload.document.filename = arquivo.name
+
+  const sendResp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const sendData = await sendResp.json()
+  if (!sendResp.ok) {
+    return { erro: sendData?.error?.message || 'Falha ao enviar mídia' }
+  }
+  const metaMessageId: string | null = sendData?.messages?.[0]?.id || null
+
+  const nomeAgente = check.perfil?.nome_completo || 'Spin'
+  await gravarMensagem(admin, {
+    conversa_id,
+    direcao: 'outbound',
+    tipo: tipoMsg,
+    texto: legenda || null,
+    midia_meta_id: mediaId,
+    midia_mime: mime,
+    meta_message_id: metaMessageId,
+    remetente_id: check.user.id,
+    origem_agente_nome: nomeAgente,
+    status_entrega: 'enviada',
+  })
+
+  // Marca contato no broadcast atribuído (áudio conta como cumprimento SLA)
+  try {
+    const { data: bc } = await admin
+      .from('lead_broadcasts')
+      .select('id')
+      .eq('conversa_id', conversa_id)
+      .in('status', ['atribuido'])
+      .maybeSingle()
+    if (bc) {
+      await marcarContatoConfirmado({ broadcast_id: bc.id, representante_id: check.user.id })
+    }
+  } catch (e) {
+    console.error('[enviarArquivoAction/marcarContato]', e)
+  }
+
+  await admin
+    .from('wa_conversas')
+    .update({ status: 'em_atendimento', responsavel_id: check.user.id, agente_ativo: null })
+    .eq('id', conversa_id)
+    .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
+
+  revalidatePath('/inbox')
+  return { sucesso: true, meta_message_id: metaMessageId, tipo: tipoMsg }
+}
+
+/**
  * Kalebe 2026-09-14: 'em cada card de cliente ter o botão de acesso ao
  * canal de comunicação já dentro'.
  *

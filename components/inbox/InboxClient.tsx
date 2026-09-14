@@ -9,6 +9,8 @@ import {
   assumirConversaAction,
   encerrarConversaAction,
   abrirConversaManualAction,
+  iniciarChamadaAction,
+  enviarArquivoAction,
 } from '@/app/inbox/actions'
 
 type Conversa = {
@@ -266,9 +268,14 @@ export function InboxClient({
               )}
             </div>
 
-            {/* Composição */}
+            {/* Composição — Kalebe 2026-09-14: botões arquivo + chamada + vídeo */}
             <div className="p-3 border-t border-white/10 space-y-2">
               {erro && <p className="text-xs text-coral bg-coral/10 border border-coral/30 rounded p-2">{erro}</p>}
+              <BarraAcoes
+                conversaId={selecionadaId!}
+                onErro={setErro}
+                onFeito={() => selecionadaId && refreshMensagens(selecionadaId)}
+              />
               <div className="flex items-end gap-2">
                 <textarea
                   value={textoEnvio}
@@ -289,7 +296,7 @@ export function InboxClient({
                 </button>
               </div>
               <p className="text-[10px] text-white/40">
-                A mensagem sai prefixada com seu nome pra o cliente identificar quem responde no canal Spin.
+                A mensagem sai prefixada com seu nome. Chamadas geram sala Jitsi (funciona no navegador).
               </p>
             </div>
           </>
@@ -368,6 +375,92 @@ function ItemConversa({ c, selecionada, onClick }: {
         )}
       </div>
     </button>
+  )
+}
+
+function BarraAcoes({
+  conversaId, onErro, onFeito,
+}: {
+  conversaId: string
+  onErro: (msg: string | null) => void
+  onFeito: () => void
+}) {
+  const inputArquivoRef = useRef<HTMLInputElement>(null)
+  const [enviando, setEnviando] = useState<'arquivo' | 'voz' | 'video' | null>(null)
+
+  async function iniciar(tipo: 'voz' | 'video') {
+    onErro(null); setEnviando(tipo)
+    try {
+      const r = await iniciarChamadaAction({ conversa_id: conversaId, tipo })
+      if ('erro' in r) { onErro(r.erro); return }
+      // Abre a sala do lado do Kalebe automaticamente
+      window.open(r.url_sala, '_blank', 'noopener')
+      onFeito()
+    } finally { setEnviando(null) }
+  }
+
+  async function enviarArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    onErro(null); setEnviando('arquivo')
+    try {
+      // Limite Meta: 5MB imagens, 16MB áudio/vídeo, 100MB documento
+      if (file.size > 100 * 1024 * 1024) {
+        onErro('Arquivo maior que 100MB — Meta não aceita.')
+        return
+      }
+      const legenda = window.prompt('Legenda (opcional):') || ''
+      const fd = new FormData()
+      fd.append('conversa_id', conversaId)
+      fd.append('arquivo', file)
+      if (legenda) fd.append('legenda', legenda)
+      const r = await enviarArquivoAction(fd)
+      if ('erro' in r) { onErro(r.erro); return }
+      onFeito()
+    } finally { setEnviando(null) }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => inputArquivoRef.current?.click()}
+        disabled={!!enviando}
+        title="Enviar arquivo, foto, documento ou áudio"
+        className="w-9 h-9 flex items-center justify-center rounded bg-white/[0.05] border border-white/10 text-white/70 hover:bg-white/10 disabled:opacity-40"
+      >
+        {enviando === 'arquivo' ? '⋯' : '📎'}
+      </button>
+      <button
+        type="button"
+        onClick={() => iniciar('voz')}
+        disabled={!!enviando}
+        title="Iniciar chamada de voz (sala Jitsi)"
+        className="w-9 h-9 flex items-center justify-center rounded bg-verde/10 border border-verde/30 text-verde hover:bg-verde/20 disabled:opacity-40"
+      >
+        {enviando === 'voz' ? '⋯' : '📞'}
+      </button>
+      <button
+        type="button"
+        onClick={() => iniciar('video')}
+        disabled={!!enviando}
+        title="Iniciar videochamada (sala Jitsi)"
+        className="w-9 h-9 flex items-center justify-center rounded bg-weg-azul/10 border border-weg-azul/30 text-weg-azul hover:bg-weg-azul/20 disabled:opacity-40"
+      >
+        {enviando === 'video' ? '⋯' : '📹'}
+      </button>
+      <span className="text-[10px] text-white/40 ml-2">
+        {enviando ? 'Enviando...' : ''}
+      </span>
+      <input
+        ref={inputArquivoRef}
+        type="file"
+        className="hidden"
+        onChange={enviarArquivo}
+        accept="image/*,application/pdf,audio/*,video/*,.doc,.docx,.xls,.xlsx"
+      />
+    </div>
   )
 }
 
