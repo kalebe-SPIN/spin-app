@@ -8,6 +8,7 @@ import {
   atualizarStatusPorMetaId,
   normalizarTelefone,
 } from '@/lib/whatsapp/conversas'
+import { processarMensagemQualificacao } from '@/lib/whatsapp/agente-qualificacao'
 
 /**
  * Webhook do WhatsApp Meta Cloud API.
@@ -132,6 +133,15 @@ export async function POST(req: NextRequest) {
                 status_entrega: 'lida',
               })
             }
+          }
+
+          // Sprint 2: agente de qualificação. Se conversa em 'nova' ou
+          // 'em_qualificacao' e sem responsável humano, ativa a IA.
+          // Roda async — não bloqueia o webhook (Meta timeout curto).
+          if (conversaId) {
+            processarMensagemQualificacao(conversaId).catch((err) =>
+              console.error('[webhook agente-qualificacao]', err),
+            )
           }
 
           // Marca comunicações recentes com esse número como respondidas
