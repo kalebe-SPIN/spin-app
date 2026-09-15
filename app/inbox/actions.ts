@@ -240,6 +240,79 @@ export async function enviarTextoAction(entrada: {
 }
 
 /**
+ * Kalebe 2026-09-15: 'quero ter acesso à conversa e comunicação
+ * diretamente com o cliente dentro do seu card'.
+ *
+ * Retorna conversa (com contato) + últimas N mensagens. Serve pra
+ * embutir preview da conversa dentro do card de projeto.
+ * Se cliente não tem telefone ou sem conversa ainda, retorna null
+ * — o card decide como renderizar.
+ */
+export async function buscarConversaDoProjetoAction(
+  projeto_id: string,
+  limit_msgs = 20,
+): Promise<
+  { conversa: any | null; mensagens: any[]; contato: any | null }
+  | { erro: string }
+> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+
+  const admin = createAdminClient()
+
+  const { data: projeto } = await admin
+    .from('projetos')
+    .select('id, cliente_telefone, cliente_razao_social, consultor_id')
+    .eq('id', projeto_id)
+    .maybeSingle()
+  if (!projeto) return { erro: 'Projeto não encontrado' }
+  if (check.perfil?.role === 'consultor' && projeto.consultor_id !== check.user.id) {
+    return { erro: 'Não é seu projeto' }
+  }
+
+  const digs = String(projeto.cliente_telefone || '').replace(/\D/g, '')
+  if (digs.length < 10) return { conversa: null, mensagens: [], contato: null }
+  let tel = digs
+  if (tel.length === 10 || tel.length === 11) tel = '55' + tel
+
+  const { data: contato } = await admin
+    .from('wa_contatos')
+    .select('id, telefone, nome_exibicao, tipo, projeto_id')
+    .eq('telefone', tel)
+    .maybeSingle()
+
+  if (!contato) return { conversa: null, mensagens: [], contato: null }
+
+  const { data: conversas } = await admin
+    .from('wa_conversas')
+    .select('id, status, agente_ativo, responsavel_id, criada_em, ultima_mensagem_em, janela_24h_expira_em, encerrada_em')
+    .eq('contato_id', contato.id)
+    .order('ultima_mensagem_em', { ascending: false, nullsFirst: false })
+    .limit(1)
+  const conversa = (conversas || [])[0] || null
+  if (!conversa) return { conversa: null, mensagens: [], contato }
+
+  const { data: mensagens } = await admin
+    .from('wa_mensagens')
+    .select(`
+      id, direcao, tipo, texto, meta_message_id,
+      midia_url, midia_meta_id, midia_mime, midia_duracao_seg,
+      remetente_id, remetente_agente, origem_agente_nome,
+      status_entrega, criada_em, lida_em,
+      remetente:remetente_id(nome_completo)
+    `)
+    .eq('conversa_id', conversa.id)
+    .order('criada_em', { ascending: false })
+    .limit(limit_msgs)
+
+  return {
+    conversa,
+    contato,
+    mensagens: (mensagens || []).reverse(), // ordem cronológica
+  }
+}
+
+/**
  * Kalebe 2026-09-14: 'botão para enviar arquivos, fazer ligação e
  * videochamada como se fosse no whatsapp'.
  *

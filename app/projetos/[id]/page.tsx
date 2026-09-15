@@ -9,6 +9,7 @@ import { MudarEtapaCard } from '@/components/MudarEtapaCard'
 import { ItensPropostaCard } from '@/components/ItensPropostaCard'
 import { AcoesRapidasCard } from '@/components/AcoesRapidasCard'
 import { BotaoAbrirCanalCliente } from '@/components/BotaoAbrirCanalCliente'
+import { ConversaClienteCard } from '@/components/ConversaClienteCard'
 import { ValorItemManual } from '@/components/ValorItemManual'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
@@ -179,6 +180,11 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           homologacaoId={homologacao?.id ?? null}
           clienteNome={projeto.cliente_razao_social}
         />
+
+        {/* Kalebe 2026-09-15: conversa embutida do canal WhatsApp Spin */}
+        <div className="mb-6">
+          <ConversaClienteCard projetoId={projeto.id} />
+        </div>
 
         {/* Card CRM — mudar etapa (adaptativo: se só serviço, pula passos FV) */}
         <div className="mb-6">
