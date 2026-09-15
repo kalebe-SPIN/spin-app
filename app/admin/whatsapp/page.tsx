@@ -48,6 +48,9 @@ export default async function AdminWhatsAppPage() {
             <Link href="/inbox" className="px-4 py-2 rounded bg-sol/20 border border-sol/40 text-sol text-xs font-bold hover:bg-sol/30">
               Abrir Inbox →
             </Link>
+            <Link href="/admin/whatsapp/setup" className="px-4 py-2 rounded bg-verde/20 border border-verde/40 text-verde text-xs font-bold hover:bg-verde/30">
+              🔧 Setup do canal
+            </Link>
             <Link href="/admin/agentes" className="text-xs text-white/60 hover:text-white/80">
               Gerenciar agentes IA
             </Link>
