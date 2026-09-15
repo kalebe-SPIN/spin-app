@@ -3,10 +3,6 @@
     {
       "path": "/api/cron/bianca-eventos",
       "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/cron/lead-sla",
-      "schedule": "* * * * *"
     }
   ]
 }
