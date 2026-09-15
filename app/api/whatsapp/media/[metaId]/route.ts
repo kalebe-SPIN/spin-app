@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
  * Proxy de mídia WhatsApp.
@@ -24,7 +25,8 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
 
-  const token = process.env.WHATSAPP_ACCESS_TOKEN
+  const cfg = await getWaConfig()
+  const token = cfg.access_token
   if (!token) return NextResponse.json({ erro: 'Meta API não configurada' }, { status: 500 })
 
   const metaId = params.metaId

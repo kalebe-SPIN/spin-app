@@ -8,6 +8,7 @@ import {
   upsertContato,
 } from '@/lib/whatsapp/conversas'
 import { marcarContatoConfirmado } from '@/lib/whatsapp/broadcast'
+import { getWaConfig } from '@/lib/whatsapp/config'
 import { revalidatePath } from 'next/cache'
 
 /**
@@ -149,9 +150,10 @@ export async function enviarTextoAction(entrada: {
   const texto = String(entrada.texto || '').trim()
   if (!texto) return { erro: 'Mensagem vazia' }
 
-  const token = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada.' }
+  const _cfg = await getWaConfig()
+  const token = _cfg.access_token
+  const phoneNumberId = _cfg.phone_number_id
+  if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada. Cadastre em /admin/whatsapp/config.' }
 
   const admin = createAdminClient()
 
@@ -362,9 +364,10 @@ export async function iniciarChamadaAction(entrada: {
   ].join('\n')
 
   // Envia pelo canal
-  const token = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada.' }
+  const _cfg = await getWaConfig()
+  const token = _cfg.access_token
+  const phoneNumberId = _cfg.phone_number_id
+  if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada. Cadastre em /admin/whatsapp/config.' }
   const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -433,9 +436,10 @@ export async function enviarArquivoAction(formData: FormData): Promise<
   const legenda = String(formData.get('legenda') || '')
   if (!conversa_id || !arquivo) return { erro: 'Faltam conversa_id ou arquivo' }
 
-  const token = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada.' }
+  const _cfg = await getWaConfig()
+  const token = _cfg.access_token
+  const phoneNumberId = _cfg.phone_number_id
+  if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada. Cadastre em /admin/whatsapp/config.' }
 
   const admin = createAdminClient()
 

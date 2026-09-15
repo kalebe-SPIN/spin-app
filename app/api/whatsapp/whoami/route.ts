@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
  * Diagnóstico da integração WhatsApp Meta Cloud API.
@@ -27,9 +28,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ erro: 'Somente admin' }, { status: 403 })
   }
 
-  const token = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN
+  const cfg = await getWaConfig()
+  const token = cfg.access_token
+  const phoneNumberId = cfg.phone_number_id
+  const verifyToken = cfg.verify_token
 
   const envs = {
     WHATSAPP_ACCESS_TOKEN: token ? `set (${String(token).slice(0, 8)}…${String(token).slice(-4)}, ${token.length} chars)` : 'FALTANDO',

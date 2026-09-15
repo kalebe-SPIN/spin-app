@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
  * Kalebe 2026-09-15: checagens de saúde do canal WhatsApp.
@@ -35,11 +36,12 @@ export async function verificarStatusSetupAction(): Promise<
   const itens: StatusCheckItem[] = []
 
   // ─── 1) Envs Meta Cloud API ─────────────────────────────────────────────
-  const token = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN
-  const cronSecret = process.env.CRON_SECRET
-  const anthropicKey = process.env.ANTHROPIC_API_KEY
+  const cfg = await getWaConfig()
+  const token = cfg.access_token
+  const phoneNumberId = cfg.phone_number_id
+  const verifyToken = cfg.verify_token
+  const cronSecret = cfg.cron_secret
+  const anthropicKey = cfg.anthropic_api_key
 
   itens.push({
     chave: 'env_wa_token',
@@ -48,7 +50,7 @@ export async function verificarStatusSetupAction(): Promise<
     detalhe: token
       ? `Setada (${token.length} chars, começa com ${token.slice(0, 6)}…)`
       : 'Não setada. Pegue no Meta Business Manager → System Users → Generate Token.',
-    acao: token ? undefined : { texto: 'Vercel Env Variables', href: 'https://vercel.com/dashboard' },
+    acao: token ? undefined : { texto: 'Cadastrar config', href: '/admin/whatsapp/config' },
   })
 
   itens.push({
@@ -58,7 +60,7 @@ export async function verificarStatusSetupAction(): Promise<
     detalhe: phoneNumberId
       ? `Setada: ${phoneNumberId}`
       : 'Não setada. Pegue no Meta app → WhatsApp → API Setup.',
-    acao: phoneNumberId ? undefined : { texto: 'Vercel Env Variables' },
+    acao: phoneNumberId ? undefined : { texto: 'Cadastrar config', href: '/admin/whatsapp/config' },
   })
 
   itens.push({

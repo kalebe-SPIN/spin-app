@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { gravarMensagem, normalizarTelefone } from './conversas'
+import { getWaConfig } from './config'
 
 /**
  * Envia mensagem pelo canal WhatsApp Spin, sem depender de usuário logado.
@@ -16,8 +17,9 @@ export async function enviarTextoPeloCanal(entrada: {
   origem_agente_nome: string  // ex: 'Qualificação Spin' — o que aparece pro cliente
   prefixar_com_nome?: boolean  // default true
 }): Promise<{ sucesso: true; meta_message_id: string | null } | { erro: string }> {
-  const token = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const cfg = await getWaConfig()
+  const token = cfg.access_token
+  const phoneNumberId = cfg.phone_number_id
   if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada' }
 
   const admin = createAdminClient()

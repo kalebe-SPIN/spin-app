@@ -33,6 +33,21 @@ export default async function SetupCanalPage() {
           </p>
         </header>
 
+        <Link
+          href="/admin/whatsapp/config"
+          className="mb-6 block rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 hover:bg-emerald-500/15 transition"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold text-emerald-300">🔑 Config das credenciais</div>
+              <div className="text-xs text-white/60 mt-0.5">
+                Cadastrar token Meta, phone_number_id, verify_token, cron_secret e ANTHROPIC_API_KEY (sem precisar do Vercel).
+              </div>
+            </div>
+            <span className="text-emerald-300 text-lg">→</span>
+          </div>
+        </Link>
+
         <StatusSetupClient />
       </div>
     </main>

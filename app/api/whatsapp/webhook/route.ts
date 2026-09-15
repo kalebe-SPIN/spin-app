@@ -10,6 +10,7 @@ import {
 } from '@/lib/whatsapp/conversas'
 import { processarMensagemQualificacao } from '@/lib/whatsapp/agente-qualificacao'
 import { aceitarLead } from '@/lib/whatsapp/broadcast'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
  * Webhook do WhatsApp Meta Cloud API.
@@ -34,9 +35,10 @@ export async function GET(req: NextRequest) {
   const token = url.searchParams.get('hub.verify_token')
   const challenge = url.searchParams.get('hub.challenge')
 
-  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN
+  const cfg = await getWaConfig()
+  const verifyToken = cfg.verify_token
   if (!verifyToken) {
-    return NextResponse.json({ error: 'Verify token não configurado' }, { status: 500 })
+    return NextResponse.json({ error: 'Verify token não configurado. Cadastre em /admin/whatsapp/config.' }, { status: 500 })
   }
 
   if (mode === 'subscribe' && token === verifyToken) {

@@ -6,6 +6,7 @@ import {
   findOrCreateConversaAtiva,
   gravarMensagem,
 } from '@/lib/whatsapp/conversas'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
  * Envia WhatsApp via Meta Cloud API.
@@ -27,11 +28,12 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-  const token = process.env.WHATSAPP_ACCESS_TOKEN
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const cfg = await getWaConfig()
+  const token = cfg.access_token
+  const phoneNumberId = cfg.phone_number_id
   if (!token || !phoneNumberId) {
     return NextResponse.json({
-      error: 'WhatsApp Meta API não configurada. Configure WHATSAPP_ACCESS_TOKEN e WHATSAPP_PHONE_NUMBER_ID no Vercel.',
+      error: 'WhatsApp Meta API não configurada. Cadastre em /admin/whatsapp/config.',
       error_code: 'integration_missing',
     }, { status: 400 })
   }
