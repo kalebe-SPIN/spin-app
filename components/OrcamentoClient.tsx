@@ -237,8 +237,17 @@ export function OrcamentoClient({
       const publicUrl = urlData.publicUrl
 
       // 3) Salvar no banco
+      // Kalebe 2026-09-16: em modo por_uc, `propostaEfetiva` só tem a UC ativa.
+      // Passamos também o `consolidado` — pv_total real do projeto — pra que
+      // dashboards e faturamento vejam o valor certo.
+      const consolidado = {
+        pv_total: totalConsolidado,
+        pv_bruto: totalConsolidadoBruto,
+        modo_composicao: modoComposicao,
+        ucs_qtd: modoComposicao === 'por_uc' ? (propostasPorUc?.length || 0) : 1,
+      }
       startTransition(async () => {
-        const result = await salvarOrcamentoAction(projeto.id, propostaEfetiva, publicUrl)
+        const result = await salvarOrcamentoAction(projeto.id, propostaEfetiva, publicUrl, consolidado)
         if (result.sucesso) {
           setUrlPdf(publicUrl)
           router.refresh()

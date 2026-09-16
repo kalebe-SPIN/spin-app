@@ -258,7 +258,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     .from('projetos')
     .select(`
       id, consultor_id, cliente_id, cliente_razao_social, cliente_cpf_cnpj,
-      status, pv_total, orcamento_final, tipo_projeto, ve_recarga_selecionada,
+      status, pv_total, orcamento_final, orcamento_consolidado, tipo_projeto, ve_recarga_selecionada,
       origem_lead,
       desconto_admin_pct, desconto_admin_valor,
       created_at, updated_at, status_atualizado_em, excluida_em,
@@ -352,8 +352,13 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // Kalebe 2026-09-11: extraído pra usar em faturamentoPorLinha,
   // composicaoFvMes e cardNegocios (antes redeclarava em cada bloco).
   const projetosFechadosMes = todosProjetos.filter((p: any) => isFechadoNoMes(p, inicioMesIso))
+  // Kalebe 2026-09-16: em modo multi-UC (migration 092), pv_total pode não ter
+  // sido preenchido — o valor real vive em orcamento_consolidado.pv_total.
+  // Prioriza a coluna direta e cai no jsonb depois.
+  const pvDoProjeto = (p: any): number =>
+    Number(p.pv_total || p.orcamento_consolidado?.pv_total || p.orcamento_final?.pv_total) || 0
   const valorFechadoMes = projetosFechadosMes.reduce(
-    (s: number, p: any) => s + (Number(p.pv_total) || 0),
+    (s: number, p: any) => s + pvDoProjeto(p),
     0,
   )
 
@@ -847,7 +852,13 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   for (const p of projetosMes) {
     if (!STATUS_PROPOSTA_EMITIDA.has(p.status)) continue
     const cid = String(p.cliente_id || p.cliente_razao_social || p.id)
-    const valor = Number(p.pv_total || p.orcamento_final?.pv_total) || 0
+    // Kalebe 2026-09-16: em modo multi-UC (migration 092), orcamento_final tem
+    // só a UC ativa. Prioriza orcamento_consolidado.pv_total quando existe.
+    const valor = Number(
+      p.pv_total
+      || p.orcamento_consolidado?.pv_total
+      || p.orcamento_final?.pv_total,
+    ) || 0
     if (valor <= 0) continue
     const arr = propostasPorLeadMes.get(cid) || []
     arr.push(valor)

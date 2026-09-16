@@ -57,14 +57,25 @@ export async function excluirProjetoItemAction(
 /**
  * Salva orçamento gerado. Também dispara transição de status → 'orcamento_gerado'
  * via mudarEtapaProjetoAction (registra histórico + automações).
+ *
+ * Kalebe 2026-09-16: aceita `consolidado` com pv_total real do projeto —
+ * em modo multi-UC `proposta` só tem a UC ativa, então o pv_total do
+ * jsonb é de UMA UC. Salvamos o total consolidado em `orcamento_consolidado`
+ * pra dashboards e faturamento verem o número certo.
  */
-export async function salvarOrcamentoAction(projetoId: string, proposta: any, urlPdf?: string) {
+export async function salvarOrcamentoAction(
+  projetoId: string,
+  proposta: any,
+  urlPdf?: string,
+  consolidado?: { pv_total: number; pv_bruto: number; modo_composicao: string; ucs_qtd: number },
+) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { sucesso: false, erro: 'Não autenticado' }
 
   const patch: any = { orcamento_final: proposta }
   if (urlPdf) patch.url_pdf_proposta = urlPdf
+  if (consolidado) patch.orcamento_consolidado = consolidado
 
   const { error } = await supabase.from('projetos').update(patch).eq('id', projetoId)
   if (error) return { sucesso: false, erro: error.message }
