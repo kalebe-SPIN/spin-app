@@ -889,10 +889,14 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     else if (o === 'resgate' || o === 'indicacao') projetosPorOrigem.pos_venda += 1
     else projetosPorOrigem.campanha += 1
   }
+  // Kalebe 2026-09-16: valor_total do card PROJETOS DO MÊS agora reflete
+  // TODAS as propostas emitidas no mês (pipeline), não só fechamentos.
+  // Bate com a soma do breakdown por_tipo mostrado logo abaixo do card.
+  const valorPropostasMes = propostasMes.reduce((s, pp) => s + pp.valor, 0)
   const cardProjetos = {
     abertos_mes: projetosMes.length,
     com_proposta: propostasMes.length,
-    valor_total: valorFechadoMes,  // agora bate com faturamento por linha
+    valor_total: valorPropostasMes,
     por_origem: projetosPorOrigem,
     /** Kalebe 2026-09-16: breakdown de propostas por tipo. Cliente pode ter
      * múltiplas propostas de tipos distintos — todas contam, cada uma no
