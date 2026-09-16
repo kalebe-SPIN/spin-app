@@ -112,6 +112,18 @@ export function InboxClient({
     else setMensagens([])
   }, [selecionadaId])
 
+  // Fallback refresh de 60s — cobre caso Realtime dropar.
+  // Só bate quando aba está visível pra não gastar toa.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return
+      refreshConversas()
+      if (selecionadaId) refreshMensagens(selecionadaId)
+    }
+    const id = setInterval(tick, 60_000)
+    return () => clearInterval(id)
+  }, [selecionadaId])
+
   // Scroll ao chegar msg nova
   useEffect(() => {
     if (timelineRef.current) timelineRef.current.scrollTop = timelineRef.current.scrollHeight
