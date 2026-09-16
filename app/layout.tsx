@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { PortalHeader } from '@/components/PortalHeader'
+import { AutoRefresh } from '@/components/AutoRefresh'
 
 /**
  * Layout raiz da aplicação.
@@ -46,6 +47,7 @@ export default function RootLayout({
       </head>
       <body>
         <PortalHeader />
+        <AutoRefresh />
         {children}
       </body>
     </html>
