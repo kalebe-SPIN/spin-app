@@ -529,9 +529,10 @@ function CardProjetosDoMes({ card }: {
     com_proposta: number
     valor_total: number
     por_origem: { campanha: number; pos_venda: number; prospeccao: number }
+    por_tipo?: Record<string, { qtd: number; valor: number }>
   }
 }) {
-  const { por_origem, abertos_mes, com_proposta, valor_total } = card
+  const { por_origem, abertos_mes, com_proposta, valor_total, por_tipo } = card
   const totalOrigem = por_origem.campanha + por_origem.pos_venda + por_origem.prospeccao
   const pct = (n: number) => totalOrigem === 0 ? 0 : Math.round((n / totalOrigem) * 100)
 
@@ -595,12 +596,44 @@ function CardProjetosDoMes({ card }: {
         <p className="text-[11px] text-white/40 italic">Sem projetos abertos este mês.</p>
       )}
 
-      {/* Rodapé — com proposta */}
+      {/* Rodapé — propostas por tipo */}
       <div className="pt-3 mt-3 border-t border-white/5 text-[11px]">
         <MiniLinha label="Com proposta" valor={String(com_proposta)} destaque="sol" />
+        {por_tipo && Object.keys(por_tipo).length > 0 && (
+          <div className="mt-2 space-y-1">
+            {Object.entries(por_tipo)
+              .sort((a, b) => b[1].qtd - a[1].qtd)
+              .map(([tipo, agg]) => (
+                <div key={tipo} className="flex items-center justify-between text-[10.5px] pl-2 border-l border-white/10">
+                  <span className="text-white/60 capitalize">
+                    {rotularTipoProjeto(tipo)}
+                  </span>
+                  <span className="text-white/70 font-mono tabular-nums">
+                    {agg.qtd} <span className="text-white/30">·</span> {fmtBRL(agg.valor)}
+                  </span>
+                </div>
+              ))}
+          </div>
+        )}
       </div>
     </div>
   )
+}
+
+/** Rótulos amigáveis pros tipos de projeto usados no dashboard. */
+function rotularTipoProjeto(tipo: string): string {
+  const m: Record<string, string> = {
+    fv_ongrid: 'FV on-grid',
+    fv_hibrido: 'FV híbrido',
+    bess_puro: 'BESS puro',
+    ve_recarga: 'VE recarga',
+    ve_recarga_wallbox: 'Wallbox VE',
+    limpeza: 'Limpeza',
+    revisao_om: 'Revisão/OM',
+    retirada: 'Retirada',
+    instalacao: 'Instalação',
+  }
+  return m[tipo] || tipo
 }
 
 function OrigemLinha({ cor, label, n, pct }: { cor: string; label: string; n: number; pct: number }) {

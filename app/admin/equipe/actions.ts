@@ -137,14 +137,16 @@ export type PainelEquipe = {
   }
   cardProjetos: {
     abertos_mes: number       // total de projetos criados no mês
-    com_proposta: number      // qtos leads têm ao menos uma proposta enviada
-    valor_total: number       // soma das propostas (uma por lead: a de MENOR valor)
+    com_proposta: number      // qtd de propostas emitidas no mês (não deduplica por cliente)
+    valor_total: number       // fechamentos do mês (bate com faturamento por linha)
     /** Kalebe 2026-09-11: agrupa origem_lead em 3 baldes (campanha, pós-venda, prospecção direta). */
     por_origem: {
       campanha: number
       pos_venda: number
       prospeccao: number
     }
+    /** Kalebe 2026-09-16: propostas por tipo_projeto — cliente pode ter várias. */
+    por_tipo: Record<string, { qtd: number; valor: number }>
   }
   cardPerfil: {
     total_propostas: number   // total de propostas no mês (1 por lead)
@@ -849,24 +851,31 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
 
   // Card 1 — PROJETOS (aquisição do mês)
   //   abertos_mes: total de leads criados no mês
-  //   com_proposta: qtos LEADS únicos criados no mês têm proposta
-  //   valor_total: fechamentos do mês + valor propostas ativas de leads
-  //                do mês (uma por lead, a de menor valor pra evitar dupla contagem)
-  const propostasPorLeadMes = new Map<string, number[]>()
+  //   com_proposta: qtd de PROPOSTAS emitidas no mês (não deduplica por cliente
+  //                 — Kalebe 2026-09-16: um cliente pode ter propostas de
+  //                 tipos distintos, todas contam)
+  //   por_tipo:    breakdown por tipo_projeto (fv_ongrid, ve_recarga, limpeza…)
+  //   valor_total: fechamentos do mês (bate com faturamento por linha)
+  const propostasMes: Array<{ tipo: string; valor: number }> = []
   for (const p of projetosMes) {
     if (!STATUS_PROPOSTA_EMITIDA.has(p.status)) continue
-    const cid = String(p.cliente_id || p.cliente_razao_social || p.id)
-    // Kalebe 2026-09-16: em modo multi-UC (migration 092), orcamento_final tem
-    // só a UC ativa. Prioriza orcamento_consolidado.pv_total quando existe.
+    // Em modo multi-UC (migration 092), orcamento_final tem só a UC ativa.
+    // Prioriza orcamento_consolidado.pv_total quando existe.
     const valor = Number(
       p.pv_total
       || p.orcamento_consolidado?.pv_total
       || p.orcamento_final?.pv_total,
     ) || 0
     if (valor <= 0) continue
-    const arr = propostasPorLeadMes.get(cid) || []
-    arr.push(valor)
-    propostasPorLeadMes.set(cid, arr)
+    const tipo = String(p.tipo_projeto || 'fv_ongrid')
+    propostasMes.push({ tipo, valor })
+  }
+  // Agrupa por tipo pra breakdown no card
+  const propostasPorTipo: Record<string, { qtd: number; valor: number }> = {}
+  for (const pp of propostasMes) {
+    if (!propostasPorTipo[pp.tipo]) propostasPorTipo[pp.tipo] = { qtd: 0, valor: 0 }
+    propostasPorTipo[pp.tipo].qtd += 1
+    propostasPorTipo[pp.tipo].valor += pp.valor
   }
   // projetosFechadosMes e valorFechadoMes já foram computados no topo
   // (Kalebe 2026-09-11) — usados também em composicaoFvMes e faturamentoPorLinha.
@@ -882,9 +891,13 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   }
   const cardProjetos = {
     abertos_mes: projetosMes.length,
-    com_proposta: propostasPorLeadMes.size,
+    com_proposta: propostasMes.length,
     valor_total: valorFechadoMes,  // agora bate com faturamento por linha
     por_origem: projetosPorOrigem,
+    /** Kalebe 2026-09-16: breakdown de propostas por tipo. Cliente pode ter
+     * múltiplas propostas de tipos distintos — todas contam, cada uma no
+     * seu segmento. */
+    por_tipo: propostasPorTipo,
   }
 
   // Card 2 — PERFIL DAS PROPOSTAS
