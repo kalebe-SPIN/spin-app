@@ -782,7 +782,11 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // ═══════════════════════════════════════════════════════════
   const projetosMes = todosProjetos.filter((p: any) => p.created_at >= inicioMesIso)
 
+  // Kalebe 2026-09-16: 'orcamento_gerado' agora conta como "com proposta"
+  // do card PROJETOS DO MÊS. Regra dele: PDF gerado = orçamento fechado,
+  // independente de ter clicado "marcar como enviada" ao cliente.
   const STATUS_PROPOSTA_EMITIDA = new Set([
+    'orcamento_gerado',
     'proposta_enviada', 'negociando', 'em_fechamento',
     'vendido', 'aceito', 'em_homologacao', 'em_execucao',
     'instalado', 'ativo_pos_venda', 'perdido',
