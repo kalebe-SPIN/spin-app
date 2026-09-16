@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { executarProjetista } from '@/lib/projetista/pipeline'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -21,9 +22,9 @@ export async function POST(req: NextRequest) {
     diagramaId = diagrama_id
     const supabaseAdmin = createAdminClient()
 
-    const anthropicKey = process.env.ANTHROPIC_API_KEY
+    const anthropicKey = (await getWaConfig()).anthropic_api_key
     if (!anthropicKey) {
-      await marcarErro(supabaseAdmin, diagrama_id, 'ANTHROPIC_API_KEY não configurada no Vercel')
+      await marcarErro(supabaseAdmin, diagrama_id, 'ANTHROPIC_API_KEY não cadastrada em /admin/whatsapp/config')
       return NextResponse.json({ erro: 'ANTHROPIC_API_KEY faltando' }, { status: 500 })
     }
 

@@ -1,19 +1,6 @@
-/**
- * Motor de gatilhos reativos da Bianca.
- *
- * Fluxo:
- *   1. Algum ponto do sistema chama dispararGatilho('chave', contexto).
- *   2. Motor busca config do gatilho, aplica template com variaveis do contexto,
- *      opcionalmente refina com Claude, e executa a acao (whatsapp/tarefa/notif).
- *   3. Registra tudo em bianca_eventos_disparados pra auditoria.
- *
- * Kalebe escolheu:
- *   - Modo hibrido (alguns automaticos, outros sugeridos)
- *   - Templates com {variaveis} + Bianca refina com IA quando marcado
- */
-
 import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 export type ContextoEvento = {
   projeto_id?: string | null
@@ -58,7 +45,7 @@ async function refinarComIA(
   contextoIA: string | null,
   extraContexto: string | undefined,
 ): Promise<{ texto: string; refinou: boolean }> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = (await getWaConfig()).anthropic_api_key
   if (!apiKey) return { texto: textoBase, refinou: false }
 
   try {

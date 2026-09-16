@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { DAVI_TOOLS } from '@/lib/davi/tools'
 import { executarToolDavi } from '@/lib/davi/executor'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Davi é exclusivo do admin' }, { status: 403 })
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = (await getWaConfig()).anthropic_api_key
   if (!apiKey) return NextResponse.json({ error: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
 
   try {

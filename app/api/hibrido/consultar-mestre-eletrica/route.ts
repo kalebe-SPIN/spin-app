@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
  * API do Mestre da Elétrica — recebe o levantamento por listagem
@@ -68,7 +69,9 @@ Você acabou de analisar um levantamento de equipamentos e apresentou considera�
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+    const apiKey = (await getWaConfig()).anthropic_api_key
+    if (!apiKey) return NextResponse.json({ erro: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
+    const anthropic = new Anthropic({ apiKey })
 
     // ─── MODO CHAT ───
     if (body.modo === 'chat') {

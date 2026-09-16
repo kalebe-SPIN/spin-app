@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
  * Extrai as informações de um produto a partir do DATASHEET (PDF/imagem)
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
   const { data: perfil } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   if (perfil?.role !== 'admin') return NextResponse.json({ erro: 'Apenas admin' }, { status: 403 })
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = (await getWaConfig()).anthropic_api_key
   if (!apiKey) {
     return NextResponse.json({ erro: 'ANTHROPIC_API_KEY não configurada. Preencha manualmente.' }, { status: 500 })
   }

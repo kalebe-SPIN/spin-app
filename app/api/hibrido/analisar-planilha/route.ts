@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = (await getWaConfig()).anthropic_api_key
   if (!apiKey) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
   }

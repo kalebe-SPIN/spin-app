@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { enviarTextoPeloCanal } from './enviar-canal'
 import { iniciarBroadcastLead, RETOMADA_MIN } from './broadcast'
+import { getWaConfig } from './config'
 
 /**
  * Agente de qualificação de leads WhatsApp.
@@ -132,8 +133,11 @@ type ResultadoQualificacao =
 export async function processarMensagemQualificacao(
   conversa_id: string,
 ): Promise<ResultadoQualificacao> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return { erro: 'ANTHROPIC_API_KEY não configurada' }
+  // Kalebe 2026-09-16: envs saíram do Vercel e viraram wa_config no Supabase.
+  // Leitura via getWaConfig() com cache 30s + fallback pra process.env.
+  const cfg = await getWaConfig()
+  const apiKey = cfg.anthropic_api_key
+  if (!apiKey) return { erro: 'ANTHROPIC_API_KEY não configurada. Cadastre em /admin/whatsapp/config.' }
 
   const admin = createAdminClient()
 

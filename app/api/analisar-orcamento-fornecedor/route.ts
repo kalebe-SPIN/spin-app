@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
  * Analisa um orcamento de fornecedor concorrente (PDF ou imagem) usando
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ erro: 'Nao autorizado' }, { status: 401 })
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = (await getWaConfig()).anthropic_api_key
   if (!apiKey) {
     return NextResponse.json({
       erro: 'ANTHROPIC_API_KEY nao configurada. Preencha os campos manualmente.',
