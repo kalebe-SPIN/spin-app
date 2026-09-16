@@ -85,21 +85,31 @@ export default function ConfigCanalClient({ mascarasIniciais }: Props) {
               </span>
             </div>
             <div className="flex gap-2">
-              <input
+              {/* Kalebe 2026-09-16: input textarea (não <input>) pra fugir do
+                  autofill do Chrome que insiste em preencher com credenciais
+                  salvas. Também um name aleatório por sessão. */}
+              <textarea
                 id={c.chave}
-                type={mask ? 'password' : 'text'}
+                name={`sc_${c.chave}_${Math.random().toString(36).slice(2, 8)}`}
                 value={valores[c.chave] || ''}
-                onChange={(e) => setValores({ ...valores, [c.chave]: e.target.value })}
+                onChange={(e) => setValores({ ...valores, [c.chave]: e.target.value.replace(/[\r\n]+/g, '') })}
                 placeholder={c.placeholder}
                 autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
                 spellCheck={false}
-                className="flex-1 px-3 py-2 border border-neutral-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                rows={1}
+                data-form-type="other"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                style={mask ? { WebkitTextSecurity: 'disc' } as any : undefined}
+                className="flex-1 px-3 py-2 border border-neutral-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none overflow-hidden"
               />
               {c.mask && (
                 <button
                   type="button"
                   onClick={() => setMostrar({ ...mostrar, [c.chave]: !mostrar[c.chave] })}
-                  className="px-3 py-2 text-xs text-neutral-600 hover:text-neutral-900 border border-neutral-300 rounded-md"
+                  className="px-3 py-2 text-xs text-neutral-600 hover:text-neutral-900 border border-neutral-300 rounded-md self-start"
                 >
                   {mostrar[c.chave] ? 'ocultar' : 'mostrar'}
                 </button>
