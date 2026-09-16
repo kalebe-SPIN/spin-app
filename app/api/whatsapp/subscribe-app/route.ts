@@ -9,13 +9,12 @@ import { getWaConfig } from '@/lib/whatsapp/config'
  * precisa ser chamado uma vez pra Meta começar a entregar mensagens
  * reais no webhook — sem isso Meta só entrega webhooks de teste.
  *
- * NOTA: subscribe é no nível da WABA (Business Account), NÃO do
- * phone_number_id. Primeiro descobrimos a WABA a partir do
- * phone_number_id, depois fazemos o POST.
- *
- * Só admin acessa. GET pra fácil execução do browser.
+ * WABA_ID hardcoded (286157384591672 = Spin Solar). Depois posso mover
+ * pra wa_config quando tiver multi-WABA.
  */
 export const runtime = 'nodejs'
+
+const WABA_ID_SPIN = '286157384591672'
 
 export async function GET(req: NextRequest) {
   const supabase = createClient()
@@ -27,41 +26,18 @@ export async function GET(req: NextRequest) {
 
   const cfg = await getWaConfig()
   const token = cfg.access_token
-  const phoneNumberId = cfg.phone_number_id
-  if (!token || !phoneNumberId) {
-    return NextResponse.json({ erro: 'Token ou phone_number_id não cadastrados. Vá em /admin/whatsapp/config.' }, { status: 500 })
+  if (!token) {
+    return NextResponse.json({ erro: 'Token não cadastrado. Vá em /admin/whatsapp/config.' }, { status: 500 })
   }
 
-  try {
-    // 1. Descobre a WABA_ID a partir do phone_number_id
-    const rInfo = await fetch(
-      `https://graph.facebook.com/v20.0/${phoneNumberId}?fields=whatsapp_business_account{id,name}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    const jInfo = await rInfo.json()
-    if (!rInfo.ok) {
-      return NextResponse.json({
-        etapa: 'descobrir_waba',
-        erro: jInfo?.error?.message || 'Falha ao descobrir WABA',
-        detalhes: jInfo,
-      }, { status: 500 })
-    }
-    const wabaId = jInfo?.whatsapp_business_account?.id
-    const wabaName = jInfo?.whatsapp_business_account?.name
-    if (!wabaId) {
-      return NextResponse.json({
-        etapa: 'descobrir_waba',
-        erro: 'WABA_ID não retornado pela Meta',
-        detalhes: jInfo,
-      }, { status: 500 })
-    }
+  const urlSub = `https://graph.facebook.com/v20.0/${WABA_ID_SPIN}/subscribed_apps`
 
-    // 2. Verifica apps já assinados nessa WABA
-    const urlSub = `https://graph.facebook.com/v20.0/${wabaId}/subscribed_apps`
+  try {
+    // 1. Lista apps já assinados
     const rGet = await fetch(urlSub, { headers: { Authorization: `Bearer ${token}` } })
     const jGet = await rGet.json()
 
-    // 3. POST pra registrar o app
+    // 2. POST pra registrar
     const rPost = await fetch(urlSub, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -69,8 +45,7 @@ export async function GET(req: NextRequest) {
     const jPost = await rPost.json()
 
     return NextResponse.json({
-      waba: { id: wabaId, nome: wabaName },
-      phone_number_id: phoneNumberId,
+      waba_id: WABA_ID_SPIN,
       apps_antes: jGet,
       resultado_post: jPost,
       status_post: rPost.status,
