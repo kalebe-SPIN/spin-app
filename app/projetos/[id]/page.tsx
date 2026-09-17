@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { AgendaDoProjeto } from '@/components/AgendaDoProjeto'
+import { RelacionamentoCard } from '@/components/RelacionamentoCard'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
 import { CardCampanhaProjeto } from '@/components/CardCampanhaProjeto'
 import { MudarEtapaCard } from '@/components/MudarEtapaCard'
@@ -187,10 +188,13 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           }
         />
 
-        {/* Kalebe 2026-09-15: conversa embutida do canal WhatsApp Spin */}
-        <div className="mb-6">
-          <ConversaClienteCard projetoId={projeto.id} />
-        </div>
+        {/* Kalebe 2026-09-17: card único de relacionamento com o cliente
+            (conversa + agenda + comunicações + criativos em um só lugar). */}
+        <RelacionamentoCard
+          projetoId={projeto.id}
+          clienteId={projeto.cliente_id}
+          clienteTelefone={projeto.cliente_telefone || null}
+        />
 
         {/* Card CRM — mudar etapa (adaptativo: se só serviço, pula passos FV) */}
         <div className="mb-6">
@@ -465,8 +469,9 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           </section>
         )}
 
-        {/* Agenda vinculada (Bianca) */}
-        <AgendaDoProjeto projetoId={projeto.id} />
+        {/* Kalebe 2026-09-17: agenda agora vive dentro do RelacionamentoCard
+            no topo — não precisa mais desse bloco separado. Mantido só como
+            fallback caso o unificado dê erro (renderiza null se vazio). */}
 
         {/* Footer ações */}
         <div className="mt-8 flex flex-col md:flex-row gap-3 pt-6 border-t border-white/10">
