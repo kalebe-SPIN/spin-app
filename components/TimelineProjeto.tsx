@@ -47,6 +47,9 @@ const STATUS_ORDEM: Record<string, number> = {
 }
 
 // Mapeamento de status para ORDEM na timeline reduzida de serviço
+// (Cliente=0, Escopo=1, Proposta=2, Fechado=3)
+// Kalebe 2026-09-17: incluir TODOS os status pós-fechamento em 3 pra não
+// cair no fallback de 0 e apontar "próximo: Escopo" numa venda vendida.
 const STATUS_ORDEM_SERVICO: Record<string, number> = {
   rascunho: 0,
   // Todos esses status intermediarios FV nao existem em servico — mapeia direto pra orcamento
@@ -57,7 +60,14 @@ const STATUS_ORDEM_SERVICO: Record<string, number> = {
   lista_ca_confirmada: 1,
   orcamento_gerado: 1,
   proposta_enviada: 2,
+  negociando: 2,
+  em_fechamento: 2,
   aceito: 3,
+  vendido: 3,
+  em_homologacao: 3,
+  em_execucao: 3,
+  instalado: 3,
+  ativo_pos_venda: 3,
   recusado: -1,
   cancelado: -1,
   expirado: -1,
