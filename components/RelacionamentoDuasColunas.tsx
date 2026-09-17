@@ -103,8 +103,8 @@ function ColunaWhatsApp({ dados }: { dados: DadosRelacionamento }) {
   }
 
   return (
-    <div className="p-4 flex flex-col min-h-[400px]">
-      <div className="flex items-center justify-between mb-3">
+    <div className="p-4 flex flex-col h-[520px]">
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <h3 className="text-[11px] uppercase tracking-wider font-bold text-verde flex items-center gap-1.5">
           💬 WhatsApp Spin
           <span className="text-white/40">·</span>
@@ -143,8 +143,8 @@ function ColunaWhatsApp({ dados }: { dados: DadosRelacionamento }) {
         </div>
       </div>
 
-      {/* Feed de mensagens */}
-      <div className="flex-1 overflow-y-auto space-y-1.5 mb-3 pr-1" style={{ maxHeight: 300 }}>
+      {/* Feed de mensagens — cresce mas rola dentro, não muda altura do card */}
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 mb-3 pr-1">
         {!dados.temTelefone ? (
           <p className="text-xs text-white/40 text-center py-8">
             Cliente sem telefone.<br />
@@ -163,7 +163,7 @@ function ColunaWhatsApp({ dados }: { dados: DadosRelacionamento }) {
       </div>
 
       {/* Input + enviar */}
-      <div className="space-y-2">
+      <div className="space-y-2 flex-shrink-0">
         {msg && (
           <p className={`text-[10px] text-center ${msg.tipo === 'ok' ? 'text-verde' : 'text-coral'}`}>
             {msg.texto}
@@ -228,8 +228,8 @@ function ColunaAgenda({ dados }: { dados: DadosRelacionamento }) {
   const [erroAg, setErroAg] = useState<string | null>(null)
 
   return (
-    <div className="p-4 flex flex-col min-h-[400px]">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+    <div className="p-4 flex flex-col h-[520px]">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2 flex-shrink-0">
         <h3 className="text-[11px] uppercase tracking-wider font-bold text-sol flex items-center gap-1.5">
           📅 Agenda vinculada
           <span className="text-white/40">·</span>
@@ -281,7 +281,7 @@ function ColunaAgenda({ dados }: { dados: DadosRelacionamento }) {
         <p className="text-[10px] text-coral text-center mb-2">⚠️ {erroAg}</p>
       )}
 
-      <div className="flex-1 overflow-y-auto space-y-2 pr-1" style={{ maxHeight: 300 }}>
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
         {dados.eventos.length === 0 && dados.tarefas.length === 0 ? (
           <p className="text-xs text-white/40 text-center py-8">
             Nenhum compromisso ou tarefa vinculado.<br />
@@ -313,7 +313,7 @@ function ColunaAgenda({ dados }: { dados: DadosRelacionamento }) {
         )}
       </div>
 
-      <div className="mt-2 pt-2 border-t border-white/5 text-right">
+      <div className="mt-2 pt-2 border-t border-white/5 text-right flex-shrink-0">
         <Link href="/agenda" className="text-[10px] text-sol hover:underline">
           Abrir agenda completa →
         </Link>
