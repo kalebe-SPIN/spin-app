@@ -1,10 +1,16 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useTransition } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { getInfoTipo, type TipoItem } from '@/lib/tipos-projeto'
 import { formatarCpfCnpj, formatarTelefone } from '@/lib/formatters'
 import { nomearArquivo } from '@/lib/downloads'
+import {
+  salvarOrcamentoAction,
+  marcarPropostaAceitaAction,
+  marcarPropostaEnviadaAction,
+} from '@/app/projetos/[id]/orcamento/actions'
 
 type Item = {
   id: string
@@ -44,6 +50,12 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
   const [descontoValor, setDescontoValor] = useState<number>(0)
   const [gerandoPdf, setGerandoPdf] = useState(false)
   const [erroPdf, setErroPdf] = useState<string | null>(null)
+  // Kalebe 2026-09-17: estado das ações pós-PDF (fechar venda, marcar enviada).
+  const [isPending, startTransition] = useTransition()
+  const [msgAcao, setMsgAcao] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
+  const router = useRouter()
+  const statusAtual = String(projeto.status || '')
+  const jaFechou = ['vendido', 'aceito', 'em_homologacao', 'em_execucao', 'instalado', 'ativo_pos_venda'].includes(statusAtual)
 
   const subtotal = useMemo(
     () => itens.reduce((s, i) => s + (parseFloat(String(i.valor_estimado)) || 0), 0),
@@ -100,11 +112,64 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
         finalidade: 'PROPOSTA_SERVICOS',
         tipo: 'PDF',
       }))
+
+      // Kalebe 2026-09-17: persiste o valor consolidado (com desconto) em
+      // orcamento_consolidado — antes o desconto era só estado local do
+      // client, o PDF mostrava mas o dashboard/CRM continuavam com o
+      // subtotal cheio. Também dispara transição pra 'orcamento_gerado'.
+      const proposta = {
+        subtotal,
+        desconto_aplicado: descontoAplicado,
+        desconto_tipo: descontoTipo,
+        desconto_valor_bruto: descontoValor,
+        pv_total: totalComDesconto,
+        condicoes_selecionadas: condicoesSelecionadas,
+        observacoes,
+        validade_dias: validadeDias,
+        tipo: 'servicos',
+      }
+      const consolidado = {
+        pv_total: totalComDesconto,
+        pv_bruto: subtotal,
+        modo_composicao: 'servicos',
+        ucs_qtd: 1,
+      }
+      const r = await salvarOrcamentoAction(projeto.id, proposta, undefined, consolidado)
+      if ('sucesso' in r && r.sucesso) {
+        router.refresh()
+      }
     } catch (err: any) {
       setErroPdf(err?.message || 'Falha ao gerar PDF')
     } finally {
       setGerandoPdf(false)
     }
+  }
+
+  async function marcarEnviada() {
+    setMsgAcao(null)
+    startTransition(async () => {
+      const r = await marcarPropostaEnviadaAction(projeto.id, 'Enviada ao cliente (fluxo serviços)')
+      if (r.sucesso) {
+        setMsgAcao({ tipo: 'ok', texto: '✅ Marcado como enviada ao cliente.' })
+        router.refresh()
+      } else {
+        setMsgAcao({ tipo: 'erro', texto: r.erro || 'Erro ao marcar enviada' })
+      }
+    })
+  }
+
+  async function marcarAceita() {
+    if (!confirm('Confirmar que o cliente aceitou esta proposta? Isso fecha a venda e vai iniciar homologação/execução conforme o tipo do serviço.')) return
+    setMsgAcao(null)
+    startTransition(async () => {
+      const r = await marcarPropostaAceitaAction(projeto.id, 'Cliente aceitou (fluxo serviços)')
+      if (r.sucesso) {
+        setMsgAcao({ tipo: 'ok', texto: '🎉 Venda fechada! Projeto virou "vendido".' })
+        router.refresh()
+      } else {
+        setMsgAcao({ tipo: 'erro', texto: r.erro || 'Erro ao fechar venda' })
+      }
+    })
   }
 
   return (
@@ -398,6 +463,45 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
             {erroPdf && (
               <p className="text-[10px] text-coral text-center">⚠️ {erroPdf}</p>
             )}
+
+            {/* Kalebe 2026-09-17: ações pós-PDF — enviar ao cliente + fechar venda.
+                Espelha o fluxo do solar (marcarPropostaEnviada/Aceita). */}
+            {!jaFechou && (
+              <div className="mt-2 pt-3 border-t border-noite/10 flex flex-col gap-2">
+                <p className="text-[10px] uppercase font-bold text-noite/60 text-center">
+                  Depois de enviar ao cliente
+                </p>
+                <button
+                  type="button"
+                  onClick={marcarEnviada}
+                  disabled={isPending}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-noite/10 border border-noite/20 text-noite font-semibold text-xs rounded-lg hover:bg-noite/15 transition disabled:opacity-40"
+                >
+                  📤 Marcar proposta enviada
+                </button>
+                <button
+                  type="button"
+                  onClick={marcarAceita}
+                  disabled={isPending}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-verde text-white font-bold text-xs rounded-lg hover:bg-verde/90 transition disabled:opacity-40"
+                >
+                  🎯 Cliente aceitou · fechar venda
+                </button>
+              </div>
+            )}
+            {jaFechou && (
+              <div className="mt-2 pt-3 border-t border-noite/10">
+                <p className="text-[11px] text-center text-verde font-bold">
+                  ✅ Venda fechada · status <code>{statusAtual}</code>
+                </p>
+              </div>
+            )}
+            {msgAcao && (
+              <div className={`text-[11px] text-center p-2 rounded ${msgAcao.tipo === 'ok' ? 'bg-verde/20 text-noite' : 'bg-coral/20 text-noite'}`}>
+                {msgAcao.texto}
+              </div>
+            )}
+
             <a
               href="/admin/precificacao"
               target="_blank"
