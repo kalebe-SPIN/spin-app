@@ -12,6 +12,7 @@ import {
   mudarStatusEventoAction,
   mudarStatusTarefaAction,
 } from '@/app/agenda/actions'
+import { ChatEquipeModal } from '@/components/ChatEquipeModal'
 
 export type Responsavel = { id: string; nome: string; role: string }
 
@@ -37,11 +38,30 @@ const fmtDataCurta = (iso: string) =>
   new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 
 export function RelacionamentoDuasColunas({ dados }: { dados: DadosRelacionamento }) {
+  const [chatEquipeAberto, setChatEquipeAberto] = useState(false)
+  const meuNome = dados.responsaveis.find((r) => r.id === dados.usuarioId)?.nome || 'Eu'
   return (
     <section className="mb-6">
-      <h2 className="text-xs uppercase tracking-wider font-bold text-white/70 mb-3 flex items-center gap-2">
-        🤝 Relacionamento com o cliente
-      </h2>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="text-xs uppercase tracking-wider font-bold text-white/70 flex items-center gap-2">
+          🤝 Relacionamento com o cliente
+        </h2>
+        <button
+          type="button"
+          onClick={() => setChatEquipeAberto(true)}
+          className="px-3 py-1.5 rounded bg-weg-azul/10 border border-weg-azul/30 text-weg-azul text-[11px] font-bold uppercase tracking-wider hover:bg-weg-azul/20 transition"
+          title="Falar com um colega da equipe pelo chat interno"
+        >
+          💬 Chat equipe
+        </button>
+      </div>
+      <ChatEquipeModal
+        aberto={chatEquipeAberto}
+        onFechar={() => setChatEquipeAberto(false)}
+        meuId={dados.usuarioId}
+        meuNome={meuNome}
+        usuarios={dados.responsaveis}
+      />
       {/* Kalebe 2026-09-17: 3 cards separados (padrão dashboard) em vez de
           um card único com colunas. Cada card tem sua identidade visual. */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
