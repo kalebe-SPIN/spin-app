@@ -150,7 +150,7 @@ export default async function AgendaPage({
 
         {vendoDoOutro && (
           <div className="mb-3 px-4 py-2 bg-weg-azul/10 border border-weg-azul/30 rounded-lg text-sm text-weg-azul">
-            👥 Você está vendo a agenda de <strong>{donoAtualNome}</strong>. Eventos e tarefas que criar aqui vão pra agenda dele — a Bianca avisa automaticamente.
+            👥 Você está vendo a agenda de <strong>{donoAtualNome}</strong>. Compromissos e tarefas que criar aqui vão pra agenda dele — a Bianca avisa automaticamente.
           </div>
         )}
 

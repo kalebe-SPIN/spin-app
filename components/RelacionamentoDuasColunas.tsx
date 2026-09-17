@@ -254,7 +254,7 @@ function ColunaAgenda({ dados }: { dados: DadosRelacionamento }) {
               modo === 'novo_evento' ? 'bg-sol text-noite' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
             }`}
           >
-            + Evento
+            + Compromisso
           </button>
         </div>
       </div>
@@ -284,7 +284,7 @@ function ColunaAgenda({ dados }: { dados: DadosRelacionamento }) {
       <div className="flex-1 overflow-y-auto space-y-2 pr-1" style={{ maxHeight: 300 }}>
         {dados.eventos.length === 0 && dados.tarefas.length === 0 ? (
           <p className="text-xs text-white/40 text-center py-8">
-            Nenhum evento ou tarefa vinculado.<br />
+            Nenhum compromisso ou tarefa vinculado.<br />
             <span className="text-[10px] text-white/30">Cria um acima ou pede pra Bianca.</span>
           </p>
         ) : (
@@ -351,7 +351,7 @@ function ItemAgenda({ tipo, item, startSalvando, onErro, onFeito }: {
   }
 
   function excluir() {
-    if (!confirm(`Excluir ${tipo === 'tarefa' ? 'a tarefa' : 'o evento'} "${item.titulo}"? Não dá pra desfazer.`)) return
+    if (!confirm(`Excluir ${tipo === 'tarefa' ? 'a tarefa' : 'o compromisso'} "${item.titulo}"? Não dá pra desfazer.`)) return
     onErro(null)
     startSalvando(async () => {
       const r = tipo === 'tarefa'
@@ -552,7 +552,7 @@ function FormNovoEvento({
         dono_usuario_id: responsavelId || dados.usuarioId,
         projeto_id: dados.projetoId,
       })
-      if ('erro' in r) { onErro(r.erro || 'Erro ao criar evento'); return }
+      if ('erro' in r) { onErro(r.erro || 'Erro ao criar compromisso'); return }
       onFeito()
     })
   }
@@ -563,7 +563,7 @@ function FormNovoEvento({
         type="text"
         value={titulo}
         onChange={(e) => setTitulo(e.target.value)}
-        placeholder="Título do evento (ex: Reunião de proposta)"
+        placeholder="Título do compromisso (ex: Reunião de proposta)"
         autoFocus
         className="w-full px-2 py-1.5 bg-white/5 border border-white/15 rounded text-xs text-white placeholder-white/40 focus:outline-none focus:border-sol"
       />
@@ -604,7 +604,7 @@ function FormNovoEvento({
         disabled={salvando || !titulo.trim() || !quando}
         className="w-full px-3 py-1.5 bg-sol text-noite font-bold text-xs rounded hover:bg-sol/90 disabled:opacity-40 transition"
       >
-        {salvando ? 'Criando...' : '✓ Criar evento'}
+        {salvando ? 'Criando...' : '✓ Criar compromisso'}
       </button>
     </div>
   )

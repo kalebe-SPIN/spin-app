@@ -37,17 +37,17 @@ export async function AgendaDoProjeto({ projetoId }: { projetoId: string }) {
 
       {!temItens ? (
         <p className="text-xs text-white/40">
-          Nenhum evento ou tarefa vinculado. Vá em <Link href="/agenda" className="text-sol">/agenda</Link> e peça pra Bianca criar algo mencionando esse cliente.
+          Nenhum compromisso ou tarefa vinculado. Vá em <Link href="/agenda" className="text-sol">/agenda</Link> e peça pra Bianca criar algo mencionando esse cliente.
         </p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Eventos */}
+          {/* Compromissos */}
           <div>
             <h4 className="text-[10px] uppercase font-bold text-white/50 mb-2">
-              Eventos ({eventos?.length || 0})
+              Compromissos ({eventos?.length || 0})
             </h4>
             {!eventos || eventos.length === 0 ? (
-              <p className="text-xs text-white/30">Nenhum evento.</p>
+              <p className="text-xs text-white/30">Nenhum compromisso.</p>
             ) : (
               <div className="space-y-1.5">
                 {eventos.map((e: any) => (
