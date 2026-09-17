@@ -1106,9 +1106,16 @@ function ModoManual({
               <option value="" className="bg-noite">— escolha um inversor pra adicionar —</option>
               {inversoresOrd.map(i => {
                 const isMicro = /^SIW100/i.test(i.modelo || '')
+                // Kalebe 2026-09-17: diferenciar híbridos (subcategoria +
+                // fallback pelo modelo terminando em H).
+                const isHibrido = i.subcategoria === 'inversor_hibrido'
+                  || /^SIW\d+H/i.test(i.modelo || '')
+                const prefixo = isMicro ? '[micro] '
+                  : isHibrido ? '[híbrido] '
+                  : '[string] '
                 return (
                   <option key={i.id} value={i.id} className="bg-noite">
-                    {isMicro ? '[micro] ' : '[string] '}
+                    {prefixo}
                     {i.modelo} · {i.specs?.potencia_kw || 0} kW
                     {!i.disponivel_estoque ? ' · sem estoque' : ''}
                   </option>

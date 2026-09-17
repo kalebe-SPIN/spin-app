@@ -80,7 +80,10 @@ export default async function KitPage({ params }: { params: { id: string } }) {
       precos_produtos(preco_venda, vigente_de, vigente_ate)
     `)
     .eq('categoria', 'inversor')
-    .in('subcategoria', ['inversor_string', 'microinversor'])
+    // Kalebe 2026-09-17: incluir híbridos no dropdown do /kit também.
+    // Antes ficavam só no /hibrido — mas ele quer poder escolher
+    // SIW200H/SIW400H aqui também sem sair do fluxo on-grid.
+    .in('subcategoria', ['inversor_string', 'microinversor', 'inversor_hibrido'])
     .eq('ativo', true)
 
   // Kalebe 2026-09-09 (v3): filtrar por categoria não estava confiável — os
