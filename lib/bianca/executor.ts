@@ -390,6 +390,81 @@ export async function executarTool(
         }
       }
 
+      case 'enviar_whatsapp_direto': {
+        // Kalebe 2026-09-17: Bianca envia direto pelo canal Spin quando o
+        // usuário explicitamente pede. Aceita destinatario_usuario_id
+        // (perfil interno Spin) OU destinatario_telefone (qualquer número).
+        // Se usuário interno, pega telefone de profiles automaticamente.
+        let tel = ''
+        let destNome = String(input.destinatario_nome || '').trim()
+        let destUserId: string | null = null
+        if (input.destinatario_usuario_id) {
+          const { data: perfil } = await supabase
+            .from('profiles')
+            .select('id, nome_completo, telefone')
+            .eq('id', input.destinatario_usuario_id)
+            .maybeSingle()
+          if (!perfil) return { sucesso: false, erro: 'Usuário destinatário não encontrado' }
+          tel = String(perfil.telefone || '').replace(/\D/g, '')
+          if (!tel) return { sucesso: false, erro: `${perfil.nome_completo} não tem WhatsApp cadastrado` }
+          destNome = perfil.nome_completo || destNome
+          destUserId = perfil.id
+        } else {
+          tel = String(input.destinatario_telefone || '').replace(/\D/g, '')
+        }
+        if (tel && !tel.startsWith('55') && tel.length === 11) tel = '55' + tel
+        if (!tel || tel.length < 12) return { sucesso: false, erro: 'Telefone inválido pra Meta Cloud API' }
+
+        // Cria/reusa contato + conversa pra esse telefone e envia via canal Spin.
+        try {
+          const { enviarTextoPeloCanal } = await import('@/lib/whatsapp/enviar-canal')
+          const { upsertContato, findOrCreateConversaAtiva } = await import('@/lib/whatsapp/conversas')
+          const { createAdminClient } = await import('@/lib/supabase/admin')
+          const admin = createAdminClient()
+
+          const contato = await upsertContato(admin, {
+            telefone: tel,
+            nome_exibicao: destNome,
+            tipo_default: destUserId ? 'colaborador' : 'lead',
+          })
+          if (!contato) return { sucesso: false, erro: 'Falha ao criar contato WA' }
+          const conv = await findOrCreateConversaAtiva(admin, contato.id, { status_inicial: 'em_atendimento' })
+          if (!conv) return { sucesso: false, erro: 'Falha ao abrir conversa WA' }
+
+          const r = await enviarTextoPeloCanal({
+            conversa_id: conv.id,
+            telefone: tel,
+            texto: input.mensagem,
+            remetente_agente: 'bianca',
+            origem_agente_nome: 'Bianca',
+          }) as any
+          if (r?.erro || !r?.sucesso) return { sucesso: false, erro: r?.erro || 'Falha no envio Meta' }
+          const metaMsgId: string | null = r.meta_message_id || null
+
+          // Registra em bianca_comunicacoes pra auditoria
+          const { data: com } = await supabase.from('bianca_comunicacoes').insert({
+            usuario_id: userId,
+            projeto_id: input.projeto_id || null,
+            destinatario_nome: destNome,
+            destinatario_telefone: tel,
+            destinatario_usuario_id: destUserId,
+            canal: 'whatsapp',
+            mensagem: input.mensagem,
+            status: 'enviada_bianca',
+            enviada_em: new Date().toISOString(),
+            meta_message_id: metaMsgId,
+          }).select('id').single()
+
+          return {
+            sucesso: true,
+            dados: { id: com?.id, telefone: tel, meta_message_id: metaMsgId, conversa_id: conv.id },
+            _hint: `✅ Mensagem enviada pra ${destNome} (${tel}) via canal Spin.`,
+          }
+        } catch (e: any) {
+          return { sucesso: false, erro: e?.message || 'Falha ao chamar canal Spin' }
+        }
+      }
+
       case 'enviar_email': {
         const { data, error } = await supabase.from('bianca_comunicacoes').insert({
           usuario_id: userId,

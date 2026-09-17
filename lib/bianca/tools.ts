@@ -165,6 +165,21 @@ export const BIANCA_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'enviar_whatsapp_direto',
+    description: 'ENVIA UMA MENSAGEM WHATSAPP AGORA pelo canal Spin (Meta Cloud API), sem passar pelo consultor. Use QUANDO o usuário claramente pedir "manda", "envia agora", "avisa o fulano", "chama a equipe", etc — pra comunicação INTERNA entre usuários Spin ou pra clientes. A mensagem sai do número +55 48 3263-0182. Registra tudo em wa_mensagens e bianca_comunicacoes. Cuidado: só chama isso se o usuário deu ordem clara de enviar; se estiver em dúvida, use enviar_whatsapp (que só gera link).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        destinatario_nome: { type: 'string', description: 'Nome (ex: "Kalebe", "Vanildo")' },
+        destinatario_usuario_id: { type: 'string', description: 'UUID do profile do destinatário se for um usuário interno Spin (opcional; se preenchido, pega o telefone dele automático).' },
+        destinatario_telefone: { type: 'string', description: 'Telefone com DDD; ignorado se destinatario_usuario_id preenchido. Aceita (48) 99999-9999 ou 5548999998888.' },
+        mensagem: { type: 'string', description: 'Texto em português brasileiro, natural e cordial. Já sai prefixado com "*Bianca*:" — não repita.' },
+        projeto_id: { type: 'string', description: 'Projeto relacionado (opcional).' },
+      },
+      required: ['destinatario_nome', 'mensagem'],
+    },
+  },
+  {
     name: 'enviar_email',
     description: 'Registra um email a ser enviado (você NÃO envia direto — só registra a intenção, o consultor decide manualmente por enquanto). Útil pra: enviar proposta, follow-up formal, documentos.',
     input_schema: {
