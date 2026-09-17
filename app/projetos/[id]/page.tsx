@@ -334,6 +334,33 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           )}
         </Section>
 
+        {/* Kalebe 2026-09-17: previews dos arquivos de fatura */}
+        {(projeto.analise_fatura?.arquivo_url || (projeto.beneficiarias || []).some((b: any) => b?.arquivo_url)) && (
+          <Section title="Faturas anexadas">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {projeto.analise_fatura?.arquivo_url && (
+                <FaturaMiniatura
+                  url={projeto.analise_fatura.arquivo_url}
+                  nome={projeto.analise_fatura.arquivo_nome || 'Fatura principal'}
+                  tipo={projeto.analise_fatura.arquivo_tipo}
+                  rotulo="Principal"
+                />
+              )}
+              {(projeto.beneficiarias || []).map((b: any, i: number) =>
+                b?.arquivo_url ? (
+                  <FaturaMiniatura
+                    key={i}
+                    url={b.arquivo_url}
+                    nome={b.arquivo_nome || `Beneficiária ${i + 1}`}
+                    tipo={b.arquivo_tipo}
+                    rotulo={`UC ${b.uc || `#${i + 1}`}`}
+                  />
+                ) : null,
+              )}
+            </div>
+          </Section>
+        )}
+
         {/* Tipo */}
         <Section title="Tipo de projeto">
           <Info label="Modalidade" value={TIPO_PROJETO_LABEL[projeto.tipo_projeto] || projeto.tipo_projeto} />
@@ -482,6 +509,49 @@ function Info({ label, value }: { label: string; value: string }) {
       <span className="text-white/40">{label}</span>
       <span className="col-span-2 text-white font-medium">{value}</span>
     </div>
+  )
+}
+
+/**
+ * Kalebe 2026-09-17: miniatura de fatura anexada.
+ * Imagem: preview real. PDF: ícone. Clique abre em nova aba.
+ */
+function FaturaMiniatura({ url, nome, tipo, rotulo }: {
+  url: string
+  nome: string
+  tipo?: string | null
+  rotulo: string
+}) {
+  const isImagem = tipo?.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(url)
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="group block rounded-lg overflow-hidden border border-white/10 hover:border-sol transition bg-white/[0.03]"
+      title={nome}
+    >
+      <div className="aspect-[4/5] bg-white/5 flex items-center justify-center relative overflow-hidden">
+        {isImagem ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={nome} className="w-full h-full object-cover" />
+        ) : (
+          <div className="flex flex-col items-center gap-2 p-4 text-center">
+            <div className="text-4xl">📄</div>
+            <span className="text-[10px] text-white/60 uppercase font-semibold">PDF</span>
+          </div>
+        )}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center">
+          <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-semibold bg-black/60 px-2 py-1 rounded">
+            🔍 Abrir
+          </span>
+        </div>
+      </div>
+      <div className="p-2 border-t border-white/5">
+        <p className="text-[10px] uppercase font-bold text-sol tracking-wider truncate">{rotulo}</p>
+        <p className="text-[10px] text-white/50 truncate">{nome}</p>
+      </div>
+    </a>
   )
 }
 

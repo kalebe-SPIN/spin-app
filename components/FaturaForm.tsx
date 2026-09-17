@@ -4,6 +4,38 @@ import { useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { salvarAnaliseFaturaAction } from '@/app/projetos/[id]/fatura/actions'
 import { HistoricoConsumo } from '@/components/HistoricoConsumo'
+import { createClient } from '@/lib/supabase/client'
+
+const BUCKET_FATURAS = 'faturas'
+
+/**
+ * Kalebe 2026-09-17: sobe fatura pro Storage e retorna URL pública.
+ * Depois da IA analisar, o arquivo fica acessível no card do projeto.
+ * Se o upload falhar, não bloqueia a análise — só perde o preview.
+ */
+async function uploadFaturaStorage(
+  projetoId: string,
+  file: File,
+  slot: 'principal' | `ben_${number}`,
+): Promise<string | null> {
+  try {
+    const supabase = createClient()
+    const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
+    const path = `${projetoId}/${slot}_${Date.now()}.${ext}`
+    const { error } = await supabase.storage
+      .from(BUCKET_FATURAS)
+      .upload(path, file, { contentType: file.type || 'application/pdf', upsert: false })
+    if (error) {
+      console.warn('[fatura/upload]', error)
+      return null
+    }
+    const { data } = supabase.storage.from(BUCKET_FATURAS).getPublicUrl(path)
+    return data.publicUrl
+  } catch (e) {
+    console.warn('[fatura/upload/exception]', e)
+    return null
+  }
+}
 
 type Beneficiaria = {
   ordem: number
@@ -12,6 +44,9 @@ type Beneficiaria = {
   analise: any
   cor_grafico: string
   arquivo_nome?: string
+  /** Kalebe 2026-09-17: URL pública do arquivo original no Storage 'faturas'. */
+  arquivo_url?: string
+  arquivo_tipo?: string
   status: 'aguardando' | 'analisando' | 'ok' | 'erro'
   erro?: string
 }
@@ -59,7 +94,15 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
     setAnalisando(true)
     try {
       const dados = await processarFatura(file)
-      setAnalise(dados)
+      // Kalebe 2026-09-17: sobe pro Storage em paralelo pra ficar acessível
+      // depois. Não bloqueia se o upload falhar.
+      const arquivoUrl = await uploadFaturaStorage(projetoId, file, 'principal')
+      setAnalise({
+        ...dados,
+        arquivo_url: arquivoUrl,
+        arquivo_nome: file.name,
+        arquivo_tipo: file.type || 'application/pdf',
+      })
     } catch (e: any) {
       setErro(e.message || 'Erro ao processar fatura')
     } finally {
@@ -81,11 +124,14 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
     ))
     try {
       const dados = await processarFatura(file)
+      const arquivoUrl = await uploadFaturaStorage(projetoId, file, `ben_${idx}`)
       setBeneficiarias(prev => prev.map((b, i) =>
         i === idx ? {
           ...b,
           status: 'ok',
           arquivo_nome: file.name,
+          arquivo_url: arquivoUrl || undefined,
+          arquivo_tipo: file.type || 'application/pdf',
           uc: dados.uc || b.uc,
           titular: dados.razao_social || b.titular,
           analise: dados,
