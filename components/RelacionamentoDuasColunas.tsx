@@ -38,15 +38,22 @@ const fmtDataCurta = (iso: string) =>
 
 export function RelacionamentoDuasColunas({ dados }: { dados: DadosRelacionamento }) {
   return (
-    <section className="mb-6 bg-white/[0.03] border border-white/10 rounded-xl overflow-hidden">
-      <header className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-        <h2 className="text-xs uppercase tracking-wider font-bold text-white/70">
-          🤝 Relacionamento com o cliente
-        </h2>
-      </header>
-      <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/10">
-        <ColunaWhatsApp dados={dados} />
-        <ColunaAgenda dados={dados} />
+    <section className="mb-6">
+      <h2 className="text-xs uppercase tracking-wider font-bold text-white/70 mb-3 flex items-center gap-2">
+        🤝 Relacionamento com o cliente
+      </h2>
+      {/* Kalebe 2026-09-17: 3 cards separados (padrão dashboard) em vez de
+          um card único com colunas. Cada card tem sua identidade visual. */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white/[0.03] border border-verde/20 rounded-xl overflow-hidden">
+          <ColunaWhatsApp dados={dados} />
+        </div>
+        <div className="bg-white/[0.03] border border-sol/20 rounded-xl overflow-hidden">
+          <ColunaAgenda dados={dados} />
+        </div>
+        <div className="bg-white/[0.03] border border-weg-azul/25 rounded-xl overflow-hidden">
+          <ColunaBianca dados={dados} />
+        </div>
       </div>
     </section>
   )
@@ -491,6 +498,142 @@ function FormNovaTarefa({
       >
         {salvando ? 'Criando...' : '✓ Criar tarefa'}
       </button>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COLUNA CENTRAL/DIREITA — Bianca (secretária IA)
+// Consultor chama pra pedir contexto sobre o cliente, agendar,
+// gerar mensagens etc. Kalebe 2026-09-17.
+// ═══════════════════════════════════════════════════════════════
+function ColunaBianca({ dados }: { dados: DadosRelacionamento }) {
+  const router = useRouter()
+  const [texto, setTexto] = useState('')
+  const [enviando, startEnviando] = useTransition()
+  const [resposta, setResposta] = useState<string | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+
+  async function chamarBianca() {
+    const t = texto.trim()
+    if (!t) return
+    setErro(null)
+    setResposta(null)
+    startEnviando(async () => {
+      try {
+        const contexto = `Estamos vendo o projeto ${dados.projetoId}${
+          dados.telefoneCliente ? ` (cliente WhatsApp ${dados.telefoneCliente})` : ''
+        }.`
+        const res = await fetch('/api/bianca/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mensagem: `${contexto}\n\n${t}`,
+            historico: [],
+          }),
+        })
+        const j = await res.json()
+        if (!res.ok) throw new Error(j?.error || 'Bianca falhou')
+        setResposta(j.resposta || j.texto || 'Recebi. Vou olhar isso pra você.')
+        setTexto('')
+        router.refresh()
+      } catch (e: any) {
+        setErro(e?.message || 'Erro ao chamar Bianca')
+      }
+    })
+  }
+
+  return (
+    <div className="p-4 flex flex-col h-[520px]">
+      <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+        <BiancaAvatar />
+        <div className="flex-1">
+          <h3 className="text-[11px] uppercase tracking-wider font-bold text-weg-azul">
+            Bianca
+          </h3>
+          <p className="text-[10px] text-white/50">secretária IA · pronta pra ajudar</p>
+        </div>
+        <Link
+          href="/bianca/sugestoes"
+          title="Chat completo com a Bianca"
+          className="w-8 h-8 flex items-center justify-center rounded bg-weg-azul/10 border border-weg-azul/30 hover:bg-weg-azul/20 text-weg-azul transition"
+        >
+          ↗
+        </Link>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 mb-3 pr-1">
+        {!resposta && !enviando && (
+          <div className="text-[11px] text-white/60 space-y-2">
+            <p>
+              👋 Oi! Sou a Bianca. Posso te ajudar com esse cliente:
+            </p>
+            <ul className="text-[10.5px] text-white/50 space-y-1 pl-3">
+              <li>• Resumir a última interação</li>
+              <li>• Sugerir a próxima ação</li>
+              <li>• Escrever uma mensagem de follow-up</li>
+              <li>• Criar tarefas e compromissos</li>
+              <li>• Buscar histórico de propostas</li>
+            </ul>
+            <p className="text-[10px] text-white/40 pt-1">
+              Só me diz o que você precisa embaixo 👇
+            </p>
+          </div>
+        )}
+        {enviando && (
+          <div className="text-[11px] text-weg-azul flex items-center gap-2">
+            <span className="animate-pulse">✨</span>
+            Bianca está pensando…
+          </div>
+        )}
+        {resposta && (
+          <div className="bg-weg-azul/10 border border-weg-azul/25 rounded p-2.5">
+            <div className="flex items-baseline gap-2 mb-1.5">
+              <span className="text-[9px] uppercase font-bold text-weg-azul">Bianca</span>
+              <span className="text-[9px] text-white/40">agora</span>
+            </div>
+            <p className="text-xs text-white/90 whitespace-pre-wrap">{resposta}</p>
+          </div>
+        )}
+        {erro && (
+          <p className="text-[10px] text-coral">⚠️ {erro}</p>
+        )}
+      </div>
+
+      <div className="flex gap-2 flex-shrink-0">
+        <input
+          type="text"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chamarBianca() } }}
+          placeholder="Pergunta pra Bianca…"
+          disabled={enviando}
+          className="flex-1 px-3 py-2 bg-white/5 border border-white/15 rounded text-sm text-white placeholder-white/30 focus:outline-none focus:border-weg-azul disabled:opacity-40"
+        />
+        <button
+          type="button"
+          onClick={chamarBianca}
+          disabled={enviando || !texto.trim()}
+          className="px-3 py-2 bg-weg-azul text-white text-xs font-bold rounded hover:bg-weg-azul/90 disabled:opacity-30 transition"
+        >
+          {enviando ? '…' : '✨'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function BiancaAvatar() {
+  return (
+    <div
+      className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+      style={{
+        background: 'linear-gradient(135deg, #587FFF 0%, #B78BFF 100%)',
+        boxShadow: '0 0 12px rgba(88, 127, 255, 0.4)',
+      }}
+      title="Bianca — secretária IA da Spin"
+    >
+      ✨
     </div>
   )
 }
