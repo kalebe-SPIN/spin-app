@@ -262,7 +262,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     .from('projetos')
     .select(`
       id, consultor_id, cliente_id, cliente_razao_social, cliente_cpf_cnpj,
-      status, pv_total, orcamento_final, orcamento_consolidado, venda_fechada, tipo_projeto, ve_recarga_selecionada,
+      status, pv_total, orcamento_final, orcamento_consolidado, tipo_projeto, ve_recarga_selecionada,
       origem_lead,
       desconto_admin_pct, desconto_admin_valor,
       created_at, updated_at, status_atualizado_em, excluida_em,
@@ -1021,14 +1021,13 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   }).length
 
   // Kalebe 2026-09-17: agrupa vendas fechadas do mês por condição de pagamento
-  // acordada. Vem de venda_fechada.condicao_pagamento (novo) ou
-  // orcamento_consolidado.condicao_pagamento_acordada (fallback). Vendas
-  // antigas sem essa info entram como "Não informada".
+  // acordada. Vem de orcamento_consolidado.condicao_pagamento_acordada
+  // (salvo no modal de confirmação). Vendas antigas sem info entram como
+  // "Não informada".
   const condPagAgg = new Map<string, { qtd: number; valor: number }>()
   for (const p of projetosFechadosMes) {
     const cond = String(
-      p.venda_fechada?.condicao_pagamento
-      || p.orcamento_consolidado?.condicao_pagamento_acordada
+      p.orcamento_consolidado?.condicao_pagamento_acordada
       || 'Não informada',
     )
     const valor = pvDoProjeto(p)

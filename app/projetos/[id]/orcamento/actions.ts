@@ -146,24 +146,27 @@ export async function marcarPropostaAceitaAction(
       .select('orcamento_consolidado')
       .eq('id', projetoId)
       .maybeSingle()
+    // Kalebe 2026-09-17: tudo vive dentro de orcamento_consolidado (jsonb
+    // da migration 092) — evita coluna nova. Guarda também um bloco
+    // venda_fechada:{...} pra histórico do fechamento (quem/quando).
     const consolidado = {
       ...(proj?.orcamento_consolidado || {}),
       pv_total: venda.preco_final,
       pv_acordado: venda.preco_final,
       condicao_pagamento_acordada: venda.condicao_pagamento,
       parcelas_acordadas: venda.parcelas || null,
-    }
-    const venda_fechada = {
-      preco_final: venda.preco_final,
-      condicao_pagamento: venda.condicao_pagamento,
-      parcelas: venda.parcelas || null,
-      observacoes: venda.observacoes || null,
-      fechada_em: new Date().toISOString(),
-      fechada_por: user.id,
+      venda_fechada: {
+        preco_final: venda.preco_final,
+        condicao_pagamento: venda.condicao_pagamento,
+        parcelas: venda.parcelas || null,
+        observacoes: venda.observacoes || null,
+        fechada_em: new Date().toISOString(),
+        fechada_por: user.id,
+      },
     }
     const { error: eUp } = await supabase
       .from('projetos')
-      .update({ orcamento_consolidado: consolidado, venda_fechada })
+      .update({ orcamento_consolidado: consolidado })
       .eq('id', projetoId)
     if (eUp) return { sucesso: false, erro: eUp.message }
   }
