@@ -30,10 +30,20 @@ export async function RelacionamentoCard({ projetoId, clienteId, clienteTelefone
   const { data: { user } } = await supabase.auth.getUser()
   const usuarioId = user?.id || ''
 
+  // Kalebe 2026-09-17: lista de perfis atribuíveis como responsáveis pela
+  // tarefa/evento. Admin/consultor/representante — quem opera CRM.
+  const perfisPromise = supabase
+    .from('profiles')
+    .select('id, nome_completo, role, telefone')
+    .eq('ativo', true)
+    .in('role', ['admin', 'representante', 'consultor'])
+    .order('nome_completo', { ascending: true })
+
   const [
     { data: eventos },
     { data: tarefas },
     mensagensRes,
+    { data: perfis },
   ] = await Promise.all([
     supabase
       .from('agenda_eventos')
@@ -55,6 +65,7 @@ export async function RelacionamentoCard({ projetoId, clienteId, clienteTelefone
           .order('criada_em', { ascending: false })
           .limit(15)
       : Promise.resolve({ data: [] as any[] }),
+    perfisPromise,
   ])
 
   const dados: DadosRelacionamento = {
@@ -67,6 +78,11 @@ export async function RelacionamentoCard({ projetoId, clienteId, clienteTelefone
     projetoId,
     clienteId,
     usuarioId,
+    responsaveis: (perfis || []).map((p: any) => ({
+      id: p.id,
+      nome: p.nome_completo || 'Sem nome',
+      role: p.role,
+    })),
   }
 
   return <RelacionamentoDuasColunas dados={dados} />

@@ -4,7 +4,16 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { enviarTextoAction, iniciarChamadaAction } from '@/app/inbox/actions'
-import { criarEventoAction, criarTarefaAction } from '@/app/agenda/actions'
+import {
+  criarEventoAction,
+  criarTarefaAction,
+  excluirEventoAction,
+  excluirTarefaAction,
+  mudarStatusEventoAction,
+  mudarStatusTarefaAction,
+} from '@/app/agenda/actions'
+
+export type Responsavel = { id: string; nome: string; role: string }
 
 export type DadosRelacionamento = {
   eventos: any[]
@@ -16,6 +25,7 @@ export type DadosRelacionamento = {
   projetoId: string
   clienteId: string | null
   usuarioId: string
+  responsaveis: Responsavel[]
 }
 
 const fmtHora = (iso: string) =>
@@ -280,47 +290,24 @@ function ColunaAgenda({ dados }: { dados: DadosRelacionamento }) {
         ) : (
           <>
             {dados.eventos.map((e: any) => (
-              <div key={e.id} className="bg-noite/40 border border-white/5 rounded p-2">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs font-bold text-white flex items-center gap-1">
-                    <span className="text-[10px]">📌</span>
-                    {e.titulo}
-                    {e.criado_por_bianca && <span className="text-[8px] text-sol">🤖</span>}
-                  </p>
-                  <span className="text-[9px] text-white/40 whitespace-nowrap">
-                    {fmtHora(e.data_hora_inicio)}
-                  </span>
-                </div>
-                {e.local && <p className="text-[10px] text-white/50 mt-0.5">📍 {e.local}</p>}
-              </div>
+              <ItemAgenda
+                key={e.id}
+                tipo="evento"
+                item={e}
+                startSalvando={startSalvando}
+                onErro={setErroAg}
+                onFeito={() => router.refresh()}
+              />
             ))}
             {dados.tarefas.map((t: any) => (
-              <div key={t.id} className="bg-noite/40 border border-white/5 rounded p-2">
-                <div className="flex items-start justify-between gap-2">
-                  <p className={`text-xs flex items-center gap-1 ${
-                    t.status === 'concluida' ? 'line-through text-white/40' : 'text-white font-bold'
-                  }`}>
-                    <span className="text-[10px]">✓</span>
-                    {t.titulo}
-                    {t.criada_por_bianca && <span className="text-[8px] text-verde">🤖</span>}
-                  </p>
-                  {t.data_prazo && (
-                    <span className="text-[9px] text-white/40 whitespace-nowrap">
-                      até {fmtDataCurta(t.data_prazo + 'T12:00:00-03:00')}
-                    </span>
-                  )}
-                </div>
-                {t.prioridade && t.prioridade !== 'media' && (
-                  <p className="text-[9px] uppercase font-bold mt-0.5">
-                    <span className={
-                      t.prioridade === 'urgente' ? 'text-coral' :
-                      t.prioridade === 'alta' ? 'text-sol' : 'text-white/40'
-                    }>
-                      {t.prioridade}
-                    </span>
-                  </p>
-                )}
-              </div>
+              <ItemAgenda
+                key={t.id}
+                tipo="tarefa"
+                item={t}
+                startSalvando={startSalvando}
+                onErro={setErroAg}
+                onFeito={() => router.refresh()}
+              />
             ))}
           </>
         )}
@@ -331,6 +318,102 @@ function ColunaAgenda({ dados }: { dados: DadosRelacionamento }) {
           Abrir agenda completa →
         </Link>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Item da agenda (evento ou tarefa) com botões ✓ concluir e 🗑 excluir.
+ * Kalebe 2026-09-17: Bianca gere esse espaço — ao criar com responsável
+ * diferente, criarEventoAction/criarTarefaAction já disparam
+ * notificarPar → dispararGatilho, que a Bianca conecta em WhatsApp.
+ */
+function ItemAgenda({ tipo, item, startSalvando, onErro, onFeito }: {
+  tipo: 'evento' | 'tarefa'
+  item: any
+  startSalvando: React.TransitionStartFunction
+  onErro: (e: string | null) => void
+  onFeito: () => void
+}) {
+  const concluida = tipo === 'tarefa'
+    ? item.status === 'concluida'
+    : item.status === 'concluido' || item.status === 'realizado'
+
+  function marcarConcluida() {
+    onErro(null)
+    startSalvando(async () => {
+      const r = tipo === 'tarefa'
+        ? await mudarStatusTarefaAction(item.id, 'concluida')
+        : await mudarStatusEventoAction(item.id, 'realizado')
+      if ('erro' in r) { onErro(r.erro || 'Erro ao concluir'); return }
+      onFeito()
+    })
+  }
+
+  function excluir() {
+    if (!confirm(`Excluir ${tipo === 'tarefa' ? 'a tarefa' : 'o evento'} "${item.titulo}"? Não dá pra desfazer.`)) return
+    onErro(null)
+    startSalvando(async () => {
+      const r = tipo === 'tarefa'
+        ? await excluirTarefaAction(item.id)
+        : await excluirEventoAction(item.id)
+      if ('erro' in r) { onErro(r.erro || 'Erro ao excluir'); return }
+      onFeito()
+    })
+  }
+
+  const emoji = tipo === 'evento' ? '📌' : '✓'
+  const iaFlag = tipo === 'evento' ? item.criado_por_bianca : item.criada_por_bianca
+
+  return (
+    <div className={`group bg-noite/40 border border-white/5 rounded p-2 ${concluida ? 'opacity-60' : ''}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className={`text-xs flex items-center gap-1 flex-1 ${
+          concluida ? 'line-through text-white/40' : 'text-white font-bold'
+        }`}>
+          <span className="text-[10px]">{emoji}</span>
+          {item.titulo}
+          {iaFlag && <span className="text-[8px] text-sol">🤖</span>}
+        </p>
+        <div className="flex items-center gap-1">
+          <span className="text-[9px] text-white/40 whitespace-nowrap">
+            {tipo === 'evento'
+              ? fmtHora(item.data_hora_inicio)
+              : item.data_prazo ? `até ${fmtDataCurta(item.data_prazo + 'T12:00:00-03:00')}` : ''}
+          </span>
+          {!concluida && (
+            <button
+              type="button"
+              onClick={marcarConcluida}
+              title="Marcar concluída"
+              className="opacity-0 group-hover:opacity-100 transition w-5 h-5 flex items-center justify-center text-verde hover:bg-verde/20 rounded text-[10px]"
+            >
+              ✓
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={excluir}
+            title="Excluir"
+            className="opacity-0 group-hover:opacity-100 transition w-5 h-5 flex items-center justify-center text-coral hover:bg-coral/20 rounded text-[10px]"
+          >
+            🗑
+          </button>
+        </div>
+      </div>
+      {tipo === 'evento' && item.local && (
+        <p className="text-[10px] text-white/50 mt-0.5">📍 {item.local}</p>
+      )}
+      {tipo === 'tarefa' && item.prioridade && item.prioridade !== 'media' && !concluida && (
+        <p className="text-[9px] uppercase font-bold mt-0.5">
+          <span className={
+            item.prioridade === 'urgente' ? 'text-coral' :
+            item.prioridade === 'alta' ? 'text-sol' : 'text-white/40'
+          }>
+            {item.prioridade}
+          </span>
+        </p>
+      )}
     </div>
   )
 }
@@ -347,6 +430,7 @@ function FormNovaTarefa({
   const [titulo, setTitulo] = useState('')
   const [prazo, setPrazo] = useState('')
   const [prioridade, setPrioridade] = useState<'baixa' | 'media' | 'alta' | 'urgente'>('media')
+  const [responsavelId, setResponsavelId] = useState(dados.usuarioId)
 
   function salvar() {
     const t = titulo.trim()
@@ -357,7 +441,7 @@ function FormNovaTarefa({
         titulo: t,
         data_prazo: prazo || null,
         prioridade,
-        dono_usuario_id: dados.usuarioId,
+        dono_usuario_id: responsavelId || dados.usuarioId,
         projeto_id: dados.projetoId,
       })
       if ('erro' in r) { onErro(r.erro || 'Erro ao criar tarefa'); return }
@@ -393,6 +477,12 @@ function FormNovaTarefa({
           <option value="urgente" className="bg-noite">Urgente</option>
         </select>
       </div>
+      <SelectResponsavel
+        responsaveis={dados.responsaveis}
+        valor={responsavelId}
+        onChange={setResponsavelId}
+        usuarioAtual={dados.usuarioId}
+      />
       <button
         type="button"
         onClick={salvar}
@@ -401,6 +491,35 @@ function FormNovaTarefa({
       >
         {salvando ? 'Criando...' : '✓ Criar tarefa'}
       </button>
+    </div>
+  )
+}
+
+function SelectResponsavel({ responsaveis, valor, onChange, usuarioAtual }: {
+  responsaveis: Responsavel[]
+  valor: string
+  onChange: (id: string) => void
+  usuarioAtual: string
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-[10px] uppercase font-bold text-white/50">
+        Responsável:
+      </label>
+      <select
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 px-2 py-1.5 bg-white/5 border border-white/15 rounded text-xs text-white focus:outline-none focus:border-sol"
+      >
+        <option value={usuarioAtual} className="bg-noite">Eu mesmo</option>
+        {responsaveis
+          .filter((r) => r.id !== usuarioAtual)
+          .map((r) => (
+            <option key={r.id} value={r.id} className="bg-noite">
+              {r.nome} · {r.role}
+            </option>
+          ))}
+      </select>
     </div>
   )
 }
@@ -418,6 +537,7 @@ function FormNovoEvento({
   const [quando, setQuando] = useState('')
   const [local, setLocal] = useState('')
   const [tipo, setTipo] = useState<'reuniao' | 'visita_tecnica' | 'ligacao' | 'outro'>('reuniao')
+  const [responsavelId, setResponsavelId] = useState(dados.usuarioId)
 
   function salvar() {
     const t = titulo.trim()
@@ -429,7 +549,7 @@ function FormNovoEvento({
         tipo,
         data_hora_inicio: new Date(quando).toISOString(),
         local: local.trim() || null,
-        dono_usuario_id: dados.usuarioId,
+        dono_usuario_id: responsavelId || dados.usuarioId,
         projeto_id: dados.projetoId,
       })
       if ('erro' in r) { onErro(r.erro || 'Erro ao criar evento'); return }
@@ -471,6 +591,12 @@ function FormNovoEvento({
         onChange={(e) => setLocal(e.target.value)}
         placeholder="Local (opcional)"
         className="w-full px-2 py-1.5 bg-white/5 border border-white/15 rounded text-xs text-white placeholder-white/40 focus:outline-none focus:border-sol"
+      />
+      <SelectResponsavel
+        responsaveis={dados.responsaveis}
+        valor={responsavelId}
+        onChange={setResponsavelId}
+        usuarioAtual={dados.usuarioId}
       />
       <button
         type="button"

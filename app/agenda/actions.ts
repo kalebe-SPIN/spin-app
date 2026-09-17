@@ -247,6 +247,38 @@ export async function mudarStatusTarefaAction(
   return { sucesso: true }
 }
 
+// ═══════════════════ EXCLUIR TAREFA ═══════════════════
+// Kalebe 2026-09-17: hard-delete quando o dono do projeto/tarefa decide
+// remover. Registra no histórico antes pra manter auditoria.
+export async function excluirTarefaAction(tarefaId: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const { data: atual } = await supabase
+    .from('agenda_tarefas')
+    .select('id, titulo, usuario_id, status')
+    .eq('id', tarefaId)
+    .single()
+  if (!atual) return { erro: 'Tarefa não encontrada' }
+
+  await supabase.from('agenda_historico').insert({
+    usuario_id: user.id,
+    tarefa_id: tarefaId,
+    acao: 'excluida',
+    status_anterior: atual.status,
+    status_novo: null,
+    observacao: `Tarefa "${atual.titulo}" excluída`,
+    origem: 'usuario',
+  })
+
+  const { error } = await supabase.from('agenda_tarefas').delete().eq('id', tarefaId)
+  if (error) return { erro: error.message }
+
+  revalidatePath('/agenda')
+  return { sucesso: true }
+}
+
 // ═══════════════════ COMENTÁRIO ═══════════════════
 export async function adicionarComentarioAction(input: {
   tarefaId?: string; eventoId?: string; observacao: string
