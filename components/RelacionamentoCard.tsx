@@ -1,14 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
-import { RelacionamentoTabs, type DadosRelacionamento } from './RelacionamentoTabs'
+import { RelacionamentoDuasColunas, type DadosRelacionamento } from './RelacionamentoDuasColunas'
+import { abrirCanalDoProjetoAction } from '@/app/inbox/actions'
 
 /**
- * Kalebe 2026-09-17: card único de relacionamento com o cliente.
- * Substitui ConversaClienteCard + AgendaDoProjeto por 1 wrapper com abas:
- *   - 💬 Conversa (canal WhatsApp Spin)
- *   - 📅 Agenda (eventos + tarefas via Bianca)
- *   - 📨 Comunicações (bianca_comunicacoes — histórico Bianca)
- *   - 📚 Criativos (materiais enviados por WhatsApp)
- * Cada aba tem um "abrir tudo" que leva pra tela dedicada.
+ * Kalebe 2026-09-17: card único de relacionamento em 2 colunas.
+ * Esquerda (💬 WhatsApp): últimas msgs + input de envio + botão vídeo/ligação.
+ * Direita (📅 Agenda): eventos + tarefas com criação inline sem sair da tela.
+ * Ao criar tarefa/evento, atualiza a agenda em paralelo — mesma action que
+ * a rota /agenda usa. Multi-persona: se admin, dono default = usuário atual.
  */
 
 type Props = {
@@ -20,71 +19,55 @@ type Props = {
 export async function RelacionamentoCard({ projetoId, clienteId, clienteTelefone }: Props) {
   const supabase = createClient()
 
-  // Busca tudo em paralelo — cada consulta é rápida e falha isoladamente.
+  // Descobre conversa ligada ao cliente (ou cria se necessário).
+  // Se cliente sem telefone, conversa_id vem null e coluna esquerda mostra CTA.
+  let conversaId: string | null = null
+  try {
+    const r = await abrirCanalDoProjetoAction(projetoId)
+    if ('conversa_id' in r) conversaId = r.conversa_id
+  } catch { /* silencioso: se falhar, mostra fallback */ }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const usuarioId = user?.id || ''
+
   const [
     { data: eventos },
     { data: tarefas },
-    { data: comunicacoes },
-    { data: mensagensWa },
-    { data: criativos },
+    mensagensRes,
   ] = await Promise.all([
     supabase
       .from('agenda_eventos')
-      .select('id, titulo, data_hora_inicio, local, tipo, criado_por_bianca')
+      .select('id, titulo, data_hora_inicio, local, tipo, criado_por_bianca, status')
       .eq('projeto_id', projetoId)
       .order('data_hora_inicio', { ascending: true })
-      .limit(10),
+      .limit(20),
     supabase
       .from('agenda_tarefas')
       .select('id, titulo, data_prazo, prioridade, status, criada_por_bianca')
       .eq('projeto_id', projetoId)
       .order('data_prazo', { ascending: true, nullsFirst: false })
-      .limit(10),
-    supabase
-      .from('bianca_comunicacoes')
-      .select('id, canal, tipo, status, criado_em, resposta_texto, respondida_em, destinatario_nome')
-      .eq('projeto_id', projetoId)
-      .order('criado_em', { ascending: false })
-      .limit(10),
-    // Últimas mensagens WhatsApp do canal Spin — puxa pela conversa ligada a
-    // esse cliente. Ligação por telefone (contato) ou cliente_id direto.
-    clienteTelefone
+      .limit(20),
+    conversaId
       ? supabase
           .from('wa_mensagens')
-          .select('id, direcao, tipo, texto, criada_em, status_entrega, conversa_id')
-          .in('conversa_id', (
-            await supabase
-              .from('wa_conversas')
-              .select('id, contato:contato_id(telefone, cliente_id)')
-              .limit(50)
-          ).data
-            ?.filter((c: any) =>
-              c.contato?.cliente_id === clienteId
-              || String(c.contato?.telefone || '').replace(/\D/g, '').endsWith(String(clienteTelefone).replace(/\D/g, '').slice(-10)),
-            )
-            .map((c: any) => c.id) || ['00000000-0000-0000-0000-000000000000'])
+          .select('id, direcao, tipo, texto, criada_em, status_entrega, remetente:remetente_id(nome_completo), origem_agente_nome')
+          .eq('conversa_id', conversaId)
           .order('criada_em', { ascending: false })
           .limit(15)
-      : { data: [] as any[] },
-    // Criativos: busca em bianca_comunicacoes com tipo 'criativo' ou similar.
-    // (Se não existir tabela dedicada, deixa vazio.)
-    supabase
-      .from('bianca_comunicacoes')
-      .select('id, criado_em, resposta_texto, status')
-      .eq('projeto_id', projetoId)
-      .eq('tipo', 'criativo_biblioteca')
-      .order('criado_em', { ascending: false })
-      .limit(10),
+      : Promise.resolve({ data: [] as any[] }),
   ])
 
   const dados: DadosRelacionamento = {
     eventos: (eventos || []) as any[],
     tarefas: (tarefas || []) as any[],
-    comunicacoes: (comunicacoes || []) as any[],
-    mensagensWa: (mensagensWa || []) as any[],
-    criativos: (criativos || []) as any[],
+    mensagens: ((mensagensRes as any).data || []).reverse(), // mais antiga em cima
+    conversaId,
     temTelefone: !!clienteTelefone,
+    telefoneCliente: clienteTelefone || '',
+    projetoId,
+    clienteId,
+    usuarioId,
   }
 
-  return <RelacionamentoTabs projetoId={projetoId} dados={dados} />
+  return <RelacionamentoDuasColunas dados={dados} />
 }
