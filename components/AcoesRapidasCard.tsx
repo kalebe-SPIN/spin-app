@@ -17,18 +17,33 @@ import {
   marcarPropostaAceitaAction,
 } from '@/app/projetos/[id]/orcamento/actions'
 import { mudarEtapaProjetoAction } from '@/app/projetos/[id]/etapa/actions'
+import { ConfirmarVendaModal, type DadosConfirmacao } from '@/components/ConfirmarVendaModal'
 
 type Props = {
   projetoId: string
   status: string
   homologacaoId?: string | null   // se já criada, link direto
   clienteNome?: string
+  /** Kalebe 2026-09-17: pv_total pra pré-preencher o modal de confirmação. */
+  precoSugerido?: number
 }
 
-export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome }: Props) {
+export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome, precoSugerido = 0 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
+  const [confirmandoVenda, setConfirmandoVenda] = useState(false)
+
+  async function confirmarVenda(dados: DadosConfirmacao) {
+    setErro(null)
+    const r = await marcarPropostaAceitaAction(projetoId, dados)
+    if ('erro' in r && r.erro) {
+      setErro(r.erro)
+      throw new Error(r.erro)
+    }
+    setConfirmandoVenda(false)
+    router.refresh()
+  }
 
   function acionar(fn: () => Promise<any>) {
     setErro(null)
@@ -74,10 +89,15 @@ export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome
             <button
               key={a.chave}
               onClick={() => {
+                // Kalebe 2026-09-17: aceite abre modal (não confirm nativo)
+                // pra vendedor cadastrar preço + condição fechada.
+                if (a.acao === 'aceita') {
+                  setConfirmandoVenda(true)
+                  return
+                }
                 if (a.confirm && !window.confirm(a.confirm)) return
                 acionar(() => {
                   if (a.acao === 'enviar') return marcarPropostaEnviadaAction(projetoId)
-                  if (a.acao === 'aceita') return marcarPropostaAceitaAction(projetoId)
                   if (a.acao === 'recusar') return mudarEtapaProjetoAction(projetoId, 'recusado', 'Cliente recusou')
                   if (a.acao === 'perdido') return mudarEtapaProjetoAction(projetoId, 'perdido', 'Proposta perdida (sem resposta)')
                   return Promise.resolve({ erro: 'ação desconhecida' })
@@ -101,6 +121,14 @@ export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome
       {erro && (
         <p className="mt-2 text-xs text-coral">⚠️ {erro}</p>
       )}
+
+      <ConfirmarVendaModal
+        aberto={confirmandoVenda}
+        onCancelar={() => setConfirmandoVenda(false)}
+        onConfirmar={confirmarVenda}
+        precoSugerido={precoSugerido}
+        processando={isPending}
+      />
     </section>
   )
 }

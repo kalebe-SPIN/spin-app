@@ -11,6 +11,7 @@ import {
   marcarPropostaAceitaAction,
   marcarPropostaEnviadaAction,
 } from '@/app/projetos/[id]/orcamento/actions'
+import { ConfirmarVendaModal, type DadosConfirmacao } from '@/components/ConfirmarVendaModal'
 
 type Item = {
   id: string
@@ -53,6 +54,7 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
   // Kalebe 2026-09-17: estado das ações pós-PDF (fechar venda, marcar enviada).
   const [isPending, startTransition] = useTransition()
   const [msgAcao, setMsgAcao] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
+  const [confirmandoVenda, setConfirmandoVenda] = useState(false)
   const router = useRouter()
   const statusAtual = String(projeto.status || '')
   const jaFechou = ['vendido', 'aceito', 'em_homologacao', 'em_execucao', 'instalado', 'ativo_pos_venda'].includes(statusAtual)
@@ -158,18 +160,22 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
     })
   }
 
-  async function marcarAceita() {
-    if (!confirm('Confirmar que o cliente aceitou esta proposta? Isso fecha a venda e vai iniciar homologação/execução conforme o tipo do serviço.')) return
+  function abrirConfirmacaoVenda() {
     setMsgAcao(null)
-    startTransition(async () => {
-      const r = await marcarPropostaAceitaAction(projeto.id, 'Cliente aceitou (fluxo serviços)')
-      if (r.sucesso) {
-        setMsgAcao({ tipo: 'ok', texto: '🎉 Venda fechada! Projeto virou "vendido".' })
-        router.refresh()
-      } else {
-        setMsgAcao({ tipo: 'erro', texto: r.erro || 'Erro ao fechar venda' })
-      }
-    })
+    setConfirmandoVenda(true)
+  }
+
+  async function confirmarVenda(dados: DadosConfirmacao) {
+    setMsgAcao(null)
+    const r = await marcarPropostaAceitaAction(projeto.id, dados)
+    if (r.sucesso) {
+      setMsgAcao({ tipo: 'ok', texto: '🎉 Venda fechada! Projeto virou "vendido".' })
+      setConfirmandoVenda(false)
+      router.refresh()
+    } else {
+      setMsgAcao({ tipo: 'erro', texto: r.erro || 'Erro ao fechar venda' })
+      throw new Error(r.erro || 'Erro')
+    }
   }
 
   return (
@@ -481,7 +487,7 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
                 </button>
                 <button
                   type="button"
-                  onClick={marcarAceita}
+                  onClick={abrirConfirmacaoVenda}
                   disabled={isPending}
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-verde text-white font-bold text-xs rounded-lg hover:bg-verde/90 transition disabled:opacity-40"
                 >
@@ -534,6 +540,16 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
         dataProposta={dataProposta}
         dataValidade={dataValidade}
         validadeDias={validadeDias}
+      />
+
+      <ConfirmarVendaModal
+        aberto={confirmandoVenda}
+        onCancelar={() => setConfirmandoVenda(false)}
+        onConfirmar={confirmarVenda}
+        precoSugerido={totalComDesconto}
+        condicoesDisponiveis={CONDICOES_DEFAULT.filter((c) => condicoesSelecionadas.includes(c.id)).map((c) => c.label)}
+        processando={isPending}
+        rotuloPreco="Preço final acordado com o cliente"
       />
     </div>
   )

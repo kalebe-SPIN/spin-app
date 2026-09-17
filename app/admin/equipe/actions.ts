@@ -171,6 +171,8 @@ export type PainelEquipe = {
     em_negociacao: number          // projetos em STATUS_PROPOSTA hoje
     perdidos: number               // projetos perdidos no mês
     parados: number                // em negociação sem update há > 7 dias
+    /** Kalebe 2026-09-17: breakdown das vendas fechadas por condição de pagamento acordada. */
+    por_condicao_pagto: Array<{ condicao: string; qtd: number; valor: number }>
   }
   faturamentoPorLinha: FatiaFaturamento[]
   /** Kalebe 2026-09-11: substitui o bloco 'Faturamento por linha'. */
@@ -260,7 +262,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     .from('projetos')
     .select(`
       id, consultor_id, cliente_id, cliente_razao_social, cliente_cpf_cnpj,
-      status, pv_total, orcamento_final, orcamento_consolidado, tipo_projeto, ve_recarga_selecionada,
+      status, pv_total, orcamento_final, orcamento_consolidado, venda_fechada, tipo_projeto, ve_recarga_selecionada,
       origem_lead,
       desconto_admin_pct, desconto_admin_valor,
       created_at, updated_at, status_atualizado_em, excluida_em,
@@ -1018,6 +1020,27 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     return updated < seteDiasAtras
   }).length
 
+  // Kalebe 2026-09-17: agrupa vendas fechadas do mês por condição de pagamento
+  // acordada. Vem de venda_fechada.condicao_pagamento (novo) ou
+  // orcamento_consolidado.condicao_pagamento_acordada (fallback). Vendas
+  // antigas sem essa info entram como "Não informada".
+  const condPagAgg = new Map<string, { qtd: number; valor: number }>()
+  for (const p of projetosFechadosMes) {
+    const cond = String(
+      p.venda_fechada?.condicao_pagamento
+      || p.orcamento_consolidado?.condicao_pagamento_acordada
+      || 'Não informada',
+    )
+    const valor = pvDoProjeto(p)
+    const bucket = condPagAgg.get(cond) || { qtd: 0, valor: 0 }
+    bucket.qtd += 1
+    bucket.valor += valor
+    condPagAgg.set(cond, bucket)
+  }
+  const porCondicaoPagto = Array.from(condPagAgg.entries())
+    .map(([condicao, agg]) => ({ condicao, qtd: agg.qtd, valor: agg.valor }))
+    .sort((a, b) => b.valor - a.valor)
+
   const cardNegocios = {
     fechados_qtd: projetosFechadosMes.length,
     fechados_valor: valorFechadoMes,
@@ -1028,6 +1051,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     em_negociacao: emNegociacaoTodos.length,
     perdidos: perdidosDoMes.length,
     parados: paradosCount,
+    por_condicao_pagto: porCondicaoPagto,
   }
 
   return {

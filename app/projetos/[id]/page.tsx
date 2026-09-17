@@ -179,6 +179,12 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           status={projeto.status}
           homologacaoId={homologacao?.id ?? null}
           clienteNome={projeto.cliente_razao_social}
+          precoSugerido={
+            Number(projeto.pv_total)
+            || Number(projeto.orcamento_consolidado?.pv_total)
+            || Number(projeto.orcamento_final?.pv_total)
+            || 0
+          }
         />
 
         {/* Kalebe 2026-09-15: conversa embutida do canal WhatsApp Spin */}

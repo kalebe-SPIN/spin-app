@@ -817,6 +817,7 @@ function CardNegociosDoMes({ card }: {
     em_negociacao: number
     perdidos: number
     parados: number
+    por_condicao_pagto?: Array<{ condicao: string; qtd: number; valor: number }>
   }
 }) {
   const totalValor = card.fechados_valor
@@ -893,6 +894,27 @@ function CardNegociosDoMes({ card }: {
         <MiniLinha label="Perdidos" valor={String(card.perdidos)} destaque="coral" />
         <MiniLinha label="Parados" valor={String(card.parados)} destaque="coral" />
       </div>
+
+      {/* Kalebe 2026-09-17: breakdown por condição de pagamento acordada. */}
+      {card.por_condicao_pagto && card.por_condicao_pagto.length > 0 && (
+        <div className="pt-3 mt-3 border-t border-white/5">
+          <p className="text-[10px] uppercase tracking-widest text-white/50 font-bold mb-2">
+            Condições de pagamento acordadas
+          </p>
+          <div className="space-y-1">
+            {card.por_condicao_pagto.map((c) => (
+              <div key={c.condicao} className="flex items-center justify-between text-[10.5px] pl-2 border-l border-white/10">
+                <span className="text-white/70 truncate max-w-[65%]" title={c.condicao}>
+                  {c.condicao}
+                </span>
+                <span className="text-white/70 font-mono tabular-nums">
+                  {c.qtd} <span className="text-white/30">·</span> {fmtBRL(c.valor)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

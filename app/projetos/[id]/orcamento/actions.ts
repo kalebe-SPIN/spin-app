@@ -106,13 +106,69 @@ export async function marcarPropostaEnviadaAction(projetoId: string, observacoes
 /**
  * Marca proposta como aceita → status vira 'vendido' → cria homologação
  * automática com 6 etapas + notifica admin/eletrotécnico.
+ *
+ * Kalebe 2026-09-17: aceita `venda` com preço final acordado e condição
+ * de pagamento fechada com o cliente. Grava em venda_fechada (jsonb) e
+ * atualiza orcamento_consolidado.pv_total pra dashboard bater com o
+ * valor real da venda, não o simulado.
  */
-export async function marcarPropostaAceitaAction(projetoId: string, observacoes?: string) {
-  const res = await mudarEtapaProjetoAction(
-    projetoId,
-    'vendido',
-    observacoes || 'Cliente aceitou a proposta — venda fechada',
-  )
+export type DadosVendaAceita = {
+  preco_final: number
+  condicao_pagamento: string
+  parcelas?: number | null
+  observacoes?: string | null
+}
+
+export async function marcarPropostaAceitaAction(
+  projetoId: string,
+  observacoesOuVenda?: string | DadosVendaAceita,
+) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { sucesso: false, erro: 'Não autenticado' }
+
+  // Retrocompatível: aceita string (legado) ou objeto com dados da venda.
+  const venda: DadosVendaAceita | null =
+    typeof observacoesOuVenda === 'object' && observacoesOuVenda !== null
+      ? observacoesOuVenda
+      : null
+  const observacoes =
+    typeof observacoesOuVenda === 'string'
+      ? observacoesOuVenda
+      : venda?.observacoes || 'Cliente aceitou a proposta — venda fechada'
+
+  // Se recebeu dados de venda, persiste em venda_fechada + atualiza
+  // orcamento_consolidado.pv_total ANTES de mudar etapa, pra que
+  // hooks/triggers de fechamento já vejam o valor real.
+  if (venda && Number.isFinite(venda.preco_final) && venda.preco_final > 0) {
+    const { data: proj } = await supabase
+      .from('projetos')
+      .select('orcamento_consolidado')
+      .eq('id', projetoId)
+      .maybeSingle()
+    const consolidado = {
+      ...(proj?.orcamento_consolidado || {}),
+      pv_total: venda.preco_final,
+      pv_acordado: venda.preco_final,
+      condicao_pagamento_acordada: venda.condicao_pagamento,
+      parcelas_acordadas: venda.parcelas || null,
+    }
+    const venda_fechada = {
+      preco_final: venda.preco_final,
+      condicao_pagamento: venda.condicao_pagamento,
+      parcelas: venda.parcelas || null,
+      observacoes: venda.observacoes || null,
+      fechada_em: new Date().toISOString(),
+      fechada_por: user.id,
+    }
+    const { error: eUp } = await supabase
+      .from('projetos')
+      .update({ orcamento_consolidado: consolidado, venda_fechada })
+      .eq('id', projetoId)
+    if (eUp) return { sucesso: false, erro: eUp.message }
+  }
+
+  const res = await mudarEtapaProjetoAction(projetoId, 'vendido', observacoes)
   if ('erro' in res && res.erro) return { sucesso: false, erro: res.erro }
 
   // Kalebe 2026-08-29: ao aceitar, exclui automaticamente as outras
