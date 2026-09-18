@@ -457,30 +457,37 @@ function LinhaParametroNumerico({ parametro }: { parametro: Parametro }) {
             </div>
           </div>
 
-          {alterou && (
-            <div>
-              <label className="text-xs text-white/60 font-semibold">
-                Motivo <span className="text-coral">*</span>
-              </label>
-              <input
-                type="text"
-                value={motivo}
-                onChange={e => setMotivo(e.target.value)}
-                placeholder="Ex: Bandeira vermelha CELESC — reajuste kWh"
-                className="w-full mt-1 px-3 py-2 bg-noite border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none"
-              />
-            </div>
-          )}
+          <div>
+            <label className="text-xs text-white/60 font-semibold">
+              Motivo <span className="text-coral">*</span>
+              {!alterou && (
+                <span className="text-white/40 font-normal ml-2">
+                  (digite um valor diferente pra habilitar)
+                </span>
+              )}
+            </label>
+            <input
+              type="text"
+              value={motivo}
+              onChange={e => setMotivo(e.target.value)}
+              placeholder="Ex: Bandeira vermelha CELESC — reajuste kWh"
+              disabled={!alterou}
+              className="w-full mt-1 px-3 py-2 bg-noite border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+          </div>
 
-          {alterou && (
-            <button
-              onClick={salvar}
-              disabled={pending || motivo.trim().length < 10 || !!foraLimite}
-              className="w-full py-2 bg-sol text-noite font-bold rounded text-sm hover:bg-sol/90 disabled:opacity-40 transition"
-            >
-              {pending ? 'Salvando...' : '💾 Salvar alteração'}
-            </button>
-          )}
+          <button
+            onClick={salvar}
+            disabled={pending || !alterou || motivo.trim().length < 10 || !!foraLimite}
+            className="w-full py-2 bg-sol text-noite font-bold rounded text-sm hover:bg-sol/90 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            title={
+              !alterou ? 'Digite um valor diferente do atual pra habilitar' :
+              motivo.trim().length < 10 ? 'Motivo precisa ter ≥ 10 caracteres' :
+              foraLimite ? 'Valor fora do limite permitido' : ''
+            }
+          >
+            {pending ? 'Salvando...' : '💾 Salvar alteração'}
+          </button>
 
           {erro && <div className="p-2 bg-coral/10 border border-coral/30 rounded text-xs text-coral">⚠️ {erro}</div>}
           {sucesso && <div className="p-2 bg-verde/10 border border-verde/30 rounded text-xs text-verde">✓ Salvo</div>}
