@@ -29,6 +29,11 @@ export type Entradas = {
   // Contexto
   potencia_kwp: number
   distancia_km_extra?: number
+  /** Kalebe 2026-09-18: tipo do projeto pra resolver margem diferenciada
+   *  via fv_matriz_margem_kwp (tipo × faixa kWp). Se não informado ou
+   *  matriz vazia pra o par (tipo, faixa), cai no margem_contribuicao_perc
+   *  global. Retrocompatível — callers antigos podem omitir. */
+  tipo_projeto?: string
   /** Se passado, usa esse valor bruto WEG (placa+inversor+cabo+estrutura+MC4+…)
    *  em vez de recalcular com placa+inversor. Necessário pra que os
    *  complementos CC (cabo solar / estrutura / MC4) levem o fator 0,4182
@@ -75,7 +80,22 @@ export type PropostaCalculada = {
   }
 }
 
-const FATOR_KIT_WEG = 0.4182
+// Kalebe 2026-09-18: fator hardcoded era o único parâmetro comercial fora
+// da tabela editável. Agora lê de kit_weg.fator_kit_weg_preco_cliente e cai
+// aqui só como safety net se o param não estiver semeado.
+const FATOR_KIT_WEG_FALLBACK = 0.4182
+
+// Defaults das formas de pagamento — usados quando params não é passado
+// ou quando as chaves não estão semeadas no banco. Ler ParamsPagamento pra
+// entender o nome de cada chave.
+const PAGTO_DEFAULTS = {
+  desconto_a_vista_pix_perc: 3,
+  parcelas_cartao_padrao: 12,
+  juros_cartao_total_perc: 8.99,      // juros total do parcelamento
+  parcelas_financiamento_padrao: 60,
+  financiamento_juros_min_perc: 35,   // juros total no mínimo (min → maior parcela)
+  financiamento_juros_max_perc: 85,   // juros total no máximo
+}
 
 export type FormasPagamento = PropostaCalculada['formas_pagamento']
 
@@ -85,18 +105,36 @@ export type FormasPagamento = PropostaCalculada['formas_pagamento']
  * IMPORTANTE: sempre passe o valor FINAL da proposta (já com desconto/acréscimo
  * e extras aplicados), nunca o PV bruto — senão à vista/cartão/financiado
  * apresentam parcelas do preço errado. Ver PropostaPDFTemplate.
+ *
+ * Kalebe 2026-09-18: `params` opcional. Se passado, lê chaves do banco:
+ *   pagamento.desconto_a_vista_pix_perc
+ *   pagamento.parcelas_cartao_padrao
+ *   pagamento.juros_cartao_total_perc
+ *   pagamento.parcelas_financiamento_padrao
+ *   pagamento.financiamento_juros_min_perc
+ *   pagamento.financiamento_juros_max_perc
+ * Se não, usa defaults hardcoded (retrocompat).
  */
-export function calcularFormasPagamento(total: number): FormasPagamento {
+export function calcularFormasPagamento(total: number, params?: ParametrosVigentes): FormasPagamento {
   const base = Math.max(0, total || 0)
-  const aVistaPix = base * 0.97 // 3% desconto à vista PIX
-  const parcelasCartao = 12
-  const valorParcelaCartao = (base * 1.0899) / parcelasCartao // ~8.99% de juros total 12x
-  const parcelasFinanciado = 60
-  const parcelaFinMin = (base * 1.35) / parcelasFinanciado
-  const parcelaFinMax = (base * 1.85) / parcelasFinanciado
+  const p = params
+  const num = (chave: keyof typeof PAGTO_DEFAULTS) =>
+    p ? getNum(p, chave, PAGTO_DEFAULTS[chave]) : PAGTO_DEFAULTS[chave]
+
+  const descPixPct = num('desconto_a_vista_pix_perc')
+  const parcelasCartao = num('parcelas_cartao_padrao')
+  const jurosCartaoPct = num('juros_cartao_total_perc')
+  const parcelasFinanciado = num('parcelas_financiamento_padrao')
+  const finMinPct = num('financiamento_juros_min_perc')
+  const finMaxPct = num('financiamento_juros_max_perc')
+
+  const aVistaPix = base * (1 - descPixPct / 100)
+  const valorParcelaCartao = (base * (1 + jurosCartaoPct / 100)) / parcelasCartao
+  const parcelaFinMin = (base * (1 + finMinPct / 100)) / parcelasFinanciado
+  const parcelaFinMax = (base * (1 + finMaxPct / 100)) / parcelasFinanciado
 
   return {
-    a_vista_pix: { valor: aVistaPix, desconto_pct: 3 },
+    a_vista_pix: { valor: aVistaPix, desconto_pct: descPixPct },
     parcelado_cartao: {
       parcelas: parcelasCartao,
       valor_parcela: valorParcelaCartao,
@@ -118,6 +156,43 @@ export function getNum(params: ParametrosVigentes, chave: string, fallback = 0):
 }
 
 /**
+ * Resolve margem % pela matriz fv_matriz_margem_kwp (tipo_projeto × faixa kWp).
+ * Kalebe 2026-09-18: fallback pra margem_contribuicao_perc global (20%) quando:
+ *  - tipo_projeto não é informado
+ *  - matriz não semeada
+ *  - tipo não está na matriz
+ *  - potência fora de todas as faixas
+ *  - célula da faixa está null (Kalebe ainda não preencheu)
+ */
+export function resolverMargemPct(
+  potenciaKwp: number,
+  tipoProjeto: string | undefined,
+  params: ParametrosVigentes,
+): number {
+  const fallback = getNum(params, 'margem_contribuicao_perc', 20)
+  if (!tipoProjeto) return fallback
+
+  const matriz = params['fv_matriz_margem_kwp']?.valor_json as
+    | { faixas?: Array<{ min: number; max: number; rotulo?: string }>;
+        por_tipo?: Record<string, Array<number | null>> }
+    | undefined
+  if (!matriz?.faixas?.length || !matriz.por_tipo) return fallback
+
+  const idx = matriz.faixas.findIndex(
+    (f) => potenciaKwp >= f.min && potenciaKwp < f.max,
+  )
+  if (idx === -1) return fallback
+
+  const valores = matriz.por_tipo[tipoProjeto]
+  if (!Array.isArray(valores)) return fallback
+
+  const celula = valores[idx]
+  return (celula !== null && celula !== undefined && !isNaN(Number(celula)))
+    ? Number(celula)
+    : fallback
+}
+
+/**
  * Calcula preço final da proposta.
  */
 export function calcularProposta(entradas: Entradas, params: ParametrosVigentes): PropostaCalculada {
@@ -134,7 +209,10 @@ export function calcularProposta(entradas: Entradas, params: ParametrosVigentes)
   const subtotalKitBruto = subtotal_kit_weg_bruto_override && subtotal_kit_weg_bruto_override > 0
     ? subtotal_kit_weg_bruto_override
     : subtotalKitBrutoCalc
-  const kitWegComFator = subtotalKitBruto * FATOR_KIT_WEG
+  // Kalebe 2026-09-18: agora lê do banco (chave semeada na mig 004). Se o
+  // param não estiver semeado, cai no fallback 0,4182.
+  const fatorKitWeg = getNum(params, 'fator_kit_weg_preco_cliente', FATOR_KIT_WEG_FALLBACK)
+  const kitWegComFator = subtotalKitBruto * fatorKitWeg
 
   // 2. LISTA CA (subtotal dos materiais complementares)
   const subtotalListaCa = itens_ca.reduce((sum, it) => sum + (it.preco_unitario || 0) * it.qtd, 0)
@@ -187,7 +265,9 @@ export function calcularProposta(entradas: Entradas, params: ParametrosVigentes)
   //      PV = kit + baseImp + margem·PV + comissao·PV + imposto·(PV − kit)
   //      PV(1 − (m+c+i)/100) = kit·(1 − i/100) + baseImp
   //      PV = [kit·(1 − i/100) + baseImp] / (1 − (m+c+i)/100)
-  const margemPct = getNum(params, 'margem_contribuicao_perc', 20)
+  // Kalebe 2026-09-18: margem varia por (tipo_projeto, potencia_kwp) via
+  // matriz fv_matriz_margem_kwp. Fallback = margem_contribuicao_perc global.
+  const margemPct = resolverMargemPct(potencia_kwp, entradas.tipo_projeto, params)
   const comissaoPct = getNum(params, 'comissao_vendedor_perc', 5)
   const impostosPct = getNum(params, 'aliquota_simples_perc', 15)
 
@@ -224,14 +304,14 @@ export function calcularProposta(entradas: Entradas, params: ParametrosVigentes)
     pv_total: pvTotal,
     desconto_max_negociacao: descontoMaxNegociacao,
     memoria_calculo: {
-      fator_kit_weg_aplicado: FATOR_KIT_WEG,
+      fator_kit_weg_aplicado: fatorKitWeg,
       margem_pct: margemPct,
       comissao_pct: comissaoPct,
       impostos_pct: impostosPct,
       numero_placas: numeroPlacas,
       potencia_cc_kwp: potencia_kwp,
     },
-    formas_pagamento: calcularFormasPagamento(pvTotal),
+    formas_pagamento: calcularFormasPagamento(pvTotal, params),
   }
 }
 

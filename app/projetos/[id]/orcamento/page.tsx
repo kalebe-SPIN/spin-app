@@ -11,6 +11,22 @@ import { precificarComplementosCC } from '@/lib/kit-auto/complementos-cc'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
+/**
+ * Mapeia legado projetos.tipo_projeto ('ongrid'/'hibrido_bess'/etc) para as
+ * chaves canônicas do lib/tipos-projeto ('fv_ongrid'/'fv_hibrido'/etc) que
+ * a matriz fv_matriz_margem_kwp usa. Kalebe 2026-09-18.
+ */
+function mapTipoProjeto(t: string | null | undefined): string | undefined {
+  if (!t) return undefined
+  const s = String(t).toLowerCase()
+  if (s.startsWith('fv_') || s.startsWith('srv_') || s === 'bess' || s === 've_recarga') return s
+  if (s === 'ongrid' || s === 'expansao_ongrid') return 'fv_ongrid'
+  if (s === 'hibrido_bess' || s === 'expansao_hibrido') return 'fv_hibrido'
+  if (s === 'zero_grid' || s === 'zerogrid') return 'fv_zero_grid'
+  if (s === 'offgrid' || s === 'off_grid') return 'fv_offgrid'
+  return undefined
+}
+
 export default async function OrcamentoPage(props: { params: { id: string } }) {
   const projetoId = props.params.id
   const supabase = createClient()
@@ -305,6 +321,11 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
         subtotal_kit_weg_bruto_override: brutoTotal || k.preco_total_kit_weg,
         potencia_kwp: k.potencia_cc_kwp || 0,
         distancia_km_extra: 0,
+        // Kalebe 2026-09-18: usado pela matriz de margem fv_matriz_margem_kwp.
+        // Mapeia tipo_projeto do banco (legado 'ongrid'/'hibrido_bess') para
+        // as chaves canônicas (fv_ongrid/fv_hibrido). Se não bater, o motor
+        // cai no fallback margem_contribuicao_perc global.
+        tipo_projeto: mapTipoProjeto(projeto.tipo_projeto),
       },
       params,
       ctxV2,

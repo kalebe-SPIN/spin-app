@@ -125,30 +125,59 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Batch upsert produtos (era 448 round-trips, agora 1 → cabe no timeout do Vercel)
-    // Busca códigos que já existem em UMA query
+    // Busca códigos + specs + descricao_curta que já existem em UMA query.
+    // Kalebe 2026-09-17: era só `codigo_weg`. Quando a WEG mudou layout da
+    // planilha (colunas 6/8 vieram vazias), o upsert sobrescreveu specs
+    // bons com null — perdeu potência/MPPT/disjuntor. Agora buscamos os
+    // specs atuais e fazemos MERGE: planilha só substitui campo com valor.
     const codigosNovos = produtos.map(p => p.codigo_weg)
     const { data: existentes } = await supabaseAdmin
       .from('produtos')
-      .select('codigo_weg')
+      .select('codigo_weg, specs, descricao_curta')
       .in('codigo_weg', codigosNovos)
     const existentesSet = new Set((existentes || []).map(e => e.codigo_weg))
+    const specsAtuais = new Map(
+      (existentes || []).map(e => [e.codigo_weg, (e.specs as Record<string, unknown>) || {}])
+    )
+    const descAtuais = new Map(
+      (existentes || []).map(e => [e.codigo_weg, e.descricao_curta || ''])
+    )
 
-    const payloadUpsert = produtos.map(p => ({
-      codigo_weg: p.codigo_weg,
-      modelo: p.modelo,
-      fabricante: p.fabricante,
-      categoria: p.categoria,
-      subcategoria: p.subcategoria,
-      descricao_curta: p.descricao_curta,
-      specs: p.specs,
-      ativo: true,
-      // Kalebe 2026-09-01: WEG traz muitos SKUs sem preço na planilha
-      // (câmeras Wi-Fi, sensores, nobreaks, wallbox WEMOB) porque exige
-      // cotação caso a caso. Marca como sob_cotacao pra excluir do
-      // diagnóstico e do gerador de kits até ter preço cadastrado.
-      sob_cotacao: !((p.preco_unitario || 0) > 0 || (p.preco_custo_spin || 0) > 0),
-      // disponivel_estoque só na criação — respeitamos o valor atual pra existentes
-    }))
+    const payloadUpsert = produtos.map(p => {
+      // Merge de specs: preserva chaves existentes que a planilha veio vazia.
+      // Ex: potencia_kw=5 no banco + potencia_kw=null da planilha → mantém 5.
+      const specsExistentes = specsAtuais.get(p.codigo_weg) || {}
+      const specsMerge: Record<string, unknown> = { ...specsExistentes }
+      for (const [k, v] of Object.entries(p.specs)) {
+        if (v !== null && v !== undefined && v !== '') {
+          specsMerge[k] = v
+        }
+      }
+      // Descrição: se a planilha só devolveu o próprio modelo como "descrição",
+      // preserva a que já existia (que vinha do nome longo original).
+      const descExistente = descAtuais.get(p.codigo_weg) || ''
+      const descPlanilhaEhModelo = p.descricao_curta.trim() === p.modelo.trim()
+      const descricaoFinal = (descPlanilhaEhModelo && descExistente)
+        ? descExistente
+        : p.descricao_curta
+
+      return {
+        codigo_weg: p.codigo_weg,
+        modelo: p.modelo,
+        fabricante: p.fabricante,
+        categoria: p.categoria,
+        subcategoria: p.subcategoria,
+        descricao_curta: descricaoFinal,
+        specs: specsMerge,
+        ativo: true,
+        // Kalebe 2026-09-01: WEG traz muitos SKUs sem preço na planilha
+        // (câmeras Wi-Fi, sensores, nobreaks, wallbox WEMOB) porque exige
+        // cotação caso a caso. Marca como sob_cotacao pra excluir do
+        // diagnóstico e do gerador de kits até ter preço cadastrado.
+        sob_cotacao: !((p.preco_unitario || 0) > 0 || (p.preco_custo_spin || 0) > 0),
+        // disponivel_estoque só na criação — respeitamos o valor atual pra existentes
+      }
+    })
 
     // UPSERT único usando codigo_weg como chave (UNIQUE existente na tabela)
     const { error: upsertErr } = await supabaseAdmin
@@ -516,10 +545,16 @@ function preencherSpecsFallback(
     if (wp) specs.potencia_wp = Number(wp)
   }
 
-  // INVERSOR STRING — extrai kW do sufixo. Convenção WEG:
+  // INVERSOR STRING / HÍBRIDO — extrai kW do sufixo. Convenção WEG:
   // - T/K/ST + 3 dígitos = kW direto (T025 = 25 kW, K050 = 50 kW, ST030 = 30 kW)
   // - M + 3 dígitos = kW × 10 (M050 = 5 kW, M070 = 7 kW, M100 = 10 kW)
-  if (categoria === 'inversor' && subcategoria === 'inversor_string' && !specs.potencia_kw) {
+  // Kalebe 2026-09-17: híbrido usa a mesma convenção — SIW200H M050 = 5 kW,
+  // SIW400H T012 = 12 kW. Antes só cobria string/micro, aí 20/20 híbridos
+  // ficaram com potência null quando a planilha nova veio com coluna vazia.
+  const ehInversorComSufixoWeg =
+    categoria === 'inversor' &&
+    (subcategoria === 'inversor_string' || subcategoria === 'inversor_hibrido')
+  if (ehInversorComSufixoWeg && !specs.potencia_kw) {
     const m = texto.match(/\b(T|K|ST)(\d{3})\b/)
     if (m) specs.potencia_kw = Number(m[2])
     if (!specs.potencia_kw) {
@@ -533,5 +568,13 @@ function preencherSpecsFallback(
   if (categoria === 'inversor' && subcategoria === 'microinversor' && !specs.potencia_kw) {
     const m = texto.match(/\bM(\d{3})\b/)
     if (m) specs.potencia_kw = Number(m[1]) / 10
+  }
+
+  // MPPT dos inversores string/híbrido — a planilha WEG às vezes traz na
+  // descrição textual, ex: "2 MPPT / 4 strings" ou "1 MPPT". Como fallback
+  // quando a coluna dedicada veio vazia. Não sobrescreve valor bom.
+  if ((subcategoria === 'inversor_string' || subcategoria === 'inversor_hibrido') && !specs.entradas_mppt) {
+    const m = texto.match(/(\d+)\s*MPPT/i)
+    if (m) specs.entradas_mppt = Number(m[1])
   }
 }
