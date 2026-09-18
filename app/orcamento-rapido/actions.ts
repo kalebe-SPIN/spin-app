@@ -8,7 +8,8 @@ import type { ModoEntrada, ResultadoOrcamento, TipoRede } from '@/lib/orcamento-
 import { PARAMETROS_DEFAULT, TIPOS_REDE_INFO, fatorSolPorCidade } from '@/lib/orcamento-rapido/tipos'
 import { adaptadorSolar, type EntradaSolar } from '@/lib/orcamento-rapido/solar'
 import { adaptadorServicoPlacas, type EntradaServicoPlacas } from '@/lib/orcamento-rapido/servico-placas'
-import { montarKit, buscarPrecoKwpPorFaixa } from '@/lib/orcamento-rapido/catalogo'
+import { montarKit } from '@/lib/orcamento-rapido/catalogo'
+import { calcularProposta, paramsToRecord } from '@/lib/precificacao/calcular'
 
 type EntradaGenerica = EntradaSolar | EntradaServicoPlacas
 
@@ -56,28 +57,16 @@ export async function calcularOrcamentoAction(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resultado = (adaptador as any).calcular(entrada, PARAMETROS_DEFAULT) as ResultadoOrcamento
 
-    // Solar: tenta enriquecer com kit real do catálogo E preço R$/kWp do banco
+    // Solar: monta kit real do catálogo E aplica calcularProposta com matriz
+    // de margem. Kalebe 2026-09-18: substitui a lógica antiga kWp × R$/kWp
+    // (fv_faixas_preco_kwp) pelo mesmo motor do orçamento formal — assim a
+    // matriz fv_matriz_margem_kwp (tipo × porte) rege o preço final também
+    // no simulador rápido.
     const tipoSolar: TipoItem[] = ['fv_ongrid', 'fv_hibrido', 'fv_zero_grid', 'fv_offgrid']
     if (tipoSolar.includes(tipo)) {
       const es = entrada as EntradaSolar
       const kwpEstimado = (resultado.estimativa_tecnica as { kwp?: number } | undefined)?.kwp || 0
       const infoRede = TIPOS_REDE_INFO[es.tipo_rede]
-
-      // Sobrescreve valor_estimado com R$/kWp da FAIXA do banco (se cadastrado)
-      // Vem do painel /admin/precificacao/fotovoltaico → tabela parametros_precificacao.
-      if (kwpEstimado > 0) {
-        const faixaBanco = await buscarPrecoKwpPorFaixa(kwpEstimado)
-        if (faixaBanco) {
-          resultado.valor_estimado = Math.round(kwpEstimado * faixaBanco.preco_kwp)
-          // R$/kWp praticado é dado interno de precificação — só admin vê.
-          if (ehAdmin) {
-            resultado.detalhes.push({
-              label: 'R$/kWp praticado',
-              valor: `R$ ${faixaBanco.preco_kwp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${faixaBanco.descricao})`,
-            })
-          }
-        }
-      }
 
       if (kwpEstimado > 0 && infoRede) {
         const kit = await montarKit({
@@ -86,10 +75,43 @@ export async function calcularOrcamentoAction(
           tensao_v: infoRede.tensao,
         })
         if (kit.placa && kit.inversor) {
-          // Substitui o valor_estimado (chute) pelo custo bruto REAL WEG.
-          // O R$/kWp do fallback vira só uma referência inicial — nunca o final.
-          // Kalebe 2026-09-09: "Custo bruto WEG" só aparece pra admin (dado
-          // interno). Placa/inversor/potência ficam pra todos — dados técnicos.
+          // Carrega parametros vigentes pra calcularProposta usar (matriz de
+          // margem, comissão, imposto, projeto+ART, frete, instalação, fator
+          // kit WEG). Se algum não estiver no banco, cai nos defaults do motor.
+          const { data: paramsRows } = await supabase
+            .from('parametros_precificacao')
+            .select('chave, valor_numero, valor_json, unidade')
+            .is('vigente_ate', null)
+            .eq('ativo', true)
+          const params = paramsToRecord(paramsRows || [])
+
+          const proposta = calcularProposta(
+            {
+              placa: {
+                qtd: kit.qtd_placas,
+                preco_venda_unitario: kit.placa.preco_venda || 0,
+                modelo: kit.placa.modelo,
+                potencia_wp: kit.placa.potencia_wp,
+              },
+              inversor: {
+                qtd: 1,
+                preco_venda_unitario: kit.inversor.preco_venda || 0,
+                modelo: kit.inversor.modelo,
+                potencia_kw: kit.inversor.potencia_kw,
+              },
+              itens_ca: [],           // simulador não pede lista técnica
+              potencia_kwp: kit.kwp_real,
+              distancia_km_extra: 0,  // simulador não sabe distância ainda
+              tipo_projeto: tipo,     // fv_ongrid|fv_hibrido|fv_zero_grid|fv_offgrid
+            },
+            params,
+          )
+
+          // Preço final ao cliente vem do motor (com matriz de margem aplicada).
+          resultado.valor_estimado = Math.round(proposta.pv_total)
+
+          // Kalebe 2026-09-09: custos internos e margem só aparecem pra admin.
+          // Dados técnicos (placa/inversor/kWp) ficam pra todos.
           const detalhesBase = [
             { label: 'Placa selecionada', valor: `${kit.qtd_placas} × ${kit.placa.modelo} (${kit.placa.potencia_wp}Wp)` },
             { label: 'Inversor selecionado', valor: `${kit.inversor.modelo} (${kit.inversor.potencia_kw}kW ${infoRede.label})` },
@@ -97,18 +119,13 @@ export async function calcularOrcamentoAction(
             ...resultado.detalhes.filter(d => !d.label.startsWith('Placa') && !d.label.startsWith('Quantidade')),
           ]
           if (ehAdmin) {
-            detalhesBase.push({
-              label: 'Custo bruto WEG (placa+inv)',
-              valor: `R$ ${kit.custo_bruto_weg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-            })
+            detalhesBase.push(
+              { label: 'Custo bruto WEG (placa+inv)', valor: `R$ ${kit.custo_bruto_weg.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` },
+              { label: 'Margem aplicada', valor: `${proposta.memoria_calculo.margem_pct.toFixed(2).replace('.', ',')}%` },
+              { label: 'PV total (motor)', valor: `R$ ${proposta.pv_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` },
+            )
           }
           resultado.detalhes = detalhesBase
-          // ⚠️ valor_estimado = custo BRUTO (sem MO, frete, projeto, ART, margem, impostos).
-          // Vai continuar mostrando o valor do fallback como referência até Kalebe
-          // definir os parâmetros comerciais reais (task #79 item F).
-          //
-          // kit_real: só serializa custo/preço WEG pra admin — evita vazar pelo
-          // payload mesmo que o front não renderize (proteção defense-in-depth).
           resultado.estimativa_tecnica = {
             ...(resultado.estimativa_tecnica || {}),
             kit_real: {
@@ -122,6 +139,8 @@ export async function calcularOrcamentoAction(
               ...(ehAdmin ? {
                 custo_bruto_weg: kit.custo_bruto_weg,
                 preco_tabela_weg: kit.preco_tabela_weg,
+                margem_pct: proposta.memoria_calculo.margem_pct,
+                pv_total: proposta.pv_total,
               } : {}),
             },
           }

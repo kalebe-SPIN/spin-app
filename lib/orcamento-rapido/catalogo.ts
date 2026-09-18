@@ -6,26 +6,11 @@
 
 import { createClient } from '@/lib/supabase/server'
 
-/**
- * Lê faixas de R$/kWp do banco (parametros_precificacao / grupo=fotovoltaico).
- * Retorna null quando não configurado — caller cai no fallback do código.
- */
-export async function buscarPrecoKwpPorFaixa(kwp: number): Promise<{ preco_kwp: number; descricao: string } | null> {
-  const supabase = createClient()
-  const { data } = await supabase
-    .from('parametros_precificacao')
-    .select('valor_json')
-    .eq('chave', 'fv_faixas_preco_kwp')
-    .is('vigente_ate', null)
-    .eq('ativo', true)
-    .maybeSingle()
-
-  if (!data?.valor_json) return null
-  const faixas = data.valor_json as { min_kwp: number; max_kwp: number; preco_kwp: number | null; descricao: string }[]
-  const match = faixas.find(f => kwp >= f.min_kwp && kwp < f.max_kwp)
-  if (!match || match.preco_kwp == null) return null
-  return { preco_kwp: match.preco_kwp, descricao: match.descricao }
-}
+// Kalebe 2026-09-18: buscarPrecoKwpPorFaixa REMOVIDA. Antes o orçamento
+// rápido usava kWp × R$/kWp direto via fv_faixas_preco_kwp. Agora o valor
+// final vem de calcularProposta() com matriz de margem fv_matriz_margem_kwp
+// — mesma lógica do orçamento formal, garantindo consistência ponta a
+// ponta entre estimativa rápida e proposta oficial.
 
 /**
  * Lê parâmetro numérico do banco (fallback pra defaults do código quando não configurado).
