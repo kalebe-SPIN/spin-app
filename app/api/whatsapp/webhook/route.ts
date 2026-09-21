@@ -9,6 +9,7 @@ import {
   normalizarTelefone,
 } from '@/lib/whatsapp/conversas'
 import { processarMensagemQualificacao } from '@/lib/whatsapp/agente-qualificacao'
+import { baixarESalvarMidiaWa } from '@/lib/whatsapp/midia'
 import { aceitarLead } from '@/lib/whatsapp/broadcast'
 import { getWaConfig } from '@/lib/whatsapp/config'
 
@@ -124,14 +125,30 @@ export async function POST(req: NextRequest) {
             conversaId = conversa?.id || null
             if (conversaId) {
               const midiaObj = (msg as any)[tipoMsg] || {}
+              // Kalebe 2026-09-21: URL da Meta é temporária (5min). Baixa e
+              // salva no Storage pra o inbox conseguir mostrar preview/download
+              // depois. Se falhar, grava só o meta_id (perde a mídia mas não
+              // a mensagem).
+              let midiaSalva: { midia_url: string; midia_mime: string; nome_arquivo: string } | null = null
+              if (midiaObj?.id) {
+                midiaSalva = await baixarESalvarMidiaWa({
+                  midia_meta_id: midiaObj.id,
+                  mime_hint: midiaObj.mime_type || null,
+                  nome_original: midiaObj.filename || null,
+                })
+              }
               await gravarMensagem(supabaseAdmin, {
                 conversa_id: conversaId,
                 direcao: 'inbound',
                 tipo: tipoMsg === 'text' ? 'text' : tipoMsg,
-                texto: msg.text?.body || msg.button?.text || null,
+                // Pra documento sem legenda, guarda o nome do arquivo como texto
+                // pra o inbox mostrar algo útil ao invés de "[mídia não-texto]"
+                texto: msg.text?.body || msg.button?.text
+                  || (tipoMsg === 'document' ? (midiaObj.filename || null) : null),
                 meta_message_id: msg.id || null,
+                midia_url: midiaSalva?.midia_url || null,
                 midia_meta_id: midiaObj.id || null,
-                midia_mime: midiaObj.mime_type || null,
+                midia_mime: midiaSalva?.midia_mime || midiaObj.mime_type || null,
                 midia_duracao_seg: tipoMsg === 'audio' ? Number(midiaObj.voice_duration || 0) || null : null,
                 status_entrega: 'lida',
               })

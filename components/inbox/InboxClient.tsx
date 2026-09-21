@@ -500,11 +500,45 @@ function BolhaMensagem({ m }: { m: Mensagem }) {
         {m.tipo === 'text' ? (
           <p className="text-sm text-white whitespace-pre-wrap break-words">{m.texto || ''}</p>
         ) : m.tipo === 'audio' ? (
-          <p className="text-sm text-white italic">🎙 áudio {m.midia_duracao_seg ? `(${m.midia_duracao_seg}s)` : ''}</p>
+          m.midia_url ? (
+            <audio controls src={m.midia_url} className="max-w-full h-8" />
+          ) : (
+            <p className="text-sm text-white italic">🎙 áudio {m.midia_duracao_seg ? `(${m.midia_duracao_seg}s)` : ''}</p>
+          )
         ) : m.tipo === 'image' ? (
-          <p className="text-sm text-white italic">🖼 imagem</p>
+          m.midia_url ? (
+            <a href={m.midia_url} target="_blank" rel="noopener noreferrer" className="block">
+              <img
+                src={m.midia_url}
+                alt="imagem enviada"
+                className="max-w-[220px] max-h-[220px] rounded object-cover hover:opacity-90 transition"
+                loading="lazy"
+              />
+            </a>
+          ) : (
+            <p className="text-sm text-white italic">🖼 imagem</p>
+          )
         ) : m.tipo === 'document' ? (
-          <p className="text-sm text-white italic">📎 documento</p>
+          m.midia_url ? (
+            <a
+              href={m.midia_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="flex items-center gap-2 text-sm text-white hover:text-sol transition"
+            >
+              <span className="text-lg">📄</span>
+              <span className="underline break-all">{m.texto || 'documento.pdf'}</span>
+            </a>
+          ) : (
+            <p className="text-sm text-white italic">📎 {m.texto || 'documento'}</p>
+          )
+        ) : m.tipo === 'video' ? (
+          m.midia_url ? (
+            <video controls src={m.midia_url} className="max-w-[260px] max-h-[260px] rounded" />
+          ) : (
+            <p className="text-sm text-white italic">🎬 vídeo</p>
+          )
         ) : (
           <p className="text-sm text-white italic">[{m.tipo}]</p>
         )}
