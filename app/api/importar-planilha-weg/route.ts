@@ -71,7 +71,17 @@ export async function POST(req: NextRequest) {
       defval: '',
     }) as unknown[][]
 
-    // Parser genérico: cada linha tem [nome, tipoTraduzido, itemSAP, unitario, unitarioComFrete, ...]
+    // Parser da aba "Composição Preços". Layout (planilha 2026-08 R0):
+    //   [0] Nome    [1] Tipo Traduzido    [2] Item SAP    [3] Unitário
+    //   [4] Unitário com frete    [5] Wp/kW (potência!)  [6] Disjuntor cód WEG
+    //   [7] MPPT / R$/Wp    [8] Fabricante | Disponibilidade    [9] Área m² | String Box CC
+    //   [10] Largura mm | Modelo    [11+] Livre
+    //
+    // Kalebe 2026-09-19: layout anterior tinha "Fator 0,4182" na [5] e as
+    // specs começavam em [6]. Nova planilha REMOVEU essa coluna e desceu
+    // todas as specs 1 posição pra esquerda. Ver commit da mig 116 pro
+    // fix histórico dos produtos que ficaram null.
+    //
     // Classifica pela coluna "Tipo" (regex) → uma das categorias do enum categoria_principal.
     // Ignora cabeçalhos (SAP vazio ou não numérico) e linhas sem SAP.
     const produtos: {
@@ -252,6 +262,11 @@ export async function POST(req: NextRequest) {
  * Classifica um item da planilha WEG na categoria do enum categoria_principal
  * pela coluna "Tipo Traduzido" + fallback pelo nome.
  * Ver enum em migration 002_catalogo_weg.sql.
+ *
+ * Kalebe 2026-09-19: layout da planilha 2026-08 R0 DESLOCOU todas as colunas
+ * de spec 1 posição pra esquerda. Antes potência era col[6], agora col[5];
+ * disjuntor era [7], agora [6]; MPPT era [8], agora [7]. Ver comentário
+ * do início da POST pra layout novo completo.
  */
 function classificar(
   tipo: string,
@@ -275,30 +290,31 @@ function classificar(
      !/rsdw|rsd|rapid shutdown/.test(t))
   )
   if (isPlaca) {
+    // Planilha 2026-08: [5]=Wp | [6]=R$/Wp | [7]=Fabricante | [8]=Área m² | [9]=Largura mm | [10]=Modelo
     return {
       categoria: 'placa',
       subcategoria: 'modulo_fotovoltaico',
-      fabricante: String(linha[8] || 'WEG'),
+      fabricante: String(linha[7] || 'WEG'),
       specs: {
-        potencia_wp: parseNumPtBr(linha[6]),
-        area_m2: parseNumPtBr(linha[9]),
-        largura_mm: parseNumPtBr(linha[10]),
+        potencia_wp: parseNumPtBr(linha[5]),
+        area_m2: parseNumPtBr(linha[8]),
+        largura_mm: parseNumPtBr(linha[9]),
         tipo_celula: tipo,
       },
     }
   }
 
-  // MICROINVERSOR
+  // MICROINVERSOR — Planilha 2026-08: [5]=kW | [6]=disjuntor cód | [7]=MPPT | [9]=stringbox CC
   if (t.includes('micro')) {
     return {
       categoria: 'inversor',
       subcategoria: 'microinversor',
       fabricante: 'WEG',
       specs: {
-        potencia_kw: parseNumPtBr(linha[6]),
+        potencia_kw: parseNumPtBr(linha[5]),
         tensao_desc: tipo,
-        disjuntor_equivalente: sanitizarDisjuntorEq(String(linha[7] || '')),
-        entradas_mppt: parseNumPtBr(linha[8]),
+        disjuntor_equivalente: extrairAmperagemDisjuntor(String(linha[6] || '')),
+        entradas_mppt: parseNumPtBr(linha[7]),
       },
     }
   }
@@ -310,7 +326,7 @@ function classificar(
       subcategoria: 'inversor_bombeamento',
       fabricante: 'WEG',
       specs: {
-        potencia_kw: parseNumPtBr(linha[6]),
+        potencia_kw: parseNumPtBr(linha[5]),
         tensao_desc: tipo,
       },
     }
@@ -319,9 +335,9 @@ function classificar(
   // INVERSOR — string / híbrido / off-grid
   // Kalebe 2026-09-01: parser separa por subcategoria pra diagnóstico
   // e gerador de kits filtrarem corretamente.
-  //   SIW400H, SIW700H, "híbrido"  → inversor_hibrido
-  //   SIW300G off, "off grid"      → inversor_offgrid
-  //   Resto (SIW200G/300G/500G)    → inversor_string
+  //   SIW200H/SIW400H/SIW500H, "híbrido"  → inversor_hibrido
+  //   SIW300G off, "off grid"              → inversor_offgrid
+  //   Resto (SIW200G/300G/500G/400G/etc)   → inversor_string
   if (t.includes('inversor')) {
     const nomeUp = nome.toUpperCase()
     const tipoUp = tipo.toUpperCase()
@@ -331,15 +347,19 @@ function classificar(
     } else if (tipoUp.includes('OFF') || nomeUp.includes('OFF-GRID')) {
       subcat = 'inversor_offgrid'
     }
+    // Planilha 2026-08: [5]=kW | [6]=disjuntor cód | [7]=MPPT | [9]=stringbox CC
+    const stringBox = String(linha[9] || '').trim()
     return {
       categoria: 'inversor',
       subcategoria: subcat,
       fabricante: 'WEG',
       specs: {
-        potencia_kw: parseNumPtBr(linha[6]),
+        potencia_kw: parseNumPtBr(linha[5]),
         tensao_desc: tipo,
-        disjuntor_equivalente: sanitizarDisjuntorEq(String(linha[7] || '')),
-        entradas_mppt: parseNumPtBr(linha[8]),
+        disjuntor_equivalente: extrairAmperagemDisjuntor(String(linha[6] || '')),
+        entradas_mppt: parseNumPtBr(linha[7]),
+        ...(stringBox && !stringBox.toLowerCase().includes('sem dispon')
+          ? { string_box_recomendada: stringBox } : {}),
       },
     }
   }
@@ -476,8 +496,10 @@ function classificar(
  * pros outros itens (que já vêm em formato de código WEG tipo "SIW300H M060 W00").
  */
 function extrairModelo(nome: string, linha: unknown[]): string {
-  const c11 = String(linha[11] || '').trim()
-  if (c11 && c11.length < 40) return c11
+  // Planilha 2026-08 R0: modelo na col[10] pra placas ("WPV H66MBN4 W0"),
+  // vazia pros inversores (o próprio nome já é modelo).
+  const c10 = String(linha[10] || '').trim()
+  if (c10 && c10.length < 40) return c10
   return nome
 }
 
@@ -489,16 +511,33 @@ function extrairModelo(nome: string, linha: unknown[]): string {
  * deixava specs vazio + preço 0 — era a causa dos cadastros incompletos.
  */
 /**
- * Kalebe 2026-09-01: coluna 'disjuntor sugerido' da planilha WEG às
- * vezes vem preenchida com banco de capacitor (BCWA, TCP, BSMJ, etc)
- * — bug de dado deles. Se veio capacitor, retorna null pra o gerador
- * de kits cair no dimensionamento por corrente/polos.
+ * Extrai amperagem do código WEG do disjuntor sugerido.
+ * Kalebe 2026-09-19: planilha 2026-08 R0 traz o CÓDIGO DO PRODUTO WEG
+ * na coluna 'disjuntor sugerido', não a amperagem direta. Exemplos:
+ *  - MDWP-C50-2  → 50 A (2 polos)  ← termomagnético comum
+ *  - MDWH-C80-3  → 80 A (3 polos)  ← termomagnético alto poder
+ *  - DWB160B160-3DF                → caixa moldada 160 A tri (grande porte)
+ *  - Sem disponibilidade           → null
+ * Retorna a amperagem em ampères. Códigos DWB/FUSIVEL grandes retornam
+ * null (não são disjuntores comuns de padrão CELESC — precisa análise
+ * elétrica dedicada). Também rejeita capacitor (bug histórico).
  */
-function sanitizarDisjuntorEq(v: string): string | null {
+function extrairAmperagemDisjuntor(v: string): string | null {
   const t = String(v || '').trim()
   if (!t) return null
+  if (t.toLowerCase().includes('sem dispon')) return null
   if (/^(BC|TCP|BSMJ|CAP|BFR|BFC|BCF)/i.test(t)) return null
-  return t
+
+  // Padrão MDW[PH]-C<amp>-<polos>
+  const mMdw = t.match(/^MDW[PH]-C(\d+)-\d+/i)
+  if (mMdw) return mMdw[1]
+
+  // Já é número puro? "50", "50 A", "50A"
+  const mNum = t.match(/^(\d{1,3})\s*A?$/i)
+  if (mNum) return mNum[1]
+
+  // Caixa moldada (DWB...) ou fusível — sem correspondência direta com padrão CELESC
+  return null
 }
 
 function parseNumPtBr(v: unknown): number | null {
