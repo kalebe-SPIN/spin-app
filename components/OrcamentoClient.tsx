@@ -250,6 +250,15 @@ export function OrcamentoClient({
         const result = await salvarOrcamentoAction(projeto.id, propostaEfetiva, publicUrl, consolidado)
         if (result.sucesso) {
           setUrlPdf(publicUrl)
+          // Kalebe 2026-09-22: zera desconto admin após emissão do PDF pra que
+          // a próxima proposta comece limpa. O desconto ainda foi aplicado na
+          // proposta atual (já persistiu no orcamento_final + PDF).
+          const tinhaDesconto =
+            (projeto as any)?.desconto_admin_pct != null ||
+            (projeto as any)?.desconto_admin_valor != null
+          if (tinhaDesconto) {
+            await aplicarDescontoAdminAction(projeto.id, { pct: 0, valor: 0 })
+          }
           router.refresh()
         }
       })
