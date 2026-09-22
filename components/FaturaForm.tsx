@@ -212,6 +212,31 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
 
   return (
     <div className="space-y-6">
+      {/* Kalebe 2026-09-22: banner sempre visível quando já tem análise salva,
+          pra o consultor poder refazer (upload de PDF real, correção manual,
+          etc). Aparece antes de qualquer outra coisa. */}
+      {analiseSalva && analise && !analisando && (
+        <div className="bg-sol/10 border-2 border-sol/50 rounded-xl p-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-sol">📝 Já existe uma análise salva</p>
+            <p className="text-xs text-white/70 mt-0.5">
+              Quer trocar por outra fatura ou refazer? Clique em <strong>Refazer</strong>.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('Refazer análise? Os dados atuais serão substituídos quando você confirmar a nova análise.')) {
+                setAnalise(null); setArquivo(null); setErro(null); setModoManual(false)
+              }
+            }}
+            className="shrink-0 px-4 py-2 rounded-lg bg-sol text-noite text-sm font-black hover:bg-sol/90 transition"
+          >
+            🔄 Refazer análise
+          </button>
+        </div>
+      )}
+
       {/* Upload principal — 3 opções: câmera / arquivo / manual */}
       {!arquivo && !analise && !modoManual && (
         <div className="space-y-3">
