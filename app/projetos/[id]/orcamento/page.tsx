@@ -325,7 +325,13 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
         // Mapeia tipo_projeto do banco (legado 'ongrid'/'hibrido_bess') para
         // as chaves canônicas (fv_ongrid/fv_hibrido). Se não bater, o motor
         // cai no fallback margem_contribuicao_perc global.
-        tipo_projeto: mapTipoProjeto(projeto.tipo_projeto),
+        // Kalebe 2026-09-22: projetos novos deixam tipo_projeto singular
+        // vazio — o tipo real fica em projeto_itens (fv_ongrid/fv_hibrido/...).
+        // Cai de volta pra primeiro item FV do projeto quando o singular
+        // não está preenchido. Sem isso o motor cai no fallback 20% global.
+        tipo_projeto:
+          mapTipoProjeto(projeto.tipo_projeto)
+          || tipos.find(t => typeof t === 'string' && t.startsWith('fv_')),
       },
       params,
       ctxV2,
