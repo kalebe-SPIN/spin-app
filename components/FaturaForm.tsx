@@ -307,8 +307,28 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
       {analise && !analisando && (
         <div className="space-y-4">
           <div className="bg-verde/10 border border-verde/30 rounded-lg p-4">
-            <p className="text-sm text-verde font-bold mb-2">✅ UC principal analisada</p>
-            {alertaEndereco && <p className="text-xs text-sol">{alertaEndereco}</p>}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-verde font-bold mb-2">✅ UC principal analisada</p>
+                {alertaEndereco && <p className="text-xs text-sol">{alertaEndereco}</p>}
+              </div>
+              {/* Kalebe 2026-09-22: botão pra refazer a análise. Útil quando
+                  os dados foram inseridos manualmente sem a fatura, e agora
+                  o cliente enviou o PDF real. Ao clicar, volta pra tela de
+                  upload preservando os dados atuais no banco até salvar. */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Refazer análise? Os dados atuais serão substituídos quando você confirmar a nova análise.')) {
+                    setAnalise(null); setArquivo(null); setErro(null)
+                  }
+                }}
+                className="shrink-0 px-3 py-1.5 rounded bg-sol/10 border border-sol/40 text-sol text-xs font-bold hover:bg-sol/20 transition"
+                title="Substituir por PDF/foto da fatura ou reinserir manualmente"
+              >
+                🔄 Refazer análise
+              </button>
+            </div>
           </div>
 
           {Array.isArray(analise._avisos) && analise._avisos.length > 0 && (

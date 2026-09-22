@@ -415,7 +415,84 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
           propostasPorUc={propostasPorUc as any}
           campanhaAplicada={campanhaAplicada as any}
         />
+
+        <HistoricoPropostas projetoId={projeto.id} />
       </div>
     </main>
+  )
+}
+
+/**
+ * Kalebe 2026-09-22: lista as versões de PDF de proposta emitidas
+ * (projeto_propostas_historico). Cada emissão grava aqui — inclui
+ * PV, desconto aplicado e link de download.
+ */
+async function HistoricoPropostas({ projetoId }: { projetoId: string }) {
+  const supabase = createClient()
+  const { data: historico } = await supabase
+    .from('projeto_propostas_historico')
+    .select('id, url_pdf, pv_total, desconto_pct, desconto_valor, desconto_motivo, potencia_cc_kwp, gerado_em, gerado_por, gerado_por_profile:gerado_por(nome_completo)')
+    .eq('projeto_id', projetoId)
+    .order('gerado_em', { ascending: false })
+
+  if (!historico?.length) return null
+
+  const fmtBRL = (n: number | null) => n == null ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmtDate = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <section className="mt-8 bg-white/[0.03] border border-white/10 rounded-xl p-5">
+      <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+        📄 Histórico de propostas emitidas <span className="text-white/40 font-normal">({historico.length})</span>
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left border-b border-white/10 text-[10px] uppercase text-white/50 font-bold">
+              <th className="pb-2 pr-3">Versão</th>
+              <th className="pb-2 pr-3">Data</th>
+              <th className="pb-2 pr-3">Autor</th>
+              <th className="pb-2 pr-3">Potência</th>
+              <th className="pb-2 pr-3">Desconto</th>
+              <th className="pb-2 pr-3">PV total</th>
+              <th className="pb-2">PDF</th>
+            </tr>
+          </thead>
+          <tbody>
+            {historico.map((h: any, idx: number) => {
+              const versao = historico.length - idx
+              const desc = h.desconto_pct != null && h.desconto_pct !== 0
+                ? `${h.desconto_pct}%`
+                : (h.desconto_valor != null && h.desconto_valor !== 0 ? `R$ ${fmtBRL(h.desconto_valor)}` : '—')
+              const nomeAutor = h.gerado_por_profile?.nome_completo || '—'
+              return (
+                <tr key={h.id} className="border-b border-white/5">
+                  <td className="py-3 pr-3 text-white/70 text-xs font-mono">v{versao}</td>
+                  <td className="py-3 pr-3 text-white/80 text-xs">{fmtDate(h.gerado_em)}</td>
+                  <td className="py-3 pr-3 text-white/80 text-xs">{nomeAutor}</td>
+                  <td className="py-3 pr-3 text-white/80 text-xs">
+                    {h.potencia_cc_kwp ? `${Number(h.potencia_cc_kwp).toFixed(2).replace('.', ',')} kWp` : '—'}
+                  </td>
+                  <td className="py-3 pr-3 text-white/80 text-xs" title={h.desconto_motivo || ''}>
+                    {desc}
+                  </td>
+                  <td className="py-3 pr-3 text-sol font-bold text-sm">R$ {fmtBRL(h.pv_total)}</td>
+                  <td className="py-3">
+                    <a
+                      href={h.url_pdf}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-sol/10 border border-sol/40 text-sol text-[11px] font-bold hover:bg-sol/20 transition"
+                    >
+                      📥 Baixar
+                    </a>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }

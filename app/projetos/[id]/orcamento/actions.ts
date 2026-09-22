@@ -80,10 +80,42 @@ export async function salvarOrcamentoAction(
   const { error } = await supabase.from('projetos').update(patch).eq('id', projetoId)
   if (error) return { sucesso: false, erro: error.message }
 
+  // Kalebe 2026-09-22: histórico de propostas geradas (mig 118). Cada
+  // emissão de PDF vira uma linha em projeto_propostas_historico com
+  // snapshot financeiro + memória de cálculo. Assim o portal lista todas
+  // as versões emitidas (v1, v2, v3...) sem depender do bucket.
+  if (urlPdf) {
+    // Puxa desconto vigente do projeto pra registrar no snapshot histórico
+    const { data: proj } = await supabase
+      .from('projetos')
+      .select('desconto_admin_pct, desconto_admin_valor, desconto_admin_motivo')
+      .eq('id', projetoId)
+      .maybeSingle()
+    const memoria = proposta?.memoria_calculo || null
+    await supabase
+      .from('projeto_propostas_historico')
+      .insert({
+        projeto_id: projetoId,
+        url_pdf: urlPdf,
+        pv_total: consolidado?.pv_total ?? proposta?.pv_total ?? null,
+        pv_bruto: consolidado?.pv_bruto ?? null,
+        desconto_pct: proj?.desconto_admin_pct ?? null,
+        desconto_valor: proj?.desconto_admin_valor ?? null,
+        desconto_motivo: proj?.desconto_admin_motivo ?? null,
+        potencia_cc_kwp: memoria?.potencia_cc_kwp ?? null,
+        potencia_ca_kw: memoria?.potencia_ca_kw ?? null,
+        modo_composicao: consolidado?.modo_composicao ?? null,
+        ucs_qtd: consolidado?.ucs_qtd ?? null,
+        memoria_calculo: memoria,
+        gerado_por: user.id,
+      })
+  }
+
   // Dispara transição de status com auditoria + automações
   await mudarEtapaProjetoAction(projetoId, 'orcamento_gerado', 'Orçamento gerado pelo consultor')
 
   revalidatePath(`/projetos/${projetoId}`)
+  revalidatePath(`/projetos/${projetoId}/orcamento`)
   return { sucesso: true }
 }
 
