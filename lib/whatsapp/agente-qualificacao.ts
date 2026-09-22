@@ -235,6 +235,36 @@ Retorne apenas o JSON.`,
   const proximaMsg: string = String(resposta?.proxima_mensagem || '').trim()
   const status = contextoNovo.status_qualificacao || 'coletando_leve'
 
+  // Kalebe 2026-09-22: RACE CONDITION FIX. Entre a leitura inicial do status
+  // e a chamada ao Claude (que demora 2-10s), o humano pode ter assumido a
+  // conversa pelo inbox ou por fora. Re-checa antes de enviar QUALQUER msg
+  // pro cliente. Se status virou em_atendimento OU há outbound humana
+  // recente, silencia.
+  async function agenteAindaPodeFalar(): Promise<boolean> {
+    const { data: convAgora } = await admin
+      .from('wa_conversas')
+      .select('status, responsavel_id')
+      .eq('id', conversa_id)
+      .maybeSingle()
+    if (!convAgora) return false
+    if (['em_atendimento', 'encerrada'].includes((convAgora as any).status)) return false
+    // Última msg outbound humana nos últimos 90s = humano acabou de responder
+    const { data: ultimaHumana } = await admin
+      .from('wa_mensagens')
+      .select('criada_em, remetente_id')
+      .eq('conversa_id', conversa_id)
+      .eq('direcao', 'outbound')
+      .not('remetente_id', 'is', null)  // humano tem remetente_id, agente não
+      .order('criada_em', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (ultimaHumana) {
+      const idadeMs = Date.now() - new Date((ultimaHumana as any).criada_em).getTime()
+      if (idadeMs < 90_000) return false
+    }
+    return true
+  }
+
   // Persiste contexto
   await admin
     .from('wa_conversas')
@@ -247,7 +277,7 @@ Retorne apenas o JSON.`,
 
   // Escalar
   if (status === 'escalar_humano') {
-    if (proximaMsg) {
+    if (proximaMsg && await agenteAindaPodeFalar()) {
       await enviarTextoPeloCanal({
         conversa_id,
         telefone: contato.telefone,
@@ -266,6 +296,9 @@ Retorne apenas o JSON.`,
   // Ainda coletando (leve ou profundo)
   if (status === 'coletando_leve' || status === 'coletando_profundo') {
     if (proximaMsg) {
+      if (!(await agenteAindaPodeFalar())) {
+        return { acao: 'ignorada', motivo: 'humano assumiu durante processamento' }
+      }
       await enviarTextoPeloCanal({
         conversa_id,
         telefone: contato.telefone,
@@ -298,7 +331,7 @@ Retorne apenas o JSON.`,
       .eq('id', contato.id)
 
     // Manda a msg de fechamento pro lead ANTES do broadcast
-    if (proximaMsg) {
+    if (proximaMsg && await agenteAindaPodeFalar()) {
       await enviarTextoPeloCanal({
         conversa_id,
         telefone: contato.telefone,
@@ -353,7 +386,7 @@ Retorne apenas o JSON.`,
 
   // Modo PROFUNDO qualificado — só atualiza projeto com info extra + envia msg
   if (!modoLeve && jaDisparouBroadcast && contextoNovo.projeto_id) {
-    if (proximaMsg) {
+    if (proximaMsg && await agenteAindaPodeFalar()) {
       await enviarTextoPeloCanal({
         conversa_id,
         telefone: contato.telefone,

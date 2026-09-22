@@ -271,6 +271,34 @@ export function InboxClient({
               </div>
             </div>
 
+            {/* Kalebe 2026-09-22: banner de alerta quando agente está no comando.
+                Evita cenário em que você abre a conversa e responde por fora
+                (WhatsApp Business no celular) sem saber que o agente segue
+                respondendo em paralelo. */}
+            {(selecionada.agente_ativo ||
+              ['nova', 'em_qualificacao', 'aguardando_representante'].includes(selecionada.status)) &&
+              (!selecionada.responsavel_id || selecionada.responsavel_id !== usuarioId) && (
+              <div className="mx-4 mt-3 p-3 bg-sol/15 border border-sol/40 rounded-lg flex items-center gap-3">
+                <span className="text-2xl">🤖</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-sol">
+                    Agente está respondendo automaticamente
+                  </p>
+                  <p className="text-[11px] text-white/70 mt-0.5">
+                    Se você vai responder por fora (WhatsApp no celular), clique
+                    em <strong>Silenciar</strong> antes — senão o agente pode responder junto.
+                  </p>
+                </div>
+                <button
+                  onClick={assumir}
+                  disabled={isPending}
+                  className="px-4 py-2 rounded bg-sol text-noite text-xs font-black hover:bg-sol/90 disabled:opacity-40 shrink-0"
+                >
+                  🔇 Silenciar agente
+                </button>
+              </div>
+            )}
+
             {/* Timeline */}
             <div ref={timelineRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-noite/60">
               {mensagens.length === 0 ? (
