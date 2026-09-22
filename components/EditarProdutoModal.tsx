@@ -73,11 +73,13 @@ export function EditarProdutoModal({
     try {
       const ext = (file.name.split('.').pop() || 'png').toLowerCase()
       const path = `produtos/${produto.id}-${Date.now()}.${ext}`
+      // Kalebe 2026-09-22: era 'weg-catalogo' que é PRIVADO e não permite
+      // imagens (só XLSX/PDF). Usa 'produtos-imagens' (público, migration 044).
       const { error: upErr } = await supabaseBrowser.storage
-        .from('weg-catalogo')
+        .from('produtos-imagens')
         .upload(path, file, { cacheControl: '3600', upsert: true, contentType: file.type || 'image/png' })
       if (upErr) throw upErr
-      const { data } = supabaseBrowser.storage.from('weg-catalogo').getPublicUrl(path)
+      const { data } = supabaseBrowser.storage.from('produtos-imagens').getPublicUrl(path)
       setUrlImagem(data.publicUrl)
     } catch (e: any) {
       setErro(`Falha no upload: ${e.message || e}`)
@@ -95,12 +97,16 @@ export function EditarProdutoModal({
       if (file.size > 20 * 1024 * 1024) throw new Error('PDF > 20MB')
 
       // 1. Sobe o arquivo no storage
-      const path = `datasheets/${produto.id}-${Date.now()}.pdf`
+      // Kalebe 2026-09-22: era 'weg-catalogo' privado (só admin lê). Trocado
+      // pro bucket 'datasheets' (público, migration 016) que é o padrão da
+      // aba de datasheets do catálogo — assim o PDF fica acessível pra
+      // extração de IA + preview no /admin/catalogo.
+      const path = `${produto.id}-${Date.now()}.pdf`
       const { error: upErr } = await supabaseBrowser.storage
-        .from('weg-catalogo')
+        .from('datasheets')
         .upload(path, file, { cacheControl: '3600', upsert: true, contentType: 'application/pdf' })
       if (upErr) throw upErr
-      const { data } = supabaseBrowser.storage.from('weg-catalogo').getPublicUrl(path)
+      const { data } = supabaseBrowser.storage.from('datasheets').getPublicUrl(path)
       setUrlDatasheet(data.publicUrl)
       setUploadandoPdf(false)
 
