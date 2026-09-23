@@ -66,9 +66,15 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
     const economiaMesEstimada = geracaoMesKwh * 0.9  // tarifa CELESC média ~R$ 0,90/kWh
 
     // Kalebe 2026-09-02: extras livres da proposta (brinde, consultoria, etc)
-    const extras: Array<{ descricao: string; valor: number }> =
+    const extras: Array<{ descricao: string; valor: number; secao?: string; qtd?: number }> =
       Array.isArray(projeto.extras_proposta) ? projeto.extras_proposta : []
-    const totalExtras = extras.reduce((s, e) => s + (Number(e.valor) || 0), 0)
+    // Kalebe 2026-09-23: extras kit_weg/lista_ca já estão no pv_total (motor
+    // aplica fator + margem). No PDF aparecem como "incluso", sem preço de
+    // tabela (regra dupla-visão). Só serviços/legado somam aqui.
+    const extraNoMotor = (e: { secao?: string }) => e.secao === 'kit_weg' || e.secao === 'lista_ca'
+    const totalExtras = extras
+      .filter((e) => !extraNoMotor(e))
+      .reduce((s, e) => s + (Number(e.valor) || 0), 0)
 
     // Kalebe 2026-09-02: ajuste do admin (projetos.desconto_admin_*).
     // Sinal define: positivo = desconto (subtrai), negativo = acréscimo (soma).
@@ -436,9 +442,11 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
                     padding: '4px 0', borderBottom: i < extras.length - 1 ? '1px dashed rgba(245,245,240,0.1)' : 'none',
                     fontSize: 11,
                   }}>
-                    <span style={{ color: '#F5F5F0' }}>{e.descricao}</span>
+                    <span style={{ color: '#F5F5F0' }}>
+                      {e.qtd && e.qtd > 1 ? `${e.qtd}× ` : ''}{e.descricao}
+                    </span>
                     <span style={{ color: '#D4AF37', fontWeight: 700, fontFamily: 'monospace' }}>
-                      R$ {fmt(Number(e.valor) || 0)}
+                      {extraNoMotor(e) ? 'incluso' : `R$ ${fmt(Number(e.valor) || 0)}`}
                     </span>
                   </div>
                 ))}

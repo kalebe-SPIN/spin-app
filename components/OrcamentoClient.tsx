@@ -107,7 +107,11 @@ export function OrcamentoClient({
   // 'servicos'). Itens sem secao (legado) caem no bloco antigo do fim.
   const extras: Array<{ descricao: string; valor: number; secao?: string; qtd?: number; unidade?: string; modelo?: string; fabricante?: string; produto_id?: string }> =
     Array.isArray(projeto.extras_proposta) ? projeto.extras_proposta : []
-  const totalExtras = extras.reduce((s, e) => s + (Number(e.valor) || 0), 0)
+  // Kalebe 2026-09-23: extras kit_weg e lista_ca já entram no motor (server)
+  // com fator/margem. Só serviços e legado somam direto no PV.
+  const totalExtras = extras
+    .filter((e) => e.secao !== 'kit_weg' && e.secao !== 'lista_ca')
+    .reduce((s, e) => s + (Number(e.valor) || 0), 0)
   const extrasKitWeg = extras.map((e, i) => ({ ...e, __i: i })).filter((e) => e.secao === 'kit_weg')
   const extrasListaCa = extras.map((e, i) => ({ ...e, __i: i })).filter((e) => e.secao === 'lista_ca')
   const extrasServicos = extras.map((e, i) => ({ ...e, __i: i })).filter((e) => e.secao === 'servicos')
@@ -627,9 +631,13 @@ function ComposicaoCustosAdmin({
     }
   }
 
-  const totalWegBruto = linhasWeg.reduce((s, l) => s + l.subtotal, 0)
-  const totalWegComFator = linhasWeg.reduce((s, l) => s + l.comFator, 0)
+  // Kalebe 2026-09-23: extras entram nos totais (antes ficavam de fora).
+  const extrasKitBruto = extrasKitWeg.reduce((s: number, e: any) => s + (Number(e.valor) || 0), 0)
+  const extrasCaTotal = extrasListaCa.reduce((s: number, e: any) => s + (Number(e.valor) || 0), 0)
+  const totalWegBruto = linhasWeg.reduce((s, l) => s + l.subtotal, 0) + extrasKitBruto
+  const totalWegComFator = linhasWeg.reduce((s, l) => s + l.comFator, 0) + extrasKitBruto * FATOR_WEG
   const totalListaCa = (listaCa || []).reduce((s: number, i: any) => s + (i.preco_unitario || 0) * (i.qtd || 0), 0)
+    + extrasCaTotal
 
   return (
     <section className="bg-white/[0.03] border border-sol/30 rounded-xl p-6">
@@ -716,7 +724,7 @@ function ComposicaoCustosAdmin({
                   <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(Number(e.valor || 0) / (e.qtd || 1))}</td>
                   <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(Number(e.valor) || 0)}</td>
                   <td className="py-1.5 px-2 text-right whitespace-nowrap text-sol">
-                    R$ {fmt(Number(e.valor) || 0)}
+                    R$ {fmt((Number(e.valor) || 0) * FATOR_WEG)}
                     <BotaoRemoverExtra projetoId={projeto.id} index={e.__i} />
                   </td>
                 </tr>

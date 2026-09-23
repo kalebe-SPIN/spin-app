@@ -294,10 +294,37 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
     return placaSub + invSub + (complementos.total || 0)
   }
 
+  // Kalebe 2026-09-23: extras de Kit WEG e Lista CA entram no MOTOR (antes
+  // eram somados crus no PV pelo preço de tabela, sem fator nem margem).
+  //   kit_weg  → soma no bruto do kit (recebe fator 0,4182 + margem)
+  //   lista_ca → vira item CA (base impostável, recebe margem/comissão/imposto)
+  //   servicos/legado → continuam somados direto no PV pelo OrcamentoClient
+  const extrasProj: any[] = Array.isArray((projeto as any).extras_proposta)
+    ? (projeto as any).extras_proposta : []
+  const extrasKitBruto = extrasProj
+    .filter((e) => e?.secao === 'kit_weg')
+    .reduce((s, e) => s + (Number(e.valor) || 0), 0)
+  const extrasCaItens = extrasProj
+    .filter((e) => e?.secao === 'lista_ca')
+    .map((e) => {
+      const q = Number(e.qtd) > 0 ? Number(e.qtd) : 1
+      return { descricao: e.descricao, qtd: q, preco_unitario: (Number(e.valor) || 0) / q, categoria: 'extra' }
+    })
+
   // Helper: calcula proposta pra um par (kit, listaCa, brutoTotal).
   // Passa por calcularPropostaComFlag: se flag precificacao_v2 = 1, roda motor v2
   // (margem sobre nota SPIN, comissão efetiva, alíquota calculada). Senão v1.
-  function calcProposta(k: any, lca: any[], brutoTotal?: number) {
+  // `comExtras`: extras são do projeto (não da UC) — em por_uc entram só na 1ª UC.
+  function calcProposta(k: any, lcaBase: any[], brutoBase?: number, comExtras = false) {
+    const lca = comExtras ? [...(lcaBase || []), ...extrasCaItens] : lcaBase
+    let brutoTotal = brutoBase || k.preco_total_kit_weg
+    if (comExtras && extrasKitBruto > 0) {
+      // Sem bruto consolidado, reconstrói placa+inversor igual ao motor faz
+      const baseKit = brutoTotal
+        || precoOuFallback(k.placa) * (k.qtd_placas || 1)
+          + precoOuFallback(k.inversor) * (k.qtd_inversores || 1)
+      brutoTotal = baseKit + extrasKitBruto
+    }
     return calcularPropostaComFlag(
       {
         placa: {
@@ -318,7 +345,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
           preco_unitario: i.preco_unitario || 0,
           categoria: i.categoria,
         })),
-        subtotal_kit_weg_bruto_override: brutoTotal || k.preco_total_kit_weg,
+        subtotal_kit_weg_bruto_override: brutoTotal,
         potencia_kwp: k.potencia_cc_kwp || 0,
         distancia_km_extra: 0,
         // Kalebe 2026-09-18: usado pela matriz de margem fv_matriz_margem_kwp.
@@ -344,6 +371,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
         kit,
         listaCa as any[],
         brutoTotalFresh(kit, complementosCentralizado) ?? (projeto as any).kit_weg_bruto_total,
+        true,
       )
     : null
 
@@ -351,7 +379,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
   const propostasPorUc = modoComposicao === 'por_uc'
     ? kitsPorUcRaw
         .filter(k => k?.kit_selecionado)
-        .map((item: any) => {
+        .map((item: any, idxUc: number) => {
           const cFresh = complementosPorUcMap.get(String(item.uc_ref)) || null
           return {
             uc_ref: item.uc_ref,
@@ -365,6 +393,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
               item.kit_selecionado,
               item.lista_ca_confirmada || [],
               brutoTotalFresh(item.kit_selecionado, cFresh) ?? item.kit_weg_bruto_total,
+              idxUc === 0,
             ),
           }
         })
