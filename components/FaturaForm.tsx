@@ -216,24 +216,36 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
           pra o consultor poder refazer (upload de PDF real, correção manual,
           etc). Aparece antes de qualquer outra coisa. */}
       {analiseSalva && analise && !analisando && (
-        <div className="bg-sol/10 border-2 border-sol/50 rounded-xl p-4 flex items-center justify-between gap-3">
+        <div className="bg-sol/10 border-2 border-sol/50 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-bold text-sol">📝 Já existe uma análise salva</p>
+            <p className="text-sm font-bold text-sol">📝 Fatura já cadastrada</p>
             <p className="text-xs text-white/70 mt-0.5">
-              Quer trocar por outra fatura ou refazer? Clique em <strong>Refazer</strong>.
+              Chegou a fatura real ou precisa corrigir? Os dados atuais só são
+              substituídos quando você confirmar a nova análise.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm('Refazer análise? Os dados atuais serão substituídos quando você confirmar a nova análise.')) {
-                setAnalise(null); setArquivo(null); setErro(null); setModoManual(false)
-              }
-            }}
-            className="shrink-0 px-4 py-2 rounded-lg bg-sol text-noite text-sm font-black hover:bg-sol/90 transition"
-          >
-            🔄 Refazer análise
-          </button>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setErro(null)
+                if (inputArquivoRef.current) inputArquivoRef.current.value = ''
+                inputArquivoRef.current?.click()
+              }}
+              className="px-4 py-2 rounded-lg bg-sol text-noite text-sm font-black hover:bg-sol/90 transition"
+            >
+              📄 Trocar fatura
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAnalise(null); setArquivo(null); setErro(null); setModoManual(true)
+              }}
+              className="px-4 py-2 rounded-lg bg-white/5 border border-white/20 text-white text-sm font-bold hover:bg-white/10 transition"
+            >
+              ✏ Digitar de novo
+            </button>
+          </div>
         </div>
       )}
 
@@ -332,28 +344,8 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
       {analise && !analisando && (
         <div className="space-y-4">
           <div className="bg-verde/10 border border-verde/30 rounded-lg p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-verde font-bold mb-2">✅ UC principal analisada</p>
-                {alertaEndereco && <p className="text-xs text-sol">{alertaEndereco}</p>}
-              </div>
-              {/* Kalebe 2026-09-22: botão pra refazer a análise. Útil quando
-                  os dados foram inseridos manualmente sem a fatura, e agora
-                  o cliente enviou o PDF real. Ao clicar, volta pra tela de
-                  upload preservando os dados atuais no banco até salvar. */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('Refazer análise? Os dados atuais serão substituídos quando você confirmar a nova análise.')) {
-                    setAnalise(null); setArquivo(null); setErro(null)
-                  }
-                }}
-                className="shrink-0 px-3 py-1.5 rounded bg-sol/10 border border-sol/40 text-sol text-xs font-bold hover:bg-sol/20 transition"
-                title="Substituir por PDF/foto da fatura ou reinserir manualmente"
-              >
-                🔄 Refazer análise
-              </button>
-            </div>
+            <p className="text-sm text-verde font-bold mb-2">✅ UC principal analisada</p>
+            {alertaEndereco && <p className="text-xs text-sol">{alertaEndereco}</p>}
           </div>
 
           {Array.isArray(analise._avisos) && analise._avisos.length > 0 && (
