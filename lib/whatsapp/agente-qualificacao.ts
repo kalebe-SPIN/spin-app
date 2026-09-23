@@ -46,7 +46,7 @@ type ContextoQualificacao = {
   tipo_imovel?: 'residencial' | 'comercial' | 'industrial' | 'rural'
   valor_conta_media?: number
   observacoes?: string
-  status_qualificacao?: 'coletando_leve' | 'broadcast_disparado' | 'coletando_profundo' | 'qualificada' | 'escalar_humano'
+  status_qualificacao?: 'coletando_leve' | 'broadcast_disparado' | 'coletando_profundo' | 'qualificada' | 'escalar_humano' | 'conversa_humana'
   perguntas_feitas?: string[]
   projeto_id?: string
   broadcast_disparado_em?: string  // ISO
@@ -248,13 +248,15 @@ Retorne apenas o JSON.`,
       .maybeSingle()
     if (!convAgora) return false
     if (['em_atendimento', 'encerrada'].includes((convAgora as any).status)) return false
-    // Última msg outbound humana nos últimos 90s = humano acabou de responder
+    // Última msg outbound humana nos últimos 90s = humano acabou de responder.
+    // Humano = remetente_agente nulo (inbox tem remetente_id; eco do app do
+    // celular não tem nenhum dos dois). Agentes sempre gravam remetente_agente.
     const { data: ultimaHumana } = await admin
       .from('wa_mensagens')
       .select('criada_em, remetente_id')
       .eq('conversa_id', conversa_id)
       .eq('direcao', 'outbound')
-      .not('remetente_id', 'is', null)  // humano tem remetente_id, agente não
+      .is('remetente_agente', null)
       .order('criada_em', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -263,6 +265,16 @@ Retorne apenas o JSON.`,
       if (idadeMs < 90_000) return false
     }
     return true
+  }
+
+  // Cliente está falando com consultor (fora do histórico) — agente sai
+  // da conversa sem responder e passa pra atendimento humano.
+  if (status === 'conversa_humana') {
+    await admin
+      .from('wa_conversas')
+      .update({ contexto_qualificacao: contextoNovo, status: 'em_atendimento', agente_ativo: null })
+      .eq('id', conversa_id)
+    return { acao: 'ignorada', motivo: 'IA detectou conversa com consultor' }
   }
 
   // Persiste contexto
@@ -417,12 +429,25 @@ async function carregarSystemPrompt(
       .eq('chave', modoLeve ? 'qualificacao_padrao' : 'qualificacao_profunda')
       .eq('ativo', true)
       .maybeSingle()
-    if (agente?.system_prompt) return agente.system_prompt
+    if (agente?.system_prompt) return `${agente.system_prompt}\n\n${REGRA_CONVERSA_HUMANA}`
   } catch (e) {
     // fallback
   }
-  return modoLeve ? SYSTEM_PROMPT_MODO_LEVE : SYSTEM_PROMPT_MODO_PROFUNDO
+  return `${modoLeve ? SYSTEM_PROMPT_MODO_LEVE : SYSTEM_PROMPT_MODO_PROFUNDO}\n\n${REGRA_CONVERSA_HUMANA}`
 }
+
+// Kalebe 2026-09-23: consultor responde pelo app WhatsApp Business no celular
+// (fora do histórico que a IA vê) e o agente entrava por cima. Regra fixa,
+// somada a qualquer prompt (inclusive os editáveis em wa_agentes).
+const REGRA_CONVERSA_HUMANA = `REGRA FIXA — CONVERSA COM CONSULTOR HUMANO
+Um consultor da Spin pode ter falado com o cliente pelo celular, fora deste histórico.
+Se você JÁ mandou mensagem antes e a última mensagem do cliente claramente NÃO tem
+relação com a sua última pergunta — por exemplo: responde algo que você não perguntou,
+fala de valor, visita, proposta ou instalação que você não mencionou, agradece um
+atendimento que você não fez, ou se dirige a uma pessoa pelo nome — NÃO responda.
+Nesse caso retorne exatamente:
+{"contexto_atualizado": {"status_qualificacao": "conversa_humana"}, "proxima_mensagem": ""}
+No primeiro contato do cliente (você ainda não mandou nada), atenda normalmente.`
 
 async function criarProjetoDoLead(
   admin: ReturnType<typeof createAdminClient>,

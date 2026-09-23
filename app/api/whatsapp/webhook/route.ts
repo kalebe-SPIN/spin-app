@@ -103,6 +103,64 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // ─── ECO: mensagem que o consultor mandou pelo app WhatsApp Business ───
+        // Kalebe 2026-09-23: com o número em coexistência (app + API), a Meta
+        // avisa (campo smb_message_echoes) cada msg enviada pelo celular.
+        // Registra no histórico e tira o agente da conversa — senão ele
+        // responde por cima do consultor (inclusive quando é áudio).
+        if (change?.field === 'smb_message_echoes' && !value?.message_echoes) {
+          console.warn('[webhook eco] payload sem message_echoes, chaves:', Object.keys(value || {}))
+        }
+        for (const eco of value?.message_echoes || []) {
+          try {
+            const para = eco.to
+            if (!para || !eco.id) continue
+            // Já existe = o próprio sistema mandou via API; não é o app do celular
+            const { data: jaTem } = await supabaseAdmin
+              .from('wa_mensagens').select('id').eq('meta_message_id', eco.id).maybeSingle()
+            if (jaTem) continue
+
+            const tipoEco: any = eco.type || 'text'
+            const contatoEco = await upsertContato(supabaseAdmin, { telefone: para, tipo_default: 'lead' })
+            if (!contatoEco) continue
+            const convEco = await findOrCreateConversaAtiva(supabaseAdmin, contatoEco.id, {
+              status_inicial: 'em_atendimento',
+            })
+            if (!convEco) continue
+
+            const midiaEco = eco[tipoEco] || {}
+            const midiaSalvaEco = midiaEco?.id
+              ? await baixarESalvarMidiaWa({
+                  midia_meta_id: midiaEco.id,
+                  mime_hint: midiaEco.mime_type || null,
+                  nome_original: midiaEco.filename || null,
+                })
+              : null
+            await gravarMensagem(supabaseAdmin, {
+              conversa_id: convEco.id,
+              direcao: 'outbound',
+              tipo: tipoEco,
+              texto: eco.text?.body || midiaEco.caption
+                || (tipoEco === 'document' ? (midiaEco.filename || null) : null),
+              meta_message_id: eco.id,
+              midia_url: midiaSalvaEco?.midia_url || null,
+              midia_meta_id: midiaEco.id || null,
+              midia_mime: midiaSalvaEco?.midia_mime || midiaEco.mime_type || null,
+              midia_duracao_seg: tipoEco === 'audio' ? Number(midiaEco.voice_duration || 0) || null : null,
+              origem_agente_nome: 'WhatsApp (celular)',
+              status_entrega: 'enviada',
+              criada_em: eco.timestamp ? new Date(parseInt(eco.timestamp) * 1000).toISOString() : undefined,
+            })
+            await supabaseAdmin
+              .from('wa_conversas')
+              .update({ status: 'em_atendimento', agente_ativo: null })
+              .eq('id', convEco.id)
+              .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
+          } catch (e) {
+            console.error('[webhook eco]', e)
+          }
+        }
+
         // ─── MENSAGEM recebida do cliente (resposta) ───
         // Extrai metadados de contato (nome do wpp) — vem em value.contacts
         const contatosMeta = value?.contacts || []
@@ -204,7 +262,28 @@ export async function POST(req: NextRequest) {
           // waitUntil: responde 200 pra Meta na hora, mas mantém a função viva
           // até a IA terminar. Sem isso a Vercel congelava a execução e o
           // agente morria no meio (leads ficavam sem resposta — 2026-09-23).
-          if (conversaId) {
+          // Kalebe 2026-09-23: cliente usou "responder" numa msg que NÃO foi do
+          // agente (msg do consultor pelo inbox, ou pelo celular e que nem está
+          // no banco) → está falando com humano. Agente fica fora.
+          let respondendoConsultor = false
+          const citadaId: string | undefined = (msg as any).context?.id
+          if (conversaId && citadaId) {
+            const { data: citada } = await supabaseAdmin
+              .from('wa_mensagens')
+              .select('direcao, remetente_agente')
+              .eq('meta_message_id', citadaId)
+              .maybeSingle()
+            if (!citada || (citada.direcao === 'outbound' && !citada.remetente_agente)) {
+              respondendoConsultor = true
+              await supabaseAdmin
+                .from('wa_conversas')
+                .update({ status: 'em_atendimento', agente_ativo: null })
+                .eq('id', conversaId)
+                .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
+            }
+          }
+
+          if (conversaId && !respondendoConsultor) {
             waitUntil(
               processarMensagemQualificacao(conversaId)
                 .then((r) => {
