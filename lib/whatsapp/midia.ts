@@ -43,7 +43,7 @@ export async function baixarESalvarMidiaWa(entrada: {
 }): Promise<{ midia_url: string; midia_mime: string; nome_arquivo: string } | null> {
   try {
     const cfg = await getWaConfig()
-    const token = cfg.whatsapp_access_token
+    const token = cfg.access_token
     if (!token) {
       console.warn('[wa/midia] sem token — pulando download')
       return null
