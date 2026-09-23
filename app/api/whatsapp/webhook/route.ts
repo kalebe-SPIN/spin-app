@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { waitUntil } from '@vercel/functions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { dispararGatilho } from '@/lib/bianca/gatilhos'
 import {
@@ -28,6 +29,11 @@ import { getWaConfig } from '@/lib/whatsapp/config'
  *   agora TODA mensagem entra em wa_contatos/wa_conversas/wa_mensagens.
  *   Isso vira a fonte de verdade do inbox unificado.
  */
+
+// Tarefas pós-resposta (agente IA, aceite de lead) rodam via waitUntil e
+// precisam de tempo além do 200 devolvido pra Meta.
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
 // ═══════════════════ VERIFICAÇÃO (GET) ═══════════════════
 export async function GET(req: NextRequest) {
@@ -183,8 +189,10 @@ export async function POST(req: NextRequest) {
                   .limit(1)
                   .maybeSingle()
                 if (bc) {
-                  aceitarLead({ broadcast_id: bc.id, representante_id: perfilRep.id })
-                    .catch((err) => console.error('[webhook aceitarLead]', err))
+                  waitUntil(
+                    aceitarLead({ broadcast_id: bc.id, representante_id: perfilRep.id })
+                      .catch((err) => console.error('[webhook aceitarLead]', err)),
+                  )
                   continue  // não passa pra qualificação — é aceite de rep
                 }
               }
@@ -193,10 +201,16 @@ export async function POST(req: NextRequest) {
 
           // Sprint 2: agente de qualificação. Se conversa em 'nova' ou
           // 'em_qualificacao' e sem responsável humano, ativa a IA.
-          // Roda async — não bloqueia o webhook (Meta timeout curto).
+          // waitUntil: responde 200 pra Meta na hora, mas mantém a função viva
+          // até a IA terminar. Sem isso a Vercel congelava a execução e o
+          // agente morria no meio (leads ficavam sem resposta — 2026-09-23).
           if (conversaId) {
-            processarMensagemQualificacao(conversaId).catch((err) =>
-              console.error('[webhook agente-qualificacao]', err),
+            waitUntil(
+              processarMensagemQualificacao(conversaId)
+                .then((r) => {
+                  if ('erro' in r) console.error('[webhook agente-qualificacao] erro:', r.erro)
+                })
+                .catch((err) => console.error('[webhook agente-qualificacao]', err)),
             )
           }
 

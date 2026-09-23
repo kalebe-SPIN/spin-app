@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
     failovers: 0,
     broadcasts_expirados: 0,
     modos_profundo_ativados: 0,
+    reprocessados_sem_resposta: 0,
     erros: 0,
   }
 
@@ -262,13 +263,44 @@ export async function GET(req: NextRequest) {
           })
           .eq('id', bc.conversa_id)
 
-        // Dispara agente pra fazer a primeira pergunta profunda
-        processarMensagemQualificacao(bc.conversa_id).catch((err) =>
+        // Dispara agente pra fazer a primeira pergunta profunda. Precisa de
+        // await: sem isso a função encerra antes da IA responder.
+        await processarMensagemQualificacao(bc.conversa_id).catch((err) =>
           console.error('[cron lead-sla/modo_profundo]', err),
         )
         stats.modos_profundo_ativados++
       } catch (e) {
         console.error('[cron lead-sla/modo_profundo]', e)
+        stats.erros++
+      }
+    }
+
+    // ─── 4. REDE DE SEGURANÇA — lead que ficou sem resposta do agente ───
+    // Kalebe 2026-09-23: webhook matava o agente no meio (sem waitUntil) e
+    // 9 leads ficaram com a última msg do cliente sem resposta. Se algo
+    // falhar de novo, o cron reprocessa. Janela 3min–20h: depois de 24h a
+    // Meta bloqueia texto livre. processarMensagemQualificacao já ignora
+    // conversa cuja última msg é nossa, então reprocessar é seguro.
+    const tresMinAtrasIso = new Date(agora.getTime() - 3 * 60_000).toISOString()
+    const vinteHorasAtrasIso = new Date(agora.getTime() - 20 * 3_600_000).toISOString()
+    const { data: semResposta } = await admin
+      .from('wa_conversas')
+      .select('id')
+      .in('status', ['nova', 'em_qualificacao'])
+      .lt('ultima_mensagem_em', tresMinAtrasIso)
+      .gt('ultima_mensagem_em', vinteHorasAtrasIso)
+      .limit(5)
+
+    for (const conv of semResposta || []) {
+      try {
+        const r = await processarMensagemQualificacao(conv.id)
+        if ('acao' in r && r.acao !== 'ignorada') stats.reprocessados_sem_resposta++
+        if ('erro' in r) {
+          console.error('[cron lead-sla/rede_seguranca]', conv.id, r.erro)
+          stats.erros++
+        }
+      } catch (e) {
+        console.error('[cron lead-sla/rede_seguranca]', e)
         stats.erros++
       }
     }
