@@ -26,10 +26,20 @@ const STATUS_PODE_GERAR = [
   'ativo_pos_venda',
 ]
 
+type TipoDesenho = 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao'
+
+/**
+ * Kalebe 2026-09-25: gera o diagrama com o ROBÔ DO GITHUB — Claude Code
+ * rodando a skill projetista-spin (a mesma do chat) num runner do GitHub
+ * Actions, sem limite de tempo e com Python completo (ezdxf, cairosvg).
+ * Acabou o copiar/colar: esta action monta o relatório técnico, cria a
+ * versão em 'gerando' e dispara .github/workflows/gerar-diagrama.yml.
+ * O worker (.github/diagrama/worker.mjs) sobe PDF/DXF/SVG e marca 'pronto'.
+ */
 export async function gerarDiagramaAction(
   projetoId: string,
-  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao',
-  opcoes: { modoPrevia?: boolean } = {},
+  tipoDesenho: TipoDesenho,
+  opcoes: { modoPrevia?: boolean; instrucaoAjuste?: string; baseadoEmId?: string } = {},
 ) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -100,7 +110,10 @@ export async function gerarDiagramaAction(
 
   const proximaVersao = (ultimas?.[0]?.versao || 0) + 1
 
-  // Cria registro em status 'gerando'
+  const relatorio = await montarRelatorioProjeto(supabaseAdmin, projetoId, tipoDesenho)
+  if (!relatorio) return { sucesso: false, erro: 'Não consegui montar o relatório técnico do projeto' }
+
+  // Cria registro em status 'gerando' — o robô lê relatório e ajuste daqui
   const { data: novoDiagrama, error: insErr } = await supabaseAdmin
     .from('projetos_diagramas')
     .insert({
@@ -111,6 +124,11 @@ export async function gerarDiagramaAction(
       gerado_por: user.id,
       snapshot_empresa: config,
       eh_previa: opcoes.modoPrevia || false,
+      instrucao_ajuste: opcoes.instrucaoAjuste || null,
+      baseado_em_id: opcoes.baseadoEmId || null,
+      memoria_calculo: {
+        _meta: { origem: 'robo_github', relatorio, solicitado_em: new Date().toISOString() },
+      },
     })
     .select()
     .single()
@@ -120,37 +138,44 @@ export async function gerarDiagramaAction(
     return { sucesso: false, erro: insErr?.message || 'Erro ao criar registro do diagrama' }
   }
 
-  // Aciona API interna — detecta URL do ambiente (Vercel usa VERCEL_URL, dev usa localhost)
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-
-  try {
-    // Fire-and-forget mas com await pra garantir que fetch inicie antes da action retornar
-    // (Vercel pode matar processos após return — melhor await pelo menos o inicio da requisicao)
-    const promessa = fetch(`${baseUrl}/api/gerar-diagrama`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        diagrama_id: novoDiagrama.id,
-        projeto_id: projetoId,
-        tipo_desenho: tipoDesenho,
-      }),
-    })
-    // Espera 100ms pra garantir que a request foi iniciada
-    await Promise.race([promessa, new Promise(r => setTimeout(r, 100))])
-  } catch (e) {
-    console.error('[gerarDiagrama] fetch API interna erro:', e)
-    // Marca como erro no banco
+  const disparo = await dispararRoboDiagrama(novoDiagrama.id)
+  if (!disparo.ok) {
     await supabaseAdmin
       .from('projetos_diagramas')
-      .update({ status: 'erro', erro_mensagem: `Falha ao acionar geracao: ${(e as any)?.message || 'desconhecido'}` })
+      .update({ status: 'erro', erro_mensagem: disparo.erro })
       .eq('id', novoDiagrama.id)
-    return { sucesso: false, erro: 'Falha ao iniciar geração. Ver logs.' }
+    revalidatePath(`/projetos/${projetoId}/diagrama`)
+    return { sucesso: false, erro: disparo.erro }
   }
 
   revalidatePath(`/projetos/${projetoId}/diagrama`)
   return { sucesso: true, diagrama_id: novoDiagrama.id }
+}
+
+/** Dispara o workflow gerar-diagrama.yml no GitHub (workflow_dispatch). */
+async function dispararRoboDiagrama(diagramaId: string): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const token = process.env.GITHUB_DIAGRAMAS_TOKEN
+  const repo = process.env.GITHUB_DIAGRAMAS_REPO || 'kalebe-SPIN/spin-app'
+  if (!token) {
+    return { ok: false, erro: 'Robô de diagramas não configurado: falta GITHUB_DIAGRAMAS_TOKEN nas variáveis da Vercel.' }
+  }
+  try {
+    const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/gerar-diagrama.yml/dispatches`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ref: 'main', inputs: { diagrama_id: diagramaId } }),
+    })
+    if (r.status === 204) return { ok: true }
+    const corpo = await r.text().catch(() => '')
+    return { ok: false, erro: `GitHub recusou o disparo (${r.status}): ${corpo.slice(0, 200)}` }
+  } catch (e: any) {
+    return { ok: false, erro: `Falha ao chamar o GitHub: ${e?.message || 'desconhecido'}` }
+  }
 }
 
 /**
@@ -336,33 +361,23 @@ export async function regenerarDiagramaAction(
   // Busca diagrama anterior pra pegar projeto_id + tipo_desenho
   const { data: anterior } = await supabaseAdmin
     .from('projetos_diagramas')
-    .select('projeto_id, tipo_desenho')
+    .select('projeto_id, tipo_desenho, eh_previa')
     .eq('id', diagramaAnteriorId)
     .maybeSingle()
 
   if (!anterior) return { sucesso: false, erro: 'Diagrama anterior nao encontrado' }
 
-  // Reusa gerarDiagramaAction pra criar novo registro
-  const result = await gerarDiagramaAction(
+  // Ajuste vai no INSERT (o robô lê assim que dispara — update depois chegava tarde).
+  // Sem instrução = gera do zero de novo (erro transitório).
+  return gerarDiagramaAction(
     anterior.projeto_id,
-    anterior.tipo_desenho as any,
-    { modoPrevia: false },
+    anterior.tipo_desenho as TipoDesenho,
+    {
+      modoPrevia: !!anterior.eh_previa,
+      instrucaoAjuste: instrucaoAjuste || undefined,
+      baseadoEmId: instrucaoAjuste ? diagramaAnteriorId : undefined,
+    },
   )
-
-  if (!result.sucesso) return result
-
-  // Se tem instrucao de ajuste, salva no novo registro pra API considerar
-  if (instrucaoAjuste && result.diagrama_id) {
-    await supabaseAdmin
-      .from('projetos_diagramas')
-      .update({
-        instrucao_ajuste: instrucaoAjuste,
-        baseado_em_id: diagramaAnteriorId,
-      })
-      .eq('id', result.diagrama_id)
-  }
-
-  return result
 }
 
 /**
@@ -431,17 +446,26 @@ export async function excluirDiagramaAction(diagramaId: string) {
  */
 export async function montarPromptDiagramaAction(
   projetoId: string,
-  tipoDesenho: 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao',
+  tipoDesenho: TipoDesenho,
 ): Promise<{ prompt: string } | { erro: string }> {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { erro: 'Não autenticado' }
 
-  const supabaseAdmin = createAdminClient()
+  const relatorio = await montarRelatorioProjeto(createAdminClient(), projetoId, tipoDesenho)
+  if (!relatorio) return { erro: 'Projeto não encontrado' }
+  return { prompt: relatorio }
+}
 
+/** Relatório técnico do projeto — alimenta a skill (robô do GitHub ou cópia manual). */
+async function montarRelatorioProjeto(
+  supabaseAdmin: ReturnType<typeof createAdminClient>,
+  projetoId: string,
+  tipoDesenho: TipoDesenho,
+): Promise<string | null> {
   const { data: projeto } = await supabaseAdmin
     .from('projetos').select('*').eq('id', projetoId).maybeSingle()
-  if (!projeto) return { erro: 'Projeto não encontrado' }
+  if (!projeto) return null
 
   // Kalebe 2026-08-29: se o snapshot no projeto estiver vazio, busca do
   // cadastro do cliente. O gerador de prompt do diagrama estava puxando
@@ -497,7 +521,7 @@ export async function montarPromptDiagramaAction(
     hibridoAn = an
   }
 
-  const relatorio = montarRelatorioTecnico({
+  return montarRelatorioTecnico({
     projeto,
     telhadoSecoes: telhadoSecoes || [],
     configEmpresa,
@@ -507,8 +531,6 @@ export async function montarPromptDiagramaAction(
     homologacao,
     eletrotecnicoNome,
   })
-
-  return { prompt: relatorio }
 }
 
 // ══════════════════════════════════════════════════════════════════════

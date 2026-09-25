@@ -1,0 +1,104 @@
+# Robô de diagramas (Kalebe 2026-09-25)
+# O portal dispara este workflow com o id da versão em projetos_diagramas.
+# Aqui roda o Claude Code com a skill projetista-spin — a mesma do chat —
+# com Python completo e sem limite de tempo da Vercel. O worker sobe
+# PDF/DXF/SVG pro Storage e marca a versão como 'pronto' (ou 'erro').
+#
+# Secrets do repositório: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY
+# Variável opcional: DIAGRAMA_MODELO (padrão claude-fable-5-1)
+
+name: Gerar diagrama
+
+on:
+  workflow_dispatch:
+    inputs:
+      diagrama_id:
+        description: ID da versão em projetos_diagramas
+        required: true
+
+run-name: Diagrama ${{ inputs.diagrama_id }}
+
+permissions:
+  contents: read
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DIAGRAMA_ID: ${{ inputs.diagrama_id }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      MODELO: ${{ vars.DIAGRAMA_MODELO || 'claude-fable-5-1' }}
+
+    steps:
+      # Pasta fora do checkout: o Claude não enxerga o código do portal nem o CLAUDE.md dele
+      - name: Pasta de trabalho
+        run: |
+          echo "TRABALHO=$RUNNER_TEMP/trabalho" >> "$GITHUB_ENV"
+          echo "JOB_DIR=$RUNNER_TEMP/trabalho/job" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/diagrama
+            skills/projetista-spin
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Dependências de desenho (cairo, fontes, Python)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libcairo2 fonts-liberation fonts-dejavu-core fontconfig > /dev/null
+          mkdir -p ~/.fonts
+          for f in Regular Medium SemiBold Bold; do
+            curl -sSfL -o ~/.fonts/Barlow-$f.ttf "https://github.com/google/fonts/raw/main/ofl/barlow/Barlow-$f.ttf" || true
+          done
+          fc-cache -f > /dev/null
+          pip install -q ezdxf cairosvg matplotlib pillow
+
+      - name: Claude Code
+        run: npm install -g --silent @anthropic-ai/claude-code
+
+      - name: Instalar a skill na pasta de trabalho
+        run: |
+          mkdir -p "$TRABALHO/.claude/skills" "$JOB_DIR"
+          cp -r skills/projetista-spin "$TRABALHO/.claude/skills/"
+
+      - name: Preparar pedido
+        run: node .github/diagrama/worker.mjs preparar
+
+      - name: Gerar prancha (Claude + skill)
+        working-directory: ${{ env.TRABALHO }}
+        run: |
+          claude -p "$(cat job/prompt.md)" \
+            --model "$MODELO" \
+            --fallback-model claude-opus-5-5 \
+            --dangerously-skip-permissions \
+            --max-turns 150 \
+            --output-format json > job/claude.json
+          ls -la job/out || true
+
+      - name: Entregar no portal
+        run: node .github/diagrama/worker.mjs finalizar
+
+      - name: Marcar erro no portal
+        if: failure() || cancelled()
+        run: node .github/diagrama/worker.mjs erro
+
+      - name: Guardar arquivos da execução (7 dias)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagrama-${{ inputs.diagrama_id }}
+          path: ${{ env.JOB_DIR }}
+          retention-days: 7
+          if-no-files-found: ignore

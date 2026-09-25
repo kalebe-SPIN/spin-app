@@ -49,7 +49,7 @@ export function PromptDiagramaCopiar({
     <details className="bg-white/[0.02] border border-white/10 rounded-xl">
       <summary className="cursor-pointer p-4 flex items-center gap-2 text-sm text-white/70 hover:bg-white/[0.02] rounded-xl">
         <span>📋</span>
-        <span>Copiar relatório técnico do projeto (pra alimentar sua skill)</span>
+        <span>Plano B: copiar relatório técnico pro chat (se o robô estiver fora do ar)</span>
       </summary>
       <div className="px-6 pb-6 pt-2 space-y-3">
         <p className="text-[11px] text-white/50">

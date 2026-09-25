@@ -9,6 +9,7 @@ import {
   regenerarDiagramaAction,
 } from '@/app/projetos/[id]/diagrama/actions'
 import { PromptDiagramaCopiar } from '@/components/PromptDiagramaCopiar'
+import { fmtNum } from '@/lib/formatters'
 
 type Diagrama = {
   id: string
@@ -23,6 +24,16 @@ type Diagrama = {
   erro_mensagem: string | null
   created_at: string
   eh_previa?: boolean
+  instrucao_ajuste?: string | null
+  memoria_calculo?: {
+    _meta?: {
+      origem?: string
+      run_url?: string
+      resumo?: string
+      custo_usd?: number | null
+      duracao_ms?: number | null
+    }
+  } | null
 }
 
 type TipoDiagrama = 'unifilar_ongrid' | 'unifilar_hibrido' | 'padrao_entrada' | 'layout_instalacao'
@@ -41,11 +52,11 @@ export function GeradorDiagramaClient({ projeto, diagramasExistentes, configOk, 
     tiposDisponiveis[0]?.id || 'padrao_entrada',
   )
 
-  // Auto-refresh a cada 5s enquanto houver diagrama em 'gerando'
+  // Auto-refresh enquanto houver diagrama em 'gerando' (o robô leva minutos)
   useEffect(() => {
     const temGerando = diagramasExistentes.some(d => d.status === 'gerando')
     if (!temGerando) return
-    const interval = setInterval(() => router.refresh(), 5000)
+    const interval = setInterval(() => router.refresh(), 15000)
     return () => clearInterval(interval)
   }, [diagramasExistentes, router])
 
@@ -103,8 +114,9 @@ function BlocoGerar({
       <div>
         <h2 className="text-lg font-bold text-white mb-1">Gerar diagrama automaticamente</h2>
         <p className="text-xs text-white/50">
-          O sistema reúne dados do projeto (fatura + telhado + padrão de entrada + kit) e monta o
-          desenho no padrão gráfico <strong className="text-sol">"Projeto Ideal" SPIN</strong>.
+          O sistema monta o relatório técnico do projeto e o robô desenha com a skill{' '}
+          <strong className="text-sol">projetista-spin</strong> — a mesma do chat: calcula, desenha,
+          confere a prancha e entrega PDF + DXF + SVG aqui no histórico. Sem copiar e colar.
         </p>
       </div>
 
@@ -137,7 +149,7 @@ function BlocoGerar({
       <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-white/5">
         <div className="text-[11px] text-white/50">
           {!configOk && <span className="text-coral">⚠ Config empresa incompleta — cadastre RT antes.</span>}
-          {configOk && <span>Leva ~30–60s. Abre uma versão nova no histórico.</span>}
+          {configOk && <span>Leva de 3 a 8 min. Pode sair da tela — a versão aparece pronta no histórico.</span>}
         </div>
         <button
           type="button"
@@ -330,12 +342,35 @@ function DiagramaCard({ d }: { d: Diagrama }) {
         </div>
       </div>
 
-      {d.erro_mensagem && <p className="text-xs text-coral mb-2">❌ {d.erro_mensagem}</p>}
+      {d.erro_mensagem && <p className="text-xs text-coral mb-2 break-words">❌ {d.erro_mensagem}</p>}
+
+      {d.instrucao_ajuste && (
+        <p className="text-[11px] text-white/50 mb-2">✏️ Ajuste pedido: <span className="text-white/70">{d.instrucao_ajuste}</span></p>
+      )}
+
+      {d.status === 'gerando' && <ProgressoRobo d={d} />}
 
       {d.avisos && d.avisos.length > 0 && (
-        <ul className="text-xs text-sol space-y-0.5 mb-2 pl-4 list-disc">
-          {d.avisos.map((a, i) => <li key={i}>{a}</li>)}
-        </ul>
+        <div className="mb-2">
+          <p className="text-[10px] uppercase tracking-wider font-bold text-sol/80 mb-1">Pendências a confirmar</p>
+          <ul className="text-xs text-sol space-y-0.5 pl-4 list-disc">
+            {d.avisos.map((a, i) => <li key={i}>{a}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {d.status === 'pronto' && d.memoria_calculo?._meta?.resumo && (
+        <details className="mb-2">
+          <summary className="text-[11px] text-white/60 cursor-pointer hover:text-white/80">
+            📝 Resumo do robô (o que foi gerado, premissas)
+            {typeof d.memoria_calculo._meta.custo_usd === 'number' && (
+              <span className="text-white/30"> · custo da geração US$ {fmtNum(d.memoria_calculo._meta.custo_usd, 2)}</span>
+            )}
+          </summary>
+          <pre className="mt-2 p-3 bg-noite/60 border border-white/10 rounded text-[11px] text-white/70 whitespace-pre-wrap font-sans">
+            {d.memoria_calculo._meta.resumo}
+          </pre>
+        </details>
       )}
 
       {mostrarRefino && (
@@ -404,6 +439,30 @@ function DiagramaCard({ d }: { d: Diagrama }) {
       )}
 
       {!mostrarRefino && erro && <p className="text-[10px] text-coral mt-2">⚠️ {erro}</p>}
+    </div>
+  )
+}
+
+function ProgressoRobo({ d }: { d: Diagrama }) {
+  const minutos = Math.floor((Date.now() - new Date(d.created_at).getTime()) / 60000)
+  const runUrl = d.memoria_calculo?._meta?.run_url
+  const travado = minutos >= 45
+  return (
+    <div suppressHydrationWarning className={`mb-2 p-3 rounded-lg border text-xs ${travado ? 'bg-coral/5 border-coral/30 text-coral' : 'bg-sol/5 border-sol/30 text-sol'}`}>
+      {travado ? (
+        <>⚠ Passou de 45 min sem resposta do robô — provavelmente travou. Use “Tentar de novo”.</>
+      ) : (
+        <>
+          <span className="inline-block animate-pulse mr-1">⏳</span>
+          {runUrl ? 'Robô desenhando e conferindo a prancha' : 'Na fila do robô'} — {minutos < 1 ? 'começou agora' : `${minutos} min`}
+          <span className="text-white/40"> (costuma levar de 3 a 8 min)</span>
+        </>
+      )}
+      {runUrl && (
+        <a href={runUrl} target="_blank" rel="noreferrer" className="ml-2 underline text-white/50 hover:text-white/80">
+          acompanhar execução
+        </a>
+      )}
     </div>
   )
 }
