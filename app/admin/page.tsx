@@ -161,6 +161,13 @@ export default async function AdminHomePage() {
             desc="Pedidos WEG e terceiros, cotações, recebimento de material, controle de estoque."
             emBreve
           />
+          <AdminCard
+            href="/admin/arquivos"
+            icon="🗂"
+            titulo="Arquivos e retenção"
+            desc="Espaço ocupado por pasta. Arquivo de cliente sem negócio fechado é apagado 180 dias depois de criado — veja o que vence nos próximos 30 dias."
+            destaque
+          />
         </Grupo>
 
         {/* Rodapé com link pro dashboard */}

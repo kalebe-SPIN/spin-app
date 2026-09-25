@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/bianca-eventos",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/retencao-arquivos",
+      "schedule": "0 6 * * *"
     }
   ]
 }

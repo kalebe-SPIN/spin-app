@@ -45,6 +45,7 @@ type Mensagem = {
   midia_meta_id: string | null
   midia_mime: string | null
   midia_duracao_seg: number | null
+  midia_expirada_em: string | null
   remetente_id: string | null
   remetente_agente: string | null
   origem_agente_nome: string | null
@@ -549,7 +550,12 @@ function BolhaMensagem({ m }: { m: Mensagem }) {
       else setUrlRecuperada(r.midia_url)
     } finally { setRecuperando(false) }
   }
-  const semArquivo = (rotulo: string) => (
+  const semArquivo = (rotulo: string) => m.midia_expirada_em ? (
+    <div>
+      <p className="text-sm text-white italic">{rotulo}</p>
+      <p className="text-[10px] text-white/40 mt-0.5">🗑 Arquivo removido (regra de 180 dias)</p>
+    </div>
+  ) : (
     <div>
       <p className="text-sm text-white italic">{rotulo}</p>
       {m.midia_meta_id && (

@@ -70,11 +70,12 @@ export async function recuperarMidiaAction(mensagem_id: string): Promise<
   const supabase = createClient()
   const { data: msg } = await supabase
     .from('wa_mensagens')
-    .select('id, midia_url, midia_meta_id, midia_mime, texto')
+    .select('id, midia_url, midia_meta_id, midia_mime, midia_expirada_em, texto')
     .eq('id', mensagem_id)
     .maybeSingle()
   if (!msg) return { erro: 'Mensagem não encontrada' }
   if (msg.midia_url) return { midia_url: msg.midia_url }
+  if (msg.midia_expirada_em) return { erro: 'Arquivo removido pela regra de 180 dias.' }
   if (!msg.midia_meta_id) return { erro: 'Mensagem sem arquivo' }
 
   const salvo = await baixarESalvarMidiaWa({
@@ -104,7 +105,7 @@ export async function listarMensagensAction(conversa_id: string): Promise<
     .from('wa_mensagens')
     .select(`
       id, direcao, tipo, texto, meta_message_id,
-      midia_url, midia_meta_id, midia_mime, midia_duracao_seg,
+      midia_url, midia_meta_id, midia_mime, midia_duracao_seg, midia_expirada_em,
       remetente_id, remetente_agente, origem_agente_nome,
       status_entrega, erro,
       criada_em, entregue_em, lida_em,
@@ -336,7 +337,7 @@ export async function buscarConversaDoProjetoAction(
     .from('wa_mensagens')
     .select(`
       id, direcao, tipo, texto, meta_message_id,
-      midia_url, midia_meta_id, midia_mime, midia_duracao_seg,
+      midia_url, midia_meta_id, midia_mime, midia_duracao_seg, midia_expirada_em,
       remetente_id, remetente_agente, origem_agente_nome,
       status_entrega, criada_em, lida_em,
       remetente:remetente_id(nome_completo)

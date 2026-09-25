@@ -460,7 +460,7 @@ async function HistoricoPropostas({ projetoId }: { projetoId: string }) {
   const supabase = createClient()
   const { data: historico } = await supabase
     .from('projeto_propostas_historico')
-    .select('id, url_pdf, pv_total, desconto_pct, desconto_valor, desconto_motivo, potencia_cc_kwp, gerado_em, gerado_por, gerado_por_profile:gerado_por(nome_completo)')
+    .select('id, url_pdf, arquivo_expirado_em, pv_total, desconto_pct, desconto_valor, desconto_motivo, potencia_cc_kwp, gerado_em, gerado_por, gerado_por_profile:gerado_por(nome_completo)')
     .eq('projeto_id', projetoId)
     .order('gerado_em', { ascending: false })
 
@@ -507,14 +507,20 @@ async function HistoricoPropostas({ projetoId }: { projetoId: string }) {
                   </td>
                   <td className="py-3 pr-3 text-sol font-bold text-sm">R$ {fmtBRL(h.pv_total)}</td>
                   <td className="py-3">
-                    <a
-                      href={h.url_pdf}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-sol/10 border border-sol/40 text-sol text-[11px] font-bold hover:bg-sol/20 transition"
-                    >
-                      📥 Baixar
-                    </a>
+                    {h.arquivo_expirado_em ? (
+                      <span className="text-[11px] text-white/40" title="Removido pela regra de 180 dias (cliente sem negócio fechado)">
+                        🗑 removido
+                      </span>
+                    ) : (
+                      <a
+                        href={h.url_pdf}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-sol/10 border border-sol/40 text-sol text-[11px] font-bold hover:bg-sol/20 transition"
+                      >
+                        📥 Baixar
+                      </a>
+                    )}
                   </td>
                 </tr>
               )
