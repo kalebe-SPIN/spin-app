@@ -22,7 +22,9 @@ export default async function InboxPage() {
   if (!podeAcessar) redirect('/dashboard')
 
   return (
-    <main className="min-h-screen">
+    // Sem min-h-screen: o painel do inbox já ocupa o resto da tela; min-h
+    // somado ao cabeçalho do portal fazia a página rolar.
+    <main>
       <header className="border-b border-white/10 px-4 sm:px-6 md:px-8 py-4 flex items-center justify-between">
         <div>
           <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/60 mb-1 inline-block">

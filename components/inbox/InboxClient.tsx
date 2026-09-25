@@ -75,6 +75,25 @@ export function InboxClient({
   const [isPending, startTransition] = useTransition()
   const timelineRef = useRef<HTMLDivElement>(null)
 
+  // Kalebe 2026-09-25: no desktop o painel ocupa exatamente o espaço que
+  // sobra na tela (abaixo dos cabeçalhos). Só a lista e as mensagens rolam;
+  // a caixa de digitação fica sempre visível no rodapé. No celular (< lg)
+  // mantém o fluxo normal da página.
+  const painelRef = useRef<HTMLDivElement>(null)
+  const [alturaPainel, setAlturaPainel] = useState<number | null>(null)
+  useEffect(() => {
+    function medir() {
+      const el = painelRef.current
+      if (!el) return
+      if (window.innerWidth < 1024) { setAlturaPainel(null); return }
+      const topoNaPagina = el.getBoundingClientRect().top + window.scrollY
+      setAlturaPainel(Math.max(420, window.innerHeight - topoNaPagina))
+    }
+    medir()
+    window.addEventListener('resize', medir)
+    return () => window.removeEventListener('resize', medir)
+  }, [])
+
   async function refreshConversas() {
     const r = await listarConversasAction()
     if ('conversas' in r) setConversas(r.conversas as any)
@@ -188,9 +207,13 @@ export function InboxClient({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-0 min-h-[calc(100vh-96px)]">
+    <div
+      ref={painelRef}
+      style={alturaPainel ? { height: alturaPainel } : undefined}
+      className="grid grid-cols-1 lg:grid-cols-[320px_1fr] lg:grid-rows-[minmax(0,1fr)] gap-0 min-h-[calc(100vh-96px)] lg:min-h-0"
+    >
       {/* ─── Lista de conversas ─── */}
-      <aside className="border-r border-white/10 flex flex-col">
+      <aside className="border-r border-white/10 flex flex-col min-h-0">
         <div className="p-3 border-b border-white/10 space-y-2">
           <div className="grid grid-cols-4 gap-1 text-[10px] font-bold uppercase tracking-wider">
             {(['todas','minhas','sem_atendente','nova'] as const).map((f) => (
@@ -229,14 +252,14 @@ export function InboxClient({
       </aside>
 
       {/* ─── Detalhe da conversa ─── */}
-      <section className="flex flex-col">
+      <section className="flex flex-col min-h-0">
         {!selecionada ? (
           <div className="flex-1 flex items-center justify-center text-white/40 text-sm">
             Selecione uma conversa à esquerda.
           </div>
         ) : (
           <>
-            <div className="p-4 border-b border-white/10 flex items-center justify-between gap-3">
+            <div className="shrink-0 p-4 border-b border-white/10 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-white truncate">
                   {selecionada.contato?.nome_exibicao || selecionada.contato?.telefone || 'Contato'}
@@ -278,7 +301,7 @@ export function InboxClient({
             {(selecionada.agente_ativo ||
               ['nova', 'em_qualificacao', 'aguardando_representante'].includes(selecionada.status)) &&
               (!selecionada.responsavel_id || selecionada.responsavel_id !== usuarioId) && (
-              <div className="mx-4 mt-3 p-3 bg-sol/15 border border-sol/40 rounded-lg flex items-center gap-3">
+              <div className="shrink-0 mx-4 mt-3 p-3 bg-sol/15 border border-sol/40 rounded-lg flex items-center gap-3">
                 <span className="text-2xl">🤖</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-sol">
@@ -300,7 +323,7 @@ export function InboxClient({
             )}
 
             {/* Timeline */}
-            <div ref={timelineRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-noite/60">
+            <div ref={timelineRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2 bg-noite/60">
               {mensagens.length === 0 ? (
                 <p className="text-xs text-white/40 italic text-center py-8">Sem mensagens ainda.</p>
               ) : (
@@ -309,7 +332,9 @@ export function InboxClient({
             </div>
 
             {/* Composição — Kalebe 2026-09-14: botões arquivo + chamada + vídeo */}
-            <div className="p-3 border-t border-white/10 space-y-2">
+            {/* shrink-0: nunca é empurrada pra fora da tela. No celular (lista e
+                conversa empilhadas) fica sticky no rodapé enquanto rola. */}
+            <div className="shrink-0 sticky bottom-0 z-10 bg-noite p-3 border-t border-white/10 space-y-2">
               {erro && <p className="text-xs text-coral bg-coral/10 border border-coral/30 rounded p-2">{erro}</p>}
               <BarraAcoes
                 conversaId={selecionadaId!}
