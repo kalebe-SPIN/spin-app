@@ -48,6 +48,14 @@ export async function gerarDiagramaAction(
   const pode = await usuarioPodeGerarDiagramas()
   if (!pode) return { sucesso: false, erro: 'Sem permissão para gerar diagramas' }
 
+  // Robô sem token = nem cria versão (não queima número de versão com erro)
+  if (!process.env.GITHUB_DIAGRAMAS_TOKEN) {
+    return {
+      sucesso: false,
+      erro: 'Robô de diagramas ainda não configurado (falta GITHUB_DIAGRAMAS_TOKEN na Vercel). Use o Plano B abaixo por enquanto.',
+    }
+  }
+
   // Carrega projeto — usa admin pra bypass RLS caso status impeça leitura
   const supabaseAdmin = createAdminClient()
   const { data: projeto, error: projErr } = await supabaseAdmin
