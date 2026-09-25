@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Envio de arquivo pelo inbox passa por server action (padrão 1 MB — foto
+  // de celular não cabia). 4.5 MB é o teto de corpo de requisição na Vercel.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '4.5mb',
+    },
+  },
   // Imagens do Supabase Storage liberadas
   images: {
     remotePatterns: [

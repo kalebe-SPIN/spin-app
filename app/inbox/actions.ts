@@ -9,6 +9,7 @@ import {
 } from '@/lib/whatsapp/conversas'
 import { marcarContatoConfirmado } from '@/lib/whatsapp/broadcast'
 import { getWaConfig } from '@/lib/whatsapp/config'
+import { baixarESalvarMidiaWa, salvarBufferMidiaWa } from '@/lib/whatsapp/midia'
 import { revalidatePath } from 'next/cache'
 
 /**
@@ -52,6 +53,43 @@ export async function listarConversasAction(): Promise<
 
   if (error) return { erro: error.message }
   return { conversas: data || [] }
+}
+
+/**
+ * Baixa de novo da Meta uma mídia que não foi salva no Storage (arquivo
+ * grande demais, tipo não aceito, falha de rede). A Meta guarda a mídia
+ * por ~30 dias. Kalebe 2026-09-25.
+ */
+export async function recuperarMidiaAction(mensagem_id: string): Promise<
+  { midia_url: string } | { erro: string }
+> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+
+  // Leitura pela sessão do usuário: RLS garante que ele enxerga a conversa
+  const supabase = createClient()
+  const { data: msg } = await supabase
+    .from('wa_mensagens')
+    .select('id, midia_url, midia_meta_id, midia_mime, texto')
+    .eq('id', mensagem_id)
+    .maybeSingle()
+  if (!msg) return { erro: 'Mensagem não encontrada' }
+  if (msg.midia_url) return { midia_url: msg.midia_url }
+  if (!msg.midia_meta_id) return { erro: 'Mensagem sem arquivo' }
+
+  const salvo = await baixarESalvarMidiaWa({
+    midia_meta_id: msg.midia_meta_id,
+    mime_hint: msg.midia_mime,
+    nome_original: msg.texto,
+  })
+  if (!salvo) return { erro: 'Não foi possível baixar da Meta (arquivo expirado ou grande demais).' }
+
+  const admin = createAdminClient()
+  await admin
+    .from('wa_mensagens')
+    .update({ midia_url: salvo.midia_url, midia_mime: salvo.midia_mime })
+    .eq('id', msg.id)
+  return { midia_url: salvo.midia_url }
 }
 
 export async function listarMensagensAction(conversa_id: string): Promise<
@@ -500,12 +538,22 @@ export async function enviarArquivoAction(formData: FormData): Promise<
   }
   const metaMessageId: string | null = sendData?.messages?.[0]?.id || null
 
+  // Guarda cópia no Storage pra o histórico mostrar preview/player
+  // (Kalebe 2026-09-25). Falha aqui não desfaz o envio.
+  const salvo = await salvarBufferMidiaWa({
+    buffer: Buffer.from(await arquivo.arrayBuffer()),
+    mime,
+    chave: mediaId,
+    nome_original: arquivo.name,
+  })
+
   const nomeAgente = check.perfil?.nome_completo || 'Spin'
   await gravarMensagem(admin, {
     conversa_id,
     direcao: 'outbound',
     tipo: tipoMsg,
-    texto: legenda || null,
+    texto: legenda || (tipoMsg === 'document' ? arquivo.name : null),
+    midia_url: salvo?.midia_url || null,
     midia_meta_id: mediaId,
     midia_mime: mime,
     meta_message_id: metaMessageId,

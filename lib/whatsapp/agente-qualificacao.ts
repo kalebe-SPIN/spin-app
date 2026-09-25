@@ -167,13 +167,15 @@ export async function processarMensagemQualificacao(
 
   const contextoAtual: ContextoQualificacao = (conv as any).contexto_qualificacao || {}
 
-  // Últimas msgs pra prompt
-  const { data: msgs } = await admin
+  // Últimas 40 msgs pra prompt (busca da mais nova pra trás e inverte —
+  // ascending+limit pegava as 40 PRIMEIRAS e a IA não via o que chegou agora)
+  const { data: msgsDesc } = await admin
     .from('wa_mensagens')
-    .select('direcao, tipo, texto, criada_em, origem_agente_nome')
+    .select('direcao, tipo, texto, criada_em, origem_agente_nome, midia_url, midia_mime')
     .eq('conversa_id', conversa_id)
-    .order('criada_em', { ascending: true })
+    .order('criada_em', { ascending: false })
     .limit(40)
+  const msgs = (msgsDesc || []).slice().reverse()
 
   // Loop protection: última msg outbound = aguardando cliente
   const ultima = msgs?.[msgs.length - 1]
@@ -197,10 +199,21 @@ export async function processarMensagemQualificacao(
   // (reconhecer cliente que já tem projeto). Nunca dados de terceiros.
   const cadastro = await cadastroDoContato(admin, contato).catch(() => null)
 
+  // Kalebe 2026-09-25: foto e PDF que o cliente mandou depois da última
+  // resposta vão anexados pro modelo ler (fatura, placa, telhado). Áudio a
+  // IA não ouve — fica marcado no histórico e a regra de mídia manda chamar
+  // um humano em vez de pedir pro cliente digitar.
+  const anexos = await anexosNovosDoCliente(msgs)
+
   // Histórico compacto
   const historico = (msgs || []).map((m) => {
     const quem = m.direcao === 'inbound' ? 'Cliente' : (m.origem_agente_nome || 'Agente Spin')
-    const t = m.tipo === 'text' ? (m.texto || '') : `[${m.tipo}]`
+    const anexado = anexos.some((a) => a.url === m.midia_url)
+    const t = m.tipo === 'text' ? (m.texto || '')
+      : m.tipo === 'audio' ? '[áudio — você não consegue ouvir]'
+      : m.tipo === 'image' ? (anexado ? '[foto — anexada abaixo]' : '[foto]')
+      : m.tipo === 'document' ? `[arquivo: ${m.texto || 'documento'}${anexado ? ' — anexado abaixo' : ''}]`
+      : `[${m.tipo}]`
     return `${quem}: ${t}`
   }).join('\n')
 
@@ -208,21 +221,36 @@ export async function processarMensagemQualificacao(
   let resposta: any = null
   try {
     const anthropic = new Anthropic({ apiKey })
-    const resp = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 700,
-      system: systemPrompt,
-      messages: [{
-        role: 'user',
-        content: `CONTEXTO ATUAL:
+    const textoPrompt = `CONTEXTO ATUAL:
 ${JSON.stringify(contextoAtual, null, 2)}
 ${cadastro ? `\nCADASTRO DESTE CONTATO (só dele):\n${JSON.stringify(cadastro, null, 2)}\n` : ''}
 HISTÓRICO:
 ${historico || '(vazio)'}
 
 Leia a última resposta do cliente, extraia info nova, decida próximo passo.
-Retorne apenas o JSON.`,
+Retorne apenas o JSON.`
+    const chamar = (comAnexos: boolean) => anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 700,
+      system: systemPrompt,
+      messages: [{
+        role: 'user',
+        content: comAnexos && anexos.length > 0
+          ? [
+              ...anexos.map((a): Anthropic.ContentBlockParam => a.tipo === 'image'
+                ? { type: 'image', source: { type: 'url', url: a.url } }
+                : { type: 'document', source: { type: 'url', url: a.url } }),
+              { type: 'text', text: textoPrompt },
+            ]
+          : textoPrompt,
       }],
+    })
+    // Se a Anthropic não conseguir abrir o anexo, responde só com o texto
+    // — melhor responder sem ver a foto do que deixar o lead sem resposta.
+    const resp = await chamar(true).catch((e) => {
+      if (anexos.length === 0) throw e
+      console.error('[agente-qualificacao] anexo recusado, tentando sem:', e?.message)
+      return chamar(false)
     })
     const bloco = resp.content?.[0]
     const texto = bloco?.type === 'text' ? (bloco as any).text : ''
@@ -242,7 +270,18 @@ Retorne apenas o JSON.`,
 
   // Recado pra equipe interna (portal + WhatsApp do responsável ou admins)
   const avisoEquipe = String(resposta?.aviso_equipe || '').trim()
+  // Cliente que manda 3 áudios seguidos gera 1 recado, não 3
+  let avisoRecente = false
   if (avisoEquipe) {
+    const { data: ultAviso } = await admin
+      .from('avisos_internos')
+      .select('id')
+      .eq('conversa_id', conversa_id)
+      .gte('criado_em', new Date(Date.now() - 15 * 60_000).toISOString())
+      .limit(1)
+    avisoRecente = (ultAviso || []).length > 0
+  }
+  if (avisoEquipe && !avisoRecente) {
     const quem = contextoNovo.nome_cliente || contato.nome_exibicao || contato.telefone
     await avisarEquipe({
       agente: 'qualificacao',
@@ -447,11 +486,63 @@ async function carregarSystemPrompt(
       .eq('chave', modoLeve ? 'qualificacao_padrao' : 'qualificacao_profunda')
       .eq('ativo', true)
       .maybeSingle()
-    if (agente?.system_prompt) return `${agente.system_prompt}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}`
+    if (agente?.system_prompt) return `${agente.system_prompt}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}\n\n${REGRA_MIDIA}`
   } catch (e) {
     // fallback
   }
-  return `${modoLeve ? SYSTEM_PROMPT_MODO_LEVE : SYSTEM_PROMPT_MODO_PROFUNDO}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}`
+  return `${modoLeve ? SYSTEM_PROMPT_MODO_LEVE : SYSTEM_PROMPT_MODO_PROFUNDO}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}\n\n${REGRA_MIDIA}`
+}
+
+// Kalebe 2026-09-25: a IA pedia "digita seu nome" pra cliente que mandou
+// áudio (3× seguidas) e dizia "não consigo abrir documentos" pra PDF.
+const REGRA_MIDIA = `REGRA FIXA — ÁUDIO, FOTO E ARQUIVO
+- Fotos e PDFs pequenos que o cliente mandou vêm anexados nesta mensagem. Olhe o conteúdo.
+  Se for fatura de energia: marque fatura_recebida=true, aproveite o que der pra ler (titular,
+  cidade, consumo em kWh, valor) e não pergunte de novo o que já está na fatura.
+  Nunca diga que não consegue abrir documento ou imagem.
+- Áudio você NÃO consegue ouvir. Não peça pro cliente repetir por escrito o que falou.
+  Responda que recebeu o áudio e que um consultor vai ouvir e já retorna, e inclua
+  "aviso_equipe": "Cliente mandou áudio — alguém precisa ouvir no inbox."
+  Se ainda faltar nome ou cidade, pode pedir UMA vez, de leve, na mesma mensagem.
+- Arquivo que não veio anexado (planilha, Word, PDF grande, vídeo): agradeça e diga que já
+  ficou registrado no atendimento pra equipe analisar.`
+
+/** Tamanho em bytes via HEAD (null se não der pra saber) */
+async function tamanhoRemoto(url: string): Promise<number | null> {
+  try {
+    const r = await fetch(url, { method: 'HEAD' })
+    const n = Number(r.headers.get('content-length'))
+    return r.ok && n > 0 ? n : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Fotos/PDFs que o cliente mandou depois da última mensagem nossa — no
+ * máximo 3, até 5 MB cada (limite de imagem da API e custo razoável).
+ */
+async function anexosNovosDoCliente(
+  msgs: Array<{ direcao: string; tipo: string; midia_url?: string | null; midia_mime?: string | null }>,
+): Promise<Array<{ tipo: 'image' | 'pdf'; url: string }>> {
+  const novas: typeof msgs = []
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].direcao !== 'inbound') break
+    novas.unshift(msgs[i])
+  }
+  const candidatos = novas
+    .filter((m) => m.midia_url && (
+      (m.tipo === 'image' && /image\/(jpeg|png|webp|gif)/.test(String(m.midia_mime || 'image/jpeg')))
+      || (m.tipo === 'document' && String(m.midia_mime || '').includes('pdf'))
+    ))
+    .slice(-3)
+  const saida: Array<{ tipo: 'image' | 'pdf'; url: string }> = []
+  for (const m of candidatos) {
+    const tam = await tamanhoRemoto(m.midia_url!)
+    if (tam === null || tam > 5 * 1024 * 1024) continue
+    saida.push({ tipo: m.tipo === 'image' ? 'image' : 'pdf', url: m.midia_url! })
+  }
+  return saida
 }
 
 // Kalebe 2026-09-23: SDR fala com gente de fora — acesso restrito ao próprio

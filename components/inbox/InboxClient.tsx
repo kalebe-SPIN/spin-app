@@ -11,6 +11,7 @@ import {
   abrirConversaManualAction,
   iniciarChamadaAction,
   enviarArquivoAction,
+  recuperarMidiaAction,
 } from '@/app/inbox/actions'
 
 type Conversa = {
@@ -41,6 +42,7 @@ type Mensagem = {
   tipo: string
   texto: string | null
   midia_url: string | null
+  midia_meta_id: string | null
   midia_mime: string | null
   midia_duracao_seg: number | null
   remetente_id: string | null
@@ -470,9 +472,11 @@ function BarraAcoes({
     e.target.value = ''
     onErro(null); setEnviando('arquivo')
     try {
-      // Limite Meta: 5MB imagens, 16MB áudio/vídeo, 100MB documento
-      if (file.size > 100 * 1024 * 1024) {
-        onErro('Arquivo maior que 100MB — Meta não aceita.')
+      // Teto da Vercel pro corpo da requisição é 4,5 MB (a Meta aceitaria
+      // até 100 MB). Arquivo maior sai pelo app do WhatsApp e volta pro
+      // histórico pelo eco (smb_message_echoes).
+      if (file.size > 4 * 1024 * 1024) {
+        onErro('Arquivo acima de 4 MB: envie pelo WhatsApp do celular ou do computador — ele aparece aqui no histórico do mesmo jeito.')
         return
       }
       const legenda = window.prompt('Legenda (opcional):') || ''
@@ -531,6 +535,36 @@ function BarraAcoes({
 
 function BolhaMensagem({ m }: { m: Mensagem }) {
   const isInbound = m.direcao === 'inbound'
+  // Kalebe 2026-09-25: mídia que não foi salva no Storage (grande demais,
+  // tipo recusado, falha) pode ser baixada de novo da Meta por ~30 dias.
+  const [urlRecuperada, setUrlRecuperada] = useState<string | null>(null)
+  const [recuperando, setRecuperando] = useState(false)
+  const [erroRecuperar, setErroRecuperar] = useState<string | null>(null)
+  const midiaUrl = m.midia_url || urlRecuperada
+  async function recuperar() {
+    setRecuperando(true); setErroRecuperar(null)
+    try {
+      const r = await recuperarMidiaAction(m.id)
+      if ('erro' in r) setErroRecuperar(r.erro)
+      else setUrlRecuperada(r.midia_url)
+    } finally { setRecuperando(false) }
+  }
+  const semArquivo = (rotulo: string) => (
+    <div>
+      <p className="text-sm text-white italic">{rotulo}</p>
+      {m.midia_meta_id && (
+        <button
+          type="button"
+          onClick={recuperar}
+          disabled={recuperando}
+          className="mt-1 text-[11px] text-sol hover:underline disabled:opacity-50"
+        >
+          {recuperando ? 'Baixando…' : '🔄 Carregar arquivo'}
+        </button>
+      )}
+      {erroRecuperar && <p className="text-[10px] text-coral mt-0.5">{erroRecuperar}</p>}
+    </div>
+  )
   const nomeRemetente = m.remetente?.nome_completo || m.origem_agente_nome || m.remetente_agente || null
   const hora = new Date(m.criada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
@@ -553,28 +587,28 @@ function BolhaMensagem({ m }: { m: Mensagem }) {
         {m.tipo === 'text' ? (
           <p className="text-sm text-white whitespace-pre-wrap break-words">{m.texto || ''}</p>
         ) : m.tipo === 'audio' ? (
-          m.midia_url ? (
-            <audio controls src={m.midia_url} className="max-w-full h-8" />
+          midiaUrl ? (
+            <audio controls src={midiaUrl} className="max-w-full h-8" />
           ) : (
-            <p className="text-sm text-white italic">🎙 áudio {m.midia_duracao_seg ? `(${m.midia_duracao_seg}s)` : ''}</p>
+            semArquivo(`🎙 áudio ${m.midia_duracao_seg ? `(${m.midia_duracao_seg}s)` : ''}`)
           )
         ) : m.tipo === 'image' ? (
-          m.midia_url ? (
-            <a href={m.midia_url} target="_blank" rel="noopener noreferrer" className="block">
+          midiaUrl ? (
+            <a href={midiaUrl} target="_blank" rel="noopener noreferrer" className="block">
               <img
-                src={m.midia_url}
+                src={midiaUrl}
                 alt="imagem enviada"
                 className="max-w-[220px] max-h-[220px] rounded object-cover hover:opacity-90 transition"
                 loading="lazy"
               />
             </a>
           ) : (
-            <p className="text-sm text-white italic">🖼 imagem</p>
+            semArquivo('🖼 imagem')
           )
         ) : m.tipo === 'document' ? (
-          m.midia_url ? (
+          midiaUrl ? (
             <a
-              href={m.midia_url}
+              href={midiaUrl}
               target="_blank"
               rel="noopener noreferrer"
               download
@@ -584,13 +618,13 @@ function BolhaMensagem({ m }: { m: Mensagem }) {
               <span className="underline break-all">{m.texto || 'documento.pdf'}</span>
             </a>
           ) : (
-            <p className="text-sm text-white italic">📎 {m.texto || 'documento'}</p>
+            semArquivo(`📎 ${m.texto || 'documento'}`)
           )
         ) : m.tipo === 'video' ? (
-          m.midia_url ? (
-            <video controls src={m.midia_url} className="max-w-[260px] max-h-[260px] rounded" />
+          midiaUrl ? (
+            <video controls src={midiaUrl} className="max-w-[260px] max-h-[260px] rounded" />
           ) : (
-            <p className="text-sm text-white italic">🎬 vídeo</p>
+            semArquivo('🎬 vídeo')
           )
         ) : (
           <p className="text-sm text-white italic">[{m.tipo}]</p>

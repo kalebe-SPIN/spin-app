@@ -28,6 +28,13 @@ function extFromMime(mime: string | null | undefined): string {
   if (m.includes('mp4')) return 'mp4'
   if (m.includes('webm')) return 'webm'
   if (m.includes('3gpp')) return '3gp'
+  if (m.includes('wordprocessingml')) return 'docx'
+  if (m.includes('spreadsheetml')) return 'xlsx'
+  if (m.includes('presentationml')) return 'pptx'
+  if (m.includes('msword')) return 'doc'
+  if (m.includes('ms-excel')) return 'xls'
+  if (m.includes('zip')) return 'zip'
+  if (m.includes('text/plain')) return 'txt'
   return 'bin'
 }
 
@@ -71,31 +78,55 @@ export async function baixarESalvarMidiaWa(entrada: {
     }
     const buffer = Buffer.from(await bin.arrayBuffer())
 
-    // 3. Sobe pro Storage. Path: YYYY-MM-DD/{meta_id}.{ext}
+    // 3. Sobe pro Storage
+    return await salvarBufferMidiaWa({
+      buffer,
+      mime,
+      chave: entrada.midia_meta_id,
+      nome_original: entrada.nome_original,
+    })
+  } catch (e) {
+    console.error('[wa/midia] baixarESalvarMidiaWa erro:', e)
+    return null
+  }
+}
+
+/**
+ * Sobe um arquivo pro bucket wa_midia e devolve a URL pública.
+ * Path: YYYY-MM-DD/{chave}.{ext}. Usado no download do webhook e também
+ * no envio pelo inbox (Kalebe 2026-09-25: arquivo mandado pelo sistema
+ * ficava sem preview no histórico porque só guardava o media_id da Meta).
+ */
+export async function salvarBufferMidiaWa(entrada: {
+  buffer: Buffer
+  mime: string
+  chave: string
+  nome_original?: string | null
+}): Promise<{ midia_url: string; midia_mime: string; nome_arquivo: string } | null> {
+  try {
     const admin = createAdminClient()
     const hoje = new Date().toISOString().slice(0, 10)
-    const ext = extFromMime(mime)
-    const path = `${hoje}/${entrada.midia_meta_id}.${ext}`
+    const ext = extFromMime(entrada.mime)
+    const path = `${hoje}/${entrada.chave}.${ext}`
 
     const { error: upErr } = await admin.storage
       .from(BUCKET)
-      .upload(path, buffer, { contentType: mime, upsert: true })
+      .upload(path, entrada.buffer, { contentType: entrada.mime, upsert: true })
     if (upErr) {
       console.error('[wa/midia] upload storage falhou:', upErr)
       return null
     }
 
-    // 4. URL pública
     const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path)
     if (!pub?.publicUrl) return null
 
     return {
       midia_url: pub.publicUrl,
-      midia_mime: mime,
+      midia_mime: entrada.mime,
       nome_arquivo: entrada.nome_original || `arquivo.${ext}`,
     }
   } catch (e) {
-    console.error('[wa/midia] baixarESalvarMidiaWa erro:', e)
+    console.error('[wa/midia] salvarBufferMidiaWa erro:', e)
     return null
   }
 }
