@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { executarFerramentaDiretorio } from '@/lib/agentes/diretorio'
 
 type ResultadoTool = { sucesso: boolean; dados?: any; erro?: string; _hint?: string }
 
@@ -23,6 +24,10 @@ export async function executarTool(
       erro: 'Essa consulta é exclusiva de admin. Fale com o Kalebe se precisar dessa informação.',
     }
   }
+
+  // Diretório + aviso interno (compartilhado entre agentes)
+  const diretorio = await executarFerramentaDiretorio(supabase, userId, 'bianca', toolName, input)
+  if (diretorio) return diretorio
 
   try {
     switch (toolName) {

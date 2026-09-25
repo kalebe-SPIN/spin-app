@@ -32,10 +32,17 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
   const router = useRouter()
   const [aberto, setAberto] = useState(false)
   const [sugestoes, setSugestoes] = useState<any[]>([])
+  const [avisos, setAvisos] = useState<any[]>([])
   const [carregando, setCarregando] = useState(false)
   const [contador, setContador] = useState(contadorInicial)
   const popoverRef = useRef<HTMLDivElement>(null)
   const botaoRef = useRef<HTMLButtonElement>(null)
+
+  // AutoRefresh (60s) re-renderiza o header com contagem nova — acompanha
+  // pra aviso novo aparecer no sino sem recarregar a página.
+  useEffect(() => {
+    if (!aberto) setContador(contadorInicial)
+  }, [contadorInicial, aberto])
 
   // Fecha ao clicar fora ou apertar Esc
   useEffect(() => {
@@ -60,17 +67,23 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
   async function carregarSugestoes() {
     setCarregando(true)
     try {
-      // no-store: evita cache do browser/proxy, sempre pega estado atual
-      const res = await fetch('/api/bianca/sugestoes', { cache: 'no-store' })
-      const json = await res.json()
-      if (res.ok) {
-        const lista = json.sugestoes || []
-        setSugestoes(lista)
-        setContador(lista.length)
-        // Se contador do SSR estava desatualizado (ex: cache do Next), atualiza router
-        if (lista.length !== contadorInicial) {
-          router.refresh()
-        }
+      // no-store: evita cache do browser/proxy, sempre pega estado atual.
+      // Kalebe 2026-09-23: carrega também os avisos internos dos agentes.
+      const [resS, resA] = await Promise.all([
+        fetch('/api/bianca/sugestoes', { cache: 'no-store' }),
+        fetch('/api/avisos', { cache: 'no-store' }),
+      ])
+      const jsonS = await resS.json().catch(() => ({}))
+      const jsonA = await resA.json().catch(() => ({}))
+      const lista = resS.ok ? (jsonS.sugestoes || []) : []
+      const listaAvisos = resA.ok ? (jsonA.avisos || []) : []
+      setSugestoes(lista)
+      setAvisos(listaAvisos)
+      const total = lista.length + listaAvisos.length
+      setContador(total)
+      // Se contador do SSR estava desatualizado (ex: cache do Next), atualiza router
+      if (total !== contadorInicial) {
+        router.refresh()
       }
     } catch {}
     finally { setCarregando(false) }
@@ -83,12 +96,12 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
 
   // Se o popover fica sem sugestoes, fecha automaticamente ao reabrir vazio
   useEffect(() => {
-    if (aberto && !carregando && sugestoes.length === 0 && contadorInicial > 0) {
+    if (aberto && !carregando && sugestoes.length + avisos.length === 0 && contadorInicial > 0) {
       // Contador SSR estava mentindo — nao ha nada. Fecha o popover apos breve delay pra usuario ver
       const t = setTimeout(() => setAberto(false), 1500)
       return () => clearTimeout(t)
     }
-  }, [aberto, carregando, sugestoes.length, contadorInicial])
+  }, [aberto, carregando, sugestoes.length, avisos.length, contadorInicial])
 
   // Nao renderiza nada se nao tem sugestoes (evita sino vazio)
   if (contador === 0 && !aberto) return null
@@ -103,7 +116,7 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
             ? 'bg-sol/25 border-sol/50 text-sol'
             : 'bg-sol/10 border-sol/30 text-sol hover:bg-sol/20'
         }`}
-        title={`${contador} sugestão(ões) da Bianca aguardando`}
+        title={`${contador} aviso(s)/sugestão(ões) aguardando`}
       >
         <span className="text-base">🔔</span>
         <span className="hidden sm:inline">Bianca</span>
@@ -121,7 +134,7 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
         >
           <div className="p-3 border-b border-white/10 flex items-center justify-between">
             <div>
-              <p className="text-sm font-bold text-white">💡 Sugestões da Bianca</p>
+              <p className="text-sm font-bold text-white">🔔 Avisos e sugestões</p>
               <p className="text-[10px] text-white/50">{contador} pendente(s)</p>
             </div>
             <button
@@ -136,25 +149,37 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
             {carregando ? (
               <p className="text-xs text-white/50 text-center py-4">⏳ Carregando...</p>
-            ) : sugestoes.length === 0 ? (
+            ) : sugestoes.length + avisos.length === 0 ? (
               <div className="text-center py-6">
                 <div className="text-3xl mb-2">✅</div>
                 <p className="text-xs text-white/70 font-bold mb-1">Tudo em ordem!</p>
                 <p className="text-[10px] text-white/40">
-                  Sem sugestões pendentes. Fechando...
+                  Sem avisos nem sugestões pendentes. Fechando...
                 </p>
               </div>
             ) : (
-              sugestoes.map((s) => (
-                <MiniCard
-                  key={s.id}
-                  sugestao={s}
-                  onAcao={async () => {
-                    await carregarSugestoes()
-                    router.refresh()
-                  }}
-                />
-              ))
+              <>
+                {avisos.map((a) => (
+                  <AvisoCard
+                    key={a.id}
+                    aviso={a}
+                    onAcao={async () => {
+                      await carregarSugestoes()
+                      router.refresh()
+                    }}
+                  />
+                ))}
+                {sugestoes.map((s) => (
+                  <MiniCard
+                    key={s.id}
+                    sugestao={s}
+                    onAcao={async () => {
+                      await carregarSugestoes()
+                      router.refresh()
+                    }}
+                  />
+                ))}
+              </>
             )}
           </div>
 
@@ -300,6 +325,77 @@ function MiniCard({ sugestao, onAcao }: { sugestao: any; onAcao: () => Promise<v
         </div>
       )}
       {erro && <p className="text-[9px] text-coral mt-1">⚠️ {erro}</p>}
+    </div>
+  )
+}
+
+const NOME_AGENTE_AVISO: Record<string, string> = {
+  bianca: 'Bianca',
+  davi: 'Davi',
+  qualificacao: 'Assistente Spin',
+}
+
+/** Aviso interno enviado por um agente (avisos_internos). */
+function AvisoCard({ aviso, onAcao }: { aviso: any; onAcao: () => Promise<void> }) {
+  const [pending, setPending] = useState(false)
+  const projeto = Array.isArray(aviso.projeto) ? aviso.projeto[0] : aviso.projeto
+
+  async function marcarLido() {
+    setPending(true)
+    try {
+      await fetch('/api/avisos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: aviso.id }),
+      })
+    } finally {
+      await onAcao()
+    }
+  }
+
+  return (
+    <div className={`border rounded-lg p-2.5 ${
+      aviso.urgente ? 'bg-coral/10 border-coral/40' : 'bg-weg-azul/10 border-weg-azul/30'
+    }`}>
+      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+        <span className="text-sm">📣</span>
+        <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border text-weg-azul bg-weg-azul/10 border-weg-azul/30">
+          Aviso · {NOME_AGENTE_AVISO[aviso.remetente_agente] || aviso.remetente_agente}
+        </span>
+        {aviso.urgente && (
+          <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border text-coral bg-coral/10 border-coral/30">
+            Urgente
+          </span>
+        )}
+        <span className="text-[9px] text-white/40 ml-auto">{tempoRel(aviso.criado_em)}</span>
+      </div>
+      {aviso.titulo && <p className="text-xs font-bold text-white mb-1">{aviso.titulo}</p>}
+      {projeto && (
+        <Link
+          href={`/projetos/${aviso.projeto_id}`}
+          className="text-[10px] text-sol hover:underline block mb-1 truncate"
+        >
+          {projeto.codigo} · {projeto.cliente_razao_social}
+        </Link>
+      )}
+      <p className="text-xs text-white/85 whitespace-pre-wrap mb-2">{aviso.mensagem}</p>
+      <div className="flex items-center gap-1">
+        {aviso.conversa_id && (
+          <Link
+            href="/inbox"
+            className="px-2 py-1 bg-white/10 border border-white/20 text-white text-[10px] font-bold rounded hover:bg-white/15"
+          >
+            💬 Abrir inbox
+          </Link>
+        )}
+        <button
+          onClick={marcarLido}
+          disabled={pending}
+          className="flex-1 px-2 py-1 bg-verde text-noite text-[10px] font-bold rounded hover:bg-verde/90 disabled:opacity-40"
+        >
+          {pending ? '⏳' : '✓ Lido'}
+        </button>
+      </div>
     </div>
   )
 }

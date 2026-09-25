@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { executarFerramentaDiretorio } from '@/lib/agentes/diretorio'
 
 type Resultado = { sucesso: boolean; dados?: any; erro?: string; _hint?: string }
 
@@ -8,6 +9,10 @@ export async function executarToolDavi(
   toolName: string,
   input: any,
 ): Promise<Resultado> {
+  // Diretório + aviso interno (compartilhado entre agentes)
+  const diretorio = await executarFerramentaDiretorio(supabase, userId, 'davi', toolName, input)
+  if (diretorio) return diretorio
+
   try {
     switch (toolName) {
       case 'listar_produtos_sem_preco': {

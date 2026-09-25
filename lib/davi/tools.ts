@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { FERRAMENTAS_DIRETORIO } from '@/lib/agentes/diretorio'
 
 export const DAVI_TOOLS: Anthropic.Tool[] = [
   {
@@ -93,4 +94,6 @@ export const DAVI_TOOLS: Anthropic.Tool[] = [
     description: 'Panorama geral: total produtos, sem preço, desatualizados, cotações recentes, solicitações pendentes. Use quando o admin pergunta "como estamos?".',
     input_schema: { type: 'object', properties: {} },
   },
+  // Kalebe 2026-09-23: diretório (clientes/equipe/agentes) + aviso interno
+  ...FERRAMENTAS_DIRETORIO,
 ]

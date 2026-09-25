@@ -13,7 +13,7 @@ export async function enviarTextoPeloCanal(entrada: {
   conversa_id: string
   telefone: string
   texto: string
-  remetente_agente: 'qualificacao' | 'bianca' | 'sistema'
+  remetente_agente: 'qualificacao' | 'bianca' | 'davi' | 'sistema'
   origem_agente_nome: string  // ex: 'Qualificação Spin' — o que aparece pro cliente
   prefixar_com_nome?: boolean  // default true
 }): Promise<{ sucesso: true; meta_message_id: string | null } | { erro: string }> {

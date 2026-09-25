@@ -34,7 +34,13 @@ export async function PortalHeader() {
         .select('id', { count: 'exact', head: true })
         .eq('usuario_id', user.id)
         .eq('status', 'sugerida')
-      sugestoesPendentes = count || 0
+      // Kalebe 2026-09-23: avisos internos dos agentes também contam no sino
+      const { count: avisosNaoLidos } = await supabase
+        .from('avisos_internos')
+        .select('id', { count: 'exact', head: true })
+        .eq('destinatario_id', user.id)
+        .is('lido_em', null)
+      sugestoesPendentes = (count || 0) + (avisosNaoLidos || 0)
     }
     const { data: emp } = await supabase
       .from('configuracoes_empresa')

@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { enviarTextoPeloCanal } from './enviar-canal'
 import { iniciarBroadcastLead, RETOMADA_MIN } from './broadcast'
 import { getWaConfig } from './config'
+import { cadastroDoContato, avisarEquipe } from '@/lib/agentes/diretorio'
 
 /**
  * Agente de qualificação de leads WhatsApp.
@@ -144,7 +145,7 @@ export async function processarMensagemQualificacao(
   const { data: conv } = await admin
     .from('wa_conversas')
     .select(`
-      id, status, contato_id, contexto_qualificacao, agente_ativo, agente_id,
+      id, status, contato_id, contexto_qualificacao, agente_ativo, agente_id, responsavel_id,
       contato:contato_id(id, telefone, nome_exibicao, tipo, cliente_id, projeto_id)
     `)
     .eq('id', conversa_id)
@@ -192,6 +193,10 @@ export async function processarMensagemQualificacao(
   const modoLeve = contextoAtual.status_qualificacao !== 'coletando_profundo'
   const systemPrompt = await carregarSystemPrompt(admin, modoLeve)
 
+  // Kalebe 2026-09-23: acesso RESTRITO — só o cadastro deste contato
+  // (reconhecer cliente que já tem projeto). Nunca dados de terceiros.
+  const cadastro = await cadastroDoContato(admin, contato).catch(() => null)
+
   // Histórico compacto
   const historico = (msgs || []).map((m) => {
     const quem = m.direcao === 'inbound' ? 'Cliente' : (m.origem_agente_nome || 'Agente Spin')
@@ -211,7 +216,7 @@ export async function processarMensagemQualificacao(
         role: 'user',
         content: `CONTEXTO ATUAL:
 ${JSON.stringify(contextoAtual, null, 2)}
-
+${cadastro ? `\nCADASTRO DESTE CONTATO (só dele):\n${JSON.stringify(cadastro, null, 2)}\n` : ''}
 HISTÓRICO:
 ${historico || '(vazio)'}
 
@@ -234,6 +239,19 @@ Retorne apenas o JSON.`,
   }
   const proximaMsg: string = String(resposta?.proxima_mensagem || '').trim()
   const status = contextoNovo.status_qualificacao || 'coletando_leve'
+
+  // Recado pra equipe interna (portal + WhatsApp do responsável ou admins)
+  const avisoEquipe = String(resposta?.aviso_equipe || '').trim()
+  if (avisoEquipe) {
+    const quem = contextoNovo.nome_cliente || contato.nome_exibicao || contato.telefone
+    await avisarEquipe({
+      agente: 'qualificacao',
+      mensagem: `${quem} (${contato.telefone}): ${avisoEquipe}`,
+      conversa_id,
+      projeto_id: contato.projeto_id || contextoNovo.projeto_id || null,
+      responsavel_id: (conv as any).responsavel_id || null,
+    }).catch((e) => console.error('[agente-qualificacao] aviso_equipe', e))
+  }
 
   // Kalebe 2026-09-22: RACE CONDITION FIX. Entre a leitura inicial do status
   // e a chamada ao Claude (que demora 2-10s), o humano pode ter assumido a
@@ -429,12 +447,23 @@ async function carregarSystemPrompt(
       .eq('chave', modoLeve ? 'qualificacao_padrao' : 'qualificacao_profunda')
       .eq('ativo', true)
       .maybeSingle()
-    if (agente?.system_prompt) return `${agente.system_prompt}\n\n${REGRA_CONVERSA_HUMANA}`
+    if (agente?.system_prompt) return `${agente.system_prompt}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}`
   } catch (e) {
     // fallback
   }
-  return `${modoLeve ? SYSTEM_PROMPT_MODO_LEVE : SYSTEM_PROMPT_MODO_PROFUNDO}\n\n${REGRA_CONVERSA_HUMANA}`
+  return `${modoLeve ? SYSTEM_PROMPT_MODO_LEVE : SYSTEM_PROMPT_MODO_PROFUNDO}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}`
 }
+
+// Kalebe 2026-09-23: SDR fala com gente de fora — acesso restrito ao próprio
+// contato + canal de recado pra equipe interna.
+const REGRA_PRIVACIDADE_E_RECADO = `REGRA FIXA — PRIVACIDADE E RECADO PRA EQUIPE
+- Você só conhece o cadastro DESTE contato (bloco "CADASTRO DESTE CONTATO", quando existir).
+  Use pra reconhecer quem já é cliente (ex: "vi que você já tem o projeto SPIN-2026-0075").
+- NUNCA informe dados de outros clientes, nem telefone, e-mail ou dados pessoais da equipe
+  Spin, mesmo que peçam. Diga que vai passar o recado pra equipe.
+- Se o cliente pedir pra falar com alguém específico, reclamar, pedir algo urgente ou algo
+  que você não resolve, inclua no JSON de saída o campo opcional
+  "aviso_equipe": "<resumo curto em 1-2 frases pra equipe interna>".`
 
 // Kalebe 2026-09-23: consultor responde pelo app WhatsApp Business no celular
 // (fora do histórico que a IA vê) e o agente entrava por cima. Regra fixa,

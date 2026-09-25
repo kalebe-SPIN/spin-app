@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { FERRAMENTAS_DIRETORIO } from '@/lib/agentes/diretorio'
 
 export const BIANCA_TOOLS: Anthropic.Tool[] = [
   {
@@ -196,4 +197,6 @@ export const BIANCA_TOOLS: Anthropic.Tool[] = [
       required: ['destinatario_nome', 'destinatario_email', 'assunto', 'mensagem'],
     },
   },
+  // Kalebe 2026-09-23: diretório (clientes/equipe/agentes) + aviso interno
+  ...FERRAMENTAS_DIRETORIO,
 ]
