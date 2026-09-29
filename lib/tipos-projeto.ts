@@ -11,6 +11,7 @@ export type TipoItem =
   | 'srv_retirada_recolocacao' | 'srv_instalacao_placas'
   | 'srv_alvenaria' | 'srv_serralheria' | 'srv_carpintaria'
   | 'aluguel_maquinas' | 'aluguel_equipamentos'
+  | 'venda_equipamentos'
   | 'outros'
 
 export type Grupo = 'fotovoltaico' | 'bateria' | 'mobilidade' | 'servico' | 'construcao' | 'aluguel' | 'outros'
@@ -24,6 +25,7 @@ export type InfoTipo = {
   exemploUso: string
   disponivel: boolean          // false = em breve
   fluxoPassos: number          // qtd de passos que esse tipo tem
+  oculto?: boolean             // não aparece no seletor de tipos (criado por atalho próprio)
 }
 
 export const TIPOS_ITEM: InfoTipo[] = [
@@ -176,6 +178,16 @@ export const TIPOS_ITEM: InfoTipo[] = [
 
   // 📦 OUTROS
   {
+    // Kalebe 2026-09-29: venda de equipamentos WEG direto ao consumidor final.
+    // Só o admin cria, pelo atalho /venda-direta — fica fora do seletor.
+    chave: 'venda_equipamentos', emoji: '📦🚚', label: 'Venda direta de equipamentos', grupo: 'outros',
+    descricao: 'Só os equipamentos da planilha WEG, entregues ao cliente — sem projeto, instalação ou lista CA.',
+    exemploUso: 'Integrador ou cliente final compra 10 placas + 1 inversor pra instalar por conta própria',
+    disponivel: true,
+    fluxoPassos: 2,
+    oculto: true,
+  },
+  {
     chave: 'outros', emoji: '📦', label: 'Outros (personalizado)', grupo: 'outros',
     descricao: 'Item personalizado — descreve livremente o que a Spin vai fornecer.',
     exemploUso: 'Instalação de câmera, gerador diesel, aluguel de kit temporário',
@@ -203,7 +215,7 @@ export function tiposPorGrupo(): Record<Grupo, InfoTipo[]> {
     fotovoltaico: [], bateria: [], mobilidade: [], servico: [],
     construcao: [], aluguel: [], outros: [],
   }
-  for (const t of TIPOS_ITEM) r[t.grupo].push(t)
+  for (const t of TIPOS_ITEM) if (!t.oculto) r[t.grupo].push(t)
   return r
 }
 
@@ -256,6 +268,8 @@ export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
 
   // 📦 Outros
   outros:        ['cliente', 'servico_config', 'orcamento'],
+  // Venda direta: dados do cliente + tela própria (equipamentos, frete, PDF)
+  venda_equipamentos: ['cliente', 'orcamento'],
 }
 
 export const INFO_PASSO: Record<PassoWorkflow, { titulo: string; path: string; ordem: number }> = {

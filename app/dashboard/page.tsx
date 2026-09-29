@@ -143,7 +143,7 @@ export default async function DashboardPage() {
                 campo de busca do catálogo. O usuário encontra o kit ali e cria
                 projeto formal a partir dele. Motor de precificação simplificado
                 (R$/kWp por faixa) sai — só o motor completo do /orcamento roda. */}
-            <CardBuscaCatalogo etapa={1} />
+            <CardBuscaCatalogo etapa={1} mostrarVendaDireta={mostraAdmin} />
             <DashboardCard
               etapa={2}
               titulo="📋 Projetos"

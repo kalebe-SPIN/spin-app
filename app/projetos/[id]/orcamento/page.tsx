@@ -65,6 +65,12 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
     redirect(`/projetos/${projetoId}/ve/proposta`)
   }
 
+  // Kalebe 2026-09-29: venda direta de equipamentos tem tela própria
+  // (equipamentos + frete + PDF com termo de isenção).
+  if (tiposUnicos.length === 1 && tiposUnicos[0] === 'venda_equipamentos') {
+    redirect(`/projetos/${projetoId}/venda-direta`)
+  }
+
   // Kalebe 2026-09-09: kit BESS puro (sem placas solares) tem tela dedicada.
   // Não passa pelo /orcamento genérico porque não tem geração solar, gráfico
   // consumo × geração etc. Precificação usa mesma fórmula do v1 mas trata

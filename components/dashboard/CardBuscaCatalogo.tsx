@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation'
  * (modelo, marca, subcategoria) e enter/botão leva ao /catalogo já filtrado.
  * De lá cria projeto formal com o item escolhido.
  */
-export function CardBuscaCatalogo({ etapa }: { etapa?: number }) {
+export function CardBuscaCatalogo({ etapa, mostrarVendaDireta }: { etapa?: number; mostrarVendaDireta?: boolean }) {
   const router = useRouter()
   const [termo, setTermo] = useState('')
 
@@ -51,6 +51,16 @@ export function CardBuscaCatalogo({ etapa }: { etapa?: number }) {
           Abrir
         </button>
       </div>
+
+      {/* Kalebe 2026-09-29: atalho do admin pra venda direta de equipamentos */}
+      {mostrarVendaDireta && (
+        <button
+          onClick={() => router.push('/venda-direta')}
+          className="mt-2 w-full px-3 py-2 rounded-lg bg-weg-azul/10 border border-weg-azul/30 text-weg-azul text-xs font-bold hover:bg-weg-azul/20 transition text-left"
+        >
+          📦 Venda direta de equipamentos →
+        </button>
+      )}
     </div>
   )
 }

@@ -512,7 +512,7 @@ function DadoLinha({ rot, val }: { rot: string; val: string }) {
   )
 }
 
-const E = {
+export const E = {
   font: {
     display: '"Space Grotesk", system-ui, sans-serif',
     body: '"Inter", system-ui, -apple-system, sans-serif',

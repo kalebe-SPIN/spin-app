@@ -90,6 +90,13 @@ export default async function AdminHomePage() {
             desc="Upload de planilha de preços, PDF de estoque, datasheets e imagens dos produtos WEG."
           />
           <AdminCard
+            href="/venda-direta"
+            icon="📦"
+            titulo="Venda direta de equipamentos"
+            desc="Equipamentos da planilha WEG direto ao consumidor final — sem projeto, instalação ou lista CA. Margem 18%, comissão 3%, imposto sobre o total e termo de isenção no PDF."
+            destaque
+          />
+          <AdminCard
             href="/admin/campanhas"
             icon="🎁"
             titulo="Campanhas do mês"
