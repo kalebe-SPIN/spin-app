@@ -228,23 +228,46 @@ export async function salvarEquipamentosVendaDiretaAction(
     : { data: [] as any[] }
   const porId = new Map((produtos || []).map((p: any) => [p.id, p]))
 
+  // Kalebe 2026-09-29: produto sem preço na planilha aceita preço digitado —
+  // só o admin define; pra quem não é admin vale o que o admin já salvou aqui.
+  const { data: perfil } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  const ehAdmin = perfil?.role === 'admin'
+  const salvos = new Map<string, ItemVendaDireta>(
+    (((item.dados as any)?.itens || []) as ItemVendaDireta[])
+      .filter((x) => x.preco_manual && x.produto_id)
+      .map((x) => [x.produto_id as string, x]),
+  )
+
   const itens: ItemVendaDireta[] = []
   for (const i of itensTela) {
     const qtd = Math.max(0, Math.round(Number(i.qtd) || 0))
     if (qtd === 0) continue
     const p: any = i.produto_id ? porId.get(i.produto_id) : null
     if (!p) return { erro: `Produto "${i.modelo}" não está mais no catálogo` }
-    const preco = precoVigente(p.precos_produtos)
-    if (!preco) return { erro: `Produto "${p.modelo}" está sem preço no catálogo` }
-    itens.push({
+    const base = {
       produto_id: p.id,
       modelo: p.modelo,
       fabricante: p.fabricante || null,
       descricao: p.descricao_curta || null,
       categoria: p.categoria || null,
       qtd,
-      preco_tabela: preco,
-    })
+    }
+    const preco = precoVigente(p.precos_produtos)
+    if (preco) {
+      itens.push({ ...base, preco_tabela: preco })   // preço da planilha manda (não confia na tela)
+      continue
+    }
+    if (ehAdmin) {
+      const manual = Math.round((Number(i.preco_tabela) || 0) * 100) / 100
+      if (!(manual > 0)) return { erro: `Informe o preço de "${p.modelo}" (sem preço na planilha)` }
+      itens.push({ ...base, preco_tabela: manual, preco_manual: true, base_preco: i.base_preco === 'custo' ? 'custo' : 'tabela' })
+      continue
+    }
+    const doAdmin = salvos.get(p.id)
+    if (!doAdmin || !(Number(doAdmin.preco_tabela) > 0)) {
+      return { erro: `"${p.modelo}" não tem preço na planilha — peça ao admin pra informar o preço nesta proposta` }
+    }
+    itens.push({ ...base, preco_tabela: Number(doAdmin.preco_tabela), preco_manual: true, base_preco: doAdmin.base_preco === 'custo' ? 'custo' : 'tabela' })
   }
 
   const { data: paramsRows } = await supabase

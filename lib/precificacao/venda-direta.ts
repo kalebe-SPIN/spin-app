@@ -7,6 +7,7 @@ import { getNum, type ParametrosVigentes } from './calcular'
  * projeto/ART, sem mão de obra de instalação, sem lista CA.
  *
  *   custo_equip = Σ(preço planilha × qtd) × fator_kit_weg_preco_cliente
+ *               + Σ(custo digitado × qtd)   ← itens sem preço na planilha marcados como "custo"
  *   base        = custo_equip + frete (digitado por proposta)
  *   PV          = base / (1 − (margem + comissão + imposto) / 100)
  *
@@ -26,12 +27,26 @@ export type ItemVendaDireta = {
   descricao: string | null
   categoria: string | null
   qtd: number
-  preco_tabela: number        // preço da planilha WEG (antes do fator)
+  preco_tabela: number        // preço unitário (planilha WEG antes do fator, ou custo — ver base_preco)
+  /**
+   * Kalebe 2026-09-29: produto sem preço na planilha (ex.: WEMOB) — o admin
+   * digita o preço só nesta proposta e diz, item a item, se é tabela WEG
+   * (multiplica pelo fator) ou custo da Spin (entra direto, sem fator).
+   */
+  preco_manual?: boolean
+  base_preco?: 'tabela' | 'custo'
+}
+
+/** Custo do item pra Spin: tabela × fator, ou o custo digitado direto. */
+export function custoDoItem(i: ItemVendaDireta, fator: number): number {
+  const bruto = Number(i.preco_tabela || 0) * Number(i.qtd || 0)
+  return i.base_preco === 'custo' ? bruto : bruto * fator
 }
 
 export type CalculoVendaDireta = {
   subtotal_tabela: number
   fator_aplicado: number
+  custo_direto: number            // itens com preço digitado como custo (sem fator)
   custo_equipamentos: number
   frete: number
   base_custo: number
@@ -74,9 +89,12 @@ export function calcularVendaDireta(
   params: ParametrosVigentes,
 ): CalculoVendaDireta {
   const itens = entrada.itens.filter((i) => Number(i.qtd) > 0)
-  const subtotalTabela = itens.reduce((s, i) => s + Number(i.preco_tabela || 0) * Number(i.qtd || 0), 0)
+  const doTabela = itens.filter((i) => i.base_preco !== 'custo')
+  const subtotalTabela = doTabela.reduce((s, i) => s + Number(i.preco_tabela || 0) * Number(i.qtd || 0), 0)
+  const custoDireto = itens.filter((i) => i.base_preco === 'custo')
+    .reduce((s, i) => s + Number(i.preco_tabela || 0) * Number(i.qtd || 0), 0)
   const fator = getNum(params, 'fator_kit_weg_preco_cliente', FATOR_FALLBACK)
-  const custoEquip = subtotalTabela * fator
+  const custoEquip = subtotalTabela * fator + custoDireto
   const frete = Math.max(0, Number(entrada.frete) || 0)
   const base = custoEquip + frete
 
@@ -89,6 +107,7 @@ export function calcularVendaDireta(
   return {
     subtotal_tabela: subtotalTabela,
     fator_aplicado: fator,
+    custo_direto: custoDireto,
     custo_equipamentos: custoEquip,
     frete,
     base_custo: base,

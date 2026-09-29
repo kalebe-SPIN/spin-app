@@ -39,11 +39,15 @@ export default async function VendaDiretaProjetoPage({ params }: { params: { id:
   }
 
   const [{ data: produtos }, { data: paramsRows }, { data: configEmpresa }] = await Promise.all([
+    // Kalebe 2026-09-29: TODO o catálogo ativo (inclusive sem preço na planilha,
+    // ex.: WEMOB) — limit explícito pra não cortar em 1000 linhas
     supabase
       .from('produtos')
-      .select('id, modelo, fabricante, descricao_curta, categoria, precos_produtos(preco_venda, vigente_de, vigente_ate)')
+      .select('id, modelo, fabricante, descricao_curta, categoria, subcategoria, specs, precos_produtos(preco_venda, vigente_de, vigente_ate)')
       .eq('ativo', true)
-      .order('modelo'),
+      .neq('categoria', 'frete')
+      .order('modelo')
+      .limit(5000),
     supabase
       .from('parametros_precificacao')
       .select('chave, valor_numero, valor_json, unidade')
@@ -52,16 +56,20 @@ export default async function VendaDiretaProjetoPage({ params }: { params: { id:
     supabase.from('configuracoes_empresa').select('*').eq('singleton', true).maybeSingle(),
   ])
 
-  const catalogo: ProdutoCatalogoVD[] = (produtos || [])
-    .map((p: any) => ({
+  const catalogo: ProdutoCatalogoVD[] = (produtos || []).map((p: any) => {
+    const preco = precoVigente(p.precos_produtos) || 0
+    return {
       id: p.id,
       modelo: p.modelo,
       fabricante: p.fabricante || null,
       descricao: p.descricao_curta || null,
       categoria: p.categoria || null,
-      preco_tabela: precoVigente(p.precos_produtos) || 0,
-    }))
-    .filter((p) => p.preco_tabela > 0)
+      subcategoria: p.subcategoria || null,
+      detalhe: typeof p.specs?.descricao === 'string' ? p.specs.descricao : null,
+      preco_tabela: preco,
+      sem_preco: preco <= 0,
+    }
+  })
 
   const base = dadosVazios()
   const salvo = (item.dados || {}) as Partial<ItemDadosVendaDireta>

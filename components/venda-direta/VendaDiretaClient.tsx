@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { fmtNum, formatarCpfCnpj } from '@/lib/formatters'
 import type { ParametrosVigentes } from '@/lib/precificacao/calcular'
-import { calcularVendaDireta, type ItemVendaDireta } from '@/lib/precificacao/venda-direta'
+import { calcularVendaDireta, custoDoItem, type ItemVendaDireta } from '@/lib/precificacao/venda-direta'
 import { validarDadosVendaDireta, enderecoEntrega, type DadosVendaDireta, type ItemDadosVendaDireta } from '@/lib/venda-direta/tipos'
-import type { ProdutoCatalogoVD } from '@/lib/venda-direta/preco'
+import { rotuloCategoria, rotuloSubcategoria, type ProdutoCatalogoVD } from '@/lib/venda-direta/preco'
 import { FormDadosVendaDireta, inputCls } from './FormDadosVendaDireta'
 import { PropostaVendaDiretaPDF } from './PropostaVendaDiretaPDF'
 import { BotaoEnviarPropostaCanal } from '@/components/proposta/BotaoEnviarPropostaCanal'
@@ -20,6 +20,16 @@ import {
 const BUCKET_PROPOSTAS = 'propostas-pdf'
 const brl = (v: number) => `R$ ${fmtNum(v, 2)}`
 const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const lerValorBR = (s: string) => Number(String(s).replace(/\./g, '').replace(',', '.')) || 0
+const semEmoji = (s: string) => s.replace(/^[^\p{L}\p{N}]+/u, '')
+
+/** Item com preço digitado ainda incompleto (sem valor ou sem dizer se é tabela/custo). */
+function pendenciaPreco(it: ItemVendaDireta, ehAdmin: boolean): string | null {
+  if (!it.preco_manual || it.qtd <= 0) return null
+  if (!(it.preco_tabela > 0)) return ehAdmin ? `Informe o preço de "${it.modelo}"` : `"${it.modelo}" aguarda o admin informar o preço`
+  if (ehAdmin && !it.base_preco) return `Diga se o preço de "${it.modelo}" é tabela WEG (com fator) ou custo (sem fator)`
+  return null
+}
 
 export function VendaDiretaClient({
   projeto,
@@ -42,6 +52,11 @@ export function VendaDiretaClient({
   const [itens, setItens] = useState<ItemVendaDireta[]>(dadosIniciais.itens || [])
   const [frete, setFrete] = useState<string>(dadosIniciais.frete ? fmtNum(dadosIniciais.frete, 2) : '')
   const [busca, setBusca] = useState('')
+  const [filtroCat, setFiltroCat] = useState('')
+  const [filtroSub, setFiltroSub] = useState('')
+  const [precosTxt, setPrecosTxt] = useState<Record<string, string>>(() =>
+    Object.fromEntries((dadosIniciais.itens || []).filter((i) => i.preco_manual && i.produto_id)
+      .map((i) => [i.produto_id as string, i.preco_tabela ? fmtNum(i.preco_tabela, 2) : ''])))
   const [urlPdf, setUrlPdf] = useState<string | null>(dadosIniciais.url_pdf || projeto.url_pdf_proposta || null)
   const [erro, setErro] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -52,17 +67,38 @@ export function VendaDiretaClient({
   const freteNum = Number(String(frete).replace(/\./g, '').replace(',', '.')) || 0
   const calculo = useMemo(() => calcularVendaDireta({ itens, frete: freteNum }, params), [itens, freteNum, params])
 
+  // Filtros iguais ao /admin/catalogo: categoria (com contagem) → subcategoria, A→Z
+  const categorias = useMemo(() => {
+    const cont = new Map<string, number>()
+    for (const p of catalogo) if (p.categoria) cont.set(p.categoria, (cont.get(p.categoria) || 0) + 1)
+    return Array.from(cont.entries())
+      .map(([c, n]) => ({ valor: c, rotulo: `${rotuloCategoria(c)} · ${n}` }))
+      .sort((a, b) => semEmoji(a.rotulo).localeCompare(semEmoji(b.rotulo), 'pt-BR'))
+  }, [catalogo])
+  const subcategorias = useMemo(() => {
+    if (!filtroCat) return []
+    const cont = new Map<string, number>()
+    for (const p of catalogo) if (p.categoria === filtroCat && p.subcategoria) cont.set(p.subcategoria, (cont.get(p.subcategoria) || 0) + 1)
+    return Array.from(cont.entries())
+      .map(([s, n]) => ({ valor: s, rotulo: `${rotuloSubcategoria(s)} · ${n}` }))
+      .sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR'))
+  }, [catalogo, filtroCat])
+
+  const filtrando = busca.trim().length >= 2 || !!filtroCat
   const resultados = useMemo(() => {
-    const t = normalizar(busca.trim())
-    if (t.length < 2) return []
-    const partes = t.split(/\s+/)
-    return catalogo
-      .filter((p) => {
-        const alvo = normalizar([p.modelo, p.fabricante, p.descricao, p.categoria].filter(Boolean).join(' '))
-        return partes.every((x) => alvo.includes(x))
-      })
-      .slice(0, 30)
-  }, [busca, catalogo])
+    if (!filtrando) return []
+    const partes = normalizar(busca.trim()).split(/\s+/).filter((x) => x.length > 0)
+    return catalogo.filter((p) => {
+      if (filtroCat && p.categoria !== filtroCat) return false
+      if (filtroSub && p.subcategoria !== filtroSub) return false
+      if (!partes.length) return true
+      const alvo = normalizar([
+        p.modelo, p.fabricante, p.descricao, p.detalhe, p.categoria, rotuloCategoria(p.categoria),
+        p.subcategoria, rotuloSubcategoria(p.subcategoria),
+      ].filter(Boolean).join(' '))
+      return partes.every((x) => alvo.includes(x))
+    })
+  }, [busca, filtroCat, filtroSub, catalogo, filtrando])
 
   function adicionar(p: ProdutoCatalogoVD) {
     setItens((atual) => {
@@ -71,10 +107,21 @@ export function VendaDiretaClient({
       return [...atual, {
         produto_id: p.id, modelo: p.modelo, fabricante: p.fabricante, descricao: p.descricao,
         categoria: p.categoria, qtd: 1, preco_tabela: p.preco_tabela,
+        ...(p.sem_preco ? { preco_manual: true } : {}),
       }]
     })
     setMsg(null)
   }
+
+  function mudarPrecoManual(idx: number, produtoId: string | null, txt: string) {
+    const limpo = txt.replace(/[^\d.,]/g, '')
+    if (produtoId) setPrecosTxt((m) => ({ ...m, [produtoId]: limpo }))
+    setItens((atual) => atual.map((x, j) => (j === idx ? { ...x, preco_tabela: lerValorBR(limpo) } : x)))
+  }
+  function mudarBasePreco(idx: number, base: 'tabela' | 'custo' | '') {
+    setItens((atual) => atual.map((x, j) => (j === idx ? { ...x, base_preco: base || undefined } : x)))
+  }
+  const primeiraPendencia = () => itens.map((i) => pendenciaPreco(i, ehAdmin)).find(Boolean) || null
 
   function mudarQtd(idx: number, qtd: number) {
     setItens((atual) => atual.map((x, j) => (j === idx ? { ...x, qtd: Math.max(0, Math.round(qtd || 0)) } : x)))
@@ -99,6 +146,8 @@ export function VendaDiretaClient({
 
   function salvar() {
     setErro(null); setMsg(null)
+    const pend = primeiraPendencia()
+    if (pend) { setErro(pend); return }
     startTransition(async () => {
       if (await salvarEquipamentos()) { setMsg('✓ Equipamentos e frete salvos'); router.refresh() }
     })
@@ -109,6 +158,8 @@ export function VendaDiretaClient({
     const invalido = validarDadosVendaDireta(dados)
     if (invalido || editandoDados) { setErro(invalido || 'Salve os dados do cliente antes de gerar o PDF'); return }
     if (calculo.qtd_itens === 0) { setErro('Adicione pelo menos um equipamento'); return }
+    const pend = primeiraPendencia()
+    if (pend) { setErro(pend); return }
     setGerando(true)
     try {
       if (!(await salvarEquipamentos())) return
@@ -192,32 +243,60 @@ export function VendaDiretaClient({
 
       {/* 2. Equipamentos */}
       <section className="bg-white/[0.03] border border-white/10 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-bold text-white">2. Equipamentos (planilha WEG)</h2>
-        <div className="relative">
+        <h2 className="text-lg font-bold text-white">2. Equipamentos (catálogo)</h2>
+        {/* Kalebe 2026-09-29: filtros iguais ao catálogo + busca */}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_220px_240px] gap-2">
           <input
             type="search"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por modelo, fabricante ou tipo (ex.: SIW300H, placa 620, estrutura)…"
+            placeholder="Buscar por modelo, fabricante ou tipo (ex.: SIW300H, placa 620, recarga, estrutura)…"
             className={inputCls}
           />
-          {resultados.length > 0 && (
-            <div className="absolute z-20 mt-1 w-full max-h-80 overflow-y-auto bg-noite border border-white/15 rounded-lg shadow-xl">
-              {resultados.map((p) => (
-                <button key={p.id} type="button" onClick={() => adicionar(p)}
-                  className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between gap-3 border-b border-white/5">
-                  <span className="min-w-0">
-                    <span className="block text-sm text-white truncate">{[p.fabricante, p.modelo].filter(Boolean).join(' · ')}</span>
-                    <span className="block text-[11px] text-white/45 truncate">{p.categoria}{p.descricao && p.descricao !== p.modelo ? ` · ${p.descricao}` : ''}</span>
-                  </span>
-                  <span className="text-xs text-sol shrink-0">
-                    {ehAdmin ? `tabela ${brl(p.preco_tabela)}` : ''} ＋
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+          <select value={filtroCat} onChange={(e) => { setFiltroCat(e.target.value); setFiltroSub('') }} className={inputCls}>
+            <option value="" className="bg-noite">Todas as categorias · {catalogo.length}</option>
+            {categorias.map((c) => <option key={c.valor} value={c.valor} className="bg-noite">{c.rotulo}</option>)}
+          </select>
+          <select value={filtroSub} onChange={(e) => setFiltroSub(e.target.value)} disabled={subcategorias.length < 2}
+            className={`${inputCls} disabled:opacity-40`}>
+            <option value="" className="bg-noite">{filtroCat ? 'Todas as subcategorias' : 'Subcategoria (escolha a categoria)'}</option>
+            {subcategorias.map((s) => <option key={s.valor} value={s.valor} className="bg-noite">{s.rotulo}</option>)}
+          </select>
         </div>
+
+        {filtrando && (
+          <div className="border border-white/10 rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.03] text-[11px] text-white/50">
+              <span>{resultados.length} item(ns){resultados.length > 100 ? ' — mostrando 100, refine a busca' : ''}</span>
+              <button type="button" onClick={() => { setBusca(''); setFiltroCat(''); setFiltroSub('') }} className="hover:text-white">limpar filtros ✕</button>
+            </div>
+            <div className="max-h-96 overflow-y-auto">
+              {resultados.length === 0 && <p className="px-3 py-4 text-sm text-white/40 text-center">Nada encontrado com esses filtros.</p>}
+              {resultados.slice(0, 100).map((p) => {
+                const noCarrinho = itens.find((x) => x.produto_id === p.id)?.qtd || 0
+                return (
+                  <button key={p.id} type="button" onClick={() => adicionar(p)}
+                    className="w-full text-left px-3 py-2 hover:bg-white/5 flex items-center justify-between gap-3 border-b border-white/5">
+                    <span className="min-w-0">
+                      <span className="block text-sm text-white truncate">{[p.fabricante, p.modelo].filter(Boolean).join(' · ')}</span>
+                      <span className="block text-[11px] text-white/45 truncate">
+                        {rotuloCategoria(p.categoria)}{p.subcategoria ? ` · ${rotuloSubcategoria(p.subcategoria)}` : ''}
+                        {p.detalhe && p.detalhe !== p.modelo ? ` · ${p.detalhe}` : ''}
+                      </span>
+                    </span>
+                    <span className="text-xs shrink-0 flex items-center gap-2">
+                      {p.sem_preco
+                        ? <span className="px-1.5 py-0.5 rounded bg-sol/10 border border-sol/30 text-sol text-[10px]">sem preço na planilha</span>
+                        : ehAdmin && <span className="text-white/50">tabela {brl(p.preco_tabela)}</span>}
+                      {noCarrinho > 0 && <span className="text-verde text-[10px]">✓ {noCarrinho}</span>}
+                      <span className="text-sol text-base">＋</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {itens.length === 0 ? (
           <p className="text-sm text-white/40 py-4 text-center border border-dashed border-white/10 rounded-lg">
@@ -230,8 +309,8 @@ export function VendaDiretaClient({
                 <tr className="text-left border-b border-white/10 text-[10px] uppercase text-white/50 font-bold">
                   <th className="pb-2 pr-3">Equipamento</th>
                   <th className="pb-2 pr-3 w-28">Qtd</th>
-                  {ehAdmin && <th className="pb-2 pr-3 text-right">Tabela un.</th>}
-                  {ehAdmin && <th className="pb-2 pr-3 text-right">Custo (× fator)</th>}
+                  {ehAdmin && <th className="pb-2 pr-3 text-right">Preço un.</th>}
+                  {ehAdmin && <th className="pb-2 pr-3 text-right">Custo Spin</th>}
                   <th className="pb-2 w-8" />
                 </tr>
               </thead>
@@ -240,14 +319,39 @@ export function VendaDiretaClient({
                   <tr key={`${it.produto_id}-${idx}`} className="border-b border-white/5">
                     <td className="py-2 pr-3">
                       <span className="text-white">{[it.fabricante, it.modelo].filter(Boolean).join(' · ')}</span>
-                      <span className="block text-[11px] text-white/45">{it.categoria}</span>
+                      <span className="block text-[11px] text-white/45">{rotuloCategoria(it.categoria)}</span>
+                      {it.preco_manual && !ehAdmin && (
+                        <span className={`block text-[10px] ${it.preco_tabela > 0 ? 'text-white/45' : 'text-sol'}`}>
+                          {it.preco_tabela > 0 ? 'preço informado pelo admin' : '⏳ sem preço na planilha — o admin precisa informar'}
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 pr-3">
                       <input type="number" min={0} value={it.qtd} onChange={(e) => mudarQtd(idx, Number(e.target.value))}
                         className={`${inputCls} py-1`} />
                     </td>
-                    {ehAdmin && <td className="py-2 pr-3 text-right text-white/70">{brl(it.preco_tabela)}</td>}
-                    {ehAdmin && <td className="py-2 pr-3 text-right text-white/70">{brl(it.preco_tabela * it.qtd * calculo.fator_aplicado)}</td>}
+                    {ehAdmin && (
+                      <td className="py-2 pr-3 text-right text-white/70">
+                        {it.preco_manual ? (
+                          <div className="flex flex-col items-end gap-1 min-w-[190px]">
+                            <input
+                              inputMode="decimal"
+                              value={precosTxt[it.produto_id || ''] ?? ''}
+                              onChange={(e) => mudarPrecoManual(idx, it.produto_id, e.target.value)}
+                              placeholder="preço R$"
+                              className={`${inputCls} py-1 text-right font-mono ${it.preco_tabela > 0 ? '' : 'border-sol/60'}`}
+                            />
+                            <select value={it.base_preco || ''} onChange={(e) => mudarBasePreco(idx, e.target.value as any)}
+                              className={`${inputCls} py-1 text-xs ${it.base_preco ? '' : 'border-sol/60'}`}>
+                              <option value="" className="bg-noite">Esse valor é…</option>
+                              <option value="custo" className="bg-noite">Custo Spin (sem fator)</option>
+                              <option value="tabela" className="bg-noite">Tabela WEG (× fator {fmtNum(calculo.fator_aplicado, 4)})</option>
+                            </select>
+                          </div>
+                        ) : brl(it.preco_tabela)}
+                      </td>
+                    )}
+                    {ehAdmin && <td className="py-2 pr-3 text-right text-white/70">{brl(custoDoItem(it, calculo.fator_aplicado))}</td>}
                     <td className="py-2 text-right">
                       <button type="button" onClick={() => setItens((a) => a.filter((_, j) => j !== idx))}
                         className="text-coral/70 hover:text-coral text-xs" title="Remover">✕</button>
@@ -296,7 +400,11 @@ export function VendaDiretaClient({
             <table className="mt-3 w-full max-w-lg text-sm">
               <tbody className="[&_td]:py-1">
                 <tr><td className="text-white/60">Planilha WEG (tabela)</td><td className="text-right text-white/80">{brl(calculo.subtotal_tabela)}</td></tr>
-                <tr><td className="text-white/60">× fator {fmtNum(calculo.fator_aplicado, 4)} = custo dos equipamentos</td><td className="text-right text-white/80">{brl(calculo.custo_equipamentos)}</td></tr>
+                <tr><td className="text-white/60">× fator {fmtNum(calculo.fator_aplicado, 4)}</td><td className="text-right text-white/80">{brl(calculo.subtotal_tabela * calculo.fator_aplicado)}</td></tr>
+                {calculo.custo_direto > 0 && (
+                  <tr><td className="text-white/60">+ itens com preço de custo (sem fator)</td><td className="text-right text-white/80">{brl(calculo.custo_direto)}</td></tr>
+                )}
+                <tr><td className="text-white/60">= custo dos equipamentos</td><td className="text-right text-white/80">{brl(calculo.custo_equipamentos)}</td></tr>
                 <tr><td className="text-white/60">+ frete</td><td className="text-right text-white/80">{brl(calculo.frete)}</td></tr>
                 <tr className="border-t border-white/10"><td className="text-white/80 font-bold">Base de custo</td><td className="text-right text-white font-bold">{brl(calculo.base_custo)}</td></tr>
                 <tr><td className="text-white/60">Margem Spin {fmtNum(calculo.margem_pct, 2)}%</td><td className="text-right text-verde">{brl(calculo.margem)}</td></tr>
