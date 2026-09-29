@@ -197,6 +197,26 @@ export const BIANCA_TOOLS: Anthropic.Tool[] = [
       required: ['destinatario_nome', 'destinatario_email', 'assunto', 'mensagem'],
     },
   },
+  // Kalebe 2026-09-29: grupos internos por setor — a Bianca administra
+  {
+    name: 'publicar_no_grupo',
+    description: 'Publica no grupo interno de um setor (aparece em /grupos). Use quando o usuário pedir pra "avisar o comercial", "mandar no grupo da instalação", "divulgar a campanha pro time" etc. Tipo "aviso" e "campanha" (só admin) também avisam cada membro no sino e no WhatsApp quando a janela de 24h permitir. Usuário não-admin só publica "mensagem" nos grupos de que participa.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        grupo: {
+          type: 'string',
+          enum: ['administrativo_financeiro', 'comercial', 'instalacao_campo', 'projetos_homologacao'],
+          description: 'Setor: comercial (vendas/reps), projetos_homologacao (projeto elétrico, concessionária), instalacao_campo (equipe de obra), administrativo_financeiro.',
+        },
+        texto: { type: 'string', description: 'Texto em português, direto e cordial. Não assine — já sai como Bianca.' },
+        tipo: { type: 'string', enum: ['aviso', 'campanha', 'mensagem'], description: 'aviso = recado importante (notifica); campanha = promoção/condição comercial (notifica); mensagem = só registra no grupo. Default: aviso pra admin, mensagem pros demais.' },
+        link: { type: 'string', description: 'Caminho interno opcional (ex: /projetos/<id>) pra quem ler abrir direto.' },
+        projeto_id: { type: 'string', description: 'Projeto relacionado (opcional).' },
+      },
+      required: ['grupo', 'texto'],
+    },
+  },
   // Kalebe 2026-09-23: diretório (clientes/equipe/agentes) + aviso interno
   ...FERRAMENTAS_DIRETORIO,
 ]

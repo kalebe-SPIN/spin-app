@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { executarFerramentaDiretorio } from '@/lib/agentes/diretorio'
+import { publicarNoGrupo } from '@/lib/grupos/publicar'
 
 type ResultadoTool = { sucesso: boolean; dados?: any; erro?: string; _hint?: string }
 
@@ -485,6 +486,36 @@ export async function executarTool(
         }).select('id').single()
         if (error) return { sucesso: false, erro: error.message }
         return { sucesso: true, dados: { id: data.id } }
+      }
+
+      case 'publicar_no_grupo': {
+        const ehAdmin = userRole === 'admin'
+        const tipo = ehAdmin ? (input.tipo || 'aviso') : 'mensagem'
+        if (!ehAdmin) {
+          // Não-admin: só nos grupos de que participa (RLS devolve o grupo só se for membro)
+          const { data: g } = await supabase.from('grupos_internos').select('id').eq('chave', input.grupo).maybeSingle()
+          const { data: m } = g
+            ? await supabase.from('grupos_membros').select('grupo_id').eq('grupo_id', g.id).eq('usuario_id', userId).maybeSingle()
+            : { data: null }
+          if (!m) return { sucesso: false, erro: 'Você não participa desse grupo. Peça ao admin pra te incluir.' }
+        }
+        const r = await publicarNoGrupo({
+          grupo: input.grupo,
+          texto: input.texto,
+          tipo,
+          autor_agente: 'bianca',
+          autor_usuario_id: userId,
+          link: input.link || null,
+          projeto_id: input.projeto_id || null,
+        })
+        if ('erro' in r) return { sucesso: false, erro: r.erro }
+        return {
+          sucesso: true,
+          dados: r,
+          _hint: tipo === 'mensagem'
+            ? '✅ Publicado no grupo.'
+            : `✅ Publicado no grupo e ${r.notificados} pessoa(s) avisada(s).`,
+        }
       }
 
       default:

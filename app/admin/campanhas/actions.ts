@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { publicarNoGrupo } from '@/lib/grupos/publicar'
+import { fmtNum } from '@/lib/formatters'
 
 export type CampanhaMes = {
   id?: string
@@ -51,7 +53,10 @@ export async function salvarCampanhaAction(
   }
 
   let query
+  let estavaAtiva = false
   if (entrada.id) {
+    const { data: antes } = await supabase.from('campanhas_mes').select('ativa').eq('id', entrada.id).maybeSingle()
+    estavaAtiva = !!antes?.ativa
     query = supabase.from('campanhas_mes').update(payload).eq('id', entrada.id).select('id').single()
   } else {
     payload.criado_por = user.id
@@ -59,17 +64,51 @@ export async function salvarCampanhaAction(
   }
   const { data, error } = await query
   if (error) return { erro: error.message }
+  // Kalebe 2026-09-29: campanha que entra no ar a Bianca anuncia no grupo Comercial
+  if (payload.ativa && !estavaAtiva) await anunciarCampanhaNoGrupo(data.id, user.id)
   revalidatePath('/admin/campanhas')
   return { sucesso: true, id: data.id }
 }
 
 export async function toggleCampanhaAction(id: string, ativa: boolean) {
-  const { supabase, isAdmin } = await requireAdmin()
+  const { supabase, user, isAdmin } = await requireAdmin()
   if (!isAdmin) return { erro: 'Só admin' }
+  const { data: antes } = await supabase.from('campanhas_mes').select('ativa').eq('id', id).maybeSingle()
   const { error } = await supabase.from('campanhas_mes').update({ ativa }).eq('id', id)
   if (error) return { erro: error.message }
+  if (ativa && !antes?.ativa) await anunciarCampanhaNoGrupo(id, user?.id || null)
   revalidatePath('/admin/campanhas')
   return { sucesso: true }
+}
+
+/** Bianca posta a campanha no grupo Comercial e avisa cada membro. Falha silenciosa: nunca trava o salvar. */
+async function anunciarCampanhaNoGrupo(id: string, autorId: string | null) {
+  try {
+    const supabase = createClient()
+    const { data: c } = await supabase
+      .from('campanhas_mes')
+      .select('titulo, subtitulo, condicao_especial, pv_promocional, vigente_ate')
+      .eq('id', id).maybeSingle()
+    if (!c) return
+    const dataBr = (d: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : null)
+    const linhas = [
+      `🎁 Campanha no ar: *${c.titulo}*`,
+      c.subtitulo || null,
+      c.condicao_especial,
+      c.pv_promocional ? `Preço promocional: R$ ${fmtNum(Number(c.pv_promocional), 2)}` : null,
+      c.vigente_ate ? `Válida até ${dataBr(c.vigente_ate)}.` : null,
+      'Pra usar: abra o projeto → "Campanhas do mês disponíveis" → ✨ Aplicar.',
+    ].filter(Boolean)
+    await publicarNoGrupo({
+      grupo: 'comercial',
+      tipo: 'campanha',
+      texto: linhas.join('\n'),
+      autor_agente: 'bianca',
+      autor_usuario_id: autorId,
+    })
+  } catch (e) {
+    console.error('[campanhas] falha ao anunciar no grupo', e)
+  }
 }
 
 export async function excluirCampanhaAction(id: string) {

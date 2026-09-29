@@ -65,6 +65,8 @@ export async function PortalHeader() {
     },
     { href: '/agenda', label: '📅 Agenda' },
     { href: '/inbox', label: '💬 Inbox' },
+    // Kalebe 2026-09-29: grupos internos por setor, administrados pela Bianca
+    { href: '/grupos', label: '👥 Grupos' },
     ...(modoAtivo === 'admin' && ehAdminReal
       ? [{ href: '/admin', label: '⚙️ Admin' }] : []),
   ]
