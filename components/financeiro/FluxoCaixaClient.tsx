@@ -26,13 +26,17 @@ import { Campo, InputValor, Selecao, Modal, Aviso, Botoes, classeInput } from '.
 type Aba = 'mensal' | 'lancamentos' | 'programar' | 'passivo' | 'fornecedores'
 type Msg = { tipo: 'ok' | 'erro'; texto: string } | null
 
-export function FluxoCaixaClient({ dados }: { dados: DadosFluxo }) {
+const ABAS: Aba[] = ['mensal', 'lancamentos', 'programar', 'passivo', 'fornecedores']
+
+export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; abaInicial?: string }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const hoje = hojeBR()
   const { config, lancamentos, passivos, fornecedores, categorias, pendentes, faturamentoPorMes, projetosLista, equipe } = dados
+  // Links do hub: ?aba=receber / ?aba=pagar abrem Lançamentos já filtrados
+  const contas = abaInicial === 'receber' ? 'entrada' : abaInicial === 'pagar' ? 'saida' : ''
 
-  const [aba, setAba] = useState<Aba>('mensal')
+  const [aba, setAba] = useState<Aba>(contas ? 'lancamentos' : ABAS.includes(abaInicial as Aba) ? (abaInicial as Aba) : 'mensal')
   const [msg, setMsg] = useState<Msg>(null)
   const [modal, setModal] = useState<
     | { t: 'lancamento'; editando?: Lancamento }
@@ -46,10 +50,10 @@ export function FluxoCaixaClient({ dados }: { dados: DadosFluxo }) {
 
   // Filtros da aba Lançamentos
   const [fMes, setFMes] = useState(mesDe(hoje))
-  const [fTodos, setFTodos] = useState(false)
-  const [fDirecao, setFDirecao] = useState<'' | 'entrada' | 'saida'>('')
+  const [fTodos, setFTodos] = useState(!!contas)
+  const [fDirecao, setFDirecao] = useState<'' | 'entrada' | 'saida'>(contas)
   const [fGrupo, setFGrupo] = useState<'' | Grupo>('')
-  const [fStatus, setFStatus] = useState<'' | 'aberto' | 'atrasado' | 'realizado'>('')
+  const [fStatus, setFStatus] = useState<'' | 'pendente' | 'aberto' | 'atrasado' | 'realizado'>(contas ? 'pendente' : '')
   const [fBusca, setFBusca] = useState('')
   const [fPassivo, setFPassivo] = useState<string | null>(null)
   const [fFornec, setFFornec] = useState<string | null>(null)
@@ -490,7 +494,8 @@ function ListaLancamentos({ lancamentos, hoje, pending, filtros: f, passivos, fo
       }
       if (f.fDirecao && l.direcao !== f.fDirecao) return false
       if (f.fGrupo && l.grupo !== f.fGrupo) return false
-      if (f.fStatus && statusDe(l, hoje) !== f.fStatus) return false
+      if (f.fStatus === 'pendente') { if (l.data_realizada) return false }
+      else if (f.fStatus && statusDe(l, hoje) !== f.fStatus) return false
       if (q && !`${l.descricao} ${l.observacoes || ''}`.toLowerCase().includes(q)) return false
       return true
     }).sort((a, b) => a.data_prevista.localeCompare(b.data_prevista))
@@ -511,7 +516,13 @@ function ListaLancamentos({ lancamentos, hoje, pending, filtros: f, passivos, fo
         </div>
         <Selecao valor={f.fDirecao} onChange={f.setFDirecao} opcoes={[{ valor: '', rotulo: 'Entradas e saídas' }, { valor: 'entrada', rotulo: '↑ Entradas' }, { valor: 'saida', rotulo: '↓ Saídas' }]} />
         <Selecao valor={f.fGrupo} onChange={f.setFGrupo} vazio="Todos os tipos" opcoes={gruposOrdenados.map((g) => ({ valor: g, rotulo: `${GRUPOS[g].emoji} ${GRUPOS[g].rotulo}` }))} />
-        <Selecao valor={f.fStatus} onChange={f.setFStatus} opcoes={[{ valor: '', rotulo: 'Todos os status' }, { valor: 'aberto', rotulo: 'Previsto em aberto' }, { valor: 'atrasado', rotulo: '⚠ Atrasado' }, { valor: 'realizado', rotulo: '✓ Efetivado' }]} />
+        <Selecao valor={f.fStatus} onChange={f.setFStatus} opcoes={[
+          { valor: '', rotulo: 'Todos os status' },
+          { valor: 'pendente', rotulo: 'A pagar/receber (inclui atrasados)' },
+          { valor: 'aberto', rotulo: 'Previsto no prazo' },
+          { valor: 'atrasado', rotulo: '⚠ Atrasado' },
+          { valor: 'realizado', rotulo: '✓ Efetivado' },
+        ]} />
         <input value={f.fBusca} onChange={(e) => f.setFBusca(e.target.value)} placeholder="🔍 Buscar" className={classeInput} />
       </div>
       {(nomePassivo || nomeFornec) && (

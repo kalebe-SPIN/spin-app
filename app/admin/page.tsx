@@ -147,12 +147,19 @@ export default async function AdminHomePage() {
 
         {/* Grupo 4: Financeiro / Fiscal / Compras — gestão administrativa */}
         <Grupo titulo="💼 Gestão administrativa">
+          {/* Kalebe 2026-09-29: financeiro ativo — fluxo de caixa previsto × realizado */}
+          <AdminCard
+            href="/financeiro/fluxo-caixa"
+            icon="📊"
+            titulo="Fluxo de caixa"
+            desc="Previsto × realizado: custos e despesas, passivo bancário, impostos, capital de giro e fornecedores — integrado às vendas fechadas."
+            destaque
+          />
           <AdminCard
             href="/financeiro"
             icon="💰"
             titulo="Financeiro"
-            desc="Contas a receber, contas a pagar, fluxo de caixa, conciliação bancária."
-            emBreve
+            desc="Contas a receber, contas a pagar, passivo bancário, fornecedores e fluxo de caixa."
           />
           <AdminCard
             href="/fiscal"

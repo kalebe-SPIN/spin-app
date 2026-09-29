@@ -2,9 +2,15 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ModuloHub } from '@/components/ModuloHub'
 import { carregarFluxo } from '@/lib/financeiro/dados'
+import { brl, hojeBR } from '@/lib/financeiro/fluxo'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * Hub do Financeiro (Kalebe 2026-09-29): tudo roda sobre o fluxo de caixa
+ * (previsto × realizado). Contas a pagar/receber, passivo e fornecedores são
+ * vistas filtradas do mesmo fluxo.
+ */
 export default async function FinanceiroHubPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -27,76 +33,104 @@ export default async function FinanceiroHubPage() {
     )
   }
 
-  const hojeYMD = new Date().toISOString().slice(0, 10)
-
-  const [
-    { count: receberAbertas },
-    { count: receberVencidas },
-    { count: pagarAbertas },
-    { count: pagarVencidas },
-  ] = await Promise.all([
-    supabase.from('contas_receber').select('id', { count: 'exact', head: true }).eq('status', 'aberta'),
-    supabase.from('contas_receber').select('id', { count: 'exact', head: true }).eq('status', 'aberta').lt('data_vencimento', hojeYMD),
-    supabase.from('contas_pagar').select('id', { count: 'exact', head: true }).eq('status', 'aberta'),
-    supabase.from('contas_pagar').select('id', { count: 'exact', head: true }).eq('status', 'aberta').lt('data_vencimento', hojeYMD),
-  ])
-
-  // Fluxo de caixa: vendas aguardando programação + previstos atrasados (silencioso sem a migration 127)
-  const fluxo = { pendentes: 0, atrasados: 0 }
+  const hoje = hojeBR()
+  const r = { pendentes: 0, receber: 0, receberAtraso: 0, receberValor: 0, pagar: 0, pagarAtraso: 0, pagarValor: 0, passivo: 0, contratos: 0, fornecedores: 0 }
+  let erro: string | null = null
   try {
     const dados = await carregarFluxo()
-    if (!('erro' in dados)) {
-      fluxo.pendentes = dados.pendentes.length
-      fluxo.atrasados = dados.lancamentos.filter((l) => !l.data_realizada && l.data_prevista < hojeYMD).length
+    if ('erro' in dados) erro = dados.erro || 'Falha ao carregar o fluxo'
+    else {
+      const abertos = dados.lancamentos.filter((l) => !l.data_realizada)
+      const rec = abertos.filter((l) => l.direcao === 'entrada')
+      const pag = abertos.filter((l) => l.direcao === 'saida')
+      r.pendentes = dados.pendentes.length
+      r.receber = rec.length
+      r.receberAtraso = rec.filter((l) => l.data_prevista < hoje).length
+      r.receberValor = rec.reduce((s, l) => s + l.valor_previsto, 0)
+      r.pagar = pag.length
+      r.pagarAtraso = pag.filter((l) => l.data_prevista < hoje).length
+      r.pagarValor = pag.reduce((s, l) => s + l.valor_previsto, 0)
+      r.passivo = pag.filter((l) => l.grupo === 'passivo_bancario').reduce((s, l) => s + l.valor_previsto, 0)
+      r.contratos = dados.passivos.length
+      r.fornecedores = dados.fornecedores.filter((f) => f.ativo).length
     }
-  } catch {}
+  } catch (e: any) {
+    erro = e?.message || 'Falha ao carregar o fluxo'
+  }
+
+  const Stats = ({ itens }: { itens: Array<{ v: string | number; rotulo: string; cor: string }> }) => (
+    <div className="mt-3 pt-2 border-t border-white/10 flex flex-wrap gap-x-3 gap-y-1">
+      {itens.map((i) => (
+        <div key={i.rotulo}><span className={`text-lg font-black ${i.cor}`}>{i.v}</span><span className="text-[10px] uppercase text-white/50 ml-1">{i.rotulo}</span></div>
+      ))}
+    </div>
+  )
+  const url = (aba: string) => `/financeiro/fluxo-caixa?aba=${aba}`
 
   return (
     <ModuloHub
       titulo="Financeiro"
       icone="💰"
-      descricao="Contas a receber, pagar, fluxo de caixa e DRE"
+      descricao={erro ? `⚠️ ${erro}` : 'Fluxo de caixa previsto × realizado, integrado às vendas do sistema'}
       cards={[
         {
-          href: '/financeiro/contas-receber',
-          emoji: '📥',
-          titulo: 'Contas a Receber',
-          desc: 'Parcelas das propostas aceitas e recebíveis.',
-          stats: (
-            <div className="mt-3 pt-2 border-t border-white/10 flex gap-3">
-              <div><span className="text-xl font-black text-verde">{receberAbertas || 0}</span><span className="text-[10px] uppercase text-white/50 ml-1">abertas</span></div>
-              <div><span className="text-xl font-black text-coral">{receberVencidas || 0}</span><span className="text-[10px] uppercase text-white/50 ml-1">vencidas</span></div>
-            </div>
-          ),
-          restrito: true,
-          emBreve: true,
-        },
-        {
-          href: '/financeiro/contas-pagar',
-          emoji: '📤',
-          titulo: 'Contas a Pagar',
-          desc: 'Fornecedores, salários, custos fixos.',
-          stats: (
-            <div className="mt-3 pt-2 border-t border-white/10 flex gap-3">
-              <div><span className="text-xl font-black text-coral">{pagarAbertas || 0}</span><span className="text-[10px] uppercase text-white/50 ml-1">abertas</span></div>
-              <div><span className="text-xl font-black text-coral">{pagarVencidas || 0}</span><span className="text-[10px] uppercase text-white/50 ml-1">vencidas</span></div>
-            </div>
-          ),
-          restrito: true,
-          emBreve: true,
-        },
-        {
-          // Kalebe 2026-09-29: fluxo de caixa previsto × realizado
-          href: '/financeiro/fluxo-caixa',
+          href: url('mensal'),
           emoji: '📊',
           titulo: 'Fluxo de Caixa',
-          desc: 'Previsto × realizado, custos e despesas, passivo bancário, impostos, capital de giro e fornecedores — integrado às vendas.',
-          stats: fluxo.pendentes > 0 || fluxo.atrasados > 0 ? (
-            <div className="mt-3 pt-2 border-t border-white/10 flex gap-3">
-              <div><span className="text-xl font-black text-sol">{fluxo.pendentes}</span><span className="text-[10px] uppercase text-white/50 ml-1">vendas a programar</span></div>
-              <div><span className="text-xl font-black text-coral">{fluxo.atrasados}</span><span className="text-[10px] uppercase text-white/50 ml-1">atrasados</span></div>
-            </div>
-          ) : undefined,
+          desc: 'Visão mensal previsto × realizado, saldo projetado e capital de giro.',
+          stats: <Stats itens={[
+            { v: r.pendentes, rotulo: 'vendas a programar', cor: 'text-sol' },
+            { v: r.receberAtraso + r.pagarAtraso, rotulo: 'atrasados', cor: 'text-coral' },
+          ]} />,
+          restrito: true,
+        },
+        {
+          href: url('receber'),
+          emoji: '📥',
+          titulo: 'Contas a Receber',
+          desc: 'Parcelas das vendas fechadas e outras entradas previstas.',
+          stats: <Stats itens={[
+            { v: r.receber, rotulo: `em aberto · ${brl(r.receberValor)}`, cor: 'text-verde' },
+            { v: r.receberAtraso, rotulo: 'atrasadas', cor: 'text-coral' },
+          ]} />,
+          restrito: true,
+        },
+        {
+          href: url('pagar'),
+          emoji: '📤',
+          titulo: 'Contas a Pagar',
+          desc: 'Fornecedores, impostos, pessoal, comissões e custos fixos.',
+          stats: <Stats itens={[
+            { v: r.pagar, rotulo: `em aberto · ${brl(r.pagarValor)}`, cor: 'text-coral' },
+            { v: r.pagarAtraso, rotulo: 'atrasadas', cor: 'text-coral' },
+          ]} />,
+          restrito: true,
+        },
+        {
+          href: url('programar'),
+          emoji: '🧾',
+          titulo: 'Vendas a programar',
+          desc: 'Vendas fechadas no sistema: condição de recebimento + custos do orçamento como previsto.',
+          stats: <Stats itens={[{ v: r.pendentes, rotulo: 'aguardando', cor: 'text-sol' }]} />,
+          restrito: true,
+        },
+        {
+          href: url('passivo'),
+          emoji: '🏦',
+          titulo: 'Passivo bancário',
+          desc: 'Empréstimos, financiamentos, capital de giro bancário e cartão — parcelas e saldo devedor.',
+          stats: <Stats itens={[
+            { v: brl(r.passivo), rotulo: 'saldo devedor', cor: 'text-coral' },
+            { v: r.contratos, rotulo: 'contratos', cor: 'text-white' },
+          ]} />,
+          restrito: true,
+        },
+        {
+          href: url('fornecedores'),
+          emoji: '🏭',
+          titulo: 'Fornecedores',
+          desc: 'Cadastro de fornecedores com o que há a pagar e o que já foi pago.',
+          stats: <Stats itens={[{ v: r.fornecedores, rotulo: 'ativos', cor: 'text-white' }]} />,
           restrito: true,
         },
         {
@@ -104,14 +138,6 @@ export default async function FinanceiroHubPage() {
           emoji: '📈',
           titulo: 'DRE Simplificada',
           desc: 'Receita − custos − impostos = lucro. Mês/trimestre.',
-          restrito: true,
-          emBreve: true,
-        },
-        {
-          href: '/financeiro/categorias',
-          emoji: '🏷️',
-          titulo: 'Categorias',
-          desc: 'Classificação de receitas e despesas.',
           restrito: true,
           emBreve: true,
         },

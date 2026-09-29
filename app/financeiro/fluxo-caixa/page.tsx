@@ -11,7 +11,7 @@ export const revalidate = 0
  * /financeiro/fluxo-caixa — previsto × realizado, integrado às vendas do
  * sistema (Kalebe 2026-09-29). Exclusivo do admin.
  */
-export default async function FluxoCaixaPage() {
+export default async function FluxoCaixaPage({ searchParams }: { searchParams: { aba?: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -43,7 +43,7 @@ export default async function FluxoCaixaPage() {
         {'erro' in dados ? (
           <div className="bg-sol/10 border border-sol/30 rounded-xl p-5 text-sm text-sol">⚠️ {dados.erro}</div>
         ) : (
-          <FluxoCaixaClient dados={dados} />
+          <FluxoCaixaClient dados={dados} abaInicial={searchParams?.aba} />
         )}
       </div>
     </main>
