@@ -1,0 +1,376 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { randomUUID } from 'crypto'
+import { createClient } from '@/lib/supabase/server'
+import {
+  addMeses, arred, dividirEmParcelas, GRUPOS,
+  type Direcao, type Grupo,
+} from '@/lib/financeiro/fluxo'
+
+/**
+ * Fluxo de caixa (Kalebe 2026-09-29). Tudo PREVISTO nasce aqui; o valor
+ * efetivamente pago/recebido entra no "Efetivar". Só admin.
+ */
+
+type R<T = {}> = ({ sucesso: true } & T) | { erro: string }
+
+async function admin() {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { supabase, user: null, ok: false as const }
+  const { data: p } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  return { supabase, user, ok: p?.role === 'admin' }
+}
+
+const erroTabela = (m: string) =>
+  /fluxo_(lancamentos|passivos|programacoes|config)/.test(m) ? 'Falta rodar a migration 127 no Supabase.' : m
+
+function revalidar() {
+  revalidatePath('/financeiro/fluxo-caixa')
+  revalidatePath('/financeiro')
+}
+
+// ─── Lançamento manual (cadastro dinâmico) ──────────────────────────────────
+
+export type EntradaLancamento = {
+  id?: string
+  direcao: Direcao
+  grupo: Grupo
+  categoria_id?: string | null
+  descricao: string
+  valor_previsto: number
+  data_prevista: string
+  forma_pagamento?: string | null
+  fornecedor_id?: string | null
+  projeto_id?: string | null
+  detalhes?: Record<string, any>
+  observacoes?: string | null
+  repeticao?: 'unica' | 'parcelado' | 'recorrente'
+  vezes?: number
+  /** Já pago/recebido (só lançamento único) */
+  realizado?: { valor: number; data: string } | null
+}
+
+export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ criados: number }>> {
+  const { supabase, user, ok } = await admin()
+  if (!ok || !user) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  if (!e.descricao?.trim()) return { erro: 'Descreva o lançamento' }
+  if (!(e.valor_previsto > 0)) return { erro: 'Valor previsto tem que ser maior que zero' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(e.data_prevista || '')) return { erro: 'Data prevista inválida' }
+  if (!GRUPOS[e.grupo]) return { erro: 'Tipo de lançamento inválido' }
+
+  const base = {
+    direcao: e.direcao,
+    grupo: e.grupo,
+    categoria_id: e.categoria_id || null,
+    descricao: e.descricao.trim(),
+    forma_pagamento: e.forma_pagamento || null,
+    fornecedor_id: e.fornecedor_id || null,
+    projeto_id: e.projeto_id || null,
+    detalhes: e.detalhes || {},
+    observacoes: e.observacoes?.trim() || null,
+  }
+
+  // Edição: um lançamento só, sem gerar parcelas
+  if (e.id) {
+    const { error } = await supabase.from('fluxo_lancamentos').update({
+      ...base,
+      valor_previsto: arred(e.valor_previsto),
+      data_prevista: e.data_prevista,
+      atualizado_em: new Date().toISOString(),
+    }).eq('id', e.id)
+    if (error) return { erro: erroTabela(error.message) }
+    revalidar()
+    return { sucesso: true, criados: 0 }
+  }
+
+  const vezes = Math.max(1, Math.min(120, Math.floor(e.vezes || 1)))
+  const rep = e.repeticao || 'unica'
+  const lote = rep === 'unica' ? null : randomUUID()
+  const valores = rep === 'parcelado' ? dividirEmParcelas(e.valor_previsto, vezes)
+    : rep === 'recorrente' ? Array(vezes).fill(arred(e.valor_previsto))
+    : [arred(e.valor_previsto)]
+
+  const linhas = valores.map((v, i) => ({
+    ...base,
+    descricao: valores.length > 1 && rep === 'parcelado' ? `${base.descricao} (${i + 1}/${valores.length})` : base.descricao,
+    valor_previsto: v,
+    data_prevista: addMeses(e.data_prevista, i),
+    parcela_num: valores.length > 1 ? i + 1 : null,
+    parcelas_total: valores.length > 1 ? valores.length : null,
+    lote_id: lote,
+    origem: 'manual',
+    criado_por: user.id,
+    ...(rep === 'unica' && e.realizado && e.realizado.valor >= 0 && e.realizado.data
+      ? { valor_realizado: arred(e.realizado.valor), data_realizada: e.realizado.data }
+      : {}),
+  }))
+
+  const { error } = await supabase.from('fluxo_lancamentos').insert(linhas)
+  if (error) return { erro: erroTabela(error.message) }
+  revalidar()
+  return { sucesso: true, criados: linhas.length }
+}
+
+/** Efetivar = registrar o valor EFETIVAMENTE pago/recebido e a data. */
+export async function efetivarLancamentoAction(id: string, valor: number, data: string, forma?: string | null): Promise<R> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  if (!(valor >= 0)) return { erro: 'Valor inválido' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data || '')) return { erro: 'Data inválida' }
+  const { error } = await supabase.from('fluxo_lancamentos').update({
+    valor_realizado: arred(valor),
+    data_realizada: data,
+    ...(forma ? { forma_pagamento: forma } : {}),
+    atualizado_em: new Date().toISOString(),
+  }).eq('id', id)
+  if (error) return { erro: erroTabela(error.message) }
+  revalidar()
+  return { sucesso: true }
+}
+
+export async function desfazerEfetivacaoAction(id: string): Promise<R> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  const { error } = await supabase.from('fluxo_lancamentos')
+    .update({ valor_realizado: null, data_realizada: null, atualizado_em: new Date().toISOString() })
+    .eq('id', id)
+  if (error) return { erro: erroTabela(error.message) }
+  revalidar()
+  return { sucesso: true }
+}
+
+/** Cancela (some do fluxo, fica no banco). `restantesDoLote`: também as parcelas seguintes em aberto. */
+export async function cancelarLancamentoAction(id: string, restantesDoLote = false): Promise<R<{ cancelados: number }>> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  const agora = new Date().toISOString()
+  const { data: l } = await supabase.from('fluxo_lancamentos').select('id, lote_id, data_prevista').eq('id', id).maybeSingle()
+  if (!l) return { erro: 'Lançamento não encontrado' }
+  let q = supabase.from('fluxo_lancamentos').update({ cancelado_em: agora })
+  q = restantesDoLote && l.lote_id
+    ? q.eq('lote_id', l.lote_id).gte('data_prevista', l.data_prevista).is('data_realizada', null)
+    : q.eq('id', id)
+  const { data, error } = await q.select('id')
+  if (error) return { erro: erroTabela(error.message) }
+  revalidar()
+  return { sucesso: true, cancelados: data?.length || 0 }
+}
+
+// ─── Passivo bancário ───────────────────────────────────────────────────────
+
+export type EntradaPassivo = {
+  banco: string
+  modalidade: string
+  numero_contrato?: string | null
+  valor_contratado: number
+  data_contratacao: string
+  taxa_juros_mes?: number | null
+  parcelas_total: number
+  valor_parcela?: number | null      // vazio = valor ÷ parcelas
+  primeiro_vencimento: string
+  lancar_captacao: boolean           // entrada do dinheiro captado no caixa
+  observacoes?: string | null
+}
+
+export async function salvarPassivoAction(e: EntradaPassivo): Promise<R<{ id: string }>> {
+  const { supabase, user, ok } = await admin()
+  if (!ok || !user) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  if (!e.banco?.trim()) return { erro: 'Informe o banco / instituição' }
+  if (!(e.valor_contratado > 0)) return { erro: 'Valor contratado tem que ser maior que zero' }
+  const n = Math.max(1, Math.min(420, Math.floor(e.parcelas_total || 1)))
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(e.primeiro_vencimento || '')) return { erro: 'Informe o 1º vencimento' }
+
+  const { data: p, error } = await supabase.from('fluxo_passivos').insert({
+    banco: e.banco.trim(),
+    modalidade: e.modalidade,
+    numero_contrato: e.numero_contrato?.trim() || null,
+    valor_contratado: arred(e.valor_contratado),
+    data_contratacao: e.data_contratacao,
+    taxa_juros_mes: e.taxa_juros_mes ?? null,
+    parcelas_total: n,
+    valor_parcela: e.valor_parcela ? arred(e.valor_parcela) : null,
+    primeiro_vencimento: e.primeiro_vencimento,
+    observacoes: e.observacoes?.trim() || null,
+    criado_por: user.id,
+  }).select('id').single()
+  if (error || !p) return { erro: erroTabela(error?.message || 'Falha ao salvar contrato') }
+
+  const parcelas = e.valor_parcela && e.valor_parcela > 0
+    ? Array(n).fill(arred(e.valor_parcela))
+    : dividirEmParcelas(e.valor_contratado, n)
+  const nome = `${e.banco.trim()}${e.numero_contrato ? ` · ${e.numero_contrato.trim()}` : ''}`
+  const linhas: any[] = parcelas.map((v, i) => ({
+    direcao: 'saida', grupo: 'passivo_bancario', origem: 'passivo', passivo_id: p.id,
+    descricao: `Parcela ${i + 1}/${n} — ${nome}`,
+    valor_previsto: v, data_prevista: addMeses(e.primeiro_vencimento, i),
+    parcela_num: i + 1, parcelas_total: n, lote_id: p.id,
+    detalhes: { modalidade: e.modalidade }, criado_por: user.id,
+  }))
+  if (e.lancar_captacao) {
+    linhas.unshift({
+      direcao: 'entrada', grupo: 'passivo_bancario', origem: 'passivo', passivo_id: p.id,
+      descricao: `Captação — ${nome}`,
+      valor_previsto: arred(e.valor_contratado), data_prevista: e.data_contratacao,
+      lote_id: p.id, detalhes: { modalidade: e.modalidade, captacao: true }, criado_por: user.id,
+    })
+  }
+  const { error: e2 } = await supabase.from('fluxo_lancamentos').insert(linhas)
+  if (e2) {
+    await supabase.from('fluxo_passivos').delete().eq('id', p.id)
+    return { erro: erroTabela(e2.message) }
+  }
+  revalidar()
+  return { sucesso: true, id: p.id }
+}
+
+export async function excluirPassivoAction(id: string): Promise<R> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  const { count } = await supabase.from('fluxo_lancamentos').select('id', { count: 'exact', head: true })
+    .eq('passivo_id', id).not('data_realizada', 'is', null)
+  if ((count || 0) > 0) return { erro: `Contrato tem ${count} parcela(s) já efetivada(s). Cancele só as parcelas em aberto na aba Lançamentos.` }
+  const { error } = await supabase.from('fluxo_passivos').delete().eq('id', id)
+  if (error) return { erro: erroTabela(error.message) }
+  revalidar()
+  return { sucesso: true }
+}
+
+// ─── Venda do sistema → recebimentos + custos PREVISTOS ─────────────────────
+
+export type LinhaProgramada = {
+  direcao: Direcao
+  grupo: Grupo
+  descricao: string
+  valor: number
+  data: string
+  forma_pagamento?: string | null
+  parcela_num?: number | null
+  parcelas_total?: number | null
+  detalhes?: Record<string, any>
+}
+
+export async function programarVendaAction(e: {
+  origem: 'projeto' | 'venda_manual'
+  origem_id: string
+  projeto_id: string | null
+  kit_passa_caixa: boolean | null
+  valor_venda: number
+  condicao: Record<string, any>
+  linhas: LinhaProgramada[]
+}): Promise<R<{ criados: number }>> {
+  const { supabase, user, ok } = await admin()
+  if (!ok || !user) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  const linhas = e.linhas.filter((l) => l.valor > 0)
+  if (!linhas.some((l) => l.direcao === 'entrada')) return { erro: 'Programe pelo menos um recebimento' }
+  if (linhas.some((l) => !/^\d{4}-\d{2}-\d{2}$/.test(l.data))) return { erro: 'Tem linha sem data válida' }
+
+  const { data: prog, error } = await supabase.from('fluxo_programacoes').insert({
+    origem: e.origem, origem_id: e.origem_id, situacao: 'programado',
+    kit_passa_caixa: e.kit_passa_caixa, valor_venda: arred(e.valor_venda),
+    condicao: e.condicao || {}, criado_por: user.id,
+  }).select('id').single()
+  if (error || !prog) {
+    if (error?.code === '23505') return { erro: 'Essa venda já foi programada' }
+    return { erro: erroTabela(error?.message || 'Falha ao programar') }
+  }
+
+  const { error: e2 } = await supabase.from('fluxo_lancamentos').insert(linhas.map((l) => ({
+    direcao: l.direcao, grupo: l.grupo, descricao: l.descricao.trim() || GRUPOS[l.grupo].rotulo,
+    valor_previsto: arred(l.valor), data_prevista: l.data,
+    forma_pagamento: l.forma_pagamento || null,
+    parcela_num: l.parcela_num ?? null, parcelas_total: l.parcelas_total ?? null,
+    projeto_id: e.projeto_id, programacao_id: prog.id, lote_id: prog.id,
+    origem: e.origem, detalhes: l.detalhes || {}, criado_por: user.id,
+  })))
+  if (e2) {
+    await supabase.from('fluxo_programacoes').delete().eq('id', prog.id)
+    return { erro: erroTabela(e2.message) }
+  }
+  revalidar()
+  return { sucesso: true, criados: linhas.length }
+}
+
+/** Venda antiga já liquidada fora do sistema: sai da lista "A programar". */
+export async function ignorarVendaAction(origem: 'projeto' | 'venda_manual', origem_id: string, valor_venda: number): Promise<R> {
+  const { supabase, user, ok } = await admin()
+  if (!ok || !user) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  const { error } = await supabase.from('fluxo_programacoes').insert({
+    origem, origem_id, situacao: 'ignorado', valor_venda: arred(valor_venda), criado_por: user.id,
+  })
+  if (error && error.code !== '23505') return { erro: erroTabela(error.message) }
+  revalidar()
+  return { sucesso: true }
+}
+
+/** Refaz a programação: apaga previstos da venda (só se nada foi efetivado) e ela volta pra "A programar". */
+export async function desfazerProgramacaoAction(programacaoId: string): Promise<R> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  const { count } = await supabase.from('fluxo_lancamentos').select('id', { count: 'exact', head: true })
+    .eq('programacao_id', programacaoId).not('data_realizada', 'is', null)
+  if ((count || 0) > 0) return { erro: `Já tem ${count} lançamento(s) efetivado(s) nessa venda. Ajuste linha a linha na aba Lançamentos.` }
+  const { error } = await supabase.from('fluxo_programacoes').delete().eq('id', programacaoId)
+  if (error) return { erro: erroTabela(error.message) }
+  revalidar()
+  return { sucesso: true }
+}
+
+// ─── Cadastros de apoio ─────────────────────────────────────────────────────
+
+export async function salvarFornecedorAction(f: {
+  id?: string; razao_social: string; nome_fantasia?: string | null; cnpj?: string | null
+  categoria?: string | null; contato_telefone?: string | null; ativo?: boolean
+}): Promise<R<{ id: string }>> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin cadastra fornecedor' }
+  if (!f.razao_social?.trim()) return { erro: 'Informe a razão social / nome do fornecedor' }
+  const dados = {
+    razao_social: f.razao_social.trim(),
+    nome_fantasia: f.nome_fantasia?.trim() || null,
+    cnpj: f.cnpj?.replace(/\D/g, '') || null,
+    categoria: f.categoria?.trim() || null,
+    contato_telefone: f.contato_telefone?.replace(/\D/g, '') || null,
+    ativo: f.ativo !== false,
+    updated_at: new Date().toISOString(),
+  }
+  const { data, error } = f.id
+    ? await supabase.from('fornecedores').update(dados).eq('id', f.id).select('id').single()
+    : await supabase.from('fornecedores').insert(dados).select('id').single()
+  if (error || !data) return { erro: error?.message || 'Falha ao salvar fornecedor' }
+  revalidar()
+  return { sucesso: true, id: data.id }
+}
+
+export async function criarCategoriaAction(nome: string, tipo: 'receita' | 'despesa'): Promise<R<{ id: string }>> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin cria categoria' }
+  const n = nome.trim()
+  if (n.length < 2) return { erro: 'Nome da categoria muito curto' }
+  const { data: existe } = await supabase.from('categorias_financeiras').select('id').ilike('nome', n).eq('tipo', tipo).maybeSingle()
+  if (existe) return { sucesso: true, id: existe.id }
+  const { data, error } = await supabase.from('categorias_financeiras').insert({ nome: n, tipo }).select('id').single()
+  if (error || !data) return { erro: error?.message || 'Falha ao criar categoria' }
+  revalidar()
+  return { sucesso: true, id: data.id }
+}
+
+export async function salvarConfigFluxoAction(c: {
+  saldo_inicial: number; data_inicio: string; reserva_minima: number; regime_imposto: 'competencia' | 'caixa'
+}): Promise<R> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(c.data_inicio || '')) return { erro: 'Data de início inválida' }
+  const { error } = await supabase.from('fluxo_config').upsert({
+    singleton: true,
+    saldo_inicial: arred(c.saldo_inicial || 0),
+    data_inicio: c.data_inicio,
+    reserva_minima: arred(Math.max(0, c.reserva_minima || 0)),
+    regime_imposto: c.regime_imposto === 'caixa' ? 'caixa' : 'competencia',
+    atualizado_em: new Date().toISOString(),
+  })
+  if (error) return { erro: erroTabela(error.message) }
+  revalidar()
+  return { sucesso: true }
+}

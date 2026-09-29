@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ModuloHub } from '@/components/ModuloHub'
+import { carregarFluxo } from '@/lib/financeiro/dados'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,6 +41,16 @@ export default async function FinanceiroHubPage() {
     supabase.from('contas_pagar').select('id', { count: 'exact', head: true }).eq('status', 'aberta').lt('data_vencimento', hojeYMD),
   ])
 
+  // Fluxo de caixa: vendas aguardando programação + previstos atrasados (silencioso sem a migration 127)
+  const fluxo = { pendentes: 0, atrasados: 0 }
+  try {
+    const dados = await carregarFluxo()
+    if (!('erro' in dados)) {
+      fluxo.pendentes = dados.pendentes.length
+      fluxo.atrasados = dados.lancamentos.filter((l) => !l.data_realizada && l.data_prevista < hojeYMD).length
+    }
+  } catch {}
+
   return (
     <ModuloHub
       titulo="Financeiro"
@@ -75,12 +86,18 @@ export default async function FinanceiroHubPage() {
           emBreve: true,
         },
         {
+          // Kalebe 2026-09-29: fluxo de caixa previsto × realizado
           href: '/financeiro/fluxo-caixa',
           emoji: '📊',
           titulo: 'Fluxo de Caixa',
-          desc: 'Projeção 30/60/90 dias com gráfico.',
+          desc: 'Previsto × realizado, custos e despesas, passivo bancário, impostos, capital de giro e fornecedores — integrado às vendas.',
+          stats: fluxo.pendentes > 0 || fluxo.atrasados > 0 ? (
+            <div className="mt-3 pt-2 border-t border-white/10 flex gap-3">
+              <div><span className="text-xl font-black text-sol">{fluxo.pendentes}</span><span className="text-[10px] uppercase text-white/50 ml-1">vendas a programar</span></div>
+              <div><span className="text-xl font-black text-coral">{fluxo.atrasados}</span><span className="text-[10px] uppercase text-white/50 ml-1">atrasados</span></div>
+            </div>
+          ) : undefined,
           restrito: true,
-          emBreve: true,
         },
         {
           href: '/financeiro/dre',
