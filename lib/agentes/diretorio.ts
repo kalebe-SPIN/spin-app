@@ -341,16 +341,27 @@ export async function avisarUsuario(entrada: {
         ? await findOrCreateConversaAtiva(admin, contato.id, { status_inicial: 'em_atendimento' })
         : null
       if (!conv) throw new Error('Falha ao abrir conversa WhatsApp')
-      const texto = `🔔 *Aviso interno${entrada.urgente ? ' — URGENTE' : ''}*${entrada.titulo ? `\n*${entrada.titulo}*` : ''}\n${mensagem}`
-      const r: any = await enviarTextoPeloCanal({
-        conversa_id: conv.id,
-        telefone: tel,
-        texto,
-        remetente_agente: entrada.agente,
-        origem_agente_nome: NOME_AGENTE[entrada.agente],
-      })
-      if (r?.sucesso) whatsapp_status = 'enviado'
-      else { whatsapp_status = 'falhou'; whatsapp_erro = r?.erro || 'Falha no envio' }
+      // Kalebe 2026-09-29: quem é da equipe quase nunca escreve pro número da
+      // Spin → janela de 24h fechada → a Meta recusava ("Re-engagement message")
+      // e o inbox enchia de falha. Sem janela, fica só no sino do portal.
+      const { data: janela } = await admin
+        .from('wa_conversas').select('janela_24h_expira_em').eq('id', conv.id).maybeSingle()
+      const janelaAberta = !!janela?.janela_24h_expira_em && new Date(janela.janela_24h_expira_em) > new Date()
+      if (!janelaAberta) {
+        whatsapp_status = 'janela_fechada'
+        whatsapp_erro = 'Janela de 24h fechada — sai pelo WhatsApp quando houver modelo aprovado ou a pessoa escrever pro número da Spin'
+      } else {
+        const texto = `🔔 *Aviso interno${entrada.urgente ? ' — URGENTE' : ''}*${entrada.titulo ? `\n*${entrada.titulo}*` : ''}\n${mensagem}`
+        const r: any = await enviarTextoPeloCanal({
+          conversa_id: conv.id,
+          telefone: tel,
+          texto,
+          remetente_agente: entrada.agente,
+          origem_agente_nome: NOME_AGENTE[entrada.agente],
+        })
+        if (r?.sucesso) whatsapp_status = 'enviado'
+        else { whatsapp_status = 'falhou'; whatsapp_erro = r?.erro || 'Falha no envio' }
+      }
     } catch (e: any) {
       whatsapp_status = 'falhou'
       whatsapp_erro = e?.message || 'Falha no envio'

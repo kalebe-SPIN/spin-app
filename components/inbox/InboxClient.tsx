@@ -491,6 +491,12 @@ function ItemConversa({ c, selecionada, onClick }: {
         }`}>
           {status}
         </span>
+        {/* Kalebe 2026-09-29: conversa com alguém da equipe (avisos internos) ≠ cliente */}
+        {(c.contato?.tipo === 'colaborador' || c.contato?.tipo === 'representante') && (
+          <span className="text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded bg-weg-azul/15 text-weg-azul">
+            👥 Equipe
+          </span>
+        )}
         {c.responsavel && (
           <span className="text-[10px] text-white/50 truncate">
             👤 {c.responsavel.nome_completo?.split(' ')[0]}
