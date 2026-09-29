@@ -692,6 +692,20 @@ export async function enviarPropostaPeloCanalAction(entrada: {
   return { sucesso: true, conversa_id: canal.conversa_id }
 }
 
+/**
+ * Janela de 24h aberta? (cliente mandou mensagem pro número da Spin nas
+ * últimas 24h). Fora dela a Meta aceita o envio e falha depois — então a
+ * tela checa antes. Kalebe 2026-09-29.
+ */
+export async function janelaAbertaAction(conversa_id: string): Promise<{ aberta: boolean } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const { data: conv } = await createAdminClient()
+    .from('wa_conversas').select('janela_24h_expira_em').eq('id', conversa_id).maybeSingle()
+  if (!conv) return { erro: 'Conversa não encontrada' }
+  return { aberta: !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date() }
+}
+
 /** Contato + conversa do cliente do projeto (cria se não existir). */
 async function garantirCanalDoProjeto(
   admin: ReturnType<typeof createAdminClient>,

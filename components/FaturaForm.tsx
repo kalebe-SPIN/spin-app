@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { salvarAnaliseFaturaAction } from '@/app/projetos/[id]/fatura/actions'
 import { HistoricoConsumo } from '@/components/HistoricoConsumo'
 import { BalancoCreditosGD } from '@/components/BalancoCreditosGD'
+import { GraficoConsumoInjetado, ordemCronologica } from '@/components/GraficoConsumoInjetado'
+import { CompartilharBalancoCliente } from '@/components/CompartilharBalancoCliente'
 import { fmtNum } from '@/lib/formatters'
 import { createClient } from '@/lib/supabase/client'
 
@@ -196,7 +198,7 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
       uc: analise.uc || 'Principal',
       titular: analise.razao_social || 'UC Principal',
       cor: '#F5B400', // amarelo Spin
-      historico: analise.historico_12_meses || [],
+      historico: ordemCronologica(analise.historico_12_meses || []),
       media: analise.consumo_medio_12m_kwh || analise.consumo_mes_kwh || 0,
       tipo_ligacao: analise.tipo_ligacao || null,
       grupo: analise.grupo || null,
@@ -207,7 +209,7 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
         uc: b.uc || `#${b.ordem}`,
         titular: b.titular || `Beneficiária ${b.ordem}`,
         cor: b.cor_grafico,
-        historico: b.analise.historico_12_meses || [],
+        historico: ordemCronologica(b.analise.historico_12_meses || []),
         media: b.analise.consumo_medio_12m_kwh || b.analise.consumo_mes_kwh || 0,
         tipo_ligacao: b.analise.tipo_ligacao || null,
         grupo: b.analise.grupo || null,
@@ -215,6 +217,9 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
   ] : []
 
   const consumoMedioTotal = historiasConsolidadas.reduce((sum, h) => sum + (h.media || 0), 0)
+  // Injeção da geradora na mesma ordem (cronológica) dos meses do gráfico
+  const injetadoPorMes: Array<number | null> = (historiasConsolidadas[0]?.historico || []).map((h: any) =>
+    h?.injetado_kwh === null || h?.injetado_kwh === undefined ? null : Number(h.injetado_kwh))
 
   return (
     <div className="space-y-6">
@@ -465,16 +470,23 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
               Total médio: <strong className="text-sol">{Math.round(consumoMedioTotal)} kWh/mês</strong>
             </p>
           </div>
-          <HistoricoConsumoMulti
-            series={historiasConsolidadas}
-            injetado={(analise.historico_12_meses || []).map((h: any) =>
-              h?.injetado_kwh === null || h?.injetado_kwh === undefined ? null : Number(h.injetado_kwh))}
-          />
+          <HistoricoConsumoMulti series={historiasConsolidadas} injetado={injetadoPorMes} />
           {/* Kalebe 2026-09-29: quem já gera e quer ampliar — injetado × consumo */}
           <div className="mt-3">
             <BalancoCreditosGD
               series={historiasConsolidadas}
               geracao={analise.geracao || null}
+              temGeracao={!!analise.tem_geracao_propria}
+            />
+          </div>
+          {/* Imagem do gráfico + balanço pro cliente, enviada pelo inbox */}
+          <div className="mt-3">
+            <CompartilharBalancoCliente
+              projetoId={projetoId}
+              nomeCliente={analise.razao_social || ''}
+              uc={analise.uc || ''}
+              series={historiasConsolidadas}
+              injetado={injetadoPorMes}
               temGeracao={!!analise.tem_geracao_propria}
             />
           </div>
@@ -894,94 +906,7 @@ function HistoricoConsumoMulti({ series, injetado }: {
       </div>
 
       {/* Gráfico multi-linha (+ barras do injetado quando a UC já gera) */}
-      <MultiLinhaSVG series={seriesValidas} injetado={temInjetado ? injetado : undefined} />
-    </div>
-  )
-}
-
-function MultiLinhaSVG({ series, injetado }: {
-  series: Array<{ uc: string; cor: string; historico: any[]; media: number }>
-  injetado?: Array<number | null>
-}) {
-  const W = 720, H = 260
-  const paddingLeft = 48, paddingRight = 16, paddingTop = 24, paddingBottom = 40
-  const plotW = W - paddingLeft - paddingRight
-  const plotH = H - paddingTop - paddingBottom
-
-  const todosPontos = [
-    ...series.flatMap(s => s.historico.map(h => Number(h.consumo_kwh) || 0)),
-    ...(injetado || []).map((v) => Number(v) || 0),
-  ]
-  const maxKwh = Math.max(...todosPontos, 0) * 1.1
-  const nMeses = Math.max(...series.map(s => s.historico.length))
-  const larguraBarra = Math.max(8, Math.min(28, (plotW / Math.max(nMeses, 1)) * 0.45))
-
-  const yPixel = (kwh: number) => paddingTop + plotH - (maxKwh > 0 ? (kwh / maxKwh) * plotH : 0)
-  const xPixel = (idx: number) => paddingLeft + (nMeses > 1 ? (idx / (nMeses - 1)) * plotW : plotW / 2)
-  const yTicks = [0, 0.33, 0.66, 1].map(f => Math.round(maxKwh * f))
-
-  // Média consolidada = soma das médias
-  const mediaConsolidada = series.reduce((sum, s) => sum + s.media, 0)
-
-  return (
-    <div className="overflow-x-auto bg-white/[0.03] border border-white/10 rounded-lg p-4">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto min-w-[600px]">
-        {/* Grid + labels Y */}
-        {yTicks.map((tick, i) => (
-          <g key={i}>
-            <line x1={paddingLeft} y1={yPixel(tick)} x2={W - paddingRight} y2={yPixel(tick)} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-            <text x={paddingLeft - 8} y={yPixel(tick) + 4} fontSize="10" fill="rgba(255,255,255,0.4)" textAnchor="end" fontFamily="system-ui">
-              {tick}
-            </text>
-          </g>
-        ))}
-
-        {/* Injetado na rede (barras atrás das linhas de consumo) */}
-        {(injetado || []).map((v, i) => (v !== null && v > 0 ? (
-          <g key={`inj-${i}`}>
-            <rect
-              x={xPixel(i) - larguraBarra / 2} y={yPixel(v)}
-              width={larguraBarra} height={Math.max(0, yPixel(0) - yPixel(v))}
-              fill="rgba(95,207,128,0.28)" stroke="#5FCF80" strokeWidth="1" rx="2"
-            />
-            <text x={xPixel(i)} y={yPixel(v) - 4} fontSize="9" fill="#5FCF80" textAnchor="middle" fontFamily="system-ui">
-              {fmtNum(v, 0)}
-            </text>
-          </g>
-        ) : null))}
-
-        {/* Linha média consolidada */}
-        {mediaConsolidada > 0 && (
-          <>
-            <line x1={paddingLeft} y1={yPixel(mediaConsolidada)} x2={W - paddingRight} y2={yPixel(mediaConsolidada)} stroke="#FFB94D" strokeWidth="2" strokeDasharray="6 4" />
-            <text x={W - paddingRight - 4} y={yPixel(mediaConsolidada) - 6} fontSize="10" fill="#FFB94D" textAnchor="end" fontWeight="bold" fontFamily="system-ui">
-              Média consolidada — {Math.round(mediaConsolidada)} kWh
-            </text>
-          </>
-        )}
-
-        {/* Cada série (UC) uma linha */}
-        {series.map((s, si) => {
-          const path = s.historico
-            .map((h, i) => `${i === 0 ? 'M' : 'L'} ${xPixel(i)} ${yPixel(Number(h.consumo_kwh) || 0)}`)
-            .join(' ')
-          return (
-            <g key={si}>
-              <path d={path} fill="none" stroke={s.cor} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-              {s.historico.map((h, i) => (
-                <circle key={i} cx={xPixel(i)} cy={yPixel(Number(h.consumo_kwh) || 0)} r="3.5" fill={s.cor} stroke="#0B0F1A" strokeWidth="1.5" />
-              ))}
-            </g>
-          )
-        })}
-
-        {/* Labels do eixo X (usar meses da série principal) */}
-        {series[0]?.historico.map((h, i) => (
-          <text key={i} x={xPixel(i)} y={H - paddingBottom + 16} fontSize="10" fill="rgba(255,255,255,0.5)" textAnchor="middle" fontFamily="system-ui">
-            {h.mes_ano}
-          </text>
-        ))}
-      </svg>
+      <GraficoConsumoInjetado series={seriesValidas} injetado={temInjetado ? injetado : undefined} />
     </div>
   )
 }
