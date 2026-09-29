@@ -11,6 +11,7 @@ import {
 } from '@/lib/whatsapp/conversas'
 import { processarMensagemQualificacao } from '@/lib/whatsapp/agente-qualificacao'
 import { baixarESalvarMidiaWa } from '@/lib/whatsapp/midia'
+import { extrairCartoes, textoDosCartoes, salvarContatosNoProjeto } from '@/lib/whatsapp/contatos-projeto'
 import { aceitarLead } from '@/lib/whatsapp/broadcast'
 import { getWaConfig } from '@/lib/whatsapp/config'
 
@@ -174,8 +175,16 @@ export async function POST(req: NextRequest) {
           const from = msg.from // telefone sem +
           const texto = msg.text?.body || msg.button?.text || '[mídia não-texto]'
 
+          // Reação (👍 numa mensagem) não é mensagem nova — não grava nem aciona agente
+          if (msg.type === 'reaction') continue
+
           // Sprint 1: modelo canônico de conversa
-          const tipoMsg: any = msg.type || 'text'
+          // Kalebe 2026-09-29: tipos fora da lista caíam no CHECK do banco e a
+          // mensagem sumia (cartão de contato, localização…). Migration 124.
+          const TIPOS_ACEITOS = ['text', 'audio', 'image', 'video', 'document', 'interactive', 'contacts', 'location', 'sticker', 'button']
+          const tipoMsg: any = TIPOS_ACEITOS.includes(msg.type) ? msg.type : (msg.type ? 'unsupported' : 'text')
+          const cartoes = tipoMsg === 'contacts' ? extrairCartoes(msg) : []
+          const loc = tipoMsg === 'location' ? msg.location : null
           const contato = await upsertContato(supabaseAdmin, {
             telefone: from,
             nome_exibicao: nomeExibicaoPorTelefone[normalizarTelefone(from)] || null,
@@ -201,21 +210,41 @@ export async function POST(req: NextRequest) {
                   nome_original: midiaObj.filename || null,
                 })
               }
-              await gravarMensagem(supabaseAdmin, {
+              const mensagemId = await gravarMensagem(supabaseAdmin, {
                 conversa_id: conversaId,
                 direcao: 'inbound',
                 tipo: tipoMsg === 'text' ? 'text' : tipoMsg,
                 // Pra documento sem legenda, guarda o nome do arquivo como texto
                 // pra o inbox mostrar algo útil ao invés de "[mídia não-texto]"
                 texto: msg.text?.body || msg.button?.text
-                  || (tipoMsg === 'document' ? (midiaObj.filename || null) : null),
+                  || msg.interactive?.button_reply?.title
+                  || (tipoMsg === 'document' ? (midiaObj.filename || null) : null)
+                  || (cartoes.length ? textoDosCartoes(cartoes) : null)
+                  || (loc ? `📍 ${[loc.name, loc.address].filter(Boolean).join(' — ') || 'Localização'}` : null)
+                  || (tipoMsg === 'unsupported' ? `[${msg.type}]` : null),
                 meta_message_id: msg.id || null,
                 midia_url: midiaSalva?.midia_url || null,
                 midia_meta_id: midiaObj.id || null,
                 midia_mime: midiaSalva?.midia_mime || midiaObj.mime_type || null,
                 midia_duracao_seg: tipoMsg === 'audio' ? Number(midiaObj.voice_duration || 0) || null : null,
                 status_entrega: 'lida',
+                ...(cartoes.length ? { dados: { contatos: cartoes } } : {}),
+                ...(loc ? { dados: { latitude: loc.latitude, longitude: loc.longitude, nome: loc.name || null, endereco: loc.address || null } } : {}),
               })
+
+              // Cartão de contato (ex.: o decisor) → salva no projeto da conversa
+              if (cartoes.length && contato) {
+                const { data: c } = await supabaseAdmin
+                  .from('wa_contatos').select('projeto_id').eq('id', contato.id).maybeSingle()
+                if (c?.projeto_id) {
+                  await salvarContatosNoProjeto(supabaseAdmin, {
+                    projeto_id: c.projeto_id,
+                    contatos: cartoes,
+                    origem: 'whatsapp_cartao',
+                    wa_mensagem_id: mensagemId,
+                  }).catch((e) => console.error('[webhook contatos-projeto]', e))
+                }
+              }
             }
           }
 

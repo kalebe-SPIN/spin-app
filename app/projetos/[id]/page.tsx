@@ -11,6 +11,7 @@ import { ItensPropostaCard } from '@/components/ItensPropostaCard'
 import { AcoesRapidasCard } from '@/components/AcoesRapidasCard'
 import { BotaoAbrirCanalCliente } from '@/components/BotaoAbrirCanalCliente'
 import { ConversaClienteCard } from '@/components/ConversaClienteCard'
+import { ContatosProjetoCard } from '@/components/ContatosProjetoCard'
 import { ValorItemManual } from '@/components/ValorItemManual'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
@@ -195,6 +196,8 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
           clienteId={projeto.cliente_id}
           clienteTelefone={projeto.cliente_telefone || null}
         />
+        {/* Kalebe 2026-09-29: decisor/financeiro repassados pelo cliente */}
+        <ContatosProjetoCard projetoId={projeto.id} />
 
         {/* Card CRM — mudar etapa (adaptativo: se só serviço, pula passos FV) */}
         <div className="mb-6">

@@ -60,7 +60,7 @@ export async function RelacionamentoCard({ projetoId, clienteId, clienteTelefone
     conversaId
       ? supabase
           .from('wa_mensagens')
-          .select('id, direcao, tipo, texto, criada_em, status_entrega, remetente:remetente_id(nome_completo), origem_agente_nome')
+          .select('id, direcao, tipo, texto, criada_em, status_entrega, midia_url, midia_mime, remetente:remetente_id(nome_completo), origem_agente_nome')
           .eq('conversa_id', conversaId)
           .order('criada_em', { ascending: false })
           .limit(15)

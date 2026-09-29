@@ -3,7 +3,6 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { enviarTextoAction, iniciarChamadaAction } from '@/app/inbox/actions'
 import {
   criarEventoAction,
   criarTarefaAction,
@@ -13,6 +12,7 @@ import {
   mudarStatusTarefaAction,
 } from '@/app/agenda/actions'
 import { ChatEquipeModal } from '@/components/ChatEquipeModal'
+import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 
 export type Responsavel = { id: string; nome: string; role: string }
 
@@ -84,50 +84,7 @@ export function RelacionamentoDuasColunas({ dados }: { dados: DadosRelacionament
 // ═══════════════════════════════════════════════════════════════
 function ColunaWhatsApp({ dados }: { dados: DadosRelacionamento }) {
   const router = useRouter()
-  const [texto, setTexto] = useState('')
-  const [enviando, startEnviando] = useTransition()
-  const [chamando, startChamando] = useTransition()
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
-
-  function enviar() {
-    setMsg(null)
-    if (!dados.conversaId) {
-      setMsg({ tipo: 'erro', texto: 'Cliente sem telefone. Cadastre um WhatsApp na seção Cliente.' })
-      return
-    }
-    const t = texto.trim()
-    if (!t) return
-    startEnviando(async () => {
-      const r = await enviarTextoAction({ conversa_id: dados.conversaId!, texto: t })
-      if ('erro' in r) {
-        setMsg({ tipo: 'erro', texto: r.erro })
-        return
-      }
-      setTexto('')
-      setMsg({ tipo: 'ok', texto: '✓ Enviada' })
-      router.refresh()
-    })
-  }
-
-  function iniciarChamada(midia: 'voz' | 'video') {
-    if (!dados.conversaId) {
-      setMsg({ tipo: 'erro', texto: 'Cliente sem telefone.' })
-      return
-    }
-    setMsg(null)
-    startChamando(async () => {
-      const r = await iniciarChamadaAction({ conversa_id: dados.conversaId!, tipo: midia })
-      if ('erro' in r) {
-        setMsg({ tipo: 'erro', texto: r.erro })
-        return
-      }
-      if (r.url_sala) {
-        window.open(r.url_sala, '_blank', 'noopener,noreferrer')
-      }
-      setMsg({ tipo: 'ok', texto: `📞 ${midia === 'video' ? 'Videochamada' : 'Chamada'} iniciada` })
-      router.refresh()
-    })
-  }
 
   return (
     <div className="p-4 flex flex-col h-[520px]">
@@ -139,35 +96,15 @@ function ColunaWhatsApp({ dados }: { dados: DadosRelacionamento }) {
             {dados.telefoneCliente || 'sem telefone'}
           </span>
         </h3>
-        <div className="flex gap-1">
-          <button
-            type="button"
-            onClick={() => iniciarChamada('voz')}
-            disabled={chamando || !dados.conversaId}
-            title="Chamada de voz via Jitsi"
-            className="w-8 h-8 flex items-center justify-center rounded bg-verde/10 border border-verde/30 hover:bg-verde/20 disabled:opacity-30 transition"
+        {dados.conversaId && (
+          <Link
+            href={`/inbox?c=${dados.conversaId}`}
+            title="Abrir conversa completa no inbox"
+            className="text-[10px] text-white/50 hover:text-white uppercase tracking-wider font-bold"
           >
-            📞
-          </button>
-          <button
-            type="button"
-            onClick={() => iniciarChamada('video')}
-            disabled={chamando || !dados.conversaId}
-            title="Videochamada via Jitsi"
-            className="w-8 h-8 flex items-center justify-center rounded bg-verde/10 border border-verde/30 hover:bg-verde/20 disabled:opacity-30 transition"
-          >
-            🎥
-          </button>
-          {dados.conversaId && (
-            <Link
-              href={`/inbox?c=${dados.conversaId}`}
-              title="Abrir conversa completa no inbox"
-              className="w-8 h-8 flex items-center justify-center rounded bg-white/5 border border-white/10 hover:bg-white/10 text-white/70 transition"
-            >
-              ↗
-            </Link>
-          )}
-        </div>
+            Inbox ↗
+          </Link>
+        )}
       </div>
 
       {/* Feed de mensagens — cresce mas rola dentro, não muda altura do card */}
@@ -180,7 +117,7 @@ function ColunaWhatsApp({ dados }: { dados: DadosRelacionamento }) {
         ) : dados.mensagens.length === 0 ? (
           <p className="text-xs text-white/40 text-center py-8">
             Nenhuma mensagem trocada ainda.<br />
-            <span className="text-[10px] text-white/30">Digita abaixo pra iniciar.</span>
+            <span className="text-[10px] text-white/30">Escreve abaixo pra iniciar.</span>
           </p>
         ) : (
           dados.mensagens.map((m: any) => (
@@ -189,32 +126,24 @@ function ColunaWhatsApp({ dados }: { dados: DadosRelacionamento }) {
         )}
       </div>
 
-      {/* Input + enviar */}
+      {/* Kalebe 2026-09-29: mesma caixa do inbox — anexo, agenda da Bianca,
+          áudio gravado, ligação e vídeo, ícones brancos minimalistas */}
       <div className="space-y-2 flex-shrink-0">
         {msg && (
           <p className={`text-[10px] text-center ${msg.tipo === 'ok' ? 'text-verde' : 'text-coral'}`}>
             {msg.texto}
           </p>
         )}
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }}
-            placeholder={dados.conversaId ? 'Escrever mensagem...' : 'Cliente sem telefone'}
-            disabled={enviando || !dados.conversaId}
-            className="flex-1 px-3 py-2 bg-white/5 border border-white/15 rounded text-sm text-white placeholder-white/30 focus:outline-none focus:border-verde disabled:opacity-40"
+        {dados.conversaId ? (
+          <ComposerWhatsApp
+            obterConversaId={async () => dados.conversaId}
+            placeholder="Mensagem pro cliente"
+            onEnviado={() => { setMsg(null); router.refresh() }}
+            onErro={(e) => setMsg(e ? { tipo: 'erro', texto: e } : null)}
           />
-          <button
-            type="button"
-            onClick={enviar}
-            disabled={enviando || !texto.trim() || !dados.conversaId}
-            className="px-4 py-2 bg-verde text-white text-xs font-bold rounded hover:bg-verde/90 disabled:opacity-30 transition"
-          >
-            {enviando ? '...' : 'Enviar'}
-          </button>
-        </div>
+        ) : (
+          <p className="text-[10px] text-white/40 text-center">Cadastre o WhatsApp do cliente pra conversar por aqui.</p>
+        )}
       </div>
     </div>
   )
@@ -226,6 +155,7 @@ function MensagemBubble({ msg }: { msg: any }) {
     inbound
       ? 'Cliente'
       : msg.origem_agente_nome || msg.remetente?.nome_completo || 'Spin'
+  const url: string | null = msg.midia_url || null
   return (
     <div className={`flex ${inbound ? 'justify-start' : 'justify-end'}`}>
       <div
@@ -237,9 +167,24 @@ function MensagemBubble({ msg }: { msg: any }) {
           <span className="text-[9px] uppercase font-bold text-white/40">{remetente}</span>
           <span className="text-[9px] text-white/30 whitespace-nowrap">{fmtHora(msg.criada_em)}</span>
         </div>
-        <p className="text-xs text-white/90 break-words">
-          {msg.texto || `[${msg.tipo}]`}
-        </p>
+        {msg.tipo === 'audio' && url ? (
+          <audio controls src={url} className="max-w-full h-8" />
+        ) : (msg.tipo === 'image' || msg.tipo === 'sticker') && url ? (
+          <a href={url} target="_blank" rel="noreferrer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt="imagem" className="max-w-[180px] max-h-[180px] rounded" loading="lazy" />
+          </a>
+        ) : msg.tipo === 'video' && url ? (
+          <video controls src={url} className="max-w-[200px] max-h-[200px] rounded" />
+        ) : msg.tipo === 'document' && url ? (
+          <a href={url} target="_blank" rel="noreferrer" className="text-xs text-white/90 underline break-all">
+            📄 {msg.texto || 'documento'}
+          </a>
+        ) : (
+          <p className="text-xs text-white/90 break-words whitespace-pre-wrap">
+            {msg.texto || `[${msg.tipo}]`}
+          </p>
+        )}
       </div>
     </div>
   )

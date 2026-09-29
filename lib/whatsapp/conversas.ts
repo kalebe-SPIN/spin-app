@@ -115,6 +115,7 @@ export async function findOrCreateConversaAtiva(
 
 type TipoMsg =
   | 'text' | 'audio' | 'image' | 'video' | 'document' | 'template' | 'system' | 'interactive'
+  | 'contacts' | 'location' | 'sticker' | 'button' | 'unsupported'   // migration 124
 
 /**
  * Grava uma mensagem em wa_mensagens. Idempotente por meta_message_id.
@@ -138,6 +139,8 @@ export async function gravarMensagem(
     status_entrega?: 'pendente' | 'enviada' | 'entregue' | 'lida' | 'falhou'
     bianca_comunicacao_id?: string | null
     criada_em?: string
+    /** Conteúdo estruturado (cartão de contato, localização) — migration 124 */
+    dados?: any
   },
 ): Promise<string | null> {
   // Dedup por meta_message_id
@@ -168,6 +171,8 @@ export async function gravarMensagem(
       status_entrega: entrada.status_entrega || (entrada.direcao === 'inbound' ? 'lida' : 'pendente'),
       bianca_comunicacao_id: entrada.bianca_comunicacao_id ?? null,
       criada_em: entrada.criada_em || new Date().toISOString(),
+      // Só manda a coluna quando tem conteúdo (não quebra antes da migration 124)
+      ...(entrada.dados !== undefined ? { dados: entrada.dados } : {}),
     })
     .select('id')
     .single()

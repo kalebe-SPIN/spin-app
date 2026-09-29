@@ -4,6 +4,8 @@ import { useEffect, useState, useTransition, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { ModalProjetoConversa } from './ModalProjetoConversa'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
+import { cartoesDoTexto, telefonesNoTexto, formatarTelefoneExibicao } from '@/lib/whatsapp/contatos-projeto'
+import { contatosDoProjetoDaConversaAction, salvarContatoDaConversaAction } from '@/app/inbox/contatos-actions'
 import {
   listarConversasAction,
   listarMensagensAction,
@@ -72,6 +74,15 @@ export function InboxClient({
   const [filtro, setFiltro] = useState<'todas' | 'minhas' | 'sem_atendente' | 'nova'>('todas')
   const [modalAberto, setModalAberto] = useState(false)
   const [modalProjeto, setModalProjeto] = useState(false)
+  // Kalebe 2026-09-29: contatos do projeto (decisor etc.) repassados na conversa
+  const [contatosProj, setContatosProj] = useState<{ projeto_id: string | null; codigo: string | null; telefones: string[] }>({ projeto_id: null, codigo: null, telefones: [] })
+  const [contatoPraSalvar, setContatoPraSalvar] = useState<null | { nome: string; telefone: string; origem: 'whatsapp_cartao' | 'whatsapp_texto'; wa_mensagem_id: string }>(null)
+
+  async function carregarContatosProj(id: string | null) {
+    if (!id) { setContatosProj({ projeto_id: null, codigo: null, telefones: [] }); return }
+    const r = await contatosDoProjetoDaConversaAction(id)
+    if (!('erro' in r)) setContatosProj(r)
+  }
   const [novoTelefone, setNovoTelefone] = useState('')
   const [novoNome, setNovoNome] = useState('')
   const [isPending, startTransition] = useTransition()
@@ -138,6 +149,7 @@ export function InboxClient({
   useEffect(() => {
     if (selecionadaId) refreshMensagens(selecionadaId)
     else setMensagens([])
+    carregarContatosProj(selecionadaId)
   }, [selecionadaId])
 
   // Fallback refresh de 60s — cobre caso Realtime dropar.
@@ -346,7 +358,18 @@ export function InboxClient({
               {mensagens.length === 0 ? (
                 <p className="text-xs text-white/40 italic text-center py-8">Sem mensagens ainda.</p>
               ) : (
-                mensagens.map((m) => <BolhaMensagem key={m.id} m={m} />)
+                mensagens.map((m) => (
+                  <BolhaMensagem
+                    key={m.id}
+                    m={m}
+                    contatos={{
+                      temProjeto: !!contatosProj.projeto_id,
+                      telefonesSalvos: contatosProj.telefones,
+                      telefoneDaConversa: selecionada?.contato?.telefone || null,
+                      onSalvar: (c) => setContatoPraSalvar(c),
+                    }}
+                  />
+                ))
               )}
             </div>
 
@@ -374,7 +397,20 @@ export function InboxClient({
         <ModalProjetoConversa
           conversaId={selecionadaId}
           onFechar={() => setModalProjeto(false)}
-          onCriado={() => refreshConversas()}
+          onCriado={() => { refreshConversas(); carregarContatosProj(selecionadaId) }}
+        />
+      )}
+
+      {/* Modal — salvar contato repassado pelo cliente (ex.: decisor) no projeto */}
+      {contatoPraSalvar && selecionadaId && (
+        <ModalSalvarContato
+          conversaId={selecionadaId}
+          contato={contatoPraSalvar}
+          codigoProjeto={contatosProj.codigo}
+          temProjeto={!!contatosProj.projeto_id}
+          onFechar={() => setContatoPraSalvar(null)}
+          onSalvo={() => { setContatoPraSalvar(null); carregarContatosProj(selecionadaId) }}
+          onCriarProjeto={() => { setContatoPraSalvar(null); setModalProjeto(true) }}
         />
       )}
 
@@ -453,7 +489,118 @@ function ItemConversa({ c, selecionada, onClick }: {
   )
 }
 
-function BolhaMensagem({ m }: { m: Mensagem }) {
+function ModalSalvarContato({
+  conversaId, contato, codigoProjeto, temProjeto, onFechar, onSalvo, onCriarProjeto,
+}: {
+  conversaId: string
+  contato: { nome: string; telefone: string; origem: 'whatsapp_cartao' | 'whatsapp_texto'; wa_mensagem_id: string }
+  codigoProjeto: string | null
+  temProjeto: boolean
+  onFechar: () => void
+  onSalvo: () => void
+  onCriarProjeto: () => void
+}) {
+  const [nome, setNome] = useState(contato.nome)
+  const [papel, setPapel] = useState<'decisor' | 'financeiro' | 'tecnico' | 'outro'>('decisor')
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const inputCls = 'w-full bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none'
+
+  async function salvar() {
+    setSalvando(true); setErro(null)
+    try {
+      const r = await salvarContatoDaConversaAction({
+        conversa_id: conversaId, nome, telefone: contato.telefone, papel,
+        origem: contato.origem, wa_mensagem_id: contato.wa_mensagem_id,
+      })
+      if ('erro' in r) setErro(r.erro)
+      else onSalvo()
+    } finally { setSalvando(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onFechar}>
+      <div className="w-full max-w-sm bg-noite border border-white/15 rounded-xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-base font-bold text-white">📇 Salvar contato no projeto</h2>
+        {!temProjeto ? (
+          <>
+            <p className="text-sm text-white/70">Esta conversa ainda não tem projeto. Transforme em projeto primeiro — os cartões de contato que o cliente mandou entram junto.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={onFechar} className="px-4 py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg">Fechar</button>
+              <button onClick={onCriarProjeto} className="px-4 py-2 bg-verde text-noite font-bold text-sm rounded-lg">Transformar em projeto</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-white/50">
+              {formatarTelefoneExibicao(contato.telefone)} vai pros contatos do projeto {codigoProjeto || ''}.
+            </p>
+            <label className="block">
+              <span className="block text-[11px] font-bold text-white/60 mb-1">Nome</span>
+              <input value={nome} onChange={(e) => setNome(e.target.value)} className={inputCls} placeholder="Ex.: Marcos (sócio)" />
+            </label>
+            <label className="block">
+              <span className="block text-[11px] font-bold text-white/60 mb-1">Papel</span>
+              <select value={papel} onChange={(e) => setPapel(e.target.value as any)} className={inputCls}>
+                <option value="decisor" className="bg-noite">Decisor</option>
+                <option value="financeiro" className="bg-noite">Financeiro</option>
+                <option value="tecnico" className="bg-noite">Técnico</option>
+                <option value="outro" className="bg-noite">Outro</option>
+              </select>
+            </label>
+            {erro && <p className="text-xs text-coral">⚠ {erro}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={onFechar} className="px-4 py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg">Cancelar</button>
+              <button onClick={salvar} disabled={salvando || !nome.trim()} className="px-4 py-2 bg-verde text-noite font-bold text-sm rounded-lg disabled:opacity-50">
+                {salvando ? 'Salvando…' : 'Salvar'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+type ContextoContatos = {
+  temProjeto: boolean
+  telefonesSalvos: string[]
+  telefoneDaConversa: string | null
+  onSalvar: (c: { nome: string; telefone: string; origem: 'whatsapp_cartao' | 'whatsapp_texto'; wa_mensagem_id: string }) => void
+}
+
+/**
+ * Kalebe 2026-09-29: cliente repassa o contato do decisor (cartão de contato
+ * ou número digitado) → botão pra salvar nos contatos do projeto.
+ */
+function SalvarContatosDaMensagem({ m, contatos }: { m: Mensagem; contatos: ContextoContatos }) {
+  const candidatos = m.tipo === 'contacts'
+    ? cartoesDoTexto(m.texto).filter((c) => c.telefone).map((c) => ({ ...c, origem: 'whatsapp_cartao' as const }))
+    : m.tipo === 'text'
+      ? telefonesNoTexto(m.texto).map((t) => ({ nome: '', telefone: t, email: null, origem: 'whatsapp_texto' as const }))
+      : []
+  const lista = candidatos.filter((c) => c.telefone && c.telefone !== contatos.telefoneDaConversa)
+  if (lista.length === 0) return null
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {lista.map((c) => contatos.telefonesSalvos.includes(c.telefone!) ? (
+        <span key={c.telefone} className="text-[10px] text-verde">✓ {formatarTelefoneExibicao(c.telefone!)} nos contatos do projeto</span>
+      ) : (
+        <button
+          key={c.telefone}
+          type="button"
+          onClick={() => contatos.onSalvar({ nome: c.nome, telefone: c.telefone!, origem: c.origem, wa_mensagem_id: m.id })}
+          className="text-[10px] px-2 py-1 rounded-full bg-white/[0.06] border border-white/15 text-white/80 hover:bg-white/10"
+          title={contatos.temProjeto ? 'Salvar nos contatos do projeto' : 'Transforme a conversa em projeto primeiro'}
+        >
+          📇 Salvar {formatarTelefoneExibicao(c.telefone!)} no projeto
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function BolhaMensagem({ m, contatos }: { m: Mensagem; contatos?: ContextoContatos }) {
   const isInbound = m.direcao === 'inbound'
   // Kalebe 2026-09-25: mídia que não foi salva no Storage (grande demais,
   // tipo recusado, falha) pode ser baixada de novo da Meta por ~30 dias.
@@ -551,9 +698,28 @@ function BolhaMensagem({ m }: { m: Mensagem }) {
           ) : (
             semArquivo('🎬 vídeo')
           )
+        ) : m.tipo === 'contacts' ? (
+          <div className="space-y-1.5">
+            {cartoesDoTexto(m.texto).map((c, i) => (
+              <div key={i} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-white/[0.05] border border-white/10">
+                <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-sm font-bold text-white/80 shrink-0">
+                  {(c.nome[0] || '?').toUpperCase()}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-white truncate">{c.nome}</span>
+                  {c.telefone && <span className="block text-[11px] text-white/60 font-mono">{formatarTelefoneExibicao(c.telefone)}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : m.tipo === 'sticker' && midiaUrl ? (
+          <img src={midiaUrl} alt="figurinha" className="w-28 h-28 object-contain" loading="lazy" />
+        ) : m.texto ? (
+          <p className="text-sm text-white whitespace-pre-wrap break-words">{m.texto}</p>
         ) : (
           <p className="text-sm text-white italic">[{m.tipo}]</p>
         )}
+        {isInbound && contatos && <SalvarContatosDaMensagem m={m} contatos={contatos} />}
         <p className={`text-[10px] mt-1 flex items-center gap-1 ${isInbound ? 'text-white/40' : 'text-white/50 justify-end'}`}>
           <span>{hora}</span>
           {!isInbound && <span className={statusCor}>{statusIcon}</span>}

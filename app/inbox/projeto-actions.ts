@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getWaConfig } from '@/lib/whatsapp/config'
 import { formatarCpfCnpj, formatarTelefone } from '@/lib/formatters'
 import { TIPOS_ITEM, type TipoItem } from '@/lib/tipos-projeto'
+import { cartoesDoTexto, salvarContatosNoProjeto } from '@/lib/whatsapp/contatos-projeto'
 
 /**
  * Inbox → projeto (Kalebe 2026-09-29): botão na conversa transforma o
@@ -342,6 +343,23 @@ export async function criarProjetoDaConversaAction(input: {
     .update({ projeto_id: projetoId })
     .eq('conversa_id', conv.id)
     .is('projeto_id', null)
+
+  // Cartões de contato que o cliente mandou na conversa (ex.: o decisor) entram no projeto
+  try {
+    const { data: msgsCartao } = await admin
+      .from('wa_mensagens').select('id, texto').eq('conversa_id', conv.id).eq('tipo', 'contacts')
+    for (const mc of msgsCartao || []) {
+      await salvarContatosNoProjeto(admin, {
+        projeto_id: projetoId,
+        contatos: cartoesDoTexto(mc.texto),
+        origem: 'whatsapp_cartao',
+        wa_mensagem_id: mc.id,
+        criado_por: user.id,
+      })
+    }
+  } catch (e) {
+    console.error('[criarProjetoDaConversa] contatos do projeto', e)
+  }
 
   revalidatePath('/inbox')
   revalidatePath('/projetos')
