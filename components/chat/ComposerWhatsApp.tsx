@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { enviarTextoAction, enviarArquivoAction, iniciarChamadaAction } from '@/app/inbox/actions'
+import { enviarTextoAction, enviarArquivoAction, iniciarChamadaAction, janelaAbertaAction } from '@/app/inbox/actions'
 import { ModalAgendaBianca } from './ModalAgendaBianca'
 import {
   IconeClipe, IconeAgenda, IconeTelefone, IconeVideo, IconeMicrofone, IconeEnviar, IconeLixeira, IconeCarregando,
@@ -18,6 +18,10 @@ import {
  */
 
 const LIMITE_ARQUIVO = 4 * 1024 * 1024       // teto do corpo da requisição na Vercel
+
+export const MSG_JANELA_FECHADA =
+  'Não enviado: o cliente não mandou mensagem pro número da Spin nas últimas 24h, e aí o WhatsApp não entrega o que sai do sistema. ' +
+  'Mande a primeira mensagem pelo WhatsApp Business do celular ou do computador (ela aparece aqui) — quando o cliente responder, o inbox volta a enviar por 24h.'
 const LIMITE_AUDIO_S = 5 * 60
 
 export function ComposerWhatsApp({
@@ -62,6 +66,11 @@ export function ComposerWhatsApp({
     try {
       const id = await obterConversaId()
       if (!id) return
+      // Kalebe 2026-09-29: fora da janela de 24h a Meta aceita e recusa depois
+      // ("Re-engagement message") — confere antes e explica o que fazer.
+      const janela = await janelaAbertaAction(id)
+      if ('erro' in janela) { onErro(janela.erro); return }
+      if (!janela.aberta) { onErro(MSG_JANELA_FECHADA); return }
       await fn(id)
     } catch (e: any) {
       onErro(e?.message || 'Falha no envio')

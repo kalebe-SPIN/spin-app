@@ -325,6 +325,18 @@ export function InboxClient({
               </div>
             </div>
 
+            {/* Kalebe 2026-09-29: janela de 24h fechada — o que sai do sistema não
+                chega (Meta devolve "Re-engagement message"). Explica o caminho. */}
+            {(!selecionada.janela_24h_expira_em || new Date(selecionada.janela_24h_expira_em) < new Date()) && (
+              <div className="shrink-0 px-4 py-2.5 bg-sol/10 border-b border-sol/30 text-xs text-white/80">
+                🔒 <strong className="text-sol">Janela de 24h fechada</strong> — {selecionada.janela_24h_expira_em
+                  ? 'o cliente não manda mensagem pro número da Spin há mais de 24h.'
+                  : 'o cliente ainda não mandou nenhuma mensagem pro número da Spin.'}{' '}
+                Pelo inbox a mensagem não chega. Mande a primeira pelo <strong className="text-white">WhatsApp Business do celular ou do
+                computador</strong> — ela aparece aqui — e, quando o cliente responder, o inbox volta a enviar por 24h.
+              </div>
+            )}
+
             {/* Kalebe 2026-09-22: banner de alerta quando agente está no comando.
                 Evita cenário em que você abre a conversa e responde por fora
                 (WhatsApp Business no celular) sem saber que o agente segue
