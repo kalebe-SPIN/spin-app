@@ -8,6 +8,7 @@ import {
   RETOMADA_MIN,
 } from '@/lib/whatsapp/broadcast'
 import { processarMensagemQualificacao } from '@/lib/whatsapp/agente-qualificacao'
+import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
  * Cron SLA do canal WhatsApp Spin.
@@ -40,7 +41,12 @@ export const maxDuration = 60
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization')
   const isVercelCron = req.headers.get('user-agent')?.includes('vercel-cron')
-  if (!isVercelCron && auth !== `Bearer ${CRON_SECRET}`) {
+  // Kalebe 2026-09-29: pg_cron do Supabase chama com o segredo de wa_config
+  const segredoBanco = (await getWaConfig()).cron_secret
+  const autorizado = isVercelCron
+    || auth === `Bearer ${CRON_SECRET}`
+    || (!!segredoBanco && auth === `Bearer ${segredoBanco}`)
+  if (!autorizado) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 

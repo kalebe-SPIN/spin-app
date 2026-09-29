@@ -3,15 +3,13 @@
 import { useEffect, useState, useTransition, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { ModalProjetoConversa } from './ModalProjetoConversa'
+import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 import {
   listarConversasAction,
   listarMensagensAction,
-  enviarTextoAction,
   assumirConversaAction,
   encerrarConversaAction,
   abrirConversaManualAction,
-  iniciarChamadaAction,
-  enviarArquivoAction,
   recuperarMidiaAction,
 } from '@/app/inbox/actions'
 
@@ -70,7 +68,6 @@ export function InboxClient({
   const [conversas, setConversas] = useState<Conversa[]>([])
   const [mensagens, setMensagens] = useState<Mensagem[]>([])
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
-  const [textoEnvio, setTextoEnvio] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<'todas' | 'minhas' | 'sem_atendente' | 'nova'>('todas')
   const [modalAberto, setModalAberto] = useState(false)
@@ -169,17 +166,6 @@ export function InboxClient({
   })
 
   const selecionada = conversas.find((c) => c.id === selecionadaId) || null
-
-  function enviar() {
-    if (!selecionadaId || !textoEnvio.trim()) return
-    setErro(null)
-    startTransition(async () => {
-      const r = await enviarTextoAction({ conversa_id: selecionadaId, texto: textoEnvio })
-      if ('erro' in r) { setErro(r.erro); return }
-      setTextoEnvio('')
-      refreshMensagens(selecionadaId)
-    })
-  }
 
   function assumir() {
     if (!selecionadaId) return
@@ -369,33 +355,15 @@ export function InboxClient({
                 conversa empilhadas) fica sticky no rodapé enquanto rola. */}
             <div className="shrink-0 sticky bottom-0 z-10 bg-noite p-3 border-t border-white/10 space-y-2">
               {erro && <p className="text-xs text-coral bg-coral/10 border border-coral/30 rounded p-2">{erro}</p>}
-              <BarraAcoes
-                conversaId={selecionadaId!}
+              {/* Kalebe 2026-09-29: caixa estilo WhatsApp — clipe, agenda da
+                  Bianca, áudio gravado, ícones brancos minimalistas */}
+              <ComposerWhatsApp
+                key={selecionadaId}
+                obterConversaId={async () => selecionadaId}
+                placeholder={`Mensagem como ${usuarioNome || 'você'}`}
+                onEnviado={() => { if (selecionadaId) refreshMensagens(selecionadaId); refreshConversas() }}
                 onErro={setErro}
-                onFeito={() => selecionadaId && refreshMensagens(selecionadaId)}
               />
-              <div className="flex items-end gap-2">
-                <textarea
-                  value={textoEnvio}
-                  onChange={(e) => setTextoEnvio(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() }
-                  }}
-                  placeholder={`Escrever como *${usuarioNome || 'Você'}* (Enter envia)`}
-                  className="flex-1 px-3 py-2 bg-white/[0.03] border border-white/10 rounded text-sm text-white resize-none min-h-[42px] max-h-32"
-                  rows={1}
-                />
-                <button
-                  onClick={enviar}
-                  disabled={isPending || !textoEnvio.trim()}
-                  className="px-4 py-2 rounded bg-sol text-noite text-sm font-bold disabled:opacity-40"
-                >
-                  {isPending ? '...' : 'Enviar'}
-                </button>
-              </div>
-              <p className="text-[10px] text-white/40">
-                A mensagem sai prefixada com seu nome. Chamadas geram sala Jitsi (funciona no navegador).
-              </p>
             </div>
           </>
         )}
@@ -482,94 +450,6 @@ function ItemConversa({ c, selecionada, onClick }: {
         )}
       </div>
     </button>
-  )
-}
-
-function BarraAcoes({
-  conversaId, onErro, onFeito,
-}: {
-  conversaId: string
-  onErro: (msg: string | null) => void
-  onFeito: () => void
-}) {
-  const inputArquivoRef = useRef<HTMLInputElement>(null)
-  const [enviando, setEnviando] = useState<'arquivo' | 'voz' | 'video' | null>(null)
-
-  async function iniciar(tipo: 'voz' | 'video') {
-    onErro(null); setEnviando(tipo)
-    try {
-      const r = await iniciarChamadaAction({ conversa_id: conversaId, tipo })
-      if ('erro' in r) { onErro(r.erro); return }
-      // Abre a sala do lado do Kalebe automaticamente
-      window.open(r.url_sala, '_blank', 'noopener')
-      onFeito()
-    } finally { setEnviando(null) }
-  }
-
-  async function enviarArquivo(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
-    onErro(null); setEnviando('arquivo')
-    try {
-      // Teto da Vercel pro corpo da requisição é 4,5 MB (a Meta aceitaria
-      // até 100 MB). Arquivo maior sai pelo app do WhatsApp e volta pro
-      // histórico pelo eco (smb_message_echoes).
-      if (file.size > 4 * 1024 * 1024) {
-        onErro('Arquivo acima de 4 MB: envie pelo WhatsApp do celular ou do computador — ele aparece aqui no histórico do mesmo jeito.')
-        return
-      }
-      const legenda = window.prompt('Legenda (opcional):') || ''
-      const fd = new FormData()
-      fd.append('conversa_id', conversaId)
-      fd.append('arquivo', file)
-      if (legenda) fd.append('legenda', legenda)
-      const r = await enviarArquivoAction(fd)
-      if ('erro' in r) { onErro(r.erro); return }
-      onFeito()
-    } finally { setEnviando(null) }
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={() => inputArquivoRef.current?.click()}
-        disabled={!!enviando}
-        title="Enviar arquivo, foto, documento ou áudio"
-        className="w-9 h-9 flex items-center justify-center rounded bg-white/[0.05] border border-white/10 text-white/70 hover:bg-white/10 disabled:opacity-40"
-      >
-        {enviando === 'arquivo' ? '⋯' : '📎'}
-      </button>
-      <button
-        type="button"
-        onClick={() => iniciar('voz')}
-        disabled={!!enviando}
-        title="Iniciar chamada de voz (sala Jitsi)"
-        className="w-9 h-9 flex items-center justify-center rounded bg-verde/10 border border-verde/30 text-verde hover:bg-verde/20 disabled:opacity-40"
-      >
-        {enviando === 'voz' ? '⋯' : '📞'}
-      </button>
-      <button
-        type="button"
-        onClick={() => iniciar('video')}
-        disabled={!!enviando}
-        title="Iniciar videochamada (sala Jitsi)"
-        className="w-9 h-9 flex items-center justify-center rounded bg-weg-azul/10 border border-weg-azul/30 text-weg-azul hover:bg-weg-azul/20 disabled:opacity-40"
-      >
-        {enviando === 'video' ? '⋯' : '📹'}
-      </button>
-      <span className="text-[10px] text-white/40 ml-2">
-        {enviando ? 'Enviando...' : ''}
-      </span>
-      <input
-        ref={inputArquivoRef}
-        type="file"
-        className="hidden"
-        onChange={enviarArquivo}
-        accept="image/*,application/pdf,audio/*,video/*,.doc,.docx,.xls,.xlsx"
-      />
-    </div>
   )
 }
 

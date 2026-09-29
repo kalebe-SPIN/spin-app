@@ -1,15 +1,13 @@
 'use client'
 
-import { useEffect, useState, useTransition, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { createBrowserClient } from '@supabase/ssr'
 import {
   buscarConversaDoProjetoAction,
-  enviarTextoAction,
-  iniciarChamadaAction,
-  enviarArquivoAction,
   abrirCanalDoProjetoAction,
 } from '@/app/inbox/actions'
+import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 
 /**
  * Kalebe 2026-09-15: 'acesso a conversa e comunicação diretamente com
@@ -26,11 +24,7 @@ export function ConversaClienteCard({ projetoId }: { projetoId: string }) {
     telefone_projeto?: string | null
   } | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-  const [texto, setTexto] = useState('')
-  const [isPending, startTransition] = useTransition()
-  const [enviandoMidia, setEnviandoMidia] = useState<'arquivo' | 'voz' | 'video' | null>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
-  const inputArquivoRef = useRef<HTMLInputElement>(null)
 
   async function refresh() {
     const r = await buscarConversaDoProjetoAction(projetoId, 30)
@@ -68,61 +62,6 @@ export function ConversaClienteCard({ projetoId }: { projetoId: string }) {
     const r = await abrirCanalDoProjetoAction(projetoId)
     if ('erro' in r) { setErro(r.erro); return null }
     return r.conversa_id
-  }
-
-  function enviarTexto() {
-    if (!texto.trim()) return
-    setErro(null)
-    startTransition(async () => {
-      const conversaId = await garantirConversa()
-      if (!conversaId) return
-      const r = await enviarTextoAction({ conversa_id: conversaId, texto })
-      if ('erro' in r) { setErro(r.erro); refresh(); return }
-      setTexto('')
-      refresh()
-    })
-  }
-
-  function iniciarChamada(tipo: 'voz' | 'video') {
-    setErro(null); setEnviandoMidia(tipo)
-    startTransition(async () => {
-      try {
-        const conversaId = await garantirConversa()
-        if (!conversaId) return
-        const r = await iniciarChamadaAction({ conversa_id: conversaId, tipo })
-        if ('erro' in r) { setErro(r.erro); return }
-        window.open(r.url_sala, '_blank', 'noopener')
-        refresh()
-      } finally { setEnviandoMidia(null) }
-    })
-  }
-
-  function selecionarArquivo() {
-    inputArquivoRef.current?.click()
-  }
-
-  async function handleArquivo(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
-    setErro(null); setEnviandoMidia('arquivo')
-    try {
-      // Teto de 4,5 MB do corpo da requisição na Vercel (igual ao inbox)
-      if (file.size > 4 * 1024 * 1024) {
-        setErro('Arquivo acima de 4 MB: envie pelo WhatsApp do celular ou do computador — ele aparece aqui no histórico do mesmo jeito.')
-        return
-      }
-      const legenda = window.prompt('Legenda (opcional):') || ''
-      const conversaId = await garantirConversa()
-      if (!conversaId) return
-      const fd = new FormData()
-      fd.append('conversa_id', conversaId)
-      fd.append('arquivo', file)
-      if (legenda) fd.append('legenda', legenda)
-      const r = await enviarArquivoAction(fd)
-      if ('erro' in r) setErro(r.erro)
-      refresh()
-    } finally { setEnviandoMidia(null) }
   }
 
   if (!dados) {
@@ -209,16 +148,11 @@ export function ConversaClienteCard({ projetoId }: { projetoId: string }) {
         {erro && (
           <p className="text-[11px] text-coral bg-coral/10 border border-coral/30 rounded p-2">{erro}</p>
         )}
-        <ComposicaoInline
-          texto={texto}
-          setTexto={setTexto}
-          enviar={enviarTexto}
-          iniciarChamada={iniciarChamada}
-          onArquivo={selecionarArquivo}
-          inputArquivoRef={inputArquivoRef}
-          handleArquivo={handleArquivo}
-          isPending={isPending}
-          enviandoMidia={enviandoMidia}
+        <ComposerWhatsApp
+          obterConversaId={garantirConversa}
+          placeholder="Mensagem pro cliente"
+          onEnviado={refresh}
+          onErro={setErro}
         />
       </div>
     </SectionCard>
@@ -278,77 +212,5 @@ function BolhaCompacta({ m }: { m: any }) {
         </p>
       </div>
     </div>
-  )
-}
-
-function ComposicaoInline({
-  texto, setTexto, enviar, iniciarChamada,
-  onArquivo, inputArquivoRef, handleArquivo, isPending, enviandoMidia,
-}: {
-  texto: string
-  setTexto: (v: string) => void
-  enviar: () => void
-  iniciarChamada: (tipo: 'voz' | 'video') => void
-  onArquivo: () => void
-  inputArquivoRef: React.RefObject<HTMLInputElement>
-  handleArquivo: (e: React.ChangeEvent<HTMLInputElement>) => void
-  isPending: boolean
-  enviandoMidia: 'arquivo' | 'voz' | 'video' | null
-}) {
-  return (
-    <>
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={onArquivo}
-          disabled={!!enviandoMidia || isPending}
-          title="Enviar arquivo"
-          className="w-8 h-8 flex items-center justify-center rounded bg-white/[0.05] border border-white/10 text-white/70 hover:bg-white/10 disabled:opacity-40 text-sm"
-        >
-          {enviandoMidia === 'arquivo' ? '⋯' : '📎'}
-        </button>
-        <button
-          onClick={() => iniciarChamada('voz')}
-          disabled={!!enviandoMidia || isPending}
-          title="Chamada de voz (Jitsi)"
-          className="w-8 h-8 flex items-center justify-center rounded bg-verde/10 border border-verde/30 text-verde hover:bg-verde/20 disabled:opacity-40 text-sm"
-        >
-          {enviandoMidia === 'voz' ? '⋯' : '📞'}
-        </button>
-        <button
-          onClick={() => iniciarChamada('video')}
-          disabled={!!enviandoMidia || isPending}
-          title="Videochamada (Jitsi)"
-          className="w-8 h-8 flex items-center justify-center rounded bg-weg-azul/10 border border-weg-azul/30 text-weg-azul hover:bg-weg-azul/20 disabled:opacity-40 text-sm"
-        >
-          {enviandoMidia === 'video' ? '⋯' : '📹'}
-        </button>
-        <input
-          ref={inputArquivoRef}
-          type="file"
-          className="hidden"
-          onChange={handleArquivo}
-          accept="image/*,application/pdf,audio/*,video/*,.doc,.docx,.xls,.xlsx"
-        />
-      </div>
-      <div className="flex items-end gap-2">
-        <textarea
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() }
-          }}
-          placeholder="Escreva pro cliente (Enter envia)"
-          rows={1}
-          className="flex-1 px-2.5 py-1.5 bg-noite/40 border border-white/10 rounded text-sm text-white resize-none min-h-[36px] max-h-24"
-        />
-        <button
-          onClick={enviar}
-          disabled={isPending || !texto.trim() || !!enviandoMidia}
-          className="px-3 py-1.5 rounded bg-sol text-noite text-xs font-bold disabled:opacity-40 whitespace-nowrap"
-        >
-          {isPending ? '...' : 'Enviar'}
-        </button>
-      </div>
-    </>
   )
 }
