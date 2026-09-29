@@ -278,7 +278,7 @@ export function AdminAgentesClient({ agentesIniciais }: { agentesIniciais: Agent
                 value={form.system_prompt}
                 onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
                 rows={16}
-                placeholder="Você é o Assistente da Spin Solar..."
+                placeholder="Você é a Laís, do atendimento da Spin Solar..."
                 className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-xs text-white font-mono leading-relaxed"
               />
             </Field>

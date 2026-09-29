@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { enviarTextoPeloCanal } from '@/lib/whatsapp/enviar-canal'
 import { upsertContato, findOrCreateConversaAtiva } from '@/lib/whatsapp/conversas'
+import { NOME_SDR } from '@/lib/agentes/nomes'
 
 /**
  * Diretório + comunicação interna compartilhados por todos os agentes.
@@ -23,14 +24,14 @@ type Resultado = { sucesso: boolean; dados?: any; erro?: string; _hint?: string 
 const NOME_AGENTE: Record<AgenteChave, string> = {
   bianca: 'Bianca',
   davi: 'Davi',
-  qualificacao: 'Assistente Spin',
+  qualificacao: NOME_SDR,
 }
 
 // Agentes definidos em código (os de WhatsApp vêm também da tabela wa_agentes)
 const AGENTES_FIXOS = [
   { chave: 'bianca', nome: 'Bianca', canal: 'portal (chat)', funcao: 'Secretária executiva: agenda, tarefas, projetos, homologações, WhatsApp e e-mail pra equipe e clientes.' },
   { chave: 'davi', nome: 'Davi', canal: 'portal (chat, só admin)', funcao: 'Compras e catálogo: preços de produtos, cotações, itens sem preço ou desatualizados.' },
-  { chave: 'qualificacao', nome: 'Assistente Spin', canal: 'WhatsApp (leads)', funcao: 'SDR: recebe leads no WhatsApp, coleta nome/cidade/fatura, cria projeto e dispara pros representantes.' },
+  { chave: 'qualificacao', nome: NOME_SDR, canal: 'WhatsApp (leads)', funcao: 'SDR: recebe leads no WhatsApp, coleta nome/cidade/fatura, cria projeto e dispara pros representantes.' },
 ]
 
 export const FERRAMENTAS_DIRETORIO: Anthropic.Tool[] = [

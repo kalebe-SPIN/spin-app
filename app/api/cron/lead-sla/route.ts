@@ -9,6 +9,7 @@ import {
 } from '@/lib/whatsapp/broadcast'
 import { processarMensagemQualificacao } from '@/lib/whatsapp/agente-qualificacao'
 import { getWaConfig } from '@/lib/whatsapp/config'
+import { NOME_SDR } from '@/lib/agentes/nomes'
 
 /**
  * Cron SLA do canal WhatsApp Spin.
@@ -219,7 +220,7 @@ export async function GET(req: NextRequest) {
               telefone: telLead,
               texto: `Canal Spin um pouco cheio agora. Já estou passando pra outro representante — só mais alguns minutinhos, tá?`,
               remetente_agente: 'qualificacao',
-              origem_agente_nome: 'Assistente Spin',
+              origem_agente_nome: NOME_SDR,
             })
           }
         } else {

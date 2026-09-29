@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { enviarTextoPeloCanal } from './enviar-canal'
 import { upsertContato, findOrCreateConversaAtiva } from './conversas'
+import { NOME_SDR } from '@/lib/agentes/nomes'
 
 /**
  * Motor de broadcast/fila FIFO pros representantes.
@@ -22,7 +23,7 @@ export const PRAZO_CONTATO_MIN = 8
 export const AVISO_MIN_ANTES = 2
 export const RETOMADA_MIN = 35
 
-const NOME_AGENTE_QUALIFICACAO = 'Assistente Spin'
+const NOME_AGENTE_QUALIFICACAO = NOME_SDR
 
 /**
  * Inicia um broadcast: cria lead_broadcasts + notifica cada representante

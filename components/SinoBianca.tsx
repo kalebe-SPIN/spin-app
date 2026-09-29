@@ -332,7 +332,7 @@ function MiniCard({ sugestao, onAcao }: { sugestao: any; onAcao: () => Promise<v
 const NOME_AGENTE_AVISO: Record<string, string> = {
   bianca: 'Bianca',
   davi: 'Davi',
-  qualificacao: 'Assistente Spin',
+  qualificacao: 'Laís',
 }
 
 /** Aviso interno enviado por um agente (avisos_internos). */

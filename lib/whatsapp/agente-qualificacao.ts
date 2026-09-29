@@ -4,6 +4,7 @@ import { enviarTextoPeloCanal } from './enviar-canal'
 import { iniciarBroadcastLead, RETOMADA_MIN } from './broadcast'
 import { getWaConfig } from './config'
 import { cadastroDoContato, avisarEquipe } from '@/lib/agentes/diretorio'
+import { NOME_SDR } from '@/lib/agentes/nomes'
 
 /**
  * Agente de qualificação de leads WhatsApp.
@@ -53,7 +54,7 @@ type ContextoQualificacao = {
   broadcast_disparado_em?: string  // ISO
 }
 
-const SYSTEM_PROMPT_MODO_LEVE = `Você é o Assistente de Qualificação da Spin Solar — energia solar em Santa Catarina.
+const SYSTEM_PROMPT_MODO_LEVE = `Você é a Laís, do atendimento da Spin Solar — energia solar em Santa Catarina.
 Você atende leads chegando pelo WhatsApp e faz UMA coleta rápida antes de passar pra equipe comercial.
 
 TOM
@@ -93,7 +94,7 @@ FORMATO DE SAÍDA — JSON estrito
 }
 Retorne SOMENTE o JSON, sem cercas de código.`
 
-const SYSTEM_PROMPT_MODO_PROFUNDO = `Você é o Assistente de Qualificação da Spin Solar. O lead está esperando há mais de 35 minutos
+const SYSTEM_PROMPT_MODO_PROFUNDO = `Você é a Laís, do atendimento da Spin Solar. O lead está esperando há mais de 35 minutos
 e nenhum representante conseguiu contatar ainda. Sua missão AGORA é manter o lead engajado
 enquanto o sistema continua tentando passar pra alguém.
 
@@ -352,7 +353,7 @@ Retorne apenas o JSON.`
         telefone: contato.telefone,
         texto: proximaMsg,
         remetente_agente: 'qualificacao',
-        origem_agente_nome: 'Assistente Spin',
+        origem_agente_nome: NOME_SDR,
       })
     }
     await admin
@@ -373,7 +374,7 @@ Retorne apenas o JSON.`
         telefone: contato.telefone,
         texto: proximaMsg,
         remetente_agente: 'qualificacao',
-        origem_agente_nome: 'Assistente Spin',
+        origem_agente_nome: NOME_SDR,
       })
     }
     return { acao: 'perguntou', texto_enviado: proximaMsg, contexto: contextoNovo }
@@ -406,7 +407,7 @@ Retorne apenas o JSON.`
         telefone: contato.telefone,
         texto: proximaMsg,
         remetente_agente: 'qualificacao',
-        origem_agente_nome: 'Assistente Spin',
+        origem_agente_nome: NOME_SDR,
       })
     }
 
@@ -461,7 +462,7 @@ Retorne apenas o JSON.`
         telefone: contato.telefone,
         texto: proximaMsg,
         remetente_agente: 'qualificacao',
-        origem_agente_nome: 'Assistente Spin',
+        origem_agente_nome: NOME_SDR,
       })
     }
     await atualizarProjetoComContextoProfundo(admin, contextoNovo.projeto_id, contextoNovo)
@@ -486,11 +487,11 @@ async function carregarSystemPrompt(
       .eq('chave', modoLeve ? 'qualificacao_padrao' : 'qualificacao_profunda')
       .eq('ativo', true)
       .maybeSingle()
-    if (agente?.system_prompt) return `${agente.system_prompt}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}\n\n${REGRA_MIDIA}`
+    if (agente?.system_prompt) return `${agente.system_prompt}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}\n\n${REGRA_MIDIA}\n\n${REGRA_IDENTIDADE}`
   } catch (e) {
     // fallback
   }
-  return `${modoLeve ? SYSTEM_PROMPT_MODO_LEVE : SYSTEM_PROMPT_MODO_PROFUNDO}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}\n\n${REGRA_MIDIA}`
+  return `${modoLeve ? SYSTEM_PROMPT_MODO_LEVE : SYSTEM_PROMPT_MODO_PROFUNDO}\n\n${REGRA_CONVERSA_HUMANA}\n\n${REGRA_PRIVACIDADE_E_RECADO}\n\n${REGRA_MIDIA}\n\n${REGRA_IDENTIDADE}`
 }
 
 // Kalebe 2026-09-25: a IA pedia "digita seu nome" pra cliente que mandou
@@ -547,6 +548,13 @@ async function anexosNovosDoCliente(
 
 // Kalebe 2026-09-23: SDR fala com gente de fora — acesso restrito ao próprio
 // contato + canal de recado pra equipe interna.
+// Kalebe 2026-09-29: a agente de recepção do inbox se chama Laís — vale por
+// cima de qualquer prompt (inclusive o editável em wa_agentes).
+const REGRA_IDENTIDADE = `REGRA FIXA — IDENTIDADE
+Seu nome é Laís, do atendimento da Spin Solar. Na primeira mensagem de um contato novo,
+apresente-se pelo nome (ex.: "Oi! Aqui é a Laís, da Spin Solar 😊"). Nunca se apresente como
+"Assistente Spin" nem diga que é um robô ou IA, a menos que perguntem diretamente — aí seja honesta.`
+
 const REGRA_PRIVACIDADE_E_RECADO = `REGRA FIXA — PRIVACIDADE E RECADO PRA EQUIPE
 - Você só conhece o cadastro DESTE contato (bloco "CADASTRO DESTE CONTATO", quando existir).
   Use pra reconhecer quem já é cliente (ex: "vi que você já tem o projeto SPIN-2026-0075").
