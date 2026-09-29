@@ -1,6 +1,9 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { calcularMetaEnergia } from '@/lib/dimensionamento/meta-energia'
+import { MetaEnergiaCard } from '@/components/MetaEnergiaCard'
+import { fmtNum } from '@/lib/formatters'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -22,19 +25,12 @@ export default async function DimensionarPage({ params }: { params: { id: string
   const telhado = projeto.telhado_secoes
   const padrao = projeto.padrao_entrada
 
-  // Consumo consolidado: UC principal + soma das beneficiárias
-  const consumoPrincipal = fatura?.consumo_medio_12m_kwh || fatura?.consumo_mes_kwh || fatura?.consumo_medio_kwh || fatura?.consumo_kwh || 0
-  const beneficiarias = projeto.beneficiarias || []
-  const consumoBeneficiarias = beneficiarias.reduce(
-    (sum: number, b: any) => sum + (b.analise?.consumo_medio_12m_kwh || b.analise?.consumo_mes_kwh || 0),
-    0
-  )
-  const consumoMedio = consumoPrincipal + consumoBeneficiarias
-  const horasSol = 4.5
-  const perdas = 0.20
-  const potCcSugeridaKwp = consumoMedio > 0
-    ? (consumoMedio / (30 * horasSol * (1 - perdas)))
-    : 0
+  // Kalebe 2026-09-29: meta de energia única (lib/dimensionamento/meta-energia):
+  // consumo das faturas (principal + beneficiárias); quem já gera dimensiona só
+  // o que falta pra zerar; + adicional do cliente se escolher "com excedente".
+  const meta = calcularMetaEnergia(projeto)
+  const consumoMedio = meta.consumo_total
+  const potCcSugeridaKwp = meta.kwp_alvo
 
   const areaTotal = (telhado || []).reduce((sum: number, s: any) => sum + (Number(s.area_m2) || 0), 0)
   const potEstruturaKwp = Math.floor(areaTotal / 5)  // ~5 m²/kWp médio
@@ -45,13 +41,15 @@ export default async function DimensionarPage({ params }: { params: { id: string
     potEstruturaKwp || Infinity,
     potLimitePadrao || Infinity
   )
-  const potFinalKwp = potFinal === Infinity ? 0 : potFinal
+  // Sem necessidade (ex.: já gera com sobra e opção "necessidade real") não
+  // recomenda o máximo do telhado — fica zero e o card explica.
+  const potFinalKwp = potFinal === Infinity || potCcSugeridaKwp <= 0 ? 0 : potFinal
 
   const gargalos: Array<{ tipo: string; msg: string }> = []
   if (potEstruturaKwp && potCcSugeridaKwp > potEstruturaKwp)
-    gargalos.push({ tipo: 'telhado', msg: `Área do telhado limita a ${potEstruturaKwp.toFixed(1)} kWp` })
+    gargalos.push({ tipo: 'telhado', msg: `Área do telhado limita a ${fmtNum(potEstruturaKwp, 1)} kWp` })
   if (potLimitePadrao && potCcSugeridaKwp > potLimitePadrao)
-    gargalos.push({ tipo: 'padrao', msg: `Padrão CELESC atual (${padrao.amperagem_disjuntor_geral_a}A) suporta ~${potLimitePadrao.toFixed(1)} kWp — considerar upgrade` })
+    gargalos.push({ tipo: 'padrao', msg: `Padrão CELESC atual (${padrao.amperagem_disjuntor_geral_a}A) suporta ~${fmtNum(potLimitePadrao, 1)} kWp — considerar upgrade` })
 
   // Modo sem fatura: dispensa Telhado e usa dados aproximados
   const modoSemFatura = projeto.origem_dimensionamento && projeto.origem_dimensionamento !== 'fatura'
@@ -91,12 +89,17 @@ export default async function DimensionarPage({ params }: { params: { id: string
           </div>
         )}
 
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-          <Metric label="Consumo médio" value={consumoMedio > 0 ? `${consumoMedio.toFixed(0)} kWh/mês` : '—'} />
-          <Metric label="Área telhado" value={areaTotal > 0 ? `${areaTotal.toFixed(1)} m²` : '—'} />
-          <Metric label="Pot. sugerida (fatura)" value={potCcSugeridaKwp > 0 ? `${potCcSugeridaKwp.toFixed(2)} kWp` : '—'} />
-          <Metric label="Pot. final recomendada" value={potFinalKwp > 0 ? `${potFinalKwp.toFixed(2)} kWp` : '—'} highlight />
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <Metric label="Consumo médio" value={consumoMedio > 0 ? `${fmtNum(consumoMedio, 0)} kWh/mês` : '—'} />
+          <Metric label="Área telhado" value={areaTotal > 0 ? `${fmtNum(areaTotal, 1)} m²` : '—'} />
+          <Metric
+            label={meta.modo === 'ampliacao' ? 'Pot. sugerida (ampliação)' : 'Pot. sugerida (fatura)'}
+            value={potCcSugeridaKwp > 0 ? `${fmtNum(potCcSugeridaKwp, 2)} kWp` : '—'}
+          />
+          <Metric label="Pot. final recomendada" value={potFinalKwp > 0 ? `${fmtNum(potFinalKwp, 2)} kWp` : '—'} highlight />
         </section>
+
+        {fatura && <MetaEnergiaCard projetoId={projeto.id} meta={meta} />}
 
         {gargalos.length > 0 && (
           <section className="bg-sol/10 border border-sol/30 rounded-xl p-4 mb-6">
@@ -118,7 +121,7 @@ export default async function DimensionarPage({ params }: { params: { id: string
               <div className="grid grid-cols-2 gap-2 text-xs text-white/70">
                 <span>Grupo: <strong>{fatura.grupo || fatura.grupo_tarifario || '—'}</strong></span>
                 <span>Ligação: <strong>{formatarLigacao(fatura.tipo_ligacao)}</strong></span>
-                <span>Consumo médio: <strong>{consumoMedio.toFixed(0)} kWh/mês</strong></span>
+                <span>Consumo médio: <strong>{fmtNum(consumoMedio, 0)} kWh/mês</strong></span>
                 <span>Demanda: <strong>{fatura.demanda_contratada_kw ? fatura.demanda_contratada_kw + 'kW' : '—'}</strong></span>
               </div>
             ) : (
@@ -129,7 +132,7 @@ export default async function DimensionarPage({ params }: { params: { id: string
           <DetalheCard titulo="🏠 Telhado (Passo 3)" ok={!!(telhado && telhado.length > 0)} link={`/projetos/${projeto.id}/telhado`}>
             {telhado && telhado.length > 0 ? (
               <div className="space-y-1 text-xs text-white/70">
-                <p><strong>{telhado.length}</strong> seção(ões) · Área total: <strong>{areaTotal.toFixed(1)} m²</strong></p>
+                <p><strong>{telhado.length}</strong> seção(ões) · Área total: <strong>{fmtNum(areaTotal, 1)} m²</strong></p>
                 <p>~ <strong>{potEstruturaKwp} kWp</strong> caberia no telhado (5 m²/kWp médio)</p>
               </div>
             ) : (
@@ -145,7 +148,7 @@ export default async function DimensionarPage({ params }: { params: { id: string
                 <span>Ligação: <strong>{formatarLigacao(padrao.tipo_ligacao)}</strong></span>
                 <span>Dist. string-QGBT: <strong>{padrao.distancia_string_qgbt_m ? `${padrao.distancia_string_qgbt_m} m` : '—'}</strong></span>
                 {potLimitePadrao > 0 && (
-                  <span className="col-span-2">Suporta até <strong className="text-sol">{potLimitePadrao.toFixed(1)} kWp</strong></span>
+                  <span className="col-span-2">Suporta até <strong className="text-sol">{fmtNum(potLimitePadrao, 1)} kWp</strong></span>
                 )}
               </div>
             ) : (
@@ -160,7 +163,7 @@ export default async function DimensionarPage({ params }: { params: { id: string
             <div>
               <p className="text-sm font-bold text-verde mb-1">✓ Tudo pronto pra escolher kit</p>
               <p className="text-xs text-white/70">
-                Sistema vai sugerir kits compatíveis com <strong>{potFinalKwp.toFixed(2)} kWp</strong>.
+                Sistema vai sugerir kits compatíveis com <strong>{fmtNum(potFinalKwp, 2)} kWp</strong>.
               </p>
             </div>
             <Link

@@ -1,6 +1,8 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { calcularMetaEnergia } from '@/lib/dimensionamento/meta-energia'
+import { MetaEnergiaCard } from '@/components/MetaEnergiaCard'
 import { KitPorUcClient } from '@/components/KitPorUcClient'
 
 export const dynamic = 'force-dynamic'
@@ -30,11 +32,10 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     0
   )
   const consumoMedio = consumoPrincipal + consumoBeneficiarias
-  const horasSol = 4.5
-  const perdas = 0.20
-  const potCcAlvoAuto = consumoMedio > 0
-    ? consumoMedio / (30 * horasSol * (1 - perdas))
-    : 5.0
+  // Kalebe 2026-09-29: potência alvo vem da meta de energia — quem já gera
+  // dimensiona só o que falta; opção "necessidade real" ou "com excedente".
+  const meta = calcularMetaEnergia(projeto)
+  const potCcAlvoAuto = meta.kwp_alvo > 0 ? meta.kwp_alvo : 5.0
 
   // Padrão CELESC do cliente
   const padrao = projeto.padrao_entrada
@@ -194,7 +195,11 @@ export default async function KitPage({ params }: { params: { id: string } }) {
           </p>
         </header>
 
+        {projeto.analise_fatura && <MetaEnergiaCard projetoId={projeto.id} meta={meta} />}
+
+        {/* key: trocar a opção (real × excedente) remonta o fluxo com a potência nova */}
         <KitPorUcClient
+          key={`${meta.opcao}-${Math.round(potCcAlvoAuto * 100)}`}
           projetoId={projeto.id}
           projetoCodigo={projeto.codigo}
           placas={(placas || []) as any}

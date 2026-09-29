@@ -176,6 +176,9 @@ export async function POST(request: NextRequest) {
         demanda_medida_ponta_kw: dados.demanda_medida_ponta_kw,
         historico_12_meses: historico,
         tem_geracao_propria: dados.tem_geracao_propria,
+        // Kalebe 2026-09-29: cliente que já gera e quer ampliar — injeção e
+        // saldo de créditos pro balanço (déficit/superávit) no passo Fatura
+        geracao: dados.geracao || null,
         // Aviso sobre endereço — sempre mostrar
         _aviso_endereco: 'Endereço extraído pode estar abreviado. Confira atentamente antes de salvar.',
         _avisos: avisos,
@@ -245,11 +248,28 @@ RETORNE APENAS UM BLOCO JSON, sem texto antes ou depois:
   "demanda_medida_fp_kw": number | null,
   "demanda_medida_ponta_kw": number | null,
   "historico_12_meses": [
-    { "mes_ano": "MMM/AA", "consumo_kwh": number }
+    { "mes_ano": "MMM/AA", "consumo_kwh": number, "injetado_kwh": number | null, "saldo_final_kwh": number | null }
   ],
-  "tem_geracao_propria": boolean
+  "tem_geracao_propria": boolean,
+  "geracao": {
+    "injetado_mes_kwh": number | null,
+    "compensado_mes_kwh": number | null,
+    "saldo_creditos_kwh": number | null,
+    "creditos_a_expirar_kwh": number | null,
+    "creditos_expiram_em": "MM/AAAA" | null
+  }
 }
 \`\`\`
+
+GERAÇÃO PRÓPRIA (quando a UC já tem solar — tabela "Geradora no Período", "Injeção no Período Atual",
+"Saldo Final Geradora", "Energia Injetada", códigos (0J)/(0K)/(0I)/(0L)):
+- "consumo_kwh" de cada mês = energia ATIVA CONSUMIDA DA REDE (a registrada no medidor), sem descontar compensação.
+- "injetado_kwh" de cada mês = energia INJETADA/exportada na rede naquele mês ("Injeção no Período"). Some fora ponta + ponta.
+  Se o mês não mostra injeção, use null (NUNCA 0 por suposição). Sem geração própria: null em todos.
+- "saldo_final_kwh" = "Saldo Final Geradora" (créditos acumulados) daquele mês, quando aparecer.
+- "geracao.injetado_mes_kwh" = injeção do mês de referência; "compensado_mes_kwh" = energia compensada/abatida no mês;
+  "saldo_creditos_kwh" = saldo total de créditos no fechamento do mês; "creditos_a_expirar_kwh"/"creditos_expiram_em" se a fatura avisar.
+- Sem geração própria: "geracao" com todos os campos null.
 
 INSTRUÇÃO EXTRA PARA MÉDIA:
 - "consumo_medio_12m_kwh": média aritmética dos consumos válidos (>0) do histórico dos últimos 12 meses. Ignore meses zerados ou nulos.
