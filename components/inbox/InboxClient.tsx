@@ -108,6 +108,13 @@ export function InboxClient({
     if ('mensagens' in r) setMensagens(r.mensagens as any)
   }
 
+  // Link direto /inbox?c=<conversa_id> (caixa do projeto, envio de proposta)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    const id = p.get('c') || p.get('conversa')
+    if (id) setSelecionadaId(id)
+  }, [])
+
   // Fetch inicial + Realtime
   useEffect(() => {
     refreshConversas()

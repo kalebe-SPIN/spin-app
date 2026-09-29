@@ -10,6 +10,7 @@ import { validarDadosVendaDireta, enderecoEntrega, type DadosVendaDireta, type I
 import type { ProdutoCatalogoVD } from '@/lib/venda-direta/preco'
 import { FormDadosVendaDireta, inputCls } from './FormDadosVendaDireta'
 import { PropostaVendaDiretaPDF } from './PropostaVendaDiretaPDF'
+import { BotaoEnviarPropostaCanal } from '@/components/proposta/BotaoEnviarPropostaCanal'
 import {
   salvarDadosVendaDiretaAction,
   salvarEquipamentosVendaDiretaAction,
@@ -122,9 +123,7 @@ export function VendaDiretaClient({
         if (i > 0) pdf.addPage()
         pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297)
       }
-      const nomeCliente = (dados.nf.nome || 'CLIENTE').normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .toUpperCase().replace(/[^A-Z0-9]+/g, '')
-      pdf.save(`PROPOSTA_EQUIPAMENTOS_${nomeCliente}.pdf`)
+      pdf.save(nomeArquivoPdf)
 
       const supabase = createClient()
       const caminho = `${projeto.id}/equipamentos-${Date.now()}.pdf`
@@ -145,14 +144,10 @@ export function VendaDiretaClient({
     }
   }
 
-  function enviarWhatsApp() {
-    if (!urlPdf) return
-    let tel = dados.nf.telefone.replace(/\D/g, '')
-    if (!tel.startsWith('55')) tel = `55${tel}`
-    const primeiro = dados.nf.nome.split(' ')[0]
-    const texto = `Olá ${primeiro}! Segue a proposta dos equipamentos que você solicitou à Spin Solar:\n\n📄 ${urlPdf}\n\nQualquer dúvida estou à disposição.`
-    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank')
-  }
+  // Kalebe 2026-09-29: proposta vai pelo canal Spin (inbox), não pelo wa.me
+  const nomeArquivoPdf = `PROPOSTA_EQUIPAMENTOS_${(dados.nf.nome || 'CLIENTE').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9]+/g, '')}.pdf`
+  const legendaWhatsApp = `Olá ${dados.nf.nome.split(' ')[0]}! Segue a proposta dos equipamentos que você solicitou à Spin Solar.\n\nQualquer dúvida estou à disposição.`
 
   const entrega = enderecoEntrega(dados)
   const dadosPdf: ItemDadosVendaDireta = {
@@ -328,10 +323,13 @@ export function VendaDiretaClient({
                 className="px-4 py-3 bg-white/5 border border-white/15 text-white font-bold text-sm rounded-lg hover:bg-white/10">
                 🔗 Ver último PDF
               </a>
-              <button type="button" onClick={enviarWhatsApp}
-                className="px-4 py-3 bg-verde/20 border border-verde/40 text-verde font-bold text-sm rounded-lg hover:bg-verde/30">
-                💬 Enviar por WhatsApp
-              </button>
+              <BotaoEnviarPropostaCanal
+                projetoId={projeto.id}
+                urlPdf={urlPdf}
+                nomeArquivo={nomeArquivoPdf}
+                legenda={legendaWhatsApp}
+                rotulo="💬 Enviar por WhatsApp"
+              />
             </>
           )}
         </div>

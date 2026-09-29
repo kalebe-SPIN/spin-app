@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { salvarOrcamentoAction, marcarPropostaEnviadaAction } from '@/app/projetos/[id]/orcamento/actions'
 import { createClient } from '@/lib/supabase/client'
 import { PropostaPDFTemplateBess } from './PropostaPDFTemplateBess'
+import { BotaoEnviarPropostaCanal } from '@/components/proposta/BotaoEnviarPropostaCanal'
 
 const BUCKET_PROPOSTAS = 'propostas-fv'
 
@@ -158,15 +159,9 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
     }
   }
 
-  function enviarWhatsApp() {
-    if (!urlPdf) { setErro('Gere o PDF primeiro antes de enviar'); return }
-    const tel = (projeto.cliente_telefone || '').replace(/\D/g, '')
-    if (!tel) { setErro('Cliente sem WhatsApp cadastrado'); return }
-    const telDDI = tel.startsWith('55') ? tel : `55${tel}`
-    const nome = (projeto.cliente_razao_social || 'cliente').split(' ')[0]
-    const msg = `Olá ${nome}! Segue sua proposta de sistema BESS (backup de energia) da Spin Solar:\n\n${urlPdf}\n\nQualquer dúvida estou à disposição. — Kalebe`
-    window.open(`https://wa.me/${telDDI}?text=${encodeURIComponent(msg)}`, '_blank')
-  }
+  // Kalebe 2026-09-29: proposta vai pelo canal Spin (inbox), não pelo wa.me
+  const legendaWhatsApp = `Olá ${(projeto.cliente_razao_social || 'cliente').split(' ')[0]}! Segue sua proposta de sistema BESS (backup de energia) da Spin Solar.\n\nQualquer dúvida estou à disposição.`
+  const nomeArquivoWhatsApp = `PROPOSTA_BESS_${(projeto.cliente_razao_social || 'cliente').replace(/\s+/g, '_')}.pdf`
 
   // Normaliza formato singular (legado) → arrays
   const toArr = (x: any): ItemComp[] => Array.isArray(x) ? x : (x?.id ? [x] : [])
@@ -323,12 +318,13 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
                 >
                   ↗ Abrir PDF salvo
                 </a>
-                <button
-                  onClick={enviarWhatsApp}
-                  className="w-full px-4 py-2 rounded-lg bg-verde/10 border border-verde/40 text-verde text-xs font-bold hover:bg-verde/20 transition"
-                >
-                  💬 Enviar por WhatsApp
-                </button>
+                <BotaoEnviarPropostaCanal
+                  projetoId={projeto.id}
+                  urlPdf={urlPdf}
+                  nomeArquivo={nomeArquivoWhatsApp}
+                  legenda={legendaWhatsApp}
+                  rotulo="💬 Enviar por WhatsApp"
+                />
               </>
             )}
             <button

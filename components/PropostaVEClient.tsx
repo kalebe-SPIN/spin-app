@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { PropostaVEPDFTemplate } from './PropostaVEPDFTemplate'
 import { nomearProposta } from '@/lib/downloads'
 import { salvarUrlPropostaVeAction } from '@/app/projetos/[id]/ve/proposta/actions'
+import { BotaoEnviarPropostaCanal } from '@/components/proposta/BotaoEnviarPropostaCanal'
 
 type Props = {
   projeto: any
@@ -89,15 +90,13 @@ export function PropostaVEClient({ projeto, selecao, configEmpresa }: Props) {
     }
   }
 
-  function enviarWhatsApp() {
-    if (!urlPdf) { setErro('Gere o PDF primeiro'); return }
-    const telefone = (projeto.cliente_telefone || '').replace(/\D/g, '')
-    if (!telefone) { setErro('Cliente sem WhatsApp cadastrado'); return }
-    const telWithDDI = telefone.startsWith('55') ? telefone : `55${telefone}`
-    const nomeCliente = (projeto.cliente_razao_social || 'cliente').split(' ')[0]
-    const mensagem = `Olá ${nomeCliente}! ⚡🚗\n\nSegue a proposta da sua Estação de Recarga VE.\n\n📄 ${urlPdf}\n\nQualquer dúvida estou à disposição!`
-    window.open(`https://wa.me/${telWithDDI}?text=${encodeURIComponent(mensagem)}`, '_blank')
-  }
+  // Kalebe 2026-09-29: proposta vai pelo canal Spin (inbox), não pelo wa.me
+  const legendaWhatsApp = `Olá ${(projeto.cliente_razao_social || 'cliente').split(' ')[0]}! ⚡🚗\n\nSegue a proposta da sua Estação de Recarga VE.\n\nQualquer dúvida estou à disposição!`
+  const nomeArquivoWhatsApp = nomearProposta({
+    cliente: projeto.cliente_razao_social,
+    potenciaCaKw: (Array.isArray(selecao?.equipamentos) ? selecao.equipamentos : [])
+      .reduce((s: number, e: any) => s + (Number(e?.potencia_kw) || 0) * (Number(e?.qtd) || 1), 0),
+  })
 
   return (
     <div className="space-y-6">
@@ -111,10 +110,13 @@ export function PropostaVEClient({ projeto, selecao, configEmpresa }: Props) {
             <a href={urlPdf} target="_blank" className="px-4 py-3 bg-white/5 border border-white/15 text-white font-bold text-sm rounded-lg hover:bg-white/10">
               🔗 Ver PDF salvo
             </a>
-            <button type="button" onClick={enviarWhatsApp}
-              className="px-4 py-3 bg-verde/20 border border-verde/40 text-verde font-bold text-sm rounded-lg hover:bg-verde/30">
-              💬 Enviar por WhatsApp
-            </button>
+            <BotaoEnviarPropostaCanal
+              projetoId={projeto.id}
+              urlPdf={urlPdf}
+              nomeArquivo={nomeArquivoWhatsApp}
+              legenda={legendaWhatsApp}
+              rotulo="💬 Enviar por WhatsApp"
+            />
           </>
         )}
       </div>

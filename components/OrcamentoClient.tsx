@@ -9,6 +9,8 @@ import { PropostaPDFTemplate } from './PropostaPDFTemplate'
 import { GraficoGeracaoConsumo } from './GraficoGeracaoConsumo'
 import { estimarGeracaoMensal, extrairConsumoMensal } from '@/lib/geracao-mensal'
 import { nomearArquivo, nomearProposta } from '@/lib/downloads'
+import { BotaoEnviarPropostaCanal } from '@/components/proposta/BotaoEnviarPropostaCanal'
+import { fmtNum } from '@/lib/formatters'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
 
 type PropostaUc = {
@@ -274,29 +276,24 @@ export function OrcamentoClient({
     }
   }
 
-  function enviarWhatsApp() {
-    if (!urlPdf) {
-      setErro('Gere o PDF primeiro antes de enviar por WhatsApp.')
-      return
-    }
-    const telefone = (projeto.cliente_telefone || '').replace(/\D/g, '')
-    if (!telefone) {
-      setErro('Cliente sem WhatsApp cadastrado.')
-      return
-    }
-    const telWithDDI = telefone.startsWith('55') ? telefone : `55${telefone}`
-    const nomeCliente = (projeto.cliente_razao_social || 'cliente').split(' ')[0]
-    const potenciaTotal = modoComposicao === 'por_uc' && propostasPorUc
-      ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
-      : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
-    const suffixUcs = modoComposicao === 'por_uc' && propostasPorUc
-      ? ` (${propostasPorUc.length} UCs contempladas)` : ''
-    const mensagem = `Olá ${nomeCliente}! 🌞\n\nSegue a proposta do seu sistema fotovoltaico Spin Solar de ${potenciaTotal.toFixed(2)} kWp${suffixUcs}.\n\n📄 PDF completo: ${urlPdf}\n\nQualquer dúvida estou à disposição!`
+  // Kalebe 2026-09-29: proposta vai pelo canal Spin (inbox), não pelo wa.me
+  const nomeClienteWa = (projeto.cliente_razao_social || 'cliente').split(' ')[0]
+  const potenciaCcWa = modoComposicao === 'por_uc' && propostasPorUc
+    ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
+    : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
+  const potenciaCaWa = modoComposicao === 'por_uc' && propostasPorUc
+    ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_ca_kw || 0), 0)
+    : (projeto.kit_selecionado?.potencia_ca_kw || 0)
+  const sufixoUcsWa = modoComposicao === 'por_uc' && propostasPorUc
+    ? ` (${propostasPorUc.length} UCs contempladas)` : ''
+  const legendaWhatsApp = `Olá ${nomeClienteWa}! 🌞\n\nSegue a proposta do seu sistema fotovoltaico Spin Solar de ${fmtNum(potenciaCcWa, 2)} kWp${sufixoUcsWa}.\n\nQualquer dúvida estou à disposição!`
+  const nomeArquivoWhatsApp = nomearProposta({
+    cliente: projeto.cliente_razao_social,
+    potenciaCcKwp: potenciaCcWa,
+    potenciaCaKw: potenciaCaWa,
+  })
 
-    const url = `https://wa.me/${telWithDDI}?text=${encodeURIComponent(mensagem)}`
-    window.open(url, '_blank')
-
-    // Marca como proposta enviada
+  function aposEnviarWhatsApp() {
     startTransition(async () => {
       await marcarPropostaEnviadaAction(projeto.id)
       router.refresh()
@@ -482,14 +479,14 @@ export function OrcamentoClient({
             {gerando ? '📄 Gerando PDF...' : urlPdf ? '📄 Baixar PDF novamente' : '📄 Gerar e baixar PDF'}
           </button>
 
-          <button
-            type="button"
-            onClick={enviarWhatsApp}
-            disabled={!urlPdf || isPending}
-            className="p-4 bg-verde text-noite font-bold text-sm rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            💬 Enviar por WhatsApp ao cliente
-          </button>
+          <BotaoEnviarPropostaCanal
+            projetoId={projeto.id}
+            urlPdf={urlPdf}
+            nomeArquivo={nomeArquivoWhatsApp}
+            legenda={legendaWhatsApp}
+            rotulo="💬 Enviar por WhatsApp ao cliente"
+            onEnviado={aposEnviarWhatsApp}
+          />
         </div>
 
         {urlPdf && (

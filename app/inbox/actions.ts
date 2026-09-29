@@ -293,7 +293,7 @@ export async function buscarConversaDoProjetoAction(
   projeto_id: string,
   limit_msgs = 20,
 ): Promise<
-  { conversa: any | null; mensagens: any[]; contato: any | null }
+  { conversa: any | null; mensagens: any[]; contato: any | null; telefone_projeto?: string | null }
   | { erro: string }
 > {
   const check = await verificarUsuario()
@@ -312,7 +312,7 @@ export async function buscarConversaDoProjetoAction(
   }
 
   const digs = String(projeto.cliente_telefone || '').replace(/\D/g, '')
-  if (digs.length < 10) return { conversa: null, mensagens: [], contato: null }
+  if (digs.length < 10) return { conversa: null, mensagens: [], contato: null, telefone_projeto: null }
   let tel = digs
   if (tel.length === 10 || tel.length === 11) tel = '55' + tel
 
@@ -322,7 +322,9 @@ export async function buscarConversaDoProjetoAction(
     .eq('telefone', tel)
     .maybeSingle()
 
-  if (!contato) return { conversa: null, mensagens: [], contato: null }
+  // Kalebe 2026-09-29: projeto com telefone mas sem conversa ainda — a caixa
+  // do projeto mostra o campo de mensagem e abre o canal no 1º envio.
+  if (!contato) return { conversa: null, mensagens: [], contato: null, telefone_projeto: tel }
 
   const { data: conversas } = await admin
     .from('wa_conversas')
@@ -601,9 +603,101 @@ export async function abrirCanalDoProjetoAction(
 ): Promise<{ conversa_id: string } | { erro: string }> {
   const check = await verificarUsuario()
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  return garantirCanalDoProjeto(createAdminClient(), projeto_id, check)
+}
+
+/**
+ * Kalebe 2026-09-29: "Enviar por WhatsApp" das propostas sai pelo canal
+ * Spin (fica no inbox) em vez de abrir o wa.me. Manda o PDF como documento
+ * (a Meta busca pelo link público) com a mensagem na legenda.
+ * Janela de 24h fechada → não tenta: devolve janela_fechada pra tela
+ * oferecer copiar o link.
+ */
+export async function enviarPropostaPeloCanalAction(entrada: {
+  projeto_id: string
+  url_pdf: string
+  nome_arquivo: string
+  legenda: string
+}): Promise<
+  | { sucesso: true; conversa_id: string }
+  | { erro: string; janela_fechada?: boolean; conversa_id?: string }
+> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  if (!/^https:\/\//.test(entrada.url_pdf)) return { erro: 'Gere o PDF antes de enviar' }
 
   const admin = createAdminClient()
+  const canal = await garantirCanalDoProjeto(admin, entrada.projeto_id, check)
+  if ('erro' in canal) return canal
 
+  const { data: conv } = await admin
+    .from('wa_conversas')
+    .select('id, janela_24h_expira_em, contato:contato_id(telefone)')
+    .eq('id', canal.conversa_id)
+    .maybeSingle()
+  if (!conv) return { erro: 'Conversa não encontrada' }
+  const janelaAberta = !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date()
+  if (!janelaAberta) {
+    return {
+      erro: 'O cliente não mandou mensagem pro número da Spin nas últimas 24h — o WhatsApp só libera mensagem por modelo aprovado. Peça pro cliente mandar um "oi" e envie de novo, ou copie o link do PDF.',
+      janela_fechada: true,
+      conversa_id: canal.conversa_id,
+    }
+  }
+
+  const _cfg = await getWaConfig()
+  if (!_cfg.access_token || !_cfg.phone_number_id) return { erro: 'Meta Cloud API não configurada.' }
+  const tel = (conv.contato as any)?.telefone
+  const nomeAgente = check.perfil?.nome_completo || 'Spin'
+  const legenda = `*${nomeAgente}:*\n${entrada.legenda}`.slice(0, 1024)
+
+  const resp = await fetch(`https://graph.facebook.com/v20.0/${_cfg.phone_number_id}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${_cfg.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: tel,
+      type: 'document',
+      document: { link: entrada.url_pdf, filename: entrada.nome_arquivo, caption: legenda },
+    }),
+  })
+  const data = await resp.json()
+  if (!resp.ok) {
+    const code = data?.error?.code
+    return code === 131047
+      ? { erro: 'Janela de 24h fechada — peça pro cliente mandar um "oi" e envie de novo.', janela_fechada: true, conversa_id: canal.conversa_id }
+      : { erro: `[${code || resp.status}] ${data?.error?.message || 'Falha ao enviar'}` }
+  }
+
+  await gravarMensagem(admin, {
+    conversa_id: canal.conversa_id,
+    direcao: 'outbound',
+    tipo: 'document',
+    texto: entrada.nome_arquivo,
+    midia_url: entrada.url_pdf,
+    midia_mime: 'application/pdf',
+    meta_message_id: data?.messages?.[0]?.id || null,
+    remetente_id: check.user.id,
+    origem_agente_nome: nomeAgente,
+    status_entrega: 'enviada',
+  })
+  // Humano falou com o cliente: conversa é dele e o agente sai
+  await admin
+    .from('wa_conversas')
+    .update({ status: 'em_atendimento', responsavel_id: check.user.id, agente_ativo: null })
+    .eq('id', canal.conversa_id)
+    .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
+
+  revalidatePath('/inbox')
+  return { sucesso: true, conversa_id: canal.conversa_id }
+}
+
+/** Contato + conversa do cliente do projeto (cria se não existir). */
+async function garantirCanalDoProjeto(
+  admin: ReturnType<typeof createAdminClient>,
+  projeto_id: string,
+  check: Extract<CheckUsuario, { erro: null }>,
+): Promise<{ conversa_id: string } | { erro: string }> {
   const { data: projeto } = await admin
     .from('projetos')
     .select('id, cliente_razao_social, cliente_telefone, consultor_id')

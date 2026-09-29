@@ -8,6 +8,7 @@ import {
   enviarTextoAction,
   iniciarChamadaAction,
   enviarArquivoAction,
+  abrirCanalDoProjetoAction,
 } from '@/app/inbox/actions'
 
 /**
@@ -22,6 +23,7 @@ export function ConversaClienteCard({ projetoId }: { projetoId: string }) {
     conversa: any | null
     contato: any | null
     mensagens: any[]
+    telefone_projeto?: string | null
   } | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [texto, setTexto] = useState('')
@@ -59,84 +61,35 @@ export function ConversaClienteCard({ projetoId }: { projetoId: string }) {
     }
   }, [dados?.mensagens.length])
 
-  if (!dados) {
-    return (
-      <SectionCard>
-        <p className="text-xs text-white/40 italic p-4 text-center">Carregando conversa...</p>
-      </SectionCard>
-    )
+  // Kalebe 2026-09-29: sem conversa ainda, o 1º envio (texto, arquivo ou
+  // chamada) abre o canal do projeto antes — antes a caixa só mandava pro inbox.
+  async function garantirConversa(): Promise<string | null> {
+    if (dados?.conversa?.id) return dados.conversa.id
+    const r = await abrirCanalDoProjetoAction(projetoId)
+    if ('erro' in r) { setErro(r.erro); return null }
+    return r.conversa_id
   }
-
-  // Cliente sem telefone
-  if (!dados.contato) {
-    return (
-      <SectionCard>
-        <div className="p-4 text-center">
-          <p className="text-sm text-white/60">Cliente ainda não tem telefone cadastrado.</p>
-          <p className="text-[11px] text-white/40 mt-1">Adicione um WhatsApp na seção Cliente pra iniciar conversa.</p>
-        </div>
-      </SectionCard>
-    )
-  }
-
-  // Contato existe mas sem conversa ainda
-  if (!dados.conversa) {
-    return (
-      <SectionCard>
-        <div className="p-4 text-center">
-          <p className="text-sm text-white/60">Nenhuma conversa iniciada com esse cliente ainda.</p>
-          <p className="text-[11px] text-white/40 mt-1">Envie a primeira mensagem abaixo pra abrir o canal.</p>
-          <div className="mt-3">
-            <ComposicaoInline
-              conversaId={null}
-              telefone={dados.contato.telefone}
-              projetoId={projetoId}
-              texto={texto}
-              setTexto={setTexto}
-              enviar={enviarTexto}
-              iniciarChamada={iniciarChamada}
-              onArquivo={selecionarArquivo}
-              inputArquivoRef={inputArquivoRef}
-              handleArquivo={handleArquivo}
-              isPending={isPending}
-              enviandoMidia={enviandoMidia}
-            />
-          </div>
-          {erro && <p className="text-xs text-coral mt-2">{erro}</p>}
-        </div>
-      </SectionCard>
-    )
-  }
-
-  const janelaExpirada = dados.conversa.janela_24h_expira_em
-    ? new Date(dados.conversa.janela_24h_expira_em) < new Date()
-    : true
-  const statusInfo = {
-    'nova': { cor: 'text-weg-azul', label: 'Nova' },
-    'em_qualificacao': { cor: 'text-weg-azul', label: 'IA qualificando' },
-    'aguardando_representante': { cor: 'text-sol', label: 'Aguardando rep' },
-    'em_atendimento': { cor: 'text-verde', label: 'Em atendimento' },
-    'em_atendimento_ia': { cor: 'text-weg-azul', label: 'IA atendendo' },
-    'encerrada': { cor: 'text-white/50', label: 'Encerrada' },
-  }[dados.conversa.status as string] || { cor: 'text-white/60', label: dados.conversa.status }
 
   function enviarTexto() {
-    if (!dados?.conversa || !texto.trim()) return
+    if (!texto.trim()) return
     setErro(null)
     startTransition(async () => {
-      const r = await enviarTextoAction({ conversa_id: dados.conversa.id, texto })
-      if ('erro' in r) { setErro(r.erro); return }
+      const conversaId = await garantirConversa()
+      if (!conversaId) return
+      const r = await enviarTextoAction({ conversa_id: conversaId, texto })
+      if ('erro' in r) { setErro(r.erro); refresh(); return }
       setTexto('')
       refresh()
     })
   }
 
   function iniciarChamada(tipo: 'voz' | 'video') {
-    if (!dados?.conversa) return
     setErro(null); setEnviandoMidia(tipo)
     startTransition(async () => {
       try {
-        const r = await iniciarChamadaAction({ conversa_id: dados.conversa.id, tipo })
+        const conversaId = await garantirConversa()
+        if (!conversaId) return
+        const r = await iniciarChamadaAction({ conversa_id: conversaId, tipo })
         if ('erro' in r) { setErro(r.erro); return }
         window.open(r.url_sala, '_blank', 'noopener')
         refresh()
@@ -150,24 +103,60 @@ export function ConversaClienteCard({ projetoId }: { projetoId: string }) {
 
   async function handleArquivo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (!file || !dados?.conversa) return
+    if (!file) return
     e.target.value = ''
     setErro(null); setEnviandoMidia('arquivo')
     try {
-      if (file.size > 100 * 1024 * 1024) {
-        setErro('Arquivo maior que 100MB.')
+      // Teto de 4,5 MB do corpo da requisição na Vercel (igual ao inbox)
+      if (file.size > 4 * 1024 * 1024) {
+        setErro('Arquivo acima de 4 MB: envie pelo WhatsApp do celular ou do computador — ele aparece aqui no histórico do mesmo jeito.')
         return
       }
       const legenda = window.prompt('Legenda (opcional):') || ''
+      const conversaId = await garantirConversa()
+      if (!conversaId) return
       const fd = new FormData()
-      fd.append('conversa_id', dados.conversa.id)
+      fd.append('conversa_id', conversaId)
       fd.append('arquivo', file)
       if (legenda) fd.append('legenda', legenda)
       const r = await enviarArquivoAction(fd)
       if ('erro' in r) setErro(r.erro)
-      else refresh()
+      refresh()
     } finally { setEnviandoMidia(null) }
   }
+
+  if (!dados) {
+    return (
+      <SectionCard>
+        <p className="text-xs text-white/40 italic p-4 text-center">Carregando conversa...</p>
+      </SectionCard>
+    )
+  }
+
+  const telefone = dados.contato?.telefone || dados.telefone_projeto || null
+  if (!telefone) {
+    return (
+      <SectionCard>
+        <div className="p-4 text-center">
+          <p className="text-sm text-white/60">Cliente ainda não tem telefone cadastrado.</p>
+          <p className="text-[11px] text-white/40 mt-1">Adicione um WhatsApp na seção Cliente pra iniciar conversa.</p>
+        </div>
+      </SectionCard>
+    )
+  }
+
+  const janelaExpirada = dados.conversa?.janela_24h_expira_em
+    ? new Date(dados.conversa.janela_24h_expira_em) < new Date()
+    : true
+  const statusInfo = dados.conversa ? ({
+    'nova': { cor: 'text-weg-azul', label: 'Nova' },
+    'em_qualificacao': { cor: 'text-weg-azul', label: 'IA qualificando' },
+    'aguardando_representante': { cor: 'text-sol', label: 'Aguardando rep' },
+    'em_atendimento': { cor: 'text-verde', label: 'Em atendimento' },
+    'em_atendimento_ia': { cor: 'text-weg-azul', label: 'IA atendendo' },
+    'encerrada': { cor: 'text-white/50', label: 'Encerrada' },
+  }[dados.conversa.status as string] || { cor: 'text-white/60', label: dados.conversa.status })
+    : { cor: 'text-white/50', label: 'Sem conversa ainda' }
 
   return (
     <SectionCard>
@@ -177,22 +166,24 @@ export function ConversaClienteCard({ projetoId }: { projetoId: string }) {
           <span className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-white/[0.06] ${statusInfo.cor}`}>
             {statusInfo.label}
           </span>
-          {dados.conversa.agente_ativo && (
+          {dados.conversa?.agente_ativo && (
             <span className="text-[10px] text-weg-azul">🤖 {dados.conversa.agente_ativo}</span>
           )}
-          <span className="text-[10px] text-white/40 font-mono truncate">{dados.contato.telefone}</span>
+          <span className="text-[10px] text-white/40 font-mono truncate">{telefone}</span>
           {janelaExpirada && (
-            <span className="text-[9px] text-coral uppercase tracking-wider font-bold" title="Janela de 24h expirou — só template HSM">
+            <span className="text-[9px] text-coral uppercase tracking-wider font-bold" title="Janela de 24h fechada — só modelo aprovado pela Meta">
               janela 24h ✕
             </span>
           )}
         </div>
-        <Link
-          href={`/inbox?c=${dados.conversa.id}`}
-          className="text-[10px] text-sol hover:text-sol/80 font-bold uppercase tracking-wider shrink-0"
-        >
-          Abrir Inbox →
-        </Link>
+        {dados.conversa && (
+          <Link
+            href={`/inbox?c=${dados.conversa.id}`}
+            className="text-[10px] text-sol hover:text-sol/80 font-bold uppercase tracking-wider shrink-0"
+          >
+            Abrir Inbox →
+          </Link>
+        )}
       </div>
 
       {/* Timeline compacta */}
@@ -209,13 +200,16 @@ export function ConversaClienteCard({ projetoId }: { projetoId: string }) {
 
       {/* Composição */}
       <div className="p-3 border-t border-white/10 space-y-2">
+        {janelaExpirada && (
+          <p className="text-[10px] text-white/45">
+            O cliente não mandou mensagem pro número da Spin nas últimas 24h — o WhatsApp só entrega texto e
+            arquivo depois que ele responder (ou por modelo aprovado).
+          </p>
+        )}
         {erro && (
           <p className="text-[11px] text-coral bg-coral/10 border border-coral/30 rounded p-2">{erro}</p>
         )}
         <ComposicaoInline
-          conversaId={dados.conversa.id}
-          telefone={dados.contato.telefone}
-          projetoId={projetoId}
           texto={texto}
           setTexto={setTexto}
           enviar={enviarTexto}
@@ -288,12 +282,9 @@ function BolhaCompacta({ m }: { m: any }) {
 }
 
 function ComposicaoInline({
-  conversaId, telefone, projetoId, texto, setTexto, enviar, iniciarChamada,
+  texto, setTexto, enviar, iniciarChamada,
   onArquivo, inputArquivoRef, handleArquivo, isPending, enviandoMidia,
 }: {
-  conversaId: string | null
-  telefone: string
-  projetoId: string
   texto: string
   setTexto: (v: string) => void
   enviar: () => void
@@ -304,21 +295,6 @@ function ComposicaoInline({
   isPending: boolean
   enviandoMidia: 'arquivo' | 'voz' | 'video' | null
 }) {
-  // Sem conversa: só mostra o textarea + botão que dispara enviarTextoAction via
-  // BotaoAbrirCanal (link pra /inbox — evita duplicar a lógica). Simplificação:
-  // sem conversa, redireciona pro /inbox pra enviar a 1ª msg. O botão abrir
-  // canal já existe.
-  if (!conversaId) {
-    return (
-      <Link
-        href={`/inbox?tel=${encodeURIComponent(telefone)}`}
-        className="inline-block px-4 py-2 rounded bg-verde/15 border border-verde/40 text-verde text-xs font-bold uppercase tracking-wider hover:bg-verde/25"
-      >
-        💬 Iniciar conversa no Inbox →
-      </Link>
-    )
-  }
-
   return (
     <>
       <div className="flex items-center gap-1.5">
