@@ -495,9 +495,9 @@ export async function executarTool(
           // Não-admin: só nos grupos de que participa (RLS devolve o grupo só se for membro)
           const { data: g } = await supabase.from('grupos_internos').select('id').eq('chave', input.grupo).maybeSingle()
           const { data: m } = g
-            ? await supabase.from('grupos_membros').select('grupo_id').eq('grupo_id', g.id).eq('usuario_id', userId).maybeSingle()
+            ? await supabase.from('grupos_membros').select('*').eq('grupo_id', g.id).eq('usuario_id', userId).maybeSingle()
             : { data: null }
-          if (!m) return { sucesso: false, erro: 'Você não participa desse grupo. Peça ao admin pra te incluir.' }
+          if (!m || (m as any).bloqueado_em) return { sucesso: false, erro: 'Você não participa desse grupo. Peça ao admin pra te incluir.' }
         }
         const r = await publicarNoGrupo({
           grupo: input.grupo,

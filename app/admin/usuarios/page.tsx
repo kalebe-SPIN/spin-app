@@ -37,18 +37,28 @@ export default async function AdminUsuariosPage() {
   // Precisa do admin client pra ler auth.users (emails, confirmação, último login)
   const admin = createAdminClient()
 
-  const [{ data: profiles }, { data: authList }] = await Promise.all([
+  const [{ data: profiles }, { data: authList }, { data: grupos }, { data: membros }] = await Promise.all([
     admin
       .from('profiles')
       .select('id, nome_completo, telefone, role, avatar_url, ativo, created_at, updated_at')
       .order('created_at', { ascending: false }),
     admin.auth.admin.listUsers({ perPage: 500 }),
+    // Kalebe 2026-09-29: setor = grupo interno (vazio se a migration 125 não rodou)
+    admin.from('grupos_internos').select('id, chave, nome, emoji').eq('ativo', true).order('ordem'),
+    admin.from('grupos_membros').select('*'),
   ])
 
   // Junta perfil + email/last_sign_in do auth.users
   const authById = new Map(
     (authList?.users || []).map(u => [u.id, u]),
   )
+  const chavePorGrupo = new Map((grupos || []).map((g: any) => [g.id, g.chave]))
+  const setoresPorUsuario = new Map<string, string[]>()
+  for (const m of (membros || []) as any[]) {
+    const chave = chavePorGrupo.get(m.grupo_id)
+    if (!chave) continue
+    setoresPorUsuario.set(m.usuario_id, [...(setoresPorUsuario.get(m.usuario_id) || []), chave])
+  }
 
   const usuarios = (profiles || []).map(p => {
     const au = authById.get(p.id)
@@ -58,6 +68,7 @@ export default async function AdminUsuariosPage() {
       email_confirmado: !!au?.email_confirmed_at,
       ultimo_login: au?.last_sign_in_at || null,
       convite_pendente: !au?.last_sign_in_at && !!au?.invited_at,
+      setores: setoresPorUsuario.get(p.id) || [],
     }
   })
 
@@ -80,7 +91,7 @@ export default async function AdminUsuariosPage() {
           </p>
         </header>
 
-        <AdminUsuariosClient usuarios={usuarios} meuId={user.id} />
+        <AdminUsuariosClient usuarios={usuarios} meuId={user.id} setores={grupos || []} />
       </div>
     </main>
   )

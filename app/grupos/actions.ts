@@ -110,10 +110,11 @@ export async function membrosAction(grupoId: string): Promise<
   // profiles tem RLS restrito — nomes via service role, já validado acima
   const admin = createAdminClient()
   const [{ data: m }, { data: perfis }] = await Promise.all([
-    admin.from('grupos_membros').select('usuario_id').eq('grupo_id', grupoId),
+    admin.from('grupos_membros').select('*').eq('grupo_id', grupoId),
     admin.from('profiles').select('id, nome_completo, role').eq('ativo', true),
   ])
-  const ids = new Set((m || []).map((x: any) => x.usuario_id))
+  // Bloqueado (descadastrado) não aparece; perfis inativos já ficam fora da lista
+  const ids = new Set((m || []).filter((x: any) => !x.bloqueado_em).map((x: any) => x.usuario_id))
   const todos = (perfis || [])
     .filter((p: any) => p.role !== 'candidato')
     .map((p: any) => ({ id: p.id, nome: p.nome_completo || 'Sem nome', papel: p.role }))
@@ -125,8 +126,12 @@ export async function membrosAction(grupoId: string): Promise<
 export async function alterarMembroAction(grupoId: string, usuarioId: string, incluir: boolean): Promise<{ sucesso: true } | { erro: string }> {
   const { supabase, ehAdmin } = await sessao()
   if (!ehAdmin) return { erro: 'Só o admin gerencia os membros' }
+  if (incluir) {
+    const { data: p } = await createAdminClient().from('profiles').select('ativo').eq('id', usuarioId).maybeSingle()
+    if (!p?.ativo) return { erro: 'Usuário desativado não pode entrar em grupo — reative em Admin → Usuários' }
+  }
   const { error } = incluir
-    ? await supabase.from('grupos_membros').upsert({ grupo_id: grupoId, usuario_id: usuarioId })
+    ? await supabase.from('grupos_membros').upsert({ grupo_id: grupoId, usuario_id: usuarioId, bloqueado_em: null })
     : await supabase.from('grupos_membros').delete().eq('grupo_id', grupoId).eq('usuario_id', usuarioId)
   if (error) return { erro: error.message }
   return { sucesso: true }

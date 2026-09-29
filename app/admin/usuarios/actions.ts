@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { TODOS_SETORES, setoresPadraoDoRole } from '@/lib/grupos/setores'
 
 export type Role = 'admin' | 'representante' | 'instalador' | 'colaborador' | 'profissional_campo'
 
@@ -48,6 +49,7 @@ export async function convidarUsuarioAction(input: {
   nome_completo: string
   role: Role
   telefone?: string
+  setores?: string[]               // chaves dos grupos internos (Kalebe 2026-09-29)
 }): Promise<
   { sucesso: true; user_id: string; email: string; senha_temp: string } | { erro: string }
 > {
@@ -97,8 +99,62 @@ export async function convidarUsuarioAction(input: {
     return { erro: `Usuário criado mas erro ao atualizar perfil: ${erroUpdate.message}` }
   }
 
+  // 3. Entra nos grupos dos setores escolhidos (Kalebe 2026-09-29)
+  const setores = input.role === 'admin' ? TODOS_SETORES : (input.setores ?? setoresPadraoDoRole(input.role))
+  const erroSetores = await sincronizarSetores(criado.user.id, setores, true)
+  if (erroSetores) {
+    return { erro: `Usuário criado, mas não entrou nos grupos: ${erroSetores}. Ajuste os setores no card dele.` }
+  }
+
   revalidatePath('/admin/usuarios')
   return { sucesso: true, user_id: criado.user.id, email, senha_temp: senhaTemp }
+}
+
+/**
+ * Deixa o usuário exatamente nos grupos dos setores informados.
+ * Usuário desativado fica com as linhas BLOQUEADAS (histórico preservado).
+ * Retorna mensagem de erro ou null.
+ */
+async function sincronizarSetores(userId: string, chaves: string[], ativo: boolean): Promise<string | null> {
+  const admin = createAdminClient()
+  const { data: grupos, error } = await admin.from('grupos_internos').select('id, chave')
+  if (error) return error.message.includes('grupos_internos') ? 'falta rodar a migration 125' : error.message
+  const querIds = (grupos || []).filter((g: any) => chaves.includes(g.chave)).map((g: any) => g.id)
+
+  let remover = admin.from('grupos_membros').delete().eq('usuario_id', userId)
+  if (querIds.length) remover = remover.not('grupo_id', 'in', `(${querIds.join(',')})`)
+  const { error: e1 } = await remover
+  if (e1) return e1.message
+  if (!querIds.length) return null
+
+  const { error: e2 } = await admin.from('grupos_membros').upsert(
+    querIds.map((id: string) => ({
+      grupo_id: id,
+      usuario_id: userId,
+      bloqueado_em: ativo ? null : new Date().toISOString(),
+    })),
+    { onConflict: 'grupo_id,usuario_id' },
+  )
+  if (e2) return e2.message.includes('bloqueado_em') ? 'falta rodar a migration 126' : e2.message
+  return null
+}
+
+/** Admin define os setores (grupos internos) de um usuário já cadastrado. */
+export async function definirSetoresAction(userId: string, setores: string[]): Promise<
+  { sucesso: true } | { erro: string }
+> {
+  const check = await verificarAdmin()
+  if (!check.ok) return { erro: check.erro }
+  const admin = createAdminClient()
+  const { data: alvo } = await admin.from('profiles').select('role, ativo').eq('id', userId).maybeSingle()
+  if (!alvo) return { erro: 'Usuário não encontrado' }
+  // Admin participa de todos os grupos, sempre
+  const chaves = alvo.role === 'admin' ? TODOS_SETORES : setores
+  const erro = await sincronizarSetores(userId, chaves, !!alvo.ativo)
+  if (erro) return { erro }
+  revalidatePath('/admin/usuarios')
+  revalidatePath('/grupos')
+  return { sucesso: true }
 }
 
 /**
@@ -182,10 +238,13 @@ export async function toggleAtivoAction(userId: string, ativo: boolean): Promise
     }
   }
 
+  // O gatilho da migration 126 bloqueia (ou desbloqueia) nos grupos na mesma
+  // transação. Contato individual no WhatsApp/inbox não é tocado.
   const { error } = await admin.from('profiles').update({ ativo }).eq('id', userId)
   if (error) return { erro: error.message }
 
   revalidatePath('/admin/usuarios')
+  revalidatePath('/grupos')
   return { sucesso: true }
 }
 

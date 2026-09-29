@@ -3,10 +3,11 @@
 import { useState, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  convidarUsuarioAction, mudarRoleAction, toggleAtivoAction, reenviarConviteAction,
+  convidarUsuarioAction, mudarRoleAction, toggleAtivoAction, reenviarConviteAction, definirSetoresAction,
   type Role,
 } from '@/app/admin/usuarios/actions'
 import { formatarTelefone } from '@/lib/formatters'
+import { setoresPadraoDoRole, type SetorResumo } from '@/lib/grupos/setores'
 
 type Usuario = {
   id: string
@@ -20,6 +21,7 @@ type Usuario = {
   email_confirmado: boolean
   ultimo_login: string | null
   convite_pendente: boolean
+  setores: string[]          // chaves dos grupos internos
 }
 
 type RoleInfo = { label: string; emoji: string; cor: string; bg: string }
@@ -37,7 +39,46 @@ const ROLES_INFO: Record<Role, RoleInfo> = {
 const ROLE_FALLBACK: RoleInfo = { label: '(desconhecido)', emoji: '❓', cor: 'text-white/50', bg: 'bg-white/5 border-white/10' }
 const infoDo = (r: string | null | undefined): RoleInfo => (r && (ROLES_INFO as Record<string, RoleInfo>)[r]) || ROLE_FALLBACK
 
-export function AdminUsuariosClient({ usuarios, meuId }: { usuarios: Usuario[]; meuId: string }) {
+/**
+ * Setores = grupos internos (Kalebe 2026-09-29). Marcar aqui coloca a pessoa
+ * no grupo; desativar o usuário bloqueia em todos na hora (gatilho no banco).
+ */
+function SeletorSetores({
+  setores, valor, onChange, travadoAdmin,
+}: {
+  setores: SetorResumo[]
+  valor: string[]
+  onChange: (v: string[]) => void
+  travadoAdmin?: boolean
+}) {
+  if (setores.length === 0) {
+    return <p className="text-[11px] text-sol">Grupos ainda não criados — rode a migration 125 no Supabase.</p>
+  }
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {setores.map((s) => {
+        const marcado = travadoAdmin || valor.includes(s.chave)
+        return (
+          <button
+            key={s.chave}
+            type="button"
+            disabled={travadoAdmin}
+            onClick={() => onChange(marcado ? valor.filter((c) => c !== s.chave) : [...valor, s.chave])}
+            className={`p-2 rounded border text-left text-xs transition disabled:cursor-not-allowed ${
+              marcado
+                ? 'bg-verde/10 border-verde/40 text-verde'
+                : 'bg-white/[0.02] border-white/10 text-white/60 hover:border-white/30'
+            }`}
+          >
+            <span className="font-bold">{marcado ? '☑' : '☐'} {s.emoji} {s.nome}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+export function AdminUsuariosClient({ usuarios, meuId, setores }: { usuarios: Usuario[]; meuId: string; setores: SetorResumo[] }) {
   const [busca, setBusca] = useState('')
   const [filtroRole, setFiltroRole] = useState<'todos' | Role>('todos')
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ativos' | 'inativos' | 'convite'>('todos')
@@ -139,6 +180,7 @@ export function AdminUsuariosClient({ usuarios, meuId }: { usuarios: Usuario[]; 
               usuario={u}
               ehVoceMesmo={u.id === meuId}
               onMsg={setMsgGlobal}
+              setores={setores}
             />
           ))
         )}
@@ -149,6 +191,7 @@ export function AdminUsuariosClient({ usuarios, meuId }: { usuarios: Usuario[]; 
         <ModalConvite
           onFechar={() => setAbrindoConvite(false)}
           onMsg={setMsgGlobal}
+          setores={setores}
         />
       )}
     </div>
@@ -165,17 +208,37 @@ function StatBadge({ label, value, cor = 'text-white' }: { label: string; value:
 }
 
 function LinhaUsuario({
-  usuario, ehVoceMesmo, onMsg,
+  usuario, ehVoceMesmo, onMsg, setores,
 }: {
   usuario: Usuario
   ehVoceMesmo: boolean
   onMsg: (m: { tipo: 'sucesso' | 'erro'; texto: string } | null) => void
+  setores: SetorResumo[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [editando, setEditando] = useState(false)
   const [novoRole, setNovoRole] = useState<Role>(usuario.role)
+  const [editandoSetores, setEditandoSetores] = useState(false)
+  const [novosSetores, setNovosSetores] = useState<string[]>(usuario.setores)
   const info = infoDo(usuario.role)
+  const ehAdmin = usuario.role === 'admin'
+  const setoresDoUsuario = ehAdmin ? setores : setores.filter((s) => usuario.setores.includes(s.chave))
+
+  function handleSalvarSetores() {
+    if (!ehAdmin && novosSetores.length === 0 &&
+      !confirm(`${usuario.nome_completo} vai ficar sem nenhum grupo. Confirmar?`)) return
+    startTransition(async () => {
+      const res = await definirSetoresAction(usuario.id, novosSetores)
+      if ('erro' in res) {
+        onMsg({ tipo: 'erro', texto: res.erro })
+      } else {
+        onMsg({ tipo: 'sucesso', texto: `Setores de ${usuario.nome_completo} atualizados` })
+        setEditandoSetores(false)
+        router.refresh()
+      }
+    })
+  }
 
   function handleSalvarRole() {
     if (novoRole === usuario.role) { setEditando(false); return }
@@ -192,12 +255,24 @@ function LinhaUsuario({
   }
 
   function handleToggleAtivo() {
+    if (usuario.ativo && !confirm(
+      `Desativar ${usuario.nome_completo}?\n\n` +
+      '• Perde o acesso ao portal\n' +
+      '• É bloqueado(a) em todos os grupos na hora\n' +
+      '• O contato individual no WhatsApp/inbox continua ativo\n\n' +
+      'Se reativar depois, volta aos mesmos grupos.',
+    )) return
     startTransition(async () => {
       const res = await toggleAtivoAction(usuario.id, !usuario.ativo)
       if ('erro' in res) {
         onMsg({ tipo: 'erro', texto: res.erro })
       } else {
-        onMsg({ tipo: 'sucesso', texto: `${usuario.nome_completo} ${usuario.ativo ? 'desativado' : 'reativado'}` })
+        onMsg({
+          tipo: 'sucesso',
+          texto: usuario.ativo
+            ? `${usuario.nome_completo} desativado(a) e bloqueado(a) nos grupos. Contato individual segue ativo.`
+            : `${usuario.nome_completo} reativado(a) — voltou aos grupos dos setores dele(a).`,
+        })
         router.refresh()
       }
     })
@@ -289,6 +364,44 @@ Ao entrar o sistema pede pra trocar por uma senha só sua.`
             ) : (
               <p className="text-[10px] text-white/40 mt-1">Nunca acessou</p>
             )}
+            {/* Setores = grupos internos */}
+            {setores.length > 0 && !editandoSetores && (
+              <div className="flex items-center gap-1 flex-wrap mt-1.5">
+                <span className="text-[10px] text-white/40">Setores:</span>
+                {setoresDoUsuario.length === 0 && <span className="text-[10px] text-sol">nenhum</span>}
+                {setoresDoUsuario.map((s) => (
+                  <span key={s.chave} className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                    usuario.ativo ? 'border-verde/30 bg-verde/10 text-verde' : 'border-coral/30 bg-coral/10 text-coral line-through'
+                  }`}>
+                    {s.emoji} {s.nome}
+                  </span>
+                ))}
+                {!usuario.ativo && setoresDoUsuario.length > 0 && (
+                  <span className="text-[10px] text-coral">🔒 bloqueado nos grupos</span>
+                )}
+                {!ehAdmin && (
+                  <button onClick={() => { setNovosSetores(usuario.setores); setEditandoSetores(true) }}
+                    className="text-[10px] text-white/50 hover:text-white underline ml-1">
+                    editar
+                  </button>
+                )}
+              </div>
+            )}
+            {editandoSetores && (
+              <div className="mt-2 space-y-2 max-w-md">
+                <SeletorSetores setores={setores} valor={novosSetores} onChange={setNovosSetores} />
+                <div className="flex gap-2">
+                  <button onClick={handleSalvarSetores} disabled={pending}
+                    className="px-2 py-1 bg-verde text-noite text-xs font-bold rounded hover:bg-verde/90 disabled:opacity-40">
+                    ✓ Salvar setores
+                  </button>
+                  <button onClick={() => setEditandoSetores(false)}
+                    className="px-2 py-1 bg-white/5 border border-white/10 text-white/70 text-xs rounded hover:bg-white/10">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -361,10 +474,11 @@ Ao entrar o sistema pede pra trocar por uma senha só sua.`
 }
 
 function ModalConvite({
-  onFechar, onMsg,
+  onFechar, onMsg, setores,
 }: {
   onFechar: () => void
   onMsg: (m: { tipo: 'sucesso' | 'erro'; texto: string } | null) => void
+  setores: SetorResumo[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -372,7 +486,15 @@ function ModalConvite({
   const [nome, setNome] = useState('')
   const [telefone, setTelefone] = useState('')
   const [role, setRole] = useState<Role>('representante')
+  const [setoresSel, setSetoresSel] = useState<string[]>(setoresPadraoDoRole('representante'))
+  const [setoresMexidos, setSetoresMexidos] = useState(false)
   const [erroLocal, setErroLocal] = useState<string | null>(null)
+
+  // Atuação sugere o setor até o admin mexer nos setores manualmente
+  function escolherRole(r: Role) {
+    setRole(r)
+    if (!setoresMexidos) setSetoresSel(setoresPadraoDoRole(r))
+  }
   const [credenciais, setCredenciais] = useState<{ email: string; senha_temp: string; telefone: string } | null>(null)
   const [copiado, setCopiado] = useState(false)
 
@@ -380,6 +502,10 @@ function ModalConvite({
     setErroLocal(null)
     if (nome.trim().length < 3) { setErroLocal('Nome completo obrigatório'); return }
     if (!/^[^@]+@[^@]+\.[^@]+$/.test(email.trim())) { setErroLocal('Email inválido'); return }
+    if (role !== 'admin' && setores.length > 0 && setoresSel.length === 0) {
+      setErroLocal('Escolha pelo menos um setor — é o grupo interno em que a pessoa vai entrar')
+      return
+    }
 
     startTransition(async () => {
       const res = await convidarUsuarioAction({
@@ -387,6 +513,7 @@ function ModalConvite({
         nome_completo: nome.trim(),
         role,
         telefone: telefone.replace(/\D/g, '') || undefined,
+        setores: setoresSel,
       })
       if ('erro' in res) {
         setErroLocal(res.erro)
@@ -446,6 +573,12 @@ Qualquer dúvida, me chama!`
               <p className="text-3xl">✅</p>
               <p className="text-sm font-bold text-verde">Conta criada com sucesso</p>
               <p className="text-xs text-white/60">{nome} · {infoDo(role).label}</p>
+              {setores.length > 0 && (
+                <p className="text-[11px] text-verde/90">
+                  Grupos: {(role === 'admin' ? setores : setores.filter((s) => setoresSel.includes(s.chave)))
+                    .map((s) => `${s.emoji} ${s.nome}`).join(' · ') || 'nenhum'}
+                </p>
+              )}
             </div>
 
             <div className="p-4 bg-sol/10 border border-sol/30 rounded-lg space-y-3">
@@ -545,7 +678,7 @@ Qualquer dúvida, me chama!`
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-white/70 mb-2">Role *</label>
+          <label className="block text-xs font-semibold text-white/70 mb-2">Atuação *</label>
           <div className="grid grid-cols-2 gap-2">
             {(Object.entries(ROLES_INFO) as [Role, typeof ROLES_INFO[Role]][]).map(([k, info]) => {
               const ativo = role === k
@@ -553,7 +686,7 @@ Qualquer dúvida, me chama!`
                 <button
                   key={k}
                   type="button"
-                  onClick={() => setRole(k)}
+                  onClick={() => escolherRole(k)}
                   className={`p-2 rounded border text-left transition text-xs ${
                     ativo
                       ? `${info.bg} ${info.cor} border-current`
@@ -565,6 +698,23 @@ Qualquer dúvida, me chama!`
               )
             })}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-white/70 mb-1">
+            Setor(es) {role !== 'admin' && '*'}
+          </label>
+          <p className="text-[10px] text-white/45 mb-2">
+            {role === 'admin'
+              ? 'Admin participa de todos os grupos automaticamente.'
+              : 'A pessoa já entra no grupo interno de cada setor marcado.'}
+          </p>
+          <SeletorSetores
+            setores={setores}
+            valor={setoresSel}
+            travadoAdmin={role === 'admin'}
+            onChange={(v) => { setSetoresSel(v); setSetoresMexidos(true) }}
+          />
         </div>
 
         {erroLocal && (

@@ -12,15 +12,19 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export type ChaveGrupo = 'comercial' | 'projetos_homologacao' | 'instalacao_campo' | 'administrativo_financeiro'
 export type TipoPost = 'mensagem' | 'aviso' | 'campanha'
 
+/** Membros que recebem aviso: só ativos e não bloqueados (+ admins ativos). */
 export async function membrosDoGrupo(grupoId: string): Promise<string[]> {
   const admin = createAdminClient()
-  const [{ data: membros }, { data: admins }] = await Promise.all([
-    admin.from('grupos_membros').select('usuario_id').eq('grupo_id', grupoId),
-    admin.from('profiles').select('id').eq('role', 'admin').eq('ativo', true),
+  const [{ data: membros }, { data: ativos }] = await Promise.all([
+    admin.from('grupos_membros').select('*').eq('grupo_id', grupoId),
+    admin.from('profiles').select('id, role').eq('ativo', true),
   ])
+  const idsAtivos = new Set((ativos || []).map((p: any) => p.id))
   return Array.from(new Set([
-    ...(membros || []).map((m: any) => m.usuario_id),
-    ...(admins || []).map((a: any) => a.id),   // admin participa de todos
+    ...(membros || [])
+      .filter((m: any) => !m.bloqueado_em && idsAtivos.has(m.usuario_id))  // descadastrado não recebe
+      .map((m: any) => m.usuario_id),
+    ...(ativos || []).filter((p: any) => p.role === 'admin').map((p: any) => p.id),   // admin participa de todos
   ]))
 }
 
