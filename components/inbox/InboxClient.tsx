@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
+import { ModalProjetoConversa } from './ModalProjetoConversa'
 import {
   listarConversasAction,
   listarMensagensAction,
@@ -73,6 +74,7 @@ export function InboxClient({
   const [erro, setErro] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<'todas' | 'minhas' | 'sem_atendente' | 'nova'>('todas')
   const [modalAberto, setModalAberto] = useState(false)
+  const [modalProjeto, setModalProjeto] = useState(false)
   const [novoTelefone, setNovoTelefone] = useState('')
   const [novoNome, setNovoNome] = useState('')
   const [isPending, startTransition] = useTransition()
@@ -276,6 +278,27 @@ export function InboxClient({
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {/* Kalebe 2026-09-29: conversa → projeto, já associados e pré-preenchidos */}
+                {selecionada.contato?.projeto_id && (
+                  <a
+                    href={`/projetos/${selecionada.contato.projeto_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 rounded bg-white/5 border border-white/15 text-white/80 text-xs font-bold hover:bg-white/10"
+                  >
+                    📁 Abrir projeto
+                  </a>
+                )}
+                {(selecionada.responsavel_id === usuarioId || usuarioRole === 'admin') && (
+                  <button
+                    onClick={() => setModalProjeto(true)}
+                    disabled={isPending}
+                    className="px-3 py-1.5 rounded bg-verde/15 border border-verde/40 text-verde text-xs font-bold hover:bg-verde/25 disabled:opacity-40"
+                    title="Cria o projeto com os dados da conversa e da fatura, já ligado a este atendimento"
+                  >
+                    {selecionada.contato?.projeto_id ? '＋ Projeto' : '📁 Transformar em projeto'}
+                  </button>
+                )}
                 {(!selecionada.responsavel_id || selecionada.responsavel_id !== usuarioId) && (
                   <button
                     onClick={assumir}
@@ -370,6 +393,15 @@ export function InboxClient({
           </>
         )}
       </section>
+
+      {/* Modal — transformar a conversa em projeto */}
+      {modalProjeto && selecionadaId && (
+        <ModalProjetoConversa
+          conversaId={selecionadaId}
+          onFechar={() => setModalProjeto(false)}
+          onCriado={() => refreshConversas()}
+        />
+      )}
 
       {/* Modal — abrir conversa manual */}
       {modalAberto && (
