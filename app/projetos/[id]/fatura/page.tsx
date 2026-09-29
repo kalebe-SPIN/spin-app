@@ -51,6 +51,7 @@ export default async function FaturaPage({ params }: { params: { id: string } })
           projetoId={projeto.id}
           analiseSalva={projeto.analise_fatura}
           beneficiariasSalvas={projeto.beneficiarias || []}
+          projetoTecnico={projeto.projeto_tecnico || null}
           origemAtual={projeto.origem_dimensionamento}
           hspInicial={hsp}
           hspLabel={hspLabel}

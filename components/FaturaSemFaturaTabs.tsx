@@ -13,10 +13,12 @@ export function FaturaSemFaturaTabs({
   origemAtual,
   hspInicial,
   hspLabel,
+  projetoTecnico,
 }: {
   projetoId: string
   analiseSalva: any
   beneficiariasSalvas: any[]
+  projetoTecnico?: any
   origemAtual?: string | null
   hspInicial?: number
   hspLabel?: string
@@ -68,6 +70,7 @@ export function FaturaSemFaturaTabs({
               projetoId={projetoId}
               analiseSalva={analiseSalva}
               beneficiariasSalvas={beneficiariasSalvas}
+              projetoTecnico={projetoTecnico}
             />
           </div>
         </>

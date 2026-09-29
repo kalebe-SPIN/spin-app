@@ -7,6 +7,8 @@ import { HistoricoConsumo } from '@/components/HistoricoConsumo'
 import { BalancoCreditosGD } from '@/components/BalancoCreditosGD'
 import { GraficoConsumoInjetado, ordemCronologica } from '@/components/GraficoConsumoInjetado'
 import { CompartilharBalancoCliente } from '@/components/CompartilharBalancoCliente'
+import { MetaEnergiaCard } from '@/components/MetaEnergiaCard'
+import { calcularMetaEnergia } from '@/lib/dimensionamento/meta-energia'
 import { fmtNum } from '@/lib/formatters'
 import { createClient } from '@/lib/supabase/client'
 
@@ -59,11 +61,13 @@ type Props = {
   projetoId: string
   analiseSalva: any
   beneficiariasSalvas: Beneficiaria[]
+  /** projetos.projeto_tecnico — traz o adicional de energia já salvo */
+  projetoTecnico?: any
 }
 
 const CORES_UC = ['#587FFF', '#5FCF80', '#F17A5C', '#B78BFF', '#4EC5C9', '#F5A623', '#EC4899', '#14B8A6']
 
-export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Props) {
+export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas, projetoTecnico }: Props) {
   const router = useRouter()
   // Kalebe 2026-09-10: 2 refs de input pra separar câmera (mobile) de arquivo.
   // capture="environment" força a câmera traseira no mobile.
@@ -477,6 +481,18 @@ export function FaturaForm({ projetoId, analiseSalva, beneficiariasSalvas }: Pro
               series={historiasConsolidadas}
               geracao={analise.geracao || null}
               temGeracao={!!analise.tem_geracao_propria}
+            />
+          </div>
+          {/* Kalebe 2026-09-29: aumento de geração (% ou kWh/mês) já na Fatura —
+              mesmo card e mesmo valor do Dimensionar e do Kit */}
+          <div className="mt-4">
+            <MetaEnergiaCard
+              projetoId={projetoId}
+              meta={calcularMetaEnergia({
+                analise_fatura: analise,
+                beneficiarias: beneficiarias.filter((b) => b.status === 'ok' && b.analise),
+                projeto_tecnico: projetoTecnico,
+              })}
             />
           </div>
           {/* Imagem do gráfico + balanço pro cliente, enviada pelo inbox */}
