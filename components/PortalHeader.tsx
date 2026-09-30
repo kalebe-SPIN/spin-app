@@ -4,6 +4,7 @@ import { AlternarModoButton } from '@/components/AlternarModoButton'
 import { createClient } from '@/lib/supabase/server'
 import { SinoBianca } from '@/components/SinoBianca'
 import { MenuMobileHeader } from '@/components/MenuMobileHeader'
+import { AbasPorArea } from '@/components/AbasPorArea'
 
 /**
  * Header global do portal.
@@ -73,6 +74,8 @@ export async function PortalHeader() {
 
   return (
     <header className="bg-white/[0.02] border-b border-white/10 sticky top-0 z-40 backdrop-blur">
+      {/* Kalebe 2026-09-29: cada área do portal na sua própria aba + atualiza ao voltar */}
+      <AbasPorArea />
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-4">
         {/* Esquerda: hamburger mobile + logo + nav desktop */}
         <div className="flex items-center gap-2 md:gap-4 min-w-0">
