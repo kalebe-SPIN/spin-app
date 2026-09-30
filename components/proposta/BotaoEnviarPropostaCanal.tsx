@@ -28,6 +28,8 @@ export function BotaoEnviarPropostaCanal({
   const [erro, setErro] = useState<string | null>(null)
   const [janelaFechada, setJanelaFechada] = useState(false)
   const [conversaId, setConversaId] = useState<string | null>(null)
+  const [telefone, setTelefone] = useState<string | null>(null)
+  const [abriuApp, setAbriuApp] = useState(false)
   const [enviado, setEnviado] = useState(false)
   const [copiado, setCopiado] = useState(false)
 
@@ -40,6 +42,7 @@ export function BotaoEnviarPropostaCanal({
         setErro(r.erro)
         setJanelaFechada(!!r.janela_fechada)
         setConversaId(r.conversa_id || null)
+        setTelefone(r.telefone || null)
         return
       }
       setEnviado(true)
@@ -53,6 +56,25 @@ export function BotaoEnviarPropostaCanal({
   async function copiarLink() {
     if (!urlPdf) return
     try { await navigator.clipboard.writeText(urlPdf); setCopiado(true); setTimeout(() => setCopiado(false), 2500) } catch {}
+  }
+
+  /**
+   * Kalebe 2026-09-30: janela de 24h fechada → abre o WhatsApp Business (app
+   * do número Spin, sem a trava da API) já na conversa do cliente, com o texto
+   * e o link do PDF. O envio aparece no inbox pelo eco do app; quando o cliente
+   * responder, o sistema volta a mandar sozinho.
+   */
+  function enviarPeloApp() {
+    if (!telefone || !urlPdf) return
+    let tel = telefone.replace(/\D/g, '')
+    if (tel.length === 10 || tel.length === 11) tel = '55' + tel
+    const texto = `${legenda}\n\n📄 Proposta: ${urlPdf}`
+    const celular = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)
+    const url = celular
+      ? `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
+      : `whatsapp://send?phone=${tel}&text=${encodeURIComponent(texto)}`   // app do computador direto, sem página
+    window.location.href = url
+    setAbriuApp(true)
   }
 
   return (
@@ -71,17 +93,33 @@ export function BotaoEnviarPropostaCanal({
           {conversaId && <Link href={`/inbox?c=${conversaId}`} className="underline">Ver no inbox</Link>}
         </p>
       )}
-      {erro && (
-        <div className="text-xs text-coral bg-coral/10 border border-coral/30 rounded-lg p-2 space-y-1.5 max-w-md">
-          <p>⚠ {erro}</p>
-          {janelaFechada && (
-            <div className="flex flex-wrap gap-3">
-              <button type="button" onClick={copiarLink} className="underline text-white/80">
-                {copiado ? '✓ Link copiado' : '📋 Copiar link do PDF'}
-              </button>
-              {conversaId && <Link href={`/inbox?c=${conversaId}`} className="underline text-white/80">Abrir conversa no inbox</Link>}
-            </div>
+      {erro && !janelaFechada && (
+        <div className="text-xs text-coral bg-coral/10 border border-coral/30 rounded-lg p-2 max-w-md">⚠ {erro}</div>
+      )}
+      {janelaFechada && (
+        <div className="text-xs bg-sol/10 border border-sol/30 rounded-lg p-3 space-y-2 max-w-md">
+          <p className="text-white/80">
+            🔒 {erro} Envie pelo <strong className="text-white">WhatsApp Business do número Spin</strong> — lá não tem essa trava:
+          </p>
+          {telefone ? (
+            <button type="button" onClick={enviarPeloApp}
+              className="w-full px-3 py-2.5 bg-verde text-noite font-bold text-sm rounded-lg hover:bg-verde/90">
+              📱 Enviar pelo WhatsApp Business (abre a conversa pronta)
+            </button>
+          ) : (
+            <p className="text-coral">Projeto sem telefone do cliente — cadastre o telefone pra enviar.</p>
           )}
+          {abriuApp && (
+            <p className="text-verde">
+              ✓ Aperte enviar no WhatsApp. A mensagem aparece no inbox e, quando o cliente responder, o envio pelo sistema volta a funcionar.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-3 text-white/70">
+            <button type="button" onClick={copiarLink} className="underline">
+              {copiado ? '✓ Link copiado' : '📋 Copiar link do PDF'}
+            </button>
+            {conversaId && <Link href={`/inbox?c=${conversaId}`} className="underline">Abrir conversa no inbox</Link>}
+          </div>
         </div>
       )}
     </div>

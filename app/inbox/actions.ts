@@ -620,7 +620,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
   legenda: string
 }): Promise<
   | { sucesso: true; conversa_id: string }
-  | { erro: string; janela_fechada?: boolean; conversa_id?: string }
+  | { erro: string; janela_fechada?: boolean; conversa_id?: string; telefone?: string | null }
 > {
   const check = await verificarUsuario()
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
@@ -638,10 +638,13 @@ export async function enviarPropostaPeloCanalAction(entrada: {
   if (!conv) return { erro: 'Conversa não encontrada' }
   const janelaAberta = !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date()
   if (!janelaAberta) {
+    // Kalebe 2026-09-30: devolve o telefone pra tela abrir o WhatsApp Business
+    // (app do número Spin não tem a trava de 24h da API)
     return {
-      erro: 'O cliente não mandou mensagem pro número da Spin nas últimas 24h — o WhatsApp só libera mensagem por modelo aprovado. Peça pro cliente mandar um "oi" e envie de novo, ou copie o link do PDF.',
+      erro: 'A API do WhatsApp não deixa enviar: o cliente não escreveu pro número da Spin nas últimas 24h.',
       janela_fechada: true,
       conversa_id: canal.conversa_id,
+      telefone: (conv.contato as any)?.telefone || null,
     }
   }
 
@@ -665,7 +668,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
   if (!resp.ok) {
     const code = data?.error?.code
     return code === 131047
-      ? { erro: 'Janela de 24h fechada — peça pro cliente mandar um "oi" e envie de novo.', janela_fechada: true, conversa_id: canal.conversa_id }
+      ? { erro: 'A API do WhatsApp não deixa enviar: o cliente não escreveu pro número da Spin nas últimas 24h.', janela_fechada: true, conversa_id: canal.conversa_id, telefone: tel || null }
       : { erro: `[${code || resp.status}] ${data?.error?.message || 'Falha ao enviar'}` }
   }
 

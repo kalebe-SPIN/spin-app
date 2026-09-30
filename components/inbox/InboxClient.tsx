@@ -448,6 +448,7 @@ export function InboxClient({
                 conversaId={selecionada.id}
                 nuncaEscreveu={!selecionada.janela_24h_expira_em}
                 nomeCliente={(selecionada.contato?.nome_exibicao || '').trim().split(/\s+/)[0] || ''}
+                telefone={selecionada.contato?.telefone || null}
                 temProjeto={!!selecionada.contato?.projeto_id}
                 onEnviado={() => { refreshMensagens(selecionada.id); refreshConversas() }}
               />
@@ -584,13 +585,22 @@ export function InboxClient({
  * o modelo aprovado spin_retomar_atendimento. Quando o cliente responde, a
  * janela reabre e a conversa segue normal.
  */
-function BannerJanelaFechada({ conversaId, nuncaEscreveu, nomeCliente, temProjeto, onEnviado }: {
+function BannerJanelaFechada({ conversaId, nuncaEscreveu, nomeCliente, telefone, temProjeto, onEnviado }: {
   conversaId: string
   nuncaEscreveu: boolean
   nomeCliente: string
+  telefone: string | null
   temProjeto: boolean
   onEnviado: () => void
 }) {
+  // App WhatsApp Business do número Spin: sem a trava de 24h da API; o envio volta pro inbox pelo eco
+  function abrirNoApp() {
+    if (!telefone) return
+    let tel = telefone.replace(/\D/g, '')
+    if (tel.length === 10 || tel.length === 11) tel = '55' + tel
+    const celular = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)
+    window.location.href = celular ? `https://wa.me/${tel}` : `whatsapp://send?phone=${tel}`
+  }
   const [status, setStatus] = useState<{ status: string; rotulo: string } | null>(null)
   const [aberto, setAberto] = useState(false)
   const [nome, setNome] = useState(nomeCliente)
@@ -618,13 +628,21 @@ function BannerJanelaFechada({ conversaId, nuncaEscreveu, nomeCliente, temProjet
           {nuncaEscreveu ? 'o cliente ainda não escreveu pro número da Spin.' : 'o cliente não fala com o número da Spin há mais de 24h.'}{' '}
           <span className="text-white/60">Texto livre não chega; o primeiro contato é pelo modelo aprovado.</span>
         </p>
-        {!aberto && (
-          <button onClick={() => setAberto(true)} disabled={!aprovado}
-            title={aprovado ? '' : `Modelo ${status?.rotulo || '…'}`}
-            className="px-3 py-1.5 rounded-lg bg-verde text-noite font-bold disabled:opacity-40 shrink-0">
-            📨 Enviar modelo de retomada
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {telefone && (
+            <button onClick={abrirNoApp} title="Abre esta conversa no WhatsApp Business do número Spin"
+              className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white font-bold hover:bg-white/15">
+              📱 Abrir no WhatsApp Business
+            </button>
+          )}
+          {!aberto && (
+            <button onClick={() => setAberto(true)} disabled={!aprovado}
+              title={aprovado ? '' : `Modelo ${status?.rotulo || '…'}`}
+              className="px-3 py-1.5 rounded-lg bg-verde text-noite font-bold disabled:opacity-40">
+              📨 Enviar modelo de retomada
+            </button>
+          )}
+        </div>
       </div>
       {status && !aprovado && (
         <p className="text-[11px] text-white/55">
