@@ -706,6 +706,52 @@ export async function janelaAbertaAction(conversa_id: string): Promise<{ aberta:
   return { aberta: !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date() }
 }
 
+/**
+ * Kalebe 2026-09-30: janela fechada (ou cliente nunca escreveu) → modelo
+ * aprovado spin_retomar_atendimento. Quando o cliente responde, a janela
+ * reabre e o inbox volta a mandar texto livre.
+ */
+export async function statusModeloRetomadaAction(): Promise<{ status: string; rotulo: string }> {
+  const { statusDoTemplate, STATUS_TEMPLATE_PT } = await import('@/lib/whatsapp/templates')
+  const status = await statusDoTemplate('retomar_atendimento')
+  return { status, rotulo: STATUS_TEMPLATE_PT[status] || status }
+}
+
+export async function reabrirComModeloAction(entrada: {
+  conversa_id: string
+  nome_cliente: string
+  assunto: string
+}): Promise<{ sucesso: true } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  // RLS: só quem enxerga a conversa pode mandar
+  const { data: conv } = await createClient()
+    .from('wa_conversas')
+    .select('id, contato:contato_id(telefone, nome_exibicao)')
+    .eq('id', entrada.conversa_id)
+    .maybeSingle()
+  const contato: any = (conv as any)?.contato
+  if (!conv || !contato?.telefone) return { erro: 'Conversa não encontrada' }
+
+  const { enviarTemplatePeloCanal, primeiroNome } = await import('@/lib/whatsapp/templates')
+  const nomeUsuario = primeiroNome(check.perfil?.nome_completo) || 'Spin Solar'
+  const r = await enviarTemplatePeloCanal({
+    conversa_id: conv.id,
+    telefone: contato.telefone,
+    template: 'retomar_atendimento',
+    parametros: [
+      entrada.nome_cliente.trim() || primeiroNome(contato.nome_exibicao) || 'tudo bem',
+      nomeUsuario,
+      entrada.assunto.trim() || 'energia solar',
+    ],
+    remetente_id: check.user.id,
+    origem_agente_nome: nomeUsuario,
+  })
+  if ('erro' in r) return { erro: r.erro }
+  revalidatePath('/inbox')
+  return { sucesso: true }
+}
+
 /** Contato + conversa do cliente do projeto (cria se não existir). */
 async function garantirCanalDoProjeto(
   admin: ReturnType<typeof createAdminClient>,

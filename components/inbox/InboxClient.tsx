@@ -13,6 +13,8 @@ import {
   encerrarConversaAction,
   abrirConversaManualAction,
   recuperarMidiaAction,
+  statusModeloRetomadaAction,
+  reabrirComModeloAction,
 } from '@/app/inbox/actions'
 
 type Conversa = {
@@ -441,13 +443,14 @@ export function InboxClient({
             {/* Kalebe 2026-09-29: janela de 24h fechada — o que sai do sistema não
                 chega (Meta devolve "Re-engagement message"). Explica o caminho. */}
             {(!selecionada.janela_24h_expira_em || new Date(selecionada.janela_24h_expira_em) < new Date()) && (
-              <div className="shrink-0 px-4 py-2.5 bg-sol/10 border-b border-sol/30 text-xs text-white/80">
-                🔒 <strong className="text-sol">Janela de 24h fechada</strong> — {selecionada.janela_24h_expira_em
-                  ? 'o cliente não manda mensagem pro número da Spin há mais de 24h.'
-                  : 'o cliente ainda não mandou nenhuma mensagem pro número da Spin.'}{' '}
-                Pelo inbox a mensagem não chega. Mande a primeira pelo <strong className="text-white">WhatsApp Business do celular ou do
-                computador</strong> — ela aparece aqui — e, quando o cliente responder, o inbox volta a enviar por 24h.
-              </div>
+              <BannerJanelaFechada
+                key={selecionada.id}
+                conversaId={selecionada.id}
+                nuncaEscreveu={!selecionada.janela_24h_expira_em}
+                nomeCliente={(selecionada.contato?.nome_exibicao || '').trim().split(/\s+/)[0] || ''}
+                temProjeto={!!selecionada.contato?.projeto_id}
+                onEnviado={() => { refreshMensagens(selecionada.id); refreshConversas() }}
+              />
             )}
 
             {/* Kalebe 2026-09-22: banner de alerta quando agente está no comando.
@@ -572,6 +575,82 @@ export function InboxClient({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Kalebe 2026-09-30: janela de 24h fechada (ou cliente nunca escreveu) → envia
+ * o modelo aprovado spin_retomar_atendimento. Quando o cliente responde, a
+ * janela reabre e a conversa segue normal.
+ */
+function BannerJanelaFechada({ conversaId, nuncaEscreveu, nomeCliente, temProjeto, onEnviado }: {
+  conversaId: string
+  nuncaEscreveu: boolean
+  nomeCliente: string
+  temProjeto: boolean
+  onEnviado: () => void
+}) {
+  const [status, setStatus] = useState<{ status: string; rotulo: string } | null>(null)
+  const [aberto, setAberto] = useState(false)
+  const [nome, setNome] = useState(nomeCliente)
+  const [assunto, setAssunto] = useState(temProjeto ? 'o seu projeto de energia solar' : 'energia solar')
+  const [enviando, setEnviando] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
+
+  useEffect(() => { statusModeloRetomadaAction().then(setStatus).catch(() => {}) }, [])
+  const aprovado = status?.status === 'APPROVED'
+
+  async function enviar() {
+    setEnviando(true); setMsg(null)
+    try {
+      const r = await reabrirComModeloAction({ conversa_id: conversaId, nome_cliente: nome, assunto })
+      if ('erro' in r) setMsg({ ok: false, texto: r.erro })
+      else { setMsg({ ok: true, texto: 'Modelo enviado. Quando o cliente responder, a conversa reabre por 24h.' }); setAberto(false); onEnviado() }
+    } finally { setEnviando(false) }
+  }
+
+  return (
+    <div className="shrink-0 px-3 lg:px-4 py-2.5 bg-sol/10 border-b border-sol/30 text-xs text-white/80 space-y-2">
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <p className="min-w-0">
+          🔒 <strong className="text-sol">Janela de 24h fechada</strong> —{' '}
+          {nuncaEscreveu ? 'o cliente ainda não escreveu pro número da Spin.' : 'o cliente não fala com o número da Spin há mais de 24h.'}{' '}
+          <span className="text-white/60">Texto livre não chega; o primeiro contato é pelo modelo aprovado.</span>
+        </p>
+        {!aberto && (
+          <button onClick={() => setAberto(true)} disabled={!aprovado}
+            title={aprovado ? '' : `Modelo ${status?.rotulo || '…'}`}
+            className="px-3 py-1.5 rounded-lg bg-verde text-noite font-bold disabled:opacity-40 shrink-0">
+            📨 Enviar modelo de retomada
+          </button>
+        )}
+      </div>
+      {status && !aprovado && (
+        <p className="text-[11px] text-white/55">
+          Modelo <strong>{status.rotulo}</strong>. Enquanto isso, mande a primeira mensagem pelo WhatsApp Business do celular — ela aparece aqui.
+        </p>
+      )}
+      {aberto && (
+        <div className="rounded-lg bg-noite/60 border border-white/10 p-2.5 space-y-2">
+          <p className="text-white/70">
+            “Olá, <strong className="text-white">{nome || '…'}</strong>! Aqui é <em>você</em>, da Spin Solar. Estou dando continuidade ao seu atendimento sobre{' '}
+            <strong className="text-white">{assunto || '…'}</strong>. Podemos continuar a conversa por aqui?” <span className="text-white/40">[Sim, pode falar]</span>
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr_auto_auto] gap-2">
+            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do cliente"
+              className="px-2.5 py-1.5 bg-white/5 border border-white/15 rounded text-sm text-white focus:outline-none focus:border-sol" />
+            <input value={assunto} onChange={(e) => setAssunto(e.target.value)} placeholder="Assunto"
+              className="px-2.5 py-1.5 bg-white/5 border border-white/15 rounded text-sm text-white focus:outline-none focus:border-sol" />
+            <button onClick={enviar} disabled={enviando || !nome.trim() || !assunto.trim()}
+              className="px-3 py-1.5 rounded bg-verde text-noite font-bold disabled:opacity-40">
+              {enviando ? 'Enviando…' : 'Enviar'}
+            </button>
+            <button onClick={() => setAberto(false)} className="px-3 py-1.5 rounded bg-white/5 text-white/60">Cancelar</button>
+          </div>
+        </div>
+      )}
+      {msg && <p className={msg.ok ? 'text-verde' : 'text-coral'}>{msg.ok ? '✓' : '⚠'} {msg.texto}</p>}
     </div>
   )
 }

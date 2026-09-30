@@ -62,11 +62,11 @@ export async function PortalHeader() {
       label: 'CRM',
     },
     { href: '/agenda', label: 'Agenda' },
+    // Kalebe 2026-09-30: Grupos saiu do menu — fica dentro do Inbox
     { href: '/inbox', label: 'Inbox' },
-    // Kalebe 2026-09-29: grupos internos por setor, administrados pela Bianca
-    { href: '/grupos', label: 'Grupos' },
+    // Kalebe 2026-09-30: Admin já tem botão "Administração" no dashboard → aqui vira Financeiro
     ...(modoAtivo === 'admin' && ehAdminReal
-      ? [{ href: '/admin', label: 'Admin' }] : []),
+      ? [{ href: '/financeiro', label: 'Financeiro' }] : []),
   ]
 
   return (

@@ -140,7 +140,7 @@ export async function executarFerramentaDiretorio(
         return {
           sucesso: true,
           dados: r,
-          _hint: r.whatsapp_status === 'enviado'
+          _hint: r.whatsapp_status === 'enviado' || r.whatsapp_status === 'enviado_modelo'
             ? '✅ Aviso entregue no portal e no WhatsApp.'
             : `✅ Aviso no portal. WhatsApp não saiu (${r.whatsapp_erro || r.whatsapp_status}).`,
         }
@@ -348,8 +348,22 @@ export async function avisarUsuario(entrada: {
         .from('wa_conversas').select('janela_24h_expira_em').eq('id', conv.id).maybeSingle()
       const janelaAberta = !!janela?.janela_24h_expira_em && new Date(janela.janela_24h_expira_em) > new Date()
       if (!janelaAberta) {
-        whatsapp_status = 'janela_fechada'
-        whatsapp_erro = 'Janela de 24h fechada — sai pelo WhatsApp quando houver modelo aprovado ou a pessoa escrever pro número da Spin'
+        // Kalebe 2026-09-30: janela fechada → modelo aprovado spin_aviso_interno
+        const { enviarTemplatePeloCanal, primeiroNome } = await import('@/lib/whatsapp/templates')
+        const corpo = `${entrada.urgente ? 'URGENTE — ' : ''}${entrada.titulo ? `${entrada.titulo}: ` : ''}${mensagem}`
+        const r: any = await enviarTemplatePeloCanal({
+          conversa_id: conv.id,
+          telefone: tel,
+          template: 'aviso_interno',
+          parametros: [primeiroNome(perfil.nome_completo) || 'equipe', NOME_AGENTE[entrada.agente], corpo],
+          remetente_agente: entrada.agente,
+          origem_agente_nome: NOME_AGENTE[entrada.agente],
+        })
+        if (r?.sucesso) whatsapp_status = 'enviado_modelo'
+        else {
+          whatsapp_status = 'janela_fechada'
+          whatsapp_erro = `Janela de 24h fechada — ${r?.erro || 'modelo indisponível'}`
+        }
       } else {
         const texto = `🔔 *Aviso interno${entrada.urgente ? ' — URGENTE' : ''}*${entrada.titulo ? `\n*${entrada.titulo}*` : ''}\n${mensagem}`
         const r: any = await enviarTextoPeloCanal({

@@ -3,18 +3,22 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getWaConfig } from '@/lib/whatsapp/config'
 import { enviarTextoPeloCanal } from '@/lib/whatsapp/enviar-canal'
 import { avisarUsuario } from '@/lib/agentes/diretorio'
+import { enviarTemplatePeloCanal, primeiroNome } from '@/lib/whatsapp/templates'
 
 /**
  * Follow-ups agendados na conversa (Kalebe 2026-09-29). Roda a cada 5 min
  * (pg_cron → /api/cron/followups). Pra cada follow-up vencido:
  *   - cliente respondeu depois do agendamento (e marcou "cancelar se
  *     responder") → cancela e avisa o responsável
- *   - janela de 24h fechada → não dá pra mandar texto livre: avisa o
- *     responsável pra chamar pelo celular (status aguardando_humano)
+ *   - janela de 24h fechada → (2026-09-30) manda o modelo aprovado
+ *     spin_retomar_atendimento e fica 'aguardando_cliente'; quando o cliente
+ *     responde, a janela reabre e a Bianca envia o follow-up. Sem modelo
+ *     aprovado: avisa o responsável (aguardando_humano), como antes.
  *   - senão a Bianca envia (texto exato ou escrito por ela) e avisa
  */
 
 const LIMITE_POR_RODADA = 15
+const ESPERA_MAX_MODELO_DIAS = 7
 
 export async function executarFollowupsVencidos() {
   const admin = createAdminClient()
@@ -26,7 +30,7 @@ export async function executarFollowupsVencidos() {
     .order('executar_em')
     .limit(LIMITE_POR_RODADA)
 
-  const resultado = { vencidos: (fila || []).length, enviados: 0, cancelados: 0, aguardando_humano: 0, falhas: 0 }
+  const resultado = { vencidos: (fila || []).length, enviados: 0, cancelados: 0, aguardando_humano: 0, aguardando_cliente: 0, falhas: 0 }
 
   for (const f of fila || []) {
     // Trava otimista: só segue quem conseguir tirar do 'agendado' (evita envio duplo)
@@ -48,13 +52,49 @@ export async function executarFollowupsVencidos() {
         .eq('id', f.id)
     }
   }
+
+  // Modelo de retomada já enviado: cliente respondeu (janela aberta) → envia o
+  // follow-up; passou do prazo sem resposta → desiste e avisa o responsável
+  const { data: aguardando, error: eAg } = await admin
+    .from('wa_followups')
+    .select('*, conversa:conversa_id(janela_24h_expira_em)')
+    .eq('status', 'aguardando_cliente')
+    .limit(50)
+  if (!eAg) {
+    for (const f of (aguardando || []) as any[]) {
+      const aberta = !!f.conversa?.janela_24h_expira_em && new Date(f.conversa.janela_24h_expira_em) > new Date()
+      const venceu = f.modelo_enviado_em && Date.now() - new Date(f.modelo_enviado_em).getTime() > ESPERA_MAX_MODELO_DIAS * 86400000
+      if (!aberta && !venceu) continue
+      const { data: pego } = await admin.from('wa_followups')
+        .update({ status: 'falhou', motivo: 'processando' })
+        .eq('id', f.id).eq('status', 'aguardando_cliente').select('id')
+      if (!pego?.length) continue
+      if (!aberta) {
+        await admin.from('wa_followups')
+          .update({ status: 'aguardando_humano', motivo: `Cliente não respondeu ao modelo em ${ESPERA_MAX_MODELO_DIAS} dias`, executado_em: new Date().toISOString() })
+          .eq('id', f.id)
+        await avisar(f, `A Bianca mandou o modelo de retomada há ${ESPERA_MAX_MODELO_DIAS} dias e o cliente não respondeu. O follow-up ficou pra você.${f.modo === 'texto_exato' ? `\n\nMensagem combinada: "${f.mensagem}"` : `\n\nObjetivo: ${f.mensagem}`}`, true)
+        resultado.aguardando_humano += 1
+        continue
+      }
+      try {
+        const r = await executarUm(admin, f)
+        resultado[r] += 1
+      } catch (e: any) {
+        resultado.falhas += 1
+        await admin.from('wa_followups')
+          .update({ status: 'falhou', motivo: String(e?.message || e).slice(0, 300), executado_em: new Date().toISOString() })
+          .eq('id', f.id)
+      }
+    }
+  }
   return resultado
 }
 
 async function executarUm(
   admin: ReturnType<typeof createAdminClient>,
   f: any,
-): Promise<'enviados' | 'cancelados' | 'aguardando_humano' | 'falhas'> {
+): Promise<'enviados' | 'cancelados' | 'aguardando_humano' | 'aguardando_cliente' | 'falhas'> {
   const agora = new Date().toISOString()
   const { data: conv } = await admin
     .from('wa_conversas')
@@ -69,7 +109,8 @@ async function executarUm(
   const nomeCliente = contato.nome_exibicao || contato.telefone
 
   // 1) Cliente respondeu depois que o follow-up foi agendado?
-  if (f.cancelar_se_responder) {
+  //    (se a Bianca mandou o modelo de retomada, a resposta é justamente o esperado)
+  if (f.cancelar_se_responder && !f.modelo_enviado_em) {
     const { data: resposta } = await admin
       .from('wa_mensagens')
       .select('id')
@@ -84,11 +125,39 @@ async function executarUm(
     }
   }
 
-  // 2) Janela de 24h fechada → só modelo aprovado; passa pro humano
+  // 2) Janela de 24h fechada → modelo aprovado de retomada; o follow-up
+  //    espera o cliente responder (Kalebe 2026-09-30)
   const janelaAberta = !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date()
   if (!janelaAberta) {
+    const detalhe = f.modo === 'texto_exato' ? `\n\nMensagem combinada: "${f.mensagem}"` : `\n\nObjetivo: ${f.mensagem}`
+    // Marca antes de enviar: se a migration 129 não rodou, o update falha e nada sai
+    const { error: eMarca } = await admin.from('wa_followups')
+      .update({ status: 'aguardando_cliente', modelo_enviado_em: agora, motivo: 'Modelo de retomada enviado — aguardando o cliente responder' })
+      .eq('id', f.id)
+    if (!eMarca) {
+      const { data: resp } = await admin.from('profiles').select('nome_completo').eq('id', f.responsavel_id).maybeSingle()
+      const modelo = await enviarTemplatePeloCanal({
+        conversa_id: f.conversa_id,
+        telefone: contato.telefone,
+        template: 'retomar_atendimento',
+        parametros: [
+          primeiroNome(contato.nome_exibicao) || 'tudo bem',
+          primeiroNome(resp?.nome_completo) || 'Bianca',
+          f.projeto_id ? 'o seu projeto de energia solar' : 'energia solar',
+        ],
+        remetente_agente: 'bianca',
+        origem_agente_nome: 'Bianca',
+      })
+      if ('sucesso' in modelo) {
+        await avisar(f, `A janela de 24h com ${nomeCliente} estava fechada, então a Bianca mandou o modelo de retomada pelo WhatsApp. Assim que o cliente responder, ela envia o follow-up.${detalhe}`)
+        return 'aguardando_cliente'
+      }
+      await admin.from('wa_followups').update({ status: 'aguardando_humano', modelo_enviado_em: null, motivo: `Janela de 24h fechada — ${modelo.erro}`, executado_em: agora }).eq('id', f.id)
+      await avisar(f, `Hora do follow-up com ${nomeCliente}, mas a janela de 24h está fechada e o modelo de retomada não saiu (${modelo.erro}). Chama pelo celular.${detalhe}`, true)
+      return 'aguardando_humano'
+    }
     await admin.from('wa_followups').update({ status: 'aguardando_humano', motivo: 'Janela de 24h fechada', executado_em: agora }).eq('id', f.id)
-    await avisar(f, `Hora do follow-up com ${nomeCliente}, mas o cliente não fala com o número da Spin há mais de 24h — o WhatsApp não deixa a Bianca mandar. Chama pelo celular.${f.modo === 'texto_exato' ? `\n\nMensagem combinada: "${f.mensagem}"` : `\n\nObjetivo: ${f.mensagem}`}`, true)
+    await avisar(f, `Hora do follow-up com ${nomeCliente}, mas o cliente não fala com o número da Spin há mais de 24h — o WhatsApp não deixa a Bianca mandar. Chama pelo celular.${detalhe}`, true)
     return 'aguardando_humano'
   }
 

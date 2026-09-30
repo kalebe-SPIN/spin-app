@@ -141,6 +141,8 @@ export async function gravarMensagem(
     criada_em?: string
     /** Conteúdo estruturado (cartão de contato, localização) — migration 124 */
     dados?: any
+    /** Motivo da falha no envio (coluna já existe desde a migration 108) */
+    erro?: string | null
   },
 ): Promise<string | null> {
   // Dedup por meta_message_id
@@ -173,6 +175,7 @@ export async function gravarMensagem(
       criada_em: entrada.criada_em || new Date().toISOString(),
       // Só manda a coluna quando tem conteúdo (não quebra antes da migration 124)
       ...(entrada.dados !== undefined ? { dados: entrada.dados } : {}),
+      ...(entrada.erro ? { erro: entrada.erro } : {}),
     })
     .select('id')
     .single()

@@ -38,6 +38,13 @@ export default async function InboxPage() {
             Canal Spin — leads de campanha, atendimento e comunicação interna. Multi-persona no mesmo número.
           </p>
         </div>
+        {/* Kalebe 2026-09-30: Grupos da equipe acessados pelo Inbox (saiu do menu) */}
+        <Link
+          href="/grupos"
+          className="shrink-0 px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-sm text-white/80 hover:bg-white/10 hover:text-white"
+        >
+          👥 Grupos da equipe
+        </Link>
       </header>
 
       <InboxClient

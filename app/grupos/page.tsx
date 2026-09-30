@@ -18,7 +18,7 @@ export default async function GruposPage() {
     <main className="min-h-screen p-4 sm:p-6 md:p-8">
       <div className="max-w-screen-xl mx-auto">
         <header className="mb-5">
-          <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/60 mb-1 inline-block">← Dashboard</Link>
+          <Link href="/inbox" className="text-xs text-white/40 hover:text-white/60 mb-1 inline-block">← Inbox</Link>
           <h1 className="text-2xl md:text-3xl font-black text-white">👥 Grupos da equipe</h1>
           <p className="text-white/60 text-xs mt-0.5">
             Um grupo por setor. A Bianca administra: campanhas, recados e avisos chegam aqui e no sino de cada um.
