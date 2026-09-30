@@ -15,6 +15,7 @@ import {
   recuperarMidiaAction,
   statusModeloRetomadaAction,
   reabrirComModeloAction,
+  marcarConversaLidaAction,
 } from '@/app/inbox/actions'
 
 type Conversa = {
@@ -37,6 +38,8 @@ type Conversa = {
     projeto_id: string | null
   } | null
   responsavel: { nome_completo: string | null } | null
+  /** Mensagens do cliente ainda não lidas por este usuário (migration 131) */
+  nao_lidas?: number
 }
 
 type Mensagem = {
@@ -195,20 +198,29 @@ export function InboxClient({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wa_conversas' }, () => {
         refreshConversas()
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wa_mensagens' }, (payload) => {
-        refreshConversas()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wa_mensagens' }, async (payload) => {
         const nova = (payload.new as any)?.conversa_id
-        if (nova && nova === selecionadaId) refreshMensagens(nova)
+        // Conversa aberta e tela na frente: mensagem que chega já conta como lida
+        if (nova && nova === selecionadaRef.current && document.visibilityState === 'visible') {
+          await marcarConversaLidaAction(nova)
+          refreshMensagens(nova)
+        }
+        refreshConversas()
       })
       .subscribe()
     return () => { supabase.removeChannel(canal) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Auto-fetch mensagens ao trocar conversa
+  // Auto-fetch mensagens ao trocar conversa + marca como lida (zera a etiqueta)
+  const selecionadaRef = useRef<string | null>(null)
+  selecionadaRef.current = selecionadaId
   useEffect(() => {
-    if (selecionadaId) refreshMensagens(selecionadaId)
-    else setMensagens([])
+    if (selecionadaId) {
+      refreshMensagens(selecionadaId)
+      setConversas((cs) => cs.map((c) => (c.id === selecionadaId ? { ...c, nao_lidas: 0 } : c)))
+      marcarConversaLidaAction(selecionadaId).catch(() => {})
+    } else setMensagens([])
     carregarContatosProj(selecionadaId)
   }, [selecionadaId])
 
@@ -681,6 +693,8 @@ function ItemConversa({ c, selecionada, onClick }: {
   const status = c.status.replace(/_/g, ' ')
   const dt = c.ultima_mensagem_em ? new Date(c.ultima_mensagem_em) : null
   const hora = dt ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
+  // Kalebe 2026-09-30: etiqueta de não lidas, como no WhatsApp
+  const naoLidas = !selecionada ? c.nao_lidas || 0 : 0
   return (
     <button
       onClick={onClick}
@@ -689,8 +703,14 @@ function ItemConversa({ c, selecionada, onClick }: {
       } ${encerrada ? 'opacity-50' : ''}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-white truncate flex-1">{nome}</p>
-        <span className="text-[10px] text-white/40 font-mono shrink-0">{hora}</span>
+        <p className={`text-sm truncate flex-1 ${naoLidas > 0 ? 'font-black text-white' : 'font-semibold text-white'}`}>{nome}</p>
+        <span className={`text-[10px] font-mono shrink-0 ${naoLidas > 0 ? 'text-verde font-bold' : 'text-white/40'}`}>{hora}</span>
+        {naoLidas > 0 && (
+          <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-verde text-noite text-[11px] font-black flex items-center justify-center shrink-0"
+            title={`${naoLidas} mensagem(ns) não lida(s)`}>
+            {naoLidas > 99 ? '99+' : naoLidas}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-1.5 mt-0.5">
         <span className={`text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded ${

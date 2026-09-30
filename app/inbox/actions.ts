@@ -52,7 +52,22 @@ export async function listarConversasAction(): Promise<
     .limit(200)
 
   if (error) return { erro: error.message }
-  return { conversas: data || [] }
+
+  // Kalebe 2026-09-30: não lidas por conversa (migration 131; sem ela, fica 0)
+  const { data: naoLidas } = await supabase.rpc('wa_nao_lidas')
+  const qtd = new Map(((naoLidas || []) as any[]).map((n) => [n.conversa_id, Number(n.qtd) || 0]))
+  return { conversas: (data || []).map((c: any) => ({ ...c, nao_lidas: qtd.get(c.id) || 0 })) }
+}
+
+/** Abriu a conversa = leu tudo até agora (por usuário). */
+export async function marcarConversaLidaAction(conversa_id: string): Promise<{ sucesso: true } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const { error } = await createClient().from('wa_leituras').upsert({
+    conversa_id, usuario_id: check.user.id, lido_ate: new Date().toISOString(),
+  })
+  if (error && !/wa_leituras/.test(error.message)) return { erro: error.message }
+  return { sucesso: true }
 }
 
 /**
