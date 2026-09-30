@@ -12,7 +12,7 @@
 
 export const WABA_ID_SPIN = '286157384591672'
 
-export type ChaveTemplate = 'retomar_atendimento' | 'aviso_interno' | 'etapa_concluida' | 'lead_novo'
+export type ChaveTemplate = 'retomar_atendimento' | 'aviso_interno' | 'etapa_concluida' | 'lead_novo' | 'proposta_pronta'
 
 export type DefinicaoTemplate = {
   nome: string
@@ -21,7 +21,11 @@ export type DefinicaoTemplate = {
   corpo: string
   exemplo: string[]
   botoes_resposta?: string[]
+  /** Botão de link com final variável ({{1}} = sufixo mandado em cada envio) */
+  botao_url?: { texto: string; url: string; exemplo: string }
 }
+
+export const URL_PROPOSTA = 'https://app.spinsolar.com.br/proposta/'
 
 export const DEFINICOES_TEMPLATES: Record<ChaveTemplate, DefinicaoTemplate> = {
   // Follow-up da Bianca, 1º contato e botão "reabrir" do inbox
@@ -58,6 +62,16 @@ export const DEFINICOES_TEMPLATES: Record<ChaveTemplate, DefinicaoTemplate> = {
     exemplo: ['Maria Souza · Palhoça · fatura anexada', '8'],
     botoes_resposta: ['Aceitar lead'],
   },
+  // Proposta com botão que abre o PDF — sai mesmo com a janela de 24h fechada
+  // (aprovado pelo Kalebe em 2026-09-30)
+  proposta_pronta: {
+    nome: 'spin_proposta_pronta',
+    idioma: 'pt_BR',
+    categoria: 'UTILITY',
+    corpo: 'Olá, {{1}}! Aqui é {{2}}, da Spin Solar.\nA sua proposta de {{3}} está pronta.\n\nToque no botão abaixo para abrir o PDF. Qualquer dúvida, é só responder esta mensagem.',
+    exemplo: ['Paulo', 'Kalebe', 'energia solar'],
+    botao_url: { texto: 'Ver proposta', url: `${URL_PROPOSTA}{{1}}`, exemplo: `${URL_PROPOSTA}exemplo/proposta.pdf` },
+  },
 }
 
 /** Corpo do POST /{WABA}/message_templates pra criar o modelo na Meta. */
@@ -67,6 +81,9 @@ export function payloadCriacao(def: DefinicaoTemplate) {
   ]
   if (def.botoes_resposta?.length) {
     components.push({ type: 'BUTTONS', buttons: def.botoes_resposta.map((text) => ({ type: 'QUICK_REPLY', text })) })
+  }
+  if (def.botao_url) {
+    components.push({ type: 'BUTTONS', buttons: [{ type: 'URL', text: def.botao_url.texto, url: def.botao_url.url, example: [def.botao_url.exemplo] }] })
   }
   return { name: def.nome, language: def.idioma, category: def.categoria, components }
 }

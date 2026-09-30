@@ -79,6 +79,8 @@ export async function enviarTemplatePeloCanal(entrada: {
   template: ChaveTemplate
   parametros: string[]
   botoes_payload?: string[]
+  /** Final variável do botão de link (ex.: caminho do PDF da proposta) */
+  botao_url_sufixo?: string
   remetente_id?: string | null
   remetente_agente?: 'qualificacao' | 'bianca' | 'davi' | 'sistema' | null
   origem_agente_nome?: string | null
@@ -97,6 +99,9 @@ export async function enviarTemplatePeloCanal(entrada: {
   const components: any[] = [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text })) }]
   for (const [i, payload] of (entrada.botoes_payload || []).entries()) {
     components.push({ type: 'button', sub_type: 'quick_reply', index: String(i), parameters: [{ type: 'payload', payload }] })
+  }
+  if (def.botao_url && entrada.botao_url_sufixo) {
+    components.push({ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: entrada.botao_url_sufixo }] })
   }
 
   let ok = false

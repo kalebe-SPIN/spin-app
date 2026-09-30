@@ -638,8 +638,35 @@ export async function enviarPropostaPeloCanalAction(entrada: {
   if (!conv) return { erro: 'Conversa não encontrada' }
   const janelaAberta = !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date()
   if (!janelaAberta) {
-    // Kalebe 2026-09-30: devolve o telefone pra tela abrir o WhatsApp Business
-    // (app do número Spin não tem a trava de 24h da API)
+    // Kalebe 2026-09-30: janela fechada → modelo aprovado spin_proposta_pronta
+    // (botão "Ver proposta" abre app.spinsolar.com.br/proposta/<caminho do PDF>)
+    const sufixo = entrada.url_pdf.split('/propostas-pdf/')[1]
+    if (sufixo) {
+      const { enviarTemplatePeloCanal, primeiroNome, templateAprovado } = await import('@/lib/whatsapp/templates')
+      if (await templateAprovado('proposta_pronta')) {
+        const { data: ct } = await admin.from('wa_contatos').select('nome_exibicao')
+          .eq('telefone', String((conv.contato as any)?.telefone || '')).maybeSingle()
+        const r = await enviarTemplatePeloCanal({
+          conversa_id: canal.conversa_id,
+          telefone: (conv.contato as any)?.telefone,
+          template: 'proposta_pronta',
+          parametros: [
+            primeiroNome(ct?.nome_exibicao) || 'tudo bem',
+            primeiroNome(check.perfil?.nome_completo) || 'Spin Solar',
+            /equipamento/i.test(entrada.nome_arquivo) ? 'equipamentos' : 'energia solar',
+          ],
+          botao_url_sufixo: sufixo,
+          remetente_id: check.user.id,
+          origem_agente_nome: check.perfil?.nome_completo || 'Spin',
+        })
+        if ('sucesso' in r) {
+          revalidatePath('/inbox')
+          return { sucesso: true, conversa_id: canal.conversa_id }
+        }
+      }
+    }
+    // Sem modelo aprovado: devolve o telefone pra tela abrir o WhatsApp
+    // Business (app do número Spin não tem a trava de 24h da API)
     return {
       erro: 'A API do WhatsApp não deixa enviar: o cliente não escreveu pro número da Spin nas últimas 24h.',
       janela_fechada: true,
