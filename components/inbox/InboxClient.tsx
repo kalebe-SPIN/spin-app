@@ -72,6 +72,13 @@ export function InboxClient({
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<'todas' | 'minhas' | 'sem_atendente' | 'nova'>('todas')
+  // Kalebe 2026-09-30: pesquisa de contato (nome ou telefone)
+  const [busca, setBusca] = useState('')
+  // Celular estilo WhatsApp: conversa em tela cheia abaixo do cabeçalho do portal
+  const [ehCelular, setEhCelular] = useState(false)
+  const [topoHeader, setTopoHeader] = useState(56)
+  const [menuAcoes, setMenuAcoes] = useState(false)
+  const empurrouHistorico = useRef(false)
   const [modalAberto, setModalAberto] = useState(false)
   const [modalProjeto, setModalProjeto] = useState(false)
   // Kalebe 2026-09-29: contatos do projeto (decisor etc.) repassados na conversa
@@ -114,6 +121,57 @@ export function InboxClient({
   async function refreshMensagens(id: string) {
     const r = await listarMensagensAction(id)
     if ('mensagens' in r) setMensagens(r.mensagens as any)
+  }
+
+  // Celular: mede o cabeçalho do portal pra conversa ocupar o resto da tela
+  useEffect(() => {
+    function medir() {
+      setEhCelular(window.innerWidth < 1024)
+      const h = document.querySelector('header.sticky') as HTMLElement | null
+      setTopoHeader(h ? Math.round(h.getBoundingClientRect().bottom) : 56)
+    }
+    medir()
+    window.addEventListener('resize', medir)
+    return () => window.removeEventListener('resize', medir)
+  }, [])
+
+  // Botão "voltar" do celular fecha a conversa (volta pra lista), como no WhatsApp
+  useEffect(() => {
+    function aoVoltar() {
+      const id = new URLSearchParams(window.location.search).get('c')
+      empurrouHistorico.current = false
+      setSelecionadaId(id || null)
+    }
+    window.addEventListener('popstate', aoVoltar)
+    return () => window.removeEventListener('popstate', aoVoltar)
+  }, [])
+
+  // Conversa aberta no celular: trava a rolagem da página de trás
+  useEffect(() => {
+    if (!(ehCelular && selecionadaId)) return
+    const antes = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = antes }
+  }, [ehCelular, selecionadaId])
+
+  function abrirConversa(id: string) {
+    setMenuAcoes(false)
+    if (id === selecionadaId) return
+    setSelecionadaId(id)
+    const url = `/inbox?c=${id}`
+    if (window.innerWidth < 1024 && !empurrouHistorico.current) {
+      window.history.pushState(null, '', url)   // "voltar" do aparelho volta pra lista
+      empurrouHistorico.current = true
+    } else {
+      window.history.replaceState(null, '', url)
+    }
+  }
+
+  function voltarParaLista() {
+    setMenuAcoes(false)
+    if (empurrouHistorico.current) { window.history.back(); return }
+    setSelecionadaId(null)
+    window.history.replaceState(null, '', '/inbox')
   }
 
   // Link direto /inbox?c=<conversa_id> (caixa do projeto, envio de proposta)
@@ -169,8 +227,17 @@ export function InboxClient({
     if (timelineRef.current) timelineRef.current.scrollTop = timelineRef.current.scrollHeight
   }, [mensagens])
 
-  // Filtros
+  // Filtros + pesquisa (nome sem acento/maiúscula, ou pedaço do telefone)
+  const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const termo = semAcento(busca.trim())
+  const termoDigitos = busca.replace(/\D/g, '')
   const conversasFiltradas = conversas.filter((c) => {
+    if (termo) {
+      const nome = semAcento(c.contato?.nome_exibicao || '')
+      const tel = (c.contato?.telefone || '').replace(/\D/g, '')
+      const achou = nome.includes(termo) || (termoDigitos.length >= 3 && tel.includes(termoDigitos))
+      if (!achou) return false
+    }
     if (filtro === 'minhas') return c.responsavel_id === usuarioId && !c.encerrada_em
     if (filtro === 'sem_atendente') return !c.responsavel_id && !c.encerrada_em
     if (filtro === 'nova') return c.status === 'nova' && !c.encerrada_em
@@ -196,7 +263,7 @@ export function InboxClient({
     startTransition(async () => {
       const r = await encerrarConversaAction(selecionadaId)
       if ('erro' in r) { setErro(r.erro); return }
-      setSelecionadaId(null)
+      voltarParaLista()
       refreshConversas()
     })
   }
@@ -211,7 +278,7 @@ export function InboxClient({
       })
       if ('erro' in r) { setErro(r.erro); return }
       setNovoTelefone(''); setNovoNome(''); setModalAberto(false)
-      setSelecionadaId(r.conversa_id)
+      abrirConversa(r.conversa_id)
       refreshConversas()
     })
   }
@@ -225,6 +292,19 @@ export function InboxClient({
       {/* ─── Lista de conversas ─── */}
       <aside className="border-r border-white/10 flex flex-col min-h-0">
         <div className="p-3 border-b border-white/10 space-y-2">
+          {/* Kalebe 2026-09-30: pesquisar contato por nome ou telefone */}
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="search"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Pesquisar nome ou telefone"
+              className="w-full pl-9 pr-3 py-2 bg-white/[0.05] border border-white/10 focus:border-white/25 rounded-full text-sm text-white placeholder-white/35 focus:outline-none"
+            />
+          </div>
           <div className="grid grid-cols-4 gap-1 text-[10px] font-bold uppercase tracking-wider">
             {(['todas','minhas','sem_atendente','nova'] as const).map((f) => (
               <button
@@ -247,34 +327,52 @@ export function InboxClient({
         </div>
         <div className="flex-1 overflow-y-auto">
           {conversasFiltradas.length === 0 ? (
-            <p className="p-4 text-xs text-white/40 italic text-center">Nenhuma conversa nesse filtro.</p>
+            <p className="p-4 text-xs text-white/40 italic text-center">
+              {termo ? `Nenhum contato encontrado com “${busca.trim()}”.` : 'Nenhuma conversa nesse filtro.'}
+            </p>
           ) : (
             conversasFiltradas.map((c) => (
               <ItemConversa
                 key={c.id}
                 c={c}
                 selecionada={c.id === selecionadaId}
-                onClick={() => setSelecionadaId(c.id)}
+                onClick={() => abrirConversa(c.id)}
               />
             ))
           )}
         </div>
       </aside>
 
-      {/* ─── Detalhe da conversa ─── */}
-      <section className="flex flex-col min-h-0">
+      {/* ─── Detalhe da conversa ───
+          Kalebe 2026-09-30: no celular abre em tela cheia (abaixo do cabeçalho
+          do portal) e a lista sai de cena, como no WhatsApp. */}
+      <section
+        style={ehCelular && selecionada ? { top: topoHeader } : undefined}
+        className={`flex-col min-h-0 ${selecionada ? 'flex' : 'hidden lg:flex'} ${
+          ehCelular && selecionada ? 'fixed inset-x-0 bottom-0 z-30 bg-noite' : ''
+        }`}
+      >
         {!selecionada ? (
           <div className="flex-1 flex items-center justify-center text-white/40 text-sm">
             Selecione uma conversa à esquerda.
           </div>
         ) : (
           <>
-            <div className="shrink-0 p-4 border-b border-white/10 flex items-center justify-between gap-3">
-              <div className="min-w-0">
+            <div className="shrink-0 px-2 py-2 lg:p-4 border-b border-white/10 flex items-center justify-between gap-2 lg:gap-3 relative">
+              <button
+                onClick={voltarParaLista}
+                className="lg:hidden p-2 -ml-1 text-white/80 hover:text-white shrink-0"
+                aria-label="Voltar pras conversas"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-white truncate">
                   {selecionada.contato?.nome_exibicao || selecionada.contato?.telefone || 'Contato'}
                 </p>
-                <p className="text-[11px] text-white/50 font-mono">
+                <p className="text-[11px] text-white/50 font-mono truncate">
                   {selecionada.contato?.telefone}
                   <span className="ml-2 text-white/40">· {selecionada.status.replace(/_/g, ' ')}</span>
                   {selecionada.responsavel?.nome_completo && (
@@ -282,7 +380,22 @@ export function InboxClient({
                   )}
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              {/* Celular: ações num menu ⋮ */}
+              <button
+                onClick={() => setMenuAcoes((v) => !v)}
+                className="lg:hidden p-2 text-white/70 hover:text-white shrink-0"
+                aria-label="Ações da conversa"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+                </svg>
+              </button>
+              <div
+                onClick={() => setMenuAcoes(false)}
+                className={`${menuAcoes ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row items-stretch lg:items-center gap-2 shrink-0
+                  absolute lg:static right-2 top-full mt-1 lg:mt-0 z-20 w-60 lg:w-auto p-2 lg:p-0
+                  bg-noite lg:bg-transparent border border-white/15 lg:border-0 rounded-xl lg:rounded-none shadow-2xl lg:shadow-none`}
+              >
                 {/* Kalebe 2026-09-29: conversa → projeto, já associados e pré-preenchidos */}
                 {selecionada.contato?.projeto_id && (
                   <a
@@ -344,13 +457,13 @@ export function InboxClient({
             {(selecionada.agente_ativo ||
               ['nova', 'em_qualificacao', 'aguardando_representante'].includes(selecionada.status)) &&
               (!selecionada.responsavel_id || selecionada.responsavel_id !== usuarioId) && (
-              <div className="shrink-0 mx-4 mt-3 p-3 bg-sol/15 border border-sol/40 rounded-lg flex items-center gap-3">
-                <span className="text-2xl">🤖</span>
+              <div className="shrink-0 mx-2 lg:mx-4 mt-2 lg:mt-3 p-2 lg:p-3 bg-sol/15 border border-sol/40 rounded-lg flex items-center gap-2 lg:gap-3">
+                <span className="text-xl lg:text-2xl">🤖</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-sol">
+                  <p className="text-xs lg:text-sm font-bold text-sol">
                     Agente está respondendo automaticamente
                   </p>
-                  <p className="text-[11px] text-white/70 mt-0.5">
+                  <p className="hidden sm:block text-[11px] text-white/70 mt-0.5">
                     Se você vai responder por fora (WhatsApp no celular), clique
                     em <strong>Silenciar</strong> antes — senão o agente pode responder junto.
                   </p>
@@ -358,9 +471,9 @@ export function InboxClient({
                 <button
                   onClick={assumir}
                   disabled={isPending}
-                  className="px-4 py-2 rounded bg-sol text-noite text-xs font-black hover:bg-sol/90 disabled:opacity-40 shrink-0"
+                  className="px-3 lg:px-4 py-2 rounded bg-sol text-noite text-xs font-black hover:bg-sol/90 disabled:opacity-40 shrink-0"
                 >
-                  🔇 Silenciar agente
+                  🔇 Silenciar<span className="hidden sm:inline"> agente</span>
                 </button>
               </div>
             )}
