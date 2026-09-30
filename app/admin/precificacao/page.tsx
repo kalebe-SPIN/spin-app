@@ -112,6 +112,21 @@ export default async function HubPrecificacaoPage() {
               padrão do módulo. Lido pelo Orçamento Rápido e Formal.
             </p>
           </Link>
+          {/* Kalebe 2026-09-30: preço próprio da venda de equipamentos + cupons */}
+          <Link
+            href="/admin/precificacao/venda-direta"
+            className="bg-gradient-to-br from-weg-azul/10 to-sol/5 border border-weg-azul/40 hover:border-weg-azul/70 rounded-xl p-5 transition relative"
+          >
+            <span className="absolute top-3 right-3 text-[9px] font-bold uppercase text-coral bg-coral/10 border border-coral/30 px-1.5 py-0.5 rounded">
+              Novo
+            </span>
+            <p className="text-2xl mb-2">📦</p>
+            <p className="text-lg font-bold text-white mb-1">Venda de equipamentos</p>
+            <p className="text-xs text-white/60">
+              Fator, margem, comissão, imposto e cartão próprios da venda direta,
+              simulador e cupons de desconto com trava de margem.
+            </p>
+          </Link>
           <Link
             href="/admin/precificacao/servicos"
             className="bg-white/[0.03] border border-white/10 hover:border-sol/40 rounded-xl p-5 transition"

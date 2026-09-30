@@ -81,6 +81,7 @@ export default async function VendaDiretaProjetoPage({ params }: { params: { id:
     },
     itens: salvo.itens || [],
     frete: Number(salvo.frete) || 0,
+    cupom: salvo.cupom || null,
     url_pdf: salvo.url_pdf || null,
   }
 
@@ -91,6 +92,7 @@ export default async function VendaDiretaProjetoPage({ params }: { params: { id:
           <div className="flex gap-4 text-xs mb-2">
             <Link href={`/projetos/${projeto.id}`} className="text-white/40 hover:text-white/60">← Projeto</Link>
             {ehAdmin && <Link href="/venda-direta" className="text-white/40 hover:text-white/60">Todas as vendas diretas</Link>}
+            {ehAdmin && <Link href="/admin/precificacao/venda-direta" className="text-sol/80 hover:text-sol">⚙️ Estrutura de preço e cupons</Link>}
           </div>
           <div className="flex items-center gap-3 mb-1">
             <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>

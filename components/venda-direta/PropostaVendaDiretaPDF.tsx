@@ -147,7 +147,18 @@ export const PropostaVendaDiretaPDF = forwardRef<HTMLDivElement, Props>(
             </div>
             <div style={E.blocoValor}>
               <p style={E.rotuloValorTotal}>Total à vista</p>
+              {/* Kalebe 2026-09-30: cupom de desconto aparece como "de/por" */}
+              {calculo.desconto_cupom > 0 && (
+                <p style={{ fontSize: 13, color: 'rgba(245,245,240,.5)', textDecoration: 'line-through', margin: '4px 0 0' }}>
+                  de {brl(calculo.pv_cheio)}
+                </p>
+              )}
               <p style={E.valorTotal}>{brl(pg.a_vista)}</p>
+              {calculo.desconto_cupom > 0 && calculo.cupom && (
+                <p style={{ fontSize: 12, color: '#22c55e', fontWeight: 700, margin: '2px 0 6px' }}>
+                  Cupom {calculo.cupom.codigo}: −{brl(calculo.desconto_cupom)}
+                </p>
+              )}
               <p style={E.subValor}>PIX ou boleto bancário à vista · equipamentos{calculo.frete > 0 ? ' + frete' : ''} · nota fiscal emitida pela Spin Solar</p>
             </div>
             <table style={E.tabela}>

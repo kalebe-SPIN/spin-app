@@ -1,5 +1,5 @@
 import { validarCpf, validarCnpj } from '@/lib/formatters'
-import type { ItemVendaDireta } from '@/lib/precificacao/venda-direta'
+import type { CupomAplicado, ItemVendaDireta } from '@/lib/precificacao/venda-direta'
 
 /**
  * Venda direta de equipamentos — dados guardados em projeto_itens.dados
@@ -37,6 +37,7 @@ export type DadosVendaDireta = { nf: DadosNF; entrega: DadosEntrega }
 export type ItemDadosVendaDireta = DadosVendaDireta & {
   itens: ItemVendaDireta[]
   frete: number
+  cupom?: CupomAplicado | null      // Kalebe 2026-09-30: só o admin aplica
   calculo?: any
   url_pdf?: string | null
 }

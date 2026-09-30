@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { formatarCpfCnpj } from '@/lib/formatters'
 import { paramsToRecord } from '@/lib/precificacao/calcular'
-import { calcularVendaDireta, type ItemVendaDireta } from '@/lib/precificacao/venda-direta'
+import { calcularVendaDireta, erroTravaCupom, type CupomAplicado, type ItemVendaDireta } from '@/lib/precificacao/venda-direta'
+import { buscarCupomValido } from '@/lib/venda-direta/cupom'
 import {
   validarDadosVendaDireta,
   enderecoEntrega,
@@ -206,13 +207,30 @@ export async function salvarDadosVendaDiretaAction(
 }
 
 /**
- * Salva equipamentos + frete. Recalcula no servidor com o PREÇO VIGENTE do
- * catálogo (não confia no preço que veio da tela).
+ * Kalebe 2026-09-30: confere o cupom antes de salvar (pra tela recalcular na
+ * hora). Só admin aplica cupom.
+ */
+export async function validarCupomVendaDiretaAction(
+  projetoId: string,
+  codigo: string,
+): Promise<{ cupom: CupomAplicado } | { erro: string }> {
+  const { erro, supabase } = await exigirAdmin()
+  if (erro) return { erro: erro === 'Venda direta é exclusiva do administrador' ? 'Só o admin aplica cupom' : erro }
+  return buscarCupomValido(supabase, codigo, projetoId)
+}
+
+/**
+ * Salva equipamentos + frete (+ cupom). Recalcula no servidor com o PREÇO
+ * VIGENTE do catálogo (não confia no preço que veio da tela).
+ *
+ * cupom: undefined = mantém o que está salvo · '' = remove · código = aplica
+ * (os dois últimos só pro admin).
  */
 export async function salvarEquipamentosVendaDiretaAction(
   projetoId: string,
   itensTela: ItemVendaDireta[],
   frete: number,
+  cupomCodigo?: string,
 ): Promise<{ sucesso: true; pv_total: number } | { erro: string }> {
   const { supabase, user } = await exigirUsuario()
   if (!user) return { erro: 'Não autenticado' }
@@ -270,18 +288,44 @@ export async function salvarEquipamentosVendaDiretaAction(
     itens.push({ ...base, preco_tabela: Number(doAdmin.preco_tabela), preco_manual: true, base_preco: doAdmin.base_preco === 'custo' ? 'custo' : 'tabela' })
   }
 
+  // Cupom (Kalebe 2026-09-30): só admin aplica/remove; pros outros vale o salvo
+  let cupom: CupomAplicado | null = ((item.dados as any)?.cupom as CupomAplicado) || null
+  if (cupomCodigo !== undefined) {
+    if (!ehAdmin) return { erro: 'Só o admin aplica ou remove cupom' }
+    if (!cupomCodigo.trim()) cupom = null
+    else {
+      const r = await buscarCupomValido(supabase, cupomCodigo, projetoId)
+      if ('erro' in r) return { erro: r.erro }
+      cupom = r.cupom
+    }
+  }
+
   const { data: paramsRows } = await supabase
     .from('parametros_precificacao')
     .select('chave, valor_numero, valor_json, unidade')
     .eq('ativo', true)
     .is('vigente_ate', null)
-  const calculo = calcularVendaDireta({ itens, frete }, paramsToRecord(paramsRows || []))
+  const params = paramsToRecord(paramsRows || [])
+  const calculo = calcularVendaDireta({ itens, frete, cupom }, params)
+  const trava = erroTravaCupom(calculo, params)
+  if (trava) return { erro: ehAdmin ? trava : `${trava} Fale com o admin.` }
   const pv = Math.round(calculo.pv_total * 100) / 100
+
+  // Registro de uso do cupom (limite de usos) — tabela só do admin
+  if (ehAdmin && cupomCodigo !== undefined) {
+    await supabase.from('cupons_usos').delete().eq('projeto_id', projetoId).neq('cupom_id', cupom?.id || '00000000-0000-0000-0000-000000000000')
+    if (cupom) {
+      await supabase.from('cupons_usos').upsert({
+        cupom_id: cupom.id, projeto_id: projetoId,
+        desconto_valor: Math.round(calculo.desconto_cupom * 100) / 100, aplicado_por: user.id,
+      })
+    }
+  }
 
   const { error } = await supabase
     .from('projeto_itens')
     .update({
-      dados: { ...(item.dados || {}), itens, frete: calculo.frete, calculo },
+      dados: { ...(item.dados || {}), itens, frete: calculo.frete, cupom, calculo },
       valor_estimado: pv,
       status: itens.length > 0 ? 'concluido' : 'pendente',
       updated_at: new Date().toISOString(),

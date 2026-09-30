@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { fmtNum, formatarCpfCnpj } from '@/lib/formatters'
 import type { ParametrosVigentes } from '@/lib/precificacao/calcular'
-import { calcularVendaDireta, custoDoItem, type ItemVendaDireta } from '@/lib/precificacao/venda-direta'
+import { calcularVendaDireta, custoDoItem, erroTravaCupom, type CupomAplicado, type ItemVendaDireta } from '@/lib/precificacao/venda-direta'
 import { validarDadosVendaDireta, enderecoEntrega, type DadosVendaDireta, type ItemDadosVendaDireta } from '@/lib/venda-direta/tipos'
 import { rotuloCategoria, rotuloSubcategoria, type ProdutoCatalogoVD } from '@/lib/venda-direta/preco'
 import { FormDadosVendaDireta, inputCls } from './FormDadosVendaDireta'
@@ -15,6 +15,7 @@ import {
   salvarDadosVendaDiretaAction,
   salvarEquipamentosVendaDiretaAction,
   registrarPdfVendaDiretaAction,
+  validarCupomVendaDiretaAction,
 } from '@/app/venda-direta/actions'
 
 const BUCKET_PROPOSTAS = 'propostas-pdf'
@@ -64,8 +65,29 @@ export function VendaDiretaClient({
   const [pending, startTransition] = useTransition()
   const templateRef = useRef<HTMLDivElement>(null)
 
+  // Cupom (Kalebe 2026-09-30): só admin aplica; comissão e imposto sobre o valor com desconto
+  const [cupom, setCupom] = useState<CupomAplicado | null>(dadosIniciais.cupom || null)
+  const [cupomTxt, setCupomTxt] = useState(dadosIniciais.cupom?.codigo || '')
+  const [cupomMexido, setCupomMexido] = useState(false)
+  const [validandoCupom, setValidandoCupom] = useState(false)
+
   const freteNum = Number(String(frete).replace(/\./g, '').replace(',', '.')) || 0
-  const calculo = useMemo(() => calcularVendaDireta({ itens, frete: freteNum }, params), [itens, freteNum, params])
+  const calculo = useMemo(() => calcularVendaDireta({ itens, frete: freteNum, cupom }, params), [itens, freteNum, cupom, params])
+  const travaCupom = erroTravaCupom(calculo, params)
+
+  async function aplicarCupom() {
+    setErro(null); setMsg(null)
+    setValidandoCupom(true)
+    try {
+      const r = await validarCupomVendaDiretaAction(projeto.id, cupomTxt)
+      if ('erro' in r) { setErro(r.erro); return }
+      setCupom(r.cupom); setCupomTxt(r.cupom.codigo); setCupomMexido(true)
+      setMsg(`Cupom ${r.cupom.codigo} aplicado — salve pra gravar na proposta`)
+    } finally { setValidandoCupom(false) }
+  }
+  function removerCupom() {
+    setCupom(null); setCupomTxt(''); setCupomMexido(true); setMsg(null)
+  }
 
   // Filtros iguais ao /admin/catalogo: categoria (com contagem) → subcategoria, A→Z
   const categorias = useMemo(() => {
@@ -121,7 +143,7 @@ export function VendaDiretaClient({
   function mudarBasePreco(idx: number, base: 'tabela' | 'custo' | '') {
     setItens((atual) => atual.map((x, j) => (j === idx ? { ...x, base_preco: base || undefined } : x)))
   }
-  const primeiraPendencia = () => itens.map((i) => pendenciaPreco(i, ehAdmin)).find(Boolean) || null
+  const primeiraPendencia = () => itens.map((i) => pendenciaPreco(i, ehAdmin)).find(Boolean) || travaCupom || null
 
   function mudarQtd(idx: number, qtd: number) {
     setItens((atual) => atual.map((x, j) => (j === idx ? { ...x, qtd: Math.max(0, Math.round(qtd || 0)) } : x)))
@@ -139,8 +161,13 @@ export function VendaDiretaClient({
   }
 
   async function salvarEquipamentos(): Promise<boolean> {
-    const r = await salvarEquipamentosVendaDiretaAction(projeto.id, itens.filter((i) => i.qtd > 0), freteNum)
+    // cupom: só manda quando o admin mexeu (undefined = mantém o salvo)
+    const r = await salvarEquipamentosVendaDiretaAction(
+      projeto.id, itens.filter((i) => i.qtd > 0), freteNum,
+      ehAdmin && cupomMexido ? (cupom?.codigo || '') : undefined,
+    )
     if ('erro' in r) { setErro(r.erro); return false }
+    setCupomMexido(false)
     return true
   }
 
@@ -202,7 +229,7 @@ export function VendaDiretaClient({
 
   const entrega = enderecoEntrega(dados)
   const dadosPdf: ItemDadosVendaDireta = {
-    ...dadosIniciais, ...dados, itens: itens.filter((i) => i.qtd > 0), frete: calculo.frete,
+    ...dadosIniciais, ...dados, itens: itens.filter((i) => i.qtd > 0), frete: calculo.frete, cupom,
   }
 
   return (
@@ -378,7 +405,13 @@ export function VendaDiretaClient({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 rounded-lg bg-sol/10 border border-sol/40">
             <p className="text-[10px] uppercase tracking-wider font-bold text-sol">PIX ou boleto à vista</p>
-            <p className="text-2xl font-black text-white mt-1">{brl(calculo.pagamento.a_vista)}</p>
+            {calculo.desconto_cupom > 0 && (
+              <p className="text-xs text-white/45 line-through mt-1">{brl(calculo.pv_cheio)}</p>
+            )}
+            <p className="text-2xl font-black text-white mt-0.5">{brl(calculo.pagamento.a_vista)}</p>
+            {calculo.cupom && calculo.desconto_cupom > 0 && (
+              <p className="text-[11px] text-verde">🎟 {calculo.cupom.codigo}: −{brl(calculo.desconto_cupom)}</p>
+            )}
           </div>
           <div className="p-4 rounded-lg bg-white/[0.03] border border-white/10">
             <p className="text-[10px] uppercase tracking-wider font-bold text-white/50">Cartão (taxa do cliente)</p>
@@ -394,6 +427,38 @@ export function VendaDiretaClient({
           </div>
         </div>
 
+        {/* Cupom de desconto — só o admin aplica (Kalebe 2026-09-30) */}
+        {ehAdmin ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="block">
+              <span className="block text-[11px] font-bold text-white/60 mb-1">🎟 Cupom de desconto</span>
+              <input value={cupomTxt} onChange={(e) => setCupomTxt(e.target.value.toUpperCase())}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); aplicarCupom() } }}
+                placeholder="CÓDIGO" disabled={!!cupom}
+                className={`${inputCls} w-48 font-mono uppercase disabled:opacity-60`} />
+            </label>
+            {cupom ? (
+              <button type="button" onClick={removerCupom} className="px-3 py-2 bg-white/5 border border-white/15 text-white/70 text-xs rounded-lg hover:bg-white/10">
+                ✕ Remover cupom
+              </button>
+            ) : (
+              <button type="button" onClick={aplicarCupom} disabled={validandoCupom || cupomTxt.trim().length < 3}
+                className="px-3 py-2 bg-verde/15 border border-verde/40 text-verde text-xs font-bold rounded-lg disabled:opacity-40">
+                {validandoCupom ? 'Conferindo…' : 'Aplicar'}
+              </button>
+            )}
+            {cupom && (
+              <span className="text-xs text-white/60 pb-2">
+                {cupom.tipo === 'percentual' ? `${fmtNum(cupom.valor, 2)}% de desconto` : `${brl(cupom.valor)} de desconto`}
+                {' '}· margem após cupom <strong className={travaCupom ? 'text-coral' : 'text-verde'}>{fmtNum(calculo.margem_efetiva_pct, 2)}%</strong>
+              </span>
+            )}
+          </div>
+        ) : calculo.cupom && calculo.desconto_cupom > 0 ? (
+          <p className="text-xs text-verde">🎟 Cupom {calculo.cupom.codigo} aplicado pelo admin: −{brl(calculo.desconto_cupom)}</p>
+        ) : null}
+        {travaCupom && <p className="text-xs text-coral">⚠ {travaCupom}</p>}
+
         {ehAdmin && (
           <details className="text-sm">
             <summary className="cursor-pointer text-xs text-white/60 hover:text-white/80">🔒 Composição interna (só admin)</summary>
@@ -407,10 +472,16 @@ export function VendaDiretaClient({
                 <tr><td className="text-white/60">= custo dos equipamentos</td><td className="text-right text-white/80">{brl(calculo.custo_equipamentos)}</td></tr>
                 <tr><td className="text-white/60">+ frete</td><td className="text-right text-white/80">{brl(calculo.frete)}</td></tr>
                 <tr className="border-t border-white/10"><td className="text-white/80 font-bold">Base de custo</td><td className="text-right text-white font-bold">{brl(calculo.base_custo)}</td></tr>
-                <tr><td className="text-white/60">Margem Spin {fmtNum(calculo.margem_pct, 2)}%</td><td className="text-right text-verde">{brl(calculo.margem)}</td></tr>
+                {calculo.desconto_cupom > 0 && (
+                  <>
+                    <tr><td className="text-white/60">Preço cheio (margem-alvo {fmtNum(calculo.margem_pct, 2)}%)</td><td className="text-right text-white/80">{brl(calculo.pv_cheio)}</td></tr>
+                    <tr><td className="text-white/60">− cupom {calculo.cupom?.codigo}</td><td className="text-right text-coral">−{brl(calculo.desconto_cupom)}</td></tr>
+                  </>
+                )}
+                <tr><td className="text-white/60">Margem Spin {fmtNum(calculo.margem_efetiva_pct, 2)}%{calculo.desconto_cupom > 0 ? ' (após cupom)' : ''}</td><td className={`text-right ${calculo.margem >= 0 ? 'text-verde' : 'text-coral'}`}>{brl(calculo.margem)}</td></tr>
                 <tr><td className="text-white/60">Comissão vendedor {fmtNum(calculo.comissao_pct, 2)}%</td><td className="text-right text-white/80">{brl(calculo.comissao)}</td></tr>
                 <tr><td className="text-white/60">Imposto {fmtNum(calculo.imposto_pct, 2)}% sobre o total</td><td className="text-right text-white/80">{brl(calculo.imposto)}</td></tr>
-                <tr className="border-t border-white/10"><td className="text-sol font-bold">Preço de venda</td><td className="text-right text-sol font-bold">{brl(calculo.pv_total)}</td></tr>
+                <tr className="border-t border-white/10"><td className="text-sol font-bold">Preço de venda{calculo.desconto_cupom > 0 ? ' (com cupom)' : ''}</td><td className="text-right text-sol font-bold">{brl(calculo.pv_total)}</td></tr>
               </tbody>
             </table>
           </details>
