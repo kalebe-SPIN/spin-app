@@ -111,7 +111,7 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
       <button
         ref={botaoRef}
         onClick={toggle}
-        className={`relative flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-bold transition ${
+        className={`relative flex items-center gap-1.5 px-2 xl:px-3 py-1.5 border rounded-lg text-xs font-bold transition shrink-0 ${
           aberto
             ? 'bg-sol/25 border-sol/50 text-sol'
             : 'bg-sol/10 border-sol/30 text-sol hover:bg-sol/20'
@@ -119,7 +119,8 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
         title={`${contador} aviso(s)/sugestão(ões) aguardando`}
       >
         <span className="text-base">🔔</span>
-        <span className="hidden sm:inline">Bianca</span>
+        {/* Kalebe 2026-09-30: nome só em tela larga — header não pode estourar */}
+        <span className="hidden 2xl:inline">Bianca</span>
         {contador > 0 && (
           <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-sol text-noite text-[10px] flex items-center justify-center font-black">
             {contador}

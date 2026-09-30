@@ -1,10 +1,6 @@
-import Link from 'next/link'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
-import { AlternarModoButton } from '@/components/AlternarModoButton'
 import { createClient } from '@/lib/supabase/server'
-import { SinoBianca } from '@/components/SinoBianca'
-import { MenuMobileHeader } from '@/components/MenuMobileHeader'
-import { AbasPorArea } from '@/components/AbasPorArea'
+import { PortalHeaderView } from '@/components/PortalHeaderView'
 
 /**
  * Header global do portal.
@@ -54,102 +50,34 @@ export async function PortalHeader() {
   // Monta links pra passar tanto pro desktop quanto pro drawer mobile
   // Kalebe 2026-09-09: representante = navegação idêntica ao consultor.
   // O portal só diverge de verdade pra profissional_campo (foco execução) e admin.
+  // Kalebe 2026-09-30: itens só com texto (sem ícones) — cabem na tela
   const linksNav = [
-    { href: '/dashboard', label: '📊 Dashboard' },
+    { href: '/dashboard', label: 'Dashboard' },
     ...(modoAtivo !== 'profissional_campo'
-      ? [{ href: '/projetos', label: '📋 Projetos' }] : []),
+      ? [{ href: '/projetos', label: 'Projetos' }] : []),
     {
       href:
         modoAtivo === 'admin' ? '/crm/pipeline'
         : '/crm',
-      label: '🎯 CRM',
+      label: 'CRM',
     },
-    { href: '/agenda', label: '📅 Agenda' },
-    { href: '/inbox', label: '💬 Inbox' },
+    { href: '/agenda', label: 'Agenda' },
+    { href: '/inbox', label: 'Inbox' },
     // Kalebe 2026-09-29: grupos internos por setor, administrados pela Bianca
-    { href: '/grupos', label: '👥 Grupos' },
+    { href: '/grupos', label: 'Grupos' },
     ...(modoAtivo === 'admin' && ehAdminReal
-      ? [{ href: '/admin', label: '⚙️ Admin' }] : []),
+      ? [{ href: '/admin', label: 'Admin' }] : []),
   ]
 
   return (
-    <header className="bg-white/[0.02] border-b border-white/10 sticky top-0 z-40 backdrop-blur">
-      {/* Kalebe 2026-09-29: cada área do portal na sua própria aba + atualiza ao voltar */}
-      <AbasPorArea />
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-2 md:py-3 flex items-center justify-between gap-2 md:gap-4">
-        {/* Esquerda: hamburger mobile + logo + nav desktop */}
-        <div className="flex items-center gap-2 md:gap-4 min-w-0">
-          <MenuMobileHeader links={linksNav} />
-
-          <Link href="/dashboard" className="flex items-center gap-2 min-w-0">
-            {logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logoUrl}
-                alt="Spin Solar"
-                className="h-10 md:h-12 w-auto object-contain"
-              />
-            ) : (
-              <span className="text-sol font-black text-base md:text-lg">SPIN</span>
-            )}
-            <span className="text-white/40 text-[10px] md:text-xs font-mono uppercase tracking-widest hidden xs:inline">
-              portal
-            </span>
-          </Link>
-
-          {/* Nav links desktop — hidden em mobile (substituído por drawer) */}
-          <nav className="hidden md:flex items-center gap-1 ml-4 lg:ml-6">
-            {linksNav.map(l => <NavLink key={l.href} href={l.href} label={l.label} />)}
-          </nav>
-        </div>
-
-        {/* Direita: modo + usuário */}
-        <div className="flex items-center gap-2 md:gap-3 shrink-0">
-          <SinoBianca contadorInicial={sugestoesPendentes} />
-          {ehAdminReal && <AlternarModoButton modoAtual={modoAtivo} />}
-
-          <div className="flex items-center gap-2 pl-2 md:pl-3 border-l border-white/10">
-            <div className="text-right hidden lg:block">
-              <p className="text-xs font-semibold text-white leading-tight truncate max-w-[140px]">
-                {(perfil as { nome_completo?: string }).nome_completo || 'Usuário'}
-              </p>
-              <p className="text-[10px] uppercase tracking-wider text-white/40">
-                {modoAtivo === 'admin' ? 'Administrador'
-                  : modoAtivo === 'representante' ? 'Representante Spin'
-                  : modoAtivo === 'profissional_campo' ? 'Profissional de campo'
-                  : 'Consultor'}
-              </p>
-            </div>
-            <Link
-              href="/conta"
-              className="w-8 h-8 rounded-full overflow-hidden bg-sol/20 border border-sol/40 flex items-center justify-center text-xs font-bold text-sol shrink-0"
-              title={(perfil as { nome_completo?: string }).nome_completo || 'Minha conta'}
-            >
-              {(perfil as { avatar_url?: string | null }).avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={(perfil as { avatar_url?: string | null }).avatar_url!}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                ((perfil as { nome_completo?: string }).nome_completo || 'U').charAt(0).toUpperCase()
-              )}
-            </Link>
-          </div>
-        </div>
-      </div>
-    </header>
-  )
-}
-
-function NavLink({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="px-3 py-1.5 text-sm text-white/60 hover:text-white hover:bg-white/5 rounded-md transition"
-    >
-      {label}
-    </Link>
+    <PortalHeaderView
+      linksNav={linksNav}
+      logoUrl={logoUrl}
+      sugestoesPendentes={sugestoesPendentes}
+      ehAdminReal={ehAdminReal}
+      modoAtivo={modoAtivo}
+      nome={(perfil as { nome_completo?: string }).nome_completo || ''}
+      avatarUrl={(perfil as { avatar_url?: string | null }).avatar_url || null}
+    />
   )
 }
