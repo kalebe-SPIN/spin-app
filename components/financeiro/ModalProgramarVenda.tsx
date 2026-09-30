@@ -1,53 +1,41 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { programarVendaAction, type LinhaProgramada } from '@/app/financeiro/fluxo-caixa/actions'
+import { programarVendaAction } from '@/app/financeiro/fluxo-caixa/actions'
 import {
-  FORMAS_PAGAMENTO, GRUPOS, addMeses, arred, brl, dataBR, dividirEmParcelas, lerValor, mesDe, vencimentoDas,
-  type Grupo, type VendaPendente,
+  FORMAS_PAGAMENTO, GRUPOS, addMeses, arred, brl, dataBR, lerValor,
+  type VendaPendente,
 } from '@/lib/financeiro/fluxo'
+import {
+  MODELOS_RECEBIMENTO as MODELOS, gerarCustos as gerarCustosPlano, gerarRecebimentos as gerarRecebimentosPlano,
+  modeloDoVendedor, type LinhaPlano, type ModeloRecebimento as Modelo,
+} from '@/lib/financeiro/plano-venda'
 import { Campo, InputValor, Selecao, Modal, Aviso, Botoes, classeInput } from './ui'
 
 /**
  * Venda fechada no sistema → recebimentos PREVISTOS pela condição acordada
  * + custos PREVISTOS do orçamento (Kalebe 2026-09-29). Na hora de pagar ou
  * receber de fato, cada linha é efetivada com o valor real.
+ * Regras do plano em lib/financeiro/plano-venda.ts (as mesmas do automático).
  */
 
-type Modelo = 'avista' | 'entrada_saldo' | 'parcelado' | 'financiamento' | 'livre'
-type Linha = LinhaProgramada & { chave: string; valorTxt: string }
-
-const MODELOS: Array<{ valor: Modelo; rotulo: string }> = [
-  { valor: 'avista', rotulo: 'À vista' },
-  { valor: 'entrada_saldo', rotulo: 'Entrada + saldo parcelado' },
-  { valor: 'financiamento', rotulo: 'Financiamento bancário (liberação única)' },
-  { valor: 'livre', rotulo: 'Livre (montar parcela a parcela)' },
-  { valor: 'parcelado', rotulo: 'Parcelado (cartão / boleto)' },
-]
-
-/** Lê a condição que o vendedor escolheu no "Fechar venda". */
-function modeloDoVendedor(cond: string | null, parcelas: number | null): { modelo: Modelo; n: number; forma: string } {
-  const c = (cond || '').toLowerCase()
-  const cartao = c.match(/(\d+)\s*[×x]\s*no cart/)
-  if (cartao) return { modelo: 'parcelado', n: Number(cartao[1]), forma: 'Cartão de crédito' }
-  if (c.includes('financiamento')) return { modelo: 'financiamento', n: 1, forma: 'Financiamento bancário' }
-  if (c.includes('entrada')) return { modelo: 'entrada_saldo', n: Math.max(1, (parcelas || 2) - 1), forma: 'PIX' }
-  if (c.includes('vista')) return { modelo: 'avista', n: 1, forma: 'PIX' }
-  return { modelo: 'livre', n: Math.max(1, parcelas || 1), forma: '' }
-}
+type Linha = LinhaPlano & { chave: string; valorTxt: string }
 
 let seq = 0
-const nova = (l: LinhaProgramada): Linha => ({ ...l, chave: `l${++seq}`, valorTxt: String(arred(l.valor)).replace('.', ',') })
+const nova = (l: LinhaPlano): Linha => ({ ...l, chave: `l${++seq}`, valorTxt: String(arred(l.valor)).replace('.', ',') })
 
-export function ModalProgramarVenda({ venda, regimeImposto, onFechar, onSalvo }: {
+export function ModalProgramarVenda({ venda, regimeImposto, substituirProgramacaoId, onFechar, onSalvo }: {
   venda: VendaPendente
   regimeImposto: 'competencia' | 'caixa'
+  /** Ajuste de venda já lançada: a programação antiga é trocada por esta */
+  substituirProgramacaoId?: string
   onFechar: () => void
   onSalvo: (msg: string) => void
 }) {
   const inicial = modeloDoVendedor(venda.condicao_vendedor, venda.parcelas_vendedor)
-  const temKit = venda.custos.kit > 0
-  const [kitPassa, setKitPassa] = useState<boolean | null>(temKit ? null : false)
+  // Venda direta: a Spin fatura tudo → equipamentos sempre pelo caixa (sem escolha)
+  const temKit = venda.custos.kit > 0 && !venda.kit_sempre_caixa
+  const [kitPassa, setKitPassa] = useState<boolean | null>(venda.kit_sempre_caixa ? true : temKit ? null : false)
   const [valorVenda, setValorVenda] = useState(String(arred(venda.valor_venda)).replace('.', ','))
   const [modelo, setModelo] = useState<Modelo>(inicial.modelo)
   const [data1, setData1] = useState(venda.data_venda)
@@ -69,58 +57,18 @@ export function ModalProgramarVenda({ venda, regimeImposto, onFechar, onSalvo }:
   const nNum = Math.max(1, Math.floor(Number(n) || 1))
   const cli = venda.cliente
 
-  // ─── Gera recebimentos pela condição ──────────────────────────────────────
+  // ─── Recebimentos pela condição + custos do orçamento (regra compartilhada) ─
   function gerarRecebimentos(): Linha[] {
-    const f = forma || null
-    if (modelo === 'avista' || modelo === 'financiamento') {
-      return [nova({ direcao: 'entrada', grupo: 'receita_vendas', descricao: `${modelo === 'financiamento' ? 'Liberação do financiamento' : 'Recebimento à vista'} — ${cli}`, valor: baseReceber, data: data1, forma_pagamento: modelo === 'financiamento' ? 'Financiamento bancário' : f })]
-    }
-    if (modelo === 'entrada_saldo') {
-      const ent = entrada ? Math.min(lerValor(entrada), baseReceber) : arred(baseReceber / 2)
-      const saldo = dividirEmParcelas(baseReceber - ent, nNum)
-      return [
-        nova({ direcao: 'entrada', grupo: 'receita_vendas', descricao: `Entrada — ${cli}`, valor: ent, data: data1, forma_pagamento: f }),
-        ...saldo.map((v, i) => nova({ direcao: 'entrada', grupo: 'receita_vendas', descricao: `Saldo ${i + 1}/${saldo.length} — ${cli}`, valor: v, data: addMeses(dataSaldo, i), forma_pagamento: f, parcela_num: i + 1, parcelas_total: saldo.length })),
-      ]
-    }
-    if (modelo === 'parcelado') {
-      return dividirEmParcelas(baseReceber, nNum).map((v, i) => nova({
-        direcao: 'entrada', grupo: 'receita_vendas', descricao: `Parcela ${i + 1}/${nNum} — ${cli}`, valor: v, data: addMeses(data1, i), forma_pagamento: f, parcela_num: i + 1, parcelas_total: nNum,
-      }))
-    }
-    return [nova({ direcao: 'entrada', grupo: 'receita_vendas', descricao: `Recebimento — ${cli}`, valor: baseReceber, data: data1, forma_pagamento: f })]
+    return gerarRecebimentosPlano({
+      cliente: cli, baseReceber, modelo, data1, n: nNum, dataSaldo, forma: forma || null,
+      entrada: entrada ? lerValor(entrada) : null,
+    }).map(nova)
   }
-
-  // ─── Custos do orçamento como PREVISTO ────────────────────────────────────
   function gerarCustos(rec: Linha[]): Linha[] {
-    const c = venda.custos
-    const out: Linha[] = []
-    const saida = (grupo: Grupo, descricao: string, valor: number, data: string, detalhes?: Record<string, any>) => {
-      if (valor > 0.004) out.push(nova({ direcao: 'saida', grupo, descricao, valor: arred(valor), data, detalhes }))
-    }
-    if (kitPassa) saida('fornecedores', `Kit fotovoltaico (distribuidor) — ${cli}`, c.kit, data1)
-    saida('comissoes', `Comissão${venda.vendedor_nome ? ` ${venda.vendedor_nome}` : ''} — ${cli}`, c.comissao, data1,
-      venda.vendedor_nome ? { vendedor: venda.vendedor_nome } : undefined)
-    saida('custos_projeto', `Instalação / mão de obra — ${cli}`, c.instalacao, data1)
-    saida('custos_projeto', `Frete — ${cli}`, c.frete, data1)
-    saida('custos_projeto', `Projeto e ART — ${cli}`, c.projeto_art, data1)
-    saida('custos_projeto', `Custo da venda — ${cli}`, c.custo_estimado, data1)
-    // Imposto: competência = tudo no DAS do mês seguinte à nota; caixa = proporcional a cada recebimento
-    if (c.imposto > 0.004) {
-      if (regime === 'competencia') {
-        saida('impostos', `DAS (Simples) sobre a venda — ${cli}`, c.imposto, vencimentoDas(data1),
-          { tipo_imposto: 'DAS — Simples Nacional', competencia: mesDe(data1) })
-      } else {
-        const total = rec.reduce((s, r) => s + lerValor(r.valorTxt), 0) || 1
-        const porMes = new Map<string, number>()
-        for (const r of rec) porMes.set(mesDe(r.data), (porMes.get(mesDe(r.data)) || 0) + c.imposto * lerValor(r.valorTxt) / total)
-        for (const [mes, v] of Array.from(porMes.entries()).sort()) {
-          saida('impostos', `DAS (Simples) ${mes.split('-').reverse().join('/')} — ${cli}`, v, vencimentoDas(mes + '-01'),
-            { tipo_imposto: 'DAS — Simples Nacional', competencia: mes })
-        }
-      }
-    }
-    return out
+    return gerarCustosPlano({
+      venda, kitPassa: !!kitPassa, data1, regime,
+      recebimentos: rec.map((r) => ({ valor: lerValor(r.valorTxt), data: r.data })),
+    }).map(nova)
   }
 
   // Regera enquanto o admin não mexer nas linhas à mão
@@ -157,7 +105,7 @@ export function ModalProgramarVenda({ venda, regimeImposto, onFechar, onSalvo }:
     if (temKit && kitPassa === null) { setErro('Informe se o kit passa pelo caixa da Spin ou é faturado direto ao cliente'); return }
     setSalvando(true)
     try {
-      const linhas: LinhaProgramada[] = [...receb, ...custos].map(({ chave, valorTxt, ...l }) => ({ ...l, valor: lerValor(valorTxt) }))
+      const linhas: LinhaPlano[] = [...receb, ...custos].map(({ chave, valorTxt, ...l }) => ({ ...l, valor: lerValor(valorTxt) }))
       const r = await programarVendaAction({
         origem: venda.origem, origem_id: venda.origem_id, projeto_id: venda.projeto_id,
         kit_passa_caixa: temKit ? kitPassa : null, valor_venda: venda$,
@@ -166,9 +114,10 @@ export function ModalProgramarVenda({ venda, regimeImposto, onFechar, onSalvo }:
           condicao_vendedor: venda.condicao_vendedor, observacoes_vendedor: venda.observacoes_vendedor,
         },
         linhas,
+        substituir_programacao_id: substituirProgramacaoId || null,
       })
       if ('erro' in r) { setErro(r.erro); return }
-      onSalvo(`${cli}: ${r.criados} lançamentos previstos no fluxo`)
+      onSalvo(`${cli}: ${r.criados} lançamentos previstos ${substituirProgramacaoId ? 'refeitos' : 'no fluxo'}`)
     } finally { setSalvando(false) }
   }
 
@@ -190,7 +139,7 @@ export function ModalProgramarVenda({ venda, regimeImposto, onFechar, onSalvo }:
   )
 
   return (
-    <Modal titulo={`📥 Programar recebimento — ${cli}`} largura="max-w-4xl"
+    <Modal titulo={`${substituirProgramacaoId ? '⚙ Ajustar venda' : '📥 Programar recebimento'} — ${cli}`} largura="max-w-4xl"
       subtitulo={`Venda de ${dataBR(venda.data_venda)}${venda.vendedor_nome ? ` · ${venda.vendedor_nome}` : ''} · tudo entra como PREVISTO; você efetiva com o valor real depois.`}
       onFechar={onFechar}>
 

@@ -113,7 +113,11 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
               <div className="flex items-center gap-3 mb-1">
                 <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
               </div>
-              <h1 className="text-3xl md:text-4xl font-black text-white">
+              {/* data-titulo-aba: nome da aba do navegador (Kalebe 2026-09-30) */}
+              <h1
+                className="text-3xl md:text-4xl font-black text-white"
+                data-titulo-aba={[projeto.codigo, String(projeto.cliente_razao_social || '').trim().split(/\s+/).slice(0, 2).join(' ')].filter(Boolean).join(' · ')}
+              >
                 {projeto.cliente_razao_social}
               </h1>
               <p className="text-white/60 mt-1 text-sm">

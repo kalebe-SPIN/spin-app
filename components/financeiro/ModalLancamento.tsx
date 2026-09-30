@@ -28,12 +28,14 @@ type Props = {
   projetos: Array<{ id: string; nome: string }>
   equipe: Array<{ id: string; nome: string }>
   editando?: Lancamento | null
+  /** Edição: quantos lançamentos em aberto vêm depois deste na mesma série */
+  qtdSerie?: number
   onFechar: () => void
   onSalvo: (msg: string) => void
   onAbrirPassivo: () => void
 }
 
-export function ModalLancamento({ fornecedores, categorias, projetos, equipe, editando, onFechar, onSalvo, onAbrirPassivo }: Props) {
+export function ModalLancamento({ fornecedores, categorias, projetos, equipe, editando, qtdSerie = 0, onFechar, onSalvo, onAbrirPassivo }: Props) {
   const d = editando?.detalhes || {}
   const [tipo, setTipo] = useState<Tipo | null>((editando?.grupo as Tipo) || null)
   const [direcaoCg, setDirecaoCg] = useState<Direcao>(editando?.direcao || 'saida')
@@ -63,6 +65,7 @@ export function ModalLancamento({ fornecedores, categorias, projetos, equipe, ed
   const [valorPago, setValorPago] = useState('')
   const [dataPago, setDataPago] = useState(hojeBR())
   const [obs, setObs] = useState(editando?.observacoes || '')
+  const [aplicarSerie, setAplicarSerie] = useState(false)
 
   // Cadastros inline
   const [listaFornec, setListaFornec] = useState(fornecedores)
@@ -156,9 +159,12 @@ export function ModalLancamento({ fornecedores, categorias, projetos, equipe, ed
         observacoes: obs,
         repeticao, vezes: vezesNum,
         realizado: repeticao === 'unica' && jaPago ? { valor: lerValor(valorPago) || valorNum, data: dataPago } : null,
+        aplicar_serie: !!editando && aplicarSerie,
       })
       if ('erro' in r) { setErro(r.erro); return }
-      onSalvo(editando ? 'Lançamento atualizado' : r.criados > 1 ? `${r.criados} lançamentos previstos criados` : 'Lançamento criado')
+      onSalvo(editando
+        ? (aplicarSerie && r.criados > 0 ? `Lançamento e mais ${r.criados} da série atualizados` : 'Lançamento atualizado')
+        : r.criados > 1 ? `${r.criados} lançamentos previstos criados` : 'Lançamento criado')
     } finally { setSalvando(false) }
   }
 
@@ -358,6 +364,16 @@ export function ModalLancamento({ fornecedores, categorias, projetos, equipe, ed
       <Campo rotulo="Observações">
         <textarea className={`${classeInput} resize-none`} rows={2} value={obs} onChange={(e) => setObs(e.target.value)} />
       </Campo>
+
+      {/* Kalebe 2026-09-30: corrigir a série inteira (ex.: salário recorrente lançado errado) */}
+      {editando && qtdSerie > 0 && (
+        <label className="flex items-start gap-2 text-sm text-white/80 cursor-pointer rounded-lg border border-sol/30 bg-sol/5 p-3">
+          <input type="checkbox" className="mt-1" checked={aplicarSerie} onChange={(e) => setAplicarSerie(e.target.checked)} />
+          <span>Aplicar o valor e os dados também aos <strong>próximos {qtdSerie}</strong> lançamento(s) em aberto desta série
+            <span className="block text-[10px] text-white/45">As datas de cada um continuam as mesmas; os já efetivados não mudam.</span>
+          </span>
+        </label>
+      )}
 
       {erro && <Aviso tipo="erro">⚠️ {erro}</Aviso>}
       <Botoes onCancelar={onFechar} onConfirmar={salvar} processando={salvando} rotulo={editando ? 'Salvar alterações' : 'Lançar previsto'} />

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { carregarFluxo } from '@/lib/financeiro/dados'
+import { sincronizarVendasNoFluxo } from '@/lib/financeiro/sync-vendas'
 import { FluxoCaixaClient } from '@/components/financeiro/FluxoCaixaClient'
 
 export const dynamic = 'force-dynamic'
@@ -27,6 +28,8 @@ export default async function FluxoCaixaPage({ searchParams }: { searchParams: {
     )
   }
 
+  // Vendas fechadas desde o início do fluxo entram (ou se atualizam) sozinhas
+  await sincronizarVendasNoFluxo().catch((e) => console.error('[fluxo] sync vendas', e))
   const dados = await carregarFluxo()
 
   return (

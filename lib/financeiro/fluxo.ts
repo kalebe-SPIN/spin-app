@@ -37,6 +37,8 @@ export type ConfigFluxo = {
   data_inicio: string
   reserva_minima: number
   regime_imposto: 'competencia' | 'caixa'
+  /** Vendas automáticas: kit passa pelo caixa? (padrão: faturado direto ao cliente) */
+  kit_passa_caixa_padrao: boolean
 }
 
 export type Passivo = {
@@ -51,6 +53,10 @@ export type Passivo = {
   valor_parcela: number | null
   primeiro_vencimento: string | null
   observacoes: string | null
+  // Dívidas (migration 130): face × negociado; desconto = face − negociado
+  valor_face?: number | null
+  valor_negociado?: number | null
+  renegociacoes?: Array<{ data: string; saldo_anterior: number; valor_negociado: number; parcelas: number; primeiro_vencimento: string; motivo: string | null }>
 }
 
 export type Fornecedor = { id: string; razao_social: string; nome_fantasia: string | null; cnpj: string | null; categoria: string | null; contato_telefone: string | null; ativo: boolean }
@@ -70,6 +76,8 @@ export type VendaPendente = {
   // Custos do orçamento (projeto) — viram PREVISTOS; efetivados com o valor pago
   custos: { kit: number; comissao: number; imposto: number; instalacao: number; frete: number; projeto_art: number; custo_estimado: number }
   vendedor_nome: string | null
+  /** Venda direta: a Spin fatura tudo → equipamentos sempre passam pelo caixa */
+  kit_sempre_caixa?: boolean
 }
 
 // ─── Catálogos do cadastro dinâmico ─────────────────────────────────────────
@@ -112,7 +120,10 @@ export const SUBTIPOS_PESSOAL = [
   'Benefícios (VT, VR, plano)', 'Férias / 13º', 'Outros', 'Pró-labore', 'Rescisão', 'Salário',
 ].sort((a, b) => a.localeCompare(b, 'pt-BR'))
 
-export const MODALIDADES_PASSIVO: Array<{ chave: string; rotulo: string }> = [
+export const MODALIDADES_PASSIVO: Array<{ chave: string; rotulo: string; divida?: boolean }> = [
+  { chave: 'acordo_renegociacao',    rotulo: 'Acordo / renegociação de dívida', divida: true },
+  { chave: 'divida_fornecedor',      rotulo: 'Dívida com fornecedor', divida: true },
+  { chave: 'parcelamento_tributos',  rotulo: 'Parcelamento de tributos', divida: true },
   { chave: 'antecipacao_recebiveis', rotulo: 'Antecipação de recebíveis' },
   { chave: 'capital_giro_bancario',  rotulo: 'Capital de giro bancário' },
   { chave: 'cartao_credito',         rotulo: 'Cartão de crédito empresarial' },

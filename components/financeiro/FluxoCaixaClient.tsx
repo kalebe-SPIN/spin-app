@@ -4,7 +4,8 @@ import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   efetivarLancamentoAction, desfazerEfetivacaoAction, cancelarLancamentoAction, excluirPassivoAction,
-  ignorarVendaAction, desfazerProgramacaoAction, salvarConfigFluxoAction, salvarFornecedorAction,
+  ignorarVendaAction, salvarConfigFluxoAction, salvarFornecedorAction,
+  vendaDaProgramacaoAction, renegociarPassivoAction,
 } from '@/app/financeiro/fluxo-caixa/actions'
 import {
   GRUPOS, FORMAS_PAGAMENTO, MODALIDADES_PASSIVO,
@@ -41,12 +42,17 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
   const [modal, setModal] = useState<
     | { t: 'lancamento'; editando?: Lancamento }
     | { t: 'passivo' }
-    | { t: 'programar'; venda: VendaPendente }
+    | { t: 'programar'; venda: VendaPendente; substituir?: string }
     | { t: 'efetivar'; lanc: Lancamento }
     | { t: 'config' }
     | { t: 'fornecedor'; f?: Fornecedor }
+    | { t: 'detalhe'; filtro: FiltroDetalhe }
+    | { t: 'excluir'; lanc: Lancamento }
+    | { t: 'renegociar'; passivo: DadosFluxo['passivos'][number] }
     | null
   >(null)
+  // Ação aberta a partir do detalhe de um valor → ao terminar, volta pro detalhe
+  const [voltarDetalhe, setVoltarDetalhe] = useState<FiltroDetalhe | null>(null)
 
   // Filtros da aba Lançamentos
   const [fMes, setFMes] = useState(mesDe(hoje))
@@ -62,9 +68,12 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
   const [inicioJanela, setInicioJanela] = useState(mesDe(addMeses(hoje, -2)))
 
   function pronto(m: string) {
-    setModal(null)
+    setModal(voltarDetalhe ? { t: 'detalhe', filtro: voltarDetalhe } : null)
     setMsg({ tipo: 'ok', texto: m })
     router.refresh()
+  }
+  function fecharModal() {
+    setModal(voltarDetalhe ? { t: 'detalhe', filtro: voltarDetalhe } : null)
   }
   function rodar(fn: () => Promise<{ erro: string } | { sucesso: true }>, ok: string) {
     startTransition(async () => {
@@ -72,6 +81,31 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
       if ('erro' in r) setMsg({ tipo: 'erro', texto: r.erro })
       else { setMsg({ tipo: 'ok', texto: ok }); router.refresh() }
     })
+  }
+
+  // Ações rápidas de um lançamento (lista e detalhe da visão mensal)
+  const acoes: AcoesLancamento = {
+    pending,
+    onEfetivar: (l) => setModal({ t: 'efetivar', lanc: l }),
+    onEditar: (l) => setModal({ t: 'lancamento', editando: l }),
+    onDesfazer: (l) => rodar(() => desfazerEfetivacaoAction(l.id), 'Efetivação desfeita — voltou a previsto'),
+    onExcluir: (l) => setModal({ t: 'excluir', lanc: l }),
+    onAjustarVenda: (l) => {
+      if (!l.programacao_id) return
+      startTransition(async () => {
+        const r = await vendaDaProgramacaoAction(l.programacao_id!)
+        if ('erro' in r) setMsg({ tipo: 'erro', texto: r.erro })
+        else setModal({ t: 'programar', venda: r.venda, substituir: l.programacao_id! })
+      })
+    },
+  }
+  function abrirDetalhe(filtro: FiltroDetalhe) {
+    setVoltarDetalhe(filtro)
+    setModal({ t: 'detalhe', filtro })
+  }
+  function fecharDetalhe() {
+    setVoltarDetalhe(null)
+    setModal(null)
   }
 
   // ─── Indicadores ──────────────────────────────────────────────────────────
@@ -152,39 +186,24 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
 
       {aba === 'mensal' && (
         <VisaoMensal lancamentos={lancamentos} config={config} faturamento={faturamentoPorMes}
-          inicio={inicioJanela} setInicio={setInicioJanela} hoje={hoje} />
+          inicio={inicioJanela} setInicio={setInicioJanela} hoje={hoje} onDetalhe={abrirDetalhe} />
       )}
 
       {aba === 'lancamentos' && (
         <ListaLancamentos
-          lancamentos={lancamentos} hoje={hoje} pending={pending}
+          lancamentos={lancamentos} hoje={hoje}
           filtros={{ fMes, setFMes, fTodos, setFTodos, fDirecao, setFDirecao, fGrupo, setFGrupo, fStatus, setFStatus, fBusca, setFBusca, fPassivo, setFPassivo, fFornec, setFFornec }}
           passivos={passivos} fornecedores={fornecedores}
-          onEfetivar={(l) => setModal({ t: 'efetivar', lanc: l })}
-          onEditar={(l) => setModal({ t: 'lancamento', editando: l })}
-          onDesfazer={(l) => rodar(() => desfazerEfetivacaoAction(l.id), 'Efetivação desfeita — voltou a previsto')}
-          onCancelar={(l) => {
-            const lote = !!l.lote_id && !!l.parcelas_total
-            const todas = lote && confirm('Cancelar também as PRÓXIMAS parcelas em aberto deste lote?\n\nOK = esta e as próximas · Cancelar = só esta')
-            if (!lote && !confirm(`Cancelar "${l.descricao}"?`)) return
-            startTransition(async () => {
-              const r = await cancelarLancamentoAction(l.id, todas)
-              if ('erro' in r) setMsg({ tipo: 'erro', texto: r.erro })
-              else { setMsg({ tipo: 'ok', texto: `${r.cancelados} lançamento(s) cancelado(s)` }); router.refresh() }
-            })
-          }}
-          onRefazerVenda={(l) => {
-            if (!l.programacao_id || !confirm('Apagar todos os previstos desta venda e programar de novo?')) return
-            rodar(() => desfazerProgramacaoAction(l.programacao_id!), 'Venda voltou para "A programar"')
-          }}
+          acoes={acoes}
         />
       )}
 
       {aba === 'programar' && (
         <div className="space-y-2">
           <p className="text-xs text-white/55">
-            Vendas fechadas no sistema (últimos 12 meses) que ainda não entraram no fluxo. Programe a condição de recebimento —
-            recebimentos e custos do orçamento entram como <strong>previsto</strong>.
+            Vendas fechadas a partir de {dataBR(config.data_inicio)} (início do fluxo) já entram <strong>sozinhas</strong>, com a condição
+            informada no fechamento e os custos do orçamento — pra mudar a condição, use “⚙ ajustar venda” no lançamento.
+            Aqui ficam as vendas <strong>anteriores</strong> ao início (últimos 12 meses): programe só as que ainda têm dinheiro a receber.
           </p>
           {pendentes.length === 0 && <p className="text-sm text-white/40 py-8 text-center">Nenhuma venda aguardando programação. 🎉</p>}
           {pendentes.map((v) => (
@@ -234,6 +253,19 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
                       {MODALIDADES_PASSIVO.find((m) => m.chave === p.modalidade)?.rotulo || p.modalidade} · contratado {brl(p.valor_contratado)} em {dataBR(p.data_contratacao)}
                       {p.taxa_juros_mes ? ` · ${String(p.taxa_juros_mes).replace('.', ',')}% a.m.` : ''}
                     </p>
+                    {/* Dívida: face × negociado (Kalebe 2026-09-30) */}
+                    {(p.valor_face || p.valor_negociado) && (
+                      <p className="text-xs text-white/60 mt-0.5">
+                        {p.valor_face ? <>face {brl(p.valor_face)}</> : null}
+                        {p.valor_negociado ? <> · negociado {brl(p.valor_negociado)}</> : null}
+                        {p.valor_face && p.valor_negociado && p.valor_face - p.valor_negociado > 0.009 && (
+                          <strong className="text-verde"> · desconto {brl(p.valor_face - p.valor_negociado)} ({(((p.valor_face - p.valor_negociado) / p.valor_face) * 100).toFixed(1).replace('.', ',')}%)</strong>
+                        )}
+                      </p>
+                    )}
+                    {!!p.renegociacoes?.length && (
+                      <p className="text-[11px] text-white/45">🔁 renegociado {p.renegociacoes.length}× · última em {dataBR(p.renegociacoes[p.renegociacoes.length - 1].data)}</p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-black text-coral">{brl(devedor)}</p>
@@ -248,6 +280,9 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
                     {prox && <> · próxima {dataBR(prox.data_prevista)} ({brl(prox.valor_previsto)})</>}</span>
                   <span className="flex gap-3">
                     <button className="text-sol hover:underline" onClick={() => { setFPassivo(p.id); setFFornec(null); setFTodos(true); setAba('lancamentos') }}>ver parcelas</button>
+                    {abertas.length > 0 && (
+                      <button className="text-verde hover:underline" onClick={() => setModal({ t: 'renegociar', passivo: p })}>🔁 renegociar</button>
+                    )}
                     <button className="text-coral/80 hover:underline" disabled={pending} onClick={() => {
                       if (confirm(`Excluir o contrato ${p.banco} e todas as parcelas previstas?`)) rodar(() => excluirPassivoAction(p.id), 'Contrato excluído')
                     }}>excluir</button>
@@ -295,16 +330,43 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
       {/* Modais */}
       {modal?.t === 'lancamento' && (
         <ModalLancamento fornecedores={fornecedores} categorias={categorias} projetos={projetosLista} equipe={equipe}
-          editando={modal.editando} onFechar={() => setModal(null)} onSalvo={pronto}
+          editando={modal.editando}
+          qtdSerie={modal.editando?.lote_id ? lancamentos.filter((x) => x.lote_id === modal.editando!.lote_id && x.id !== modal.editando!.id
+            && !x.data_realizada && x.data_prevista > modal.editando!.data_prevista).length : 0}
+          onFechar={fecharModal} onSalvo={pronto}
           onAbrirPassivo={() => setModal({ t: 'passivo' })} />
       )}
-      {modal?.t === 'passivo' && <ModalPassivo onFechar={() => setModal(null)} onSalvo={pronto} />}
+      {modal?.t === 'passivo' && <ModalPassivo onFechar={fecharModal} onSalvo={pronto} />}
       {modal?.t === 'programar' && (
-        <ModalProgramarVenda venda={modal.venda} regimeImposto={config.regime_imposto} onFechar={() => setModal(null)} onSalvo={pronto} />
+        <ModalProgramarVenda venda={modal.venda} regimeImposto={config.regime_imposto} substituirProgramacaoId={modal.substituir}
+          onFechar={fecharModal} onSalvo={pronto} />
       )}
-      {modal?.t === 'efetivar' && <ModalEfetivar lanc={modal.lanc} onFechar={() => setModal(null)} onSalvo={pronto} />}
-      {modal?.t === 'config' && <ModalConfig config={config} onFechar={() => setModal(null)} onSalvo={pronto} />}
-      {modal?.t === 'fornecedor' && <ModalFornecedor f={modal.f} onFechar={() => setModal(null)} onSalvo={pronto} />}
+      {modal?.t === 'efetivar' && <ModalEfetivar lanc={modal.lanc} onFechar={fecharModal} onSalvo={pronto} />}
+      {modal?.t === 'config' && <ModalConfig config={config} onFechar={fecharModal} onSalvo={pronto} />}
+      {modal?.t === 'fornecedor' && <ModalFornecedor f={modal.f} onFechar={fecharModal} onSalvo={pronto} />}
+      {modal?.t === 'detalhe' && (
+        <ModalDetalhe filtro={modal.filtro} lancamentos={lancamentos} hoje={hoje} acoes={acoes} onFechar={fecharDetalhe}
+          onNovo={() => setModal({ t: 'lancamento' })} />
+      )}
+      {modal?.t === 'excluir' && (
+        <ModalExcluir lanc={modal.lanc}
+          qtdSeguintes={modal.lanc.lote_id ? lancamentos.filter((x) => x.lote_id === modal.lanc.lote_id && x.id !== modal.lanc.id
+            && !x.data_realizada && x.data_prevista >= modal.lanc.data_prevista).length : 0}
+          onFechar={fecharModal}
+          onConfirmar={(serie) => {
+            startTransition(async () => {
+              const r = await cancelarLancamentoAction(modal.lanc.id, serie)
+              if ('erro' in r) setMsg({ tipo: 'erro', texto: r.erro })
+              else pronto(`${r.cancelados} lançamento(s) excluído(s)`)
+            })
+          }} />
+      )}
+      {modal?.t === 'renegociar' && (
+        <ModalRenegociar passivo={modal.passivo}
+          saldoAberto={arred(lancamentos.filter((l) => l.passivo_id === modal.passivo.id && l.direcao === 'saida' && !l.data_realizada)
+            .reduce((s, l) => s + l.valor_previsto, 0))}
+          onFechar={fecharModal} onSalvo={pronto} />
+      )}
     </div>
   )
 }
@@ -323,9 +385,12 @@ function Kpi({ rotulo, valor, sub, cor = 'text-white', alerta }: { rotulo: strin
 
 // ─── Visão mensal: previsto × realizado ─────────────────────────────────────
 
-function VisaoMensal({ lancamentos, config, faturamento, inicio, setInicio, hoje }: {
+type FiltroDetalhe = { direcao: 'entrada' | 'saida' | null; grupo: Grupo | null; mes: string; tipo: 'P' | 'R'; rotulo: string }
+
+function VisaoMensal({ lancamentos, config, faturamento, inicio, setInicio, hoje, onDetalhe }: {
   lancamentos: Lancamento[]; config: ConfigFluxo; faturamento: Record<string, number>
   inicio: string; setInicio: (m: string) => void; hoje: string
+  onDetalhe: (f: FiltroDetalhe) => void
 }) {
   const meses = mesesJanela(inicio, 6)
   const mesAtual = mesDe(hoje)
@@ -343,20 +408,36 @@ function VisaoMensal({ lancamentos, config, faturamento, inicio, setInicio, hoje
     }
   })
 
-  const cel = (v: number, forte = false) => (
-    <span className={`font-mono ${v === 0 ? 'text-white/20' : forte ? 'text-white font-bold' : 'text-white/80'}`}>{v === 0 ? '—' : brl(v).replace('R$', '').trim()}</span>
-  )
-  const Linha = ({ rotulo, valores, forte, cor }: { rotulo: string; valores: Array<{ p: number | null; r: number | null }>; forte?: boolean; cor?: string }) => (
+  // Kalebe 2026-09-30: clicar no valor abre os lançamentos que o compõem (editar/excluir/efetivar)
+  const cel = (v: number, forte: boolean, abrir?: () => void) => {
+    const txt = <span className={`font-mono ${v === 0 ? 'text-white/20' : forte ? 'text-white font-bold' : 'text-white/80'}`}>{v === 0 ? '—' : brl(v).replace('R$', '').trim()}</span>
+    if (v === 0 || !abrir) return txt
+    return (
+      <button type="button" onClick={abrir} title="Ver os lançamentos deste valor"
+        className="rounded px-1 -mx-1 hover:bg-sol/15 hover:outline hover:outline-1 hover:outline-sol/40 cursor-pointer">
+        {txt}
+      </button>
+    )
+  }
+  const Linha = ({ rotulo, valores, forte, cor, filtro }: {
+    rotulo: string; valores: Array<{ p: number | null; r: number | null }>; forte?: boolean; cor?: string
+    filtro?: { direcao: 'entrada' | 'saida' | null; grupo: Grupo | null }
+  }) => (
     <tr className={forte ? 'bg-white/[0.04]' : ''}>
       <td className={`sticky left-0 bg-noite px-2 py-1.5 text-xs whitespace-nowrap ${forte ? 'font-bold' : ''} ${cor || 'text-white/75'}`}>{rotulo}</td>
-      {valores.map((v, i) => (
-        <td key={i} colSpan={1} className="px-2 py-1.5 text-right text-xs" style={{ minWidth: 0 }}>
-          <div className="grid grid-cols-2 gap-2">
-            <span>{v.p === null ? '' : cel(v.p, forte)}</span>
-            <span className={meses[i] > mesAtual ? 'opacity-30' : ''}>{v.r === null ? <span className="text-white/20">·</span> : cel(v.r, forte)}</span>
-          </div>
-        </td>
-      ))}
+      {valores.map((v, i) => {
+        const abrir = (tipo: 'P' | 'R') => filtro
+          ? () => onDetalhe({ ...filtro, mes: meses[i], tipo, rotulo: `${rotulo.replace(/^\S+\s/, '')} · ${rotuloMes(meses[i])} · ${tipo === 'P' ? 'previsto' : 'realizado'}` })
+          : undefined
+        return (
+          <td key={i} colSpan={1} className="px-2 py-1.5 text-right text-xs" style={{ minWidth: 0 }}>
+            <div className="grid grid-cols-2 gap-2">
+              <span>{v.p === null ? '' : cel(v.p, !!forte, abrir('P'))}</span>
+              <span className={meses[i] > mesAtual ? 'opacity-30' : ''}>{v.r === null ? <span className="text-white/20">·</span> : cel(v.r, !!forte, abrir('R'))}</span>
+            </div>
+          </td>
+        )
+      })}
     </tr>
   )
 
@@ -392,12 +473,12 @@ function VisaoMensal({ lancamentos, config, faturamento, inicio, setInicio, hoje
           </thead>
           <tbody>
             <tr><td colSpan={meses.length + 1} className="px-2 pt-3 pb-1 text-[10px] uppercase font-bold text-verde tracking-wider sticky left-0">↑ Entradas</td></tr>
-            {entradas.map((l) => <Linha key={l.chave} rotulo={`${l.emoji} ${l.rotulo}`} valores={meses.map((m) => ({ p: l.meses[m].previsto, r: l.meses[m].realizado }))} />)}
-            <Linha forte cor="text-verde" rotulo="Total de entradas" valores={meses.map((m) => ({ p: tot(entradas, m, 'previsto'), r: tot(entradas, m, 'realizado') }))} />
+            {entradas.map((l) => <Linha key={l.chave} rotulo={`${l.emoji} ${l.rotulo}`} filtro={{ direcao: 'entrada', grupo: l.chave.split(':')[1] as Grupo }} valores={meses.map((m) => ({ p: l.meses[m].previsto, r: l.meses[m].realizado }))} />)}
+            <Linha forte cor="text-verde" rotulo="Total de entradas" filtro={{ direcao: 'entrada', grupo: null }} valores={meses.map((m) => ({ p: tot(entradas, m, 'previsto'), r: tot(entradas, m, 'realizado') }))} />
 
             <tr><td colSpan={meses.length + 1} className="px-2 pt-3 pb-1 text-[10px] uppercase font-bold text-coral tracking-wider sticky left-0">↓ Saídas</td></tr>
-            {saidas.map((l) => <Linha key={l.chave} rotulo={`${l.emoji} ${l.rotulo}`} valores={meses.map((m) => ({ p: l.meses[m].previsto, r: l.meses[m].realizado }))} />)}
-            <Linha forte cor="text-coral" rotulo="Total de saídas" valores={meses.map((m) => ({ p: tot(saidas, m, 'previsto'), r: tot(saidas, m, 'realizado') }))} />
+            {saidas.map((l) => <Linha key={l.chave} rotulo={`${l.emoji} ${l.rotulo}`} filtro={{ direcao: 'saida', grupo: l.chave.split(':')[1] as Grupo }} valores={meses.map((m) => ({ p: l.meses[m].previsto, r: l.meses[m].realizado }))} />)}
+            <Linha forte cor="text-coral" rotulo="Total de saídas" filtro={{ direcao: 'saida', grupo: null }} valores={meses.map((m) => ({ p: tot(saidas, m, 'previsto'), r: tot(saidas, m, 'realizado') }))} />
 
             <tr><td colSpan={meses.length + 1} className="h-2" /></tr>
             <Linha forte rotulo="Resultado do mês" valores={meses.map((m) => ({
@@ -476,12 +557,74 @@ function GraficoFluxo({ meses, mesAtual, entradas, saidas, saldos, reserva }: {
 
 // ─── Lançamentos ────────────────────────────────────────────────────────────
 
-function ListaLancamentos({ lancamentos, hoje, pending, filtros: f, passivos, fornecedores, onEfetivar, onEditar, onDesfazer, onCancelar, onRefazerVenda }: {
-  lancamentos: Lancamento[]; hoje: string; pending: boolean
+type AcoesLancamento = {
+  pending: boolean
+  onEfetivar: (l: Lancamento) => void
+  onEditar: (l: Lancamento) => void
+  onDesfazer: (l: Lancamento) => void
+  onExcluir: (l: Lancamento) => void
+  onAjustarVenda: (l: Lancamento) => void
+}
+
+/** Uma linha de lançamento com ações rápidas (lista, detalhe da visão mensal). */
+function LinhaLancamento({ l, hoje, acoes }: { l: Lancamento; hoje: string; acoes: AcoesLancamento }) {
+  const st = statusDe(l, hoje)
+  const dif = l.valor_realizado !== null ? arred(l.valor_realizado - l.valor_previsto) : 0
+  const serie = l.parcelas_total && l.parcela_num ? `${l.parcela_num}/${l.parcelas_total}` : l.lote_id && l.origem === 'manual' ? 'recorrente' : null
+  return (
+    <div className={`bg-white/[0.03] border rounded-lg p-2.5 flex flex-col md:flex-row md:items-center gap-2 ${st === 'atrasado' ? 'border-coral/40' : 'border-white/10'}`}>
+      <div className="flex items-center gap-2 md:w-28 shrink-0">
+        <span className={l.direcao === 'entrada' ? 'text-verde' : 'text-coral'}>{l.direcao === 'entrada' ? '↑' : '↓'}</span>
+        <span className={`text-xs font-mono ${st === 'atrasado' ? 'text-coral' : 'text-white/70'}`}>{dataBR(l.data_prevista)}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <button type="button" onClick={() => acoes.onEditar(l)} className="text-sm text-white truncate text-left max-w-full hover:text-sol" title="Editar">
+          {l.descricao}
+        </button>
+        <p className="text-[10px] text-white/45 flex flex-wrap gap-x-2">
+          <span>{GRUPOS[l.grupo]?.emoji} {GRUPOS[l.grupo]?.rotulo}</span>
+          {serie && <span>🔁 {serie}</span>}
+          {l.origem === 'projeto' && <span className="text-sol/80">📥 venda do sistema{l.detalhes?.automatico ? ' (automático)' : ''}</span>}
+          {l.detalhes?.revisar_condicao && <span className="text-sol font-bold">⚠ conferir condição de pagamento</span>}
+          {l.origem === 'passivo' && <span>🏦 contrato</span>}
+          {l.forma_pagamento && <span>{l.forma_pagamento}</span>}
+          {l.detalhes?.tipo_imposto && <span>{l.detalhes.tipo_imposto}</span>}
+          {l.detalhes?.nf && <span>NF {l.detalhes.nf}</span>}
+        </p>
+      </div>
+      <div className="text-right md:w-32 shrink-0">
+        <p className="text-[10px] text-white/40">previsto</p>
+        <p className="text-sm font-mono text-white/80">{brl(l.valor_previsto)}</p>
+      </div>
+      <div className="text-right md:w-40 shrink-0">
+        {l.data_realizada ? (
+          <>
+            <p className="text-[10px] text-verde">✓ efetivado {dataBR(l.data_realizada)}</p>
+            <p className="text-sm font-mono font-bold text-white">{brl(l.valor_realizado)}
+              {Math.abs(dif) > 0.009 && <span className={`text-[10px] ml-1 ${(dif > 0) === (l.direcao === 'saida') ? 'text-coral' : 'text-verde'}`}>{dif > 0 ? '+' : ''}{brl(dif).replace('R$', '').trim()}</span>}
+            </p>
+          </>
+        ) : (
+          <p className={`text-[11px] ${st === 'atrasado' ? 'text-coral font-bold' : 'text-white/40'}`}>{st === 'atrasado' ? '⚠ atrasado' : 'em aberto'}</p>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs shrink-0 md:w-56 justify-end items-center">
+        {l.data_realizada
+          ? <button disabled={acoes.pending} onClick={() => acoes.onDesfazer(l)} className="text-white/50 hover:text-white">↺ desfazer</button>
+          : <button disabled={acoes.pending} onClick={() => acoes.onEfetivar(l)} className="px-2 py-1 bg-verde/15 border border-verde/40 text-verde font-bold rounded">✓ Efetivar</button>}
+        {l.origem !== 'passivo' && <button onClick={() => acoes.onEditar(l)} className="text-white/60 hover:text-white">✎ editar</button>}
+        {l.programacao_id && <button onClick={() => acoes.onAjustarVenda(l)} className="text-sol/80 hover:text-sol">⚙ ajustar venda</button>}
+        {!l.data_realizada && <button disabled={acoes.pending} onClick={() => acoes.onExcluir(l)} className="text-coral/70 hover:text-coral">🗑 excluir</button>}
+      </div>
+    </div>
+  )
+}
+
+function ListaLancamentos({ lancamentos, hoje, filtros: f, passivos, fornecedores, acoes }: {
+  lancamentos: Lancamento[]; hoje: string
   filtros: any
   passivos: DadosFluxo['passivos']; fornecedores: Fornecedor[]
-  onEfetivar: (l: Lancamento) => void; onEditar: (l: Lancamento) => void; onDesfazer: (l: Lancamento) => void
-  onCancelar: (l: Lancamento) => void; onRefazerVenda: (l: Lancamento) => void
+  acoes: AcoesLancamento
 }) {
   const lista = useMemo(() => {
     const q = f.fBusca.trim().toLowerCase()
@@ -540,55 +683,108 @@ function ListaLancamentos({ lancamentos, hoje, pending, filtros: f, passivos, fo
 
       <div className="space-y-1.5">
         {lista.length === 0 && <p className="text-sm text-white/40 py-8 text-center">Nada neste filtro.</p>}
-        {lista.map((l) => {
-          const st = statusDe(l, hoje)
-          const dif = l.valor_realizado !== null ? arred(l.valor_realizado - l.valor_previsto) : 0
-          return (
-            <div key={l.id} className={`bg-white/[0.03] border rounded-lg p-2.5 flex flex-col md:flex-row md:items-center gap-2 ${st === 'atrasado' ? 'border-coral/40' : 'border-white/10'}`}>
-              <div className="flex items-center gap-2 md:w-28 shrink-0">
-                <span className={l.direcao === 'entrada' ? 'text-verde' : 'text-coral'}>{l.direcao === 'entrada' ? '↑' : '↓'}</span>
-                <span className={`text-xs font-mono ${st === 'atrasado' ? 'text-coral' : 'text-white/70'}`}>{dataBR(l.data_prevista)}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-white truncate">{l.descricao}</p>
-                <p className="text-[10px] text-white/45 flex flex-wrap gap-x-2">
-                  <span>{GRUPOS[l.grupo]?.emoji} {GRUPOS[l.grupo]?.rotulo}</span>
-                  {l.origem === 'projeto' && <span className="text-sol/80">📥 venda do sistema</span>}
-                  {l.origem === 'passivo' && <span>🏦 contrato</span>}
-                  {l.forma_pagamento && <span>{l.forma_pagamento}</span>}
-                  {l.detalhes?.tipo_imposto && <span>{l.detalhes.tipo_imposto}</span>}
-                  {l.detalhes?.nf && <span>NF {l.detalhes.nf}</span>}
-                </p>
-              </div>
-              <div className="text-right md:w-32 shrink-0">
-                <p className="text-[10px] text-white/40">previsto</p>
-                <p className="text-sm font-mono text-white/80">{brl(l.valor_previsto)}</p>
-              </div>
-              <div className="text-right md:w-40 shrink-0">
-                {l.data_realizada ? (
-                  <>
-                    <p className="text-[10px] text-verde">✓ efetivado {dataBR(l.data_realizada)}</p>
-                    <p className="text-sm font-mono font-bold text-white">{brl(l.valor_realizado)}
-                      {Math.abs(dif) > 0.009 && <span className={`text-[10px] ml-1 ${(dif > 0) === (l.direcao === 'saida') ? 'text-coral' : 'text-verde'}`}>{dif > 0 ? '+' : ''}{brl(dif).replace('R$', '').trim()}</span>}
-                    </p>
-                  </>
-                ) : (
-                  <p className={`text-[11px] ${st === 'atrasado' ? 'text-coral font-bold' : 'text-white/40'}`}>{st === 'atrasado' ? '⚠ atrasado' : 'em aberto'}</p>
-                )}
-              </div>
-              <div className="flex gap-2 text-xs shrink-0 md:w-44 justify-end">
-                {l.data_realizada
-                  ? <button disabled={pending} onClick={() => onDesfazer(l)} className="text-white/50 hover:text-white">↺ desfazer</button>
-                  : <button disabled={pending} onClick={() => onEfetivar(l)} className="px-2 py-1 bg-verde/15 border border-verde/40 text-verde font-bold rounded">✓ Efetivar</button>}
-                {l.origem !== 'passivo' && <button onClick={() => onEditar(l)} className="text-white/50 hover:text-white" title="Editar previsto">✎</button>}
-                {l.programacao_id && <button onClick={() => onRefazerVenda(l)} className="text-white/50 hover:text-white" title="Refazer a programação desta venda">↻</button>}
-                {!l.data_realizada && <button disabled={pending} onClick={() => onCancelar(l)} className="text-coral/70 hover:text-coral" title="Cancelar">🗑</button>}
-              </div>
-            </div>
-          )
-        })}
+        {lista.map((l) => <LinhaLancamento key={l.id} l={l} hoje={hoje} acoes={acoes} />)}
       </div>
     </div>
+  )
+}
+
+// ─── Detalhe de um valor da visão mensal (Kalebe 2026-09-30) ───────────────
+
+function ModalDetalhe({ filtro, lancamentos, hoje, acoes, onFechar, onNovo }: {
+  filtro: FiltroDetalhe; lancamentos: Lancamento[]; hoje: string; acoes: AcoesLancamento
+  onFechar: () => void; onNovo: () => void
+}) {
+  // Mesma regra da tabela: P pela data prevista, R pela data em que foi efetivado
+  const lista = lancamentos.filter((l) => {
+    if (filtro.direcao && l.direcao !== filtro.direcao) return false
+    if (filtro.grupo && l.grupo !== filtro.grupo) return false
+    return filtro.tipo === 'P' ? mesDe(l.data_prevista) === filtro.mes : !!l.data_realizada && mesDe(l.data_realizada) === filtro.mes
+  }).sort((a, b) => b.valor_previsto - a.valor_previsto)
+  const total = arred(lista.reduce((s, l) => s + (filtro.tipo === 'P' ? l.valor_previsto : (l.valor_realizado || 0)), 0))
+  return (
+    <Modal titulo={filtro.rotulo} subtitulo={`${lista.length} lançamento(s) · total ${brl(total)} — clique na descrição pra editar`} onFechar={onFechar} largura="max-w-5xl">
+      <div className="space-y-1.5 max-h-[65vh] overflow-y-auto">
+        {lista.length === 0 && <p className="text-sm text-white/40 py-6 text-center">Nada aqui.</p>}
+        {lista.map((l) => <LinhaLancamento key={l.id} l={l} hoje={hoje} acoes={acoes} />)}
+      </div>
+      <div className="flex justify-between gap-2">
+        <button onClick={onNovo} className="px-3 py-2 bg-white/5 border border-white/15 text-white/80 text-xs rounded-lg hover:bg-white/10">➕ Novo lançamento</button>
+        <button onClick={onFechar} className="px-4 py-2 bg-sol text-noite text-xs font-bold rounded-lg">Fechar</button>
+      </div>
+    </Modal>
+  )
+}
+
+function ModalExcluir({ lanc, qtdSeguintes, onFechar, onConfirmar }: {
+  lanc: Lancamento; qtdSeguintes: number; onFechar: () => void; onConfirmar: (serie: boolean) => void
+}) {
+  return (
+    <Modal titulo="🗑 Excluir lançamento" subtitulo={`${lanc.descricao} · ${brl(lanc.valor_previsto)} em ${dataBR(lanc.data_prevista)}`} onFechar={onFechar} largura="max-w-md">
+      <p className="text-xs text-white/60">Sai do fluxo (fica registrado no histórico). Lançamentos já efetivados não mudam.</p>
+      <div className="flex flex-col gap-2">
+        <button onClick={() => onConfirmar(false)} className="py-2.5 bg-coral/15 border border-coral/40 text-coral font-bold text-sm rounded-lg">Excluir só este</button>
+        {qtdSeguintes > 0 && (
+          <button onClick={() => onConfirmar(true)} className="py-2.5 bg-coral text-noite font-bold text-sm rounded-lg">
+            Encerrar a série: este e os próximos {qtdSeguintes} em aberto
+          </button>
+        )}
+        <button onClick={onFechar} className="py-2 text-white/60 text-sm">Cancelar</button>
+      </div>
+    </Modal>
+  )
+}
+
+/** Renegociação: parcelas em aberto saem, entram as novas pelo valor negociado. */
+function ModalRenegociar({ passivo, saldoAberto, onFechar, onSalvo }: {
+  passivo: DadosFluxo['passivos'][number]; saldoAberto: number; onFechar: () => void; onSalvo: (m: string) => void
+}) {
+  const [valor, setValor] = useState('')
+  const [parcelas, setParcelas] = useState('12')
+  const [valorParcela, setValorParcela] = useState('')
+  const [primeiro, setPrimeiro] = useState(addMeses(hojeBR(), 1))
+  const [motivo, setMotivo] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+  const v = lerValor(valor)
+  const n = Math.max(1, Math.floor(Number(parcelas) || 1))
+  const vp = lerValor(valorParcela)
+  const totalPagar = vp > 0 ? vp * n : v
+  const desconto = arred(saldoAberto - v)
+
+  async function salvar() {
+    setSalvando(true); setErro(null)
+    try {
+      const r = await renegociarPassivoAction({
+        passivo_id: passivo.id, valor_negociado: v, parcelas_total: n,
+        valor_parcela: vp > 0 ? vp : null, primeiro_vencimento: primeiro, motivo,
+      })
+      if ('erro' in r) { setErro(r.erro); return }
+      onSalvo(r.desconto > 0 ? `Renegociado — desconto de ${brl(r.desconto)}` : 'Contrato renegociado')
+    } finally { setSalvando(false) }
+  }
+
+  return (
+    <Modal titulo={`🔁 Renegociar — ${passivo.banco}`} subtitulo={`Saldo em aberto hoje: ${brl(saldoAberto)} (valor de face da negociação)`} onFechar={onFechar} largura="max-w-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Campo rotulo="Valor negociado (o que vai pagar) *"><InputValor valor={valor} onChange={setValor} autoFocus /></Campo>
+        <Campo rotulo="Nº de parcelas *"><input type="number" min={1} max={420} className={classeInput} value={parcelas} onChange={(e) => setParcelas(e.target.value)} /></Campo>
+        <Campo rotulo="Valor da parcela" dica="Vazio = negociado ÷ parcelas"><InputValor valor={valorParcela} onChange={setValorParcela} /></Campo>
+        <Campo rotulo="1º vencimento *"><input type="date" className={classeInput} value={primeiro} onChange={(e) => setPrimeiro(e.target.value)} /></Campo>
+      </div>
+      {v > 0 && (
+        <Aviso tipo={desconto >= 0 ? 'ok' : 'erro'}>
+          {desconto >= 0
+            ? <>Desconto obtido: <strong>{brl(desconto)}</strong> ({saldoAberto > 0 ? ((desconto / saldoAberto) * 100).toFixed(1).replace('.', ',') : '0'}% do saldo)</>
+            : <>Acréscimo de {brl(-desconto)} sobre o saldo em aberto</>}
+          {' '}· {n}× de {brl(vp > 0 ? vp : v / n)} · total {brl(totalPagar)}
+        </Aviso>
+      )}
+      <Campo rotulo="Motivo / observação"><input className={classeInput} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: acordo com o banco, quitação com desconto" /></Campo>
+      <p className="text-[11px] text-white/45">As parcelas em aberto saem do fluxo (ficam no histórico) e entram as novas. Parcelas já pagas não mudam.</p>
+      {erro && <Aviso tipo="erro">⚠️ {erro}</Aviso>}
+      <Botoes onCancelar={onFechar} onConfirmar={salvar} processando={salvando} rotulo="Renegociar" desabilitado={!(v > 0)} />
+    </Modal>
   )
 }
 
@@ -641,13 +837,17 @@ function ModalConfig({ config, onFechar, onSalvo }: { config: ConfigFluxo; onFec
   const [inicio, setInicio] = useState(config.data_inicio)
   const [reserva, setReserva] = useState(String(config.reserva_minima).replace('.', ','))
   const [regime, setRegime] = useState(config.regime_imposto)
+  const [kitPadrao, setKitPadrao] = useState(config.kit_passa_caixa_padrao ? 'sim' : 'nao')
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
 
   async function salvar() {
     setSalvando(true); setErro(null)
     try {
-      const r = await salvarConfigFluxoAction({ saldo_inicial: lerValor(saldo), data_inicio: inicio, reserva_minima: lerValor(reserva), regime_imposto: regime })
+      const r = await salvarConfigFluxoAction({
+        saldo_inicial: lerValor(saldo), data_inicio: inicio, reserva_minima: lerValor(reserva), regime_imposto: regime,
+        kit_passa_caixa_padrao: kitPadrao === 'sim',
+      })
       if ('erro' in r) { setErro(r.erro); return }
       onSalvo('Configuração do fluxo salva')
     } finally { setSalvando(false) }
@@ -666,6 +866,12 @@ function ModalConfig({ config, onFechar, onSalvo }: { config: ConfigFluxo; onFec
         <Selecao valor={regime} onChange={(v) => setRegime(v as any)} opcoes={[
           { valor: 'competencia', rotulo: 'Competência — na emissão da nota' },
           { valor: 'caixa', rotulo: 'Caixa — a cada recebimento' },
+        ]} />
+      </Campo>
+      <Campo rotulo="Kit nas vendas que entram sozinhas" dica="Vale pras vendas automáticas; em cada venda dá pra ajustar em “⚙ ajustar venda”.">
+        <Selecao valor={kitPadrao} onChange={setKitPadrao} opcoes={[
+          { valor: 'nao', rotulo: 'Faturado direto ao cliente (não passa pelo caixa)' },
+          { valor: 'sim', rotulo: 'Passa pelo caixa da Spin (entra e sai como fornecedor)' },
         ]} />
       </Campo>
       {erro && <Aviso tipo="erro">⚠️ {erro}</Aviso>}

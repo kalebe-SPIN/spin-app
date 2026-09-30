@@ -7,6 +7,11 @@ import {
   addMeses, arred, dividirEmParcelas, GRUPOS,
   type Direcao, type Grupo,
 } from '@/lib/financeiro/fluxo'
+import type { LinhaPlano } from '@/lib/financeiro/plano-venda'
+import type { VendaPendente } from '@/lib/financeiro/fluxo'
+import {
+  STATUS_FECHADOS, SELECT_PROJETO_VENDA, mapaPrimeiroFechamento, vendaDoProjeto, vendaManual,
+} from '@/lib/financeiro/vendas-sistema'
 
 /**
  * Fluxo de caixa (Kalebe 2026-09-29). Tudo PREVISTO nasce aqui; o valor
@@ -31,6 +36,20 @@ function revalidar() {
   revalidatePath('/financeiro')
 }
 
+/**
+ * Admin mexeu à mão num lançamento de venda automática → a venda vira
+ * "manual" e a sincronização não refaz mais (senão desfaria a correção).
+ */
+async function congelarProgramacao(supabase: ReturnType<typeof createClient>, programacaoId: string | null | undefined) {
+  if (!programacaoId) return
+  const { data: prog } = await supabase.from('fluxo_programacoes').select('condicao').eq('id', programacaoId).maybeSingle()
+  const cond: any = prog?.condicao || {}
+  if (!cond.automatica) return
+  await supabase.from('fluxo_programacoes')
+    .update({ condicao: { ...cond, automatica: false, ajustada_manualmente_em: new Date().toISOString() } })
+    .eq('id', programacaoId)
+}
+
 // ─── Lançamento manual (cadastro dinâmico) ──────────────────────────────────
 
 export type EntradaLancamento = {
@@ -50,6 +69,8 @@ export type EntradaLancamento = {
   vezes?: number
   /** Já pago/recebido (só lançamento único) */
   realizado?: { valor: number; data: string } | null
+  /** Edição: aplica valor/dados também aos próximos EM ABERTO da mesma série */
+  aplicar_serie?: boolean
 }
 
 export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ criados: number }>> {
@@ -72,17 +93,39 @@ export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ 
     observacoes: e.observacoes?.trim() || null,
   }
 
-  // Edição: um lançamento só, sem gerar parcelas
+  // Edição: este lançamento (e, se pedido, os próximos em aberto da série)
   if (e.id) {
+    const { data: antes } = await supabase.from('fluxo_lancamentos')
+      .select('lote_id, data_prevista, descricao, programacao_id').eq('id', e.id).maybeSingle()
+    await congelarProgramacao(supabase, antes?.programacao_id)
+    const agora = new Date().toISOString()
     const { error } = await supabase.from('fluxo_lancamentos').update({
       ...base,
       valor_previsto: arred(e.valor_previsto),
       data_prevista: e.data_prevista,
-      atualizado_em: new Date().toISOString(),
+      atualizado_em: agora,
     }).eq('id', e.id)
     if (error) return { erro: erroTabela(error.message) }
+
+    let alterados = 0
+    if (e.aplicar_serie && antes?.lote_id) {
+      const { descricao: _d, ...semDescricao } = base
+      const { data: serie } = await supabase.from('fluxo_lancamentos')
+        .update({ ...semDescricao, valor_previsto: arred(e.valor_previsto), atualizado_em: agora })
+        .eq('lote_id', antes.lote_id).neq('id', e.id)
+        .gt('data_prevista', antes.data_prevista)
+        .is('data_realizada', null).is('cancelado_em', null)
+        .select('id')
+      alterados = serie?.length || 0
+      // Recorrência (mesma descrição em todas) acompanha a descrição nova
+      if (antes.descricao && antes.descricao !== base.descricao) {
+        await supabase.from('fluxo_lancamentos').update({ descricao: base.descricao })
+          .eq('lote_id', antes.lote_id).eq('descricao', antes.descricao)
+          .gt('data_prevista', antes.data_prevista).is('data_realizada', null).is('cancelado_em', null)
+      }
+    }
     revalidar()
-    return { sucesso: true, criados: 0 }
+    return { sucesso: true, criados: alterados }
   }
 
   const vezes = Math.max(1, Math.min(120, Math.floor(e.vezes || 1)))
@@ -146,8 +189,9 @@ export async function cancelarLancamentoAction(id: string, restantesDoLote = fal
   const { supabase, ok } = await admin()
   if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
   const agora = new Date().toISOString()
-  const { data: l } = await supabase.from('fluxo_lancamentos').select('id, lote_id, data_prevista').eq('id', id).maybeSingle()
+  const { data: l } = await supabase.from('fluxo_lancamentos').select('id, lote_id, data_prevista, programacao_id').eq('id', id).maybeSingle()
   if (!l) return { erro: 'Lançamento não encontrado' }
+  await congelarProgramacao(supabase, l.programacao_id)
   let q = supabase.from('fluxo_lancamentos').update({ cancelado_em: agora })
   q = restantesDoLote && l.lote_id
     ? q.eq('lote_id', l.lote_id).gte('data_prevista', l.data_prevista).is('data_realizada', null)
@@ -172,6 +216,9 @@ export type EntradaPassivo = {
   primeiro_vencimento: string
   lancar_captacao: boolean           // entrada do dinheiro captado no caixa
   observacoes?: string | null
+  /** Dívidas (Kalebe 2026-09-30): valor de face e valor negociado a pagar */
+  valor_face?: number | null
+  valor_negociado?: number | null
 }
 
 export async function salvarPassivoAction(e: EntradaPassivo): Promise<R<{ id: string }>> {
@@ -182,6 +229,8 @@ export async function salvarPassivoAction(e: EntradaPassivo): Promise<R<{ id: st
   const n = Math.max(1, Math.min(420, Math.floor(e.parcelas_total || 1)))
   if (!/^\d{4}-\d{2}-\d{2}$/.test(e.primeiro_vencimento || '')) return { erro: 'Informe o 1º vencimento' }
 
+  const negociado = e.valor_negociado && e.valor_negociado > 0 ? arred(e.valor_negociado) : null
+  const face = e.valor_face && e.valor_face > 0 ? arred(e.valor_face) : null
   const { data: p, error } = await supabase.from('fluxo_passivos').insert({
     banco: e.banco.trim(),
     modalidade: e.modalidade,
@@ -194,12 +243,16 @@ export async function salvarPassivoAction(e: EntradaPassivo): Promise<R<{ id: st
     primeiro_vencimento: e.primeiro_vencimento,
     observacoes: e.observacoes?.trim() || null,
     criado_por: user.id,
+    // Só manda as colunas novas quando preenchidas (não quebra antes da migration 130)
+    ...(face ? { valor_face: face } : {}),
+    ...(negociado ? { valor_negociado: negociado } : {}),
   }).select('id').single()
   if (error || !p) return { erro: erroTabela(error?.message || 'Falha ao salvar contrato') }
 
+  // Parcela do contrato > valor negociado ÷ n > valor contratado ÷ n
   const parcelas = e.valor_parcela && e.valor_parcela > 0
     ? Array(n).fill(arred(e.valor_parcela))
-    : dividirEmParcelas(e.valor_contratado, n)
+    : dividirEmParcelas(negociado ?? e.valor_contratado, n)
   const nome = `${e.banco.trim()}${e.numero_contrato ? ` · ${e.numero_contrato.trim()}` : ''}`
   const linhas: any[] = parcelas.map((v, i) => ({
     direcao: 'saida', grupo: 'passivo_bancario', origem: 'passivo', passivo_id: p.id,
@@ -225,6 +278,68 @@ export async function salvarPassivoAction(e: EntradaPassivo): Promise<R<{ id: st
   return { sucesso: true, id: p.id }
 }
 
+/**
+ * Renegociação (Kalebe 2026-09-30): as parcelas EM ABERTO saem (canceladas,
+ * ficam no histórico) e entram as novas pelo valor negociado. Desconto =
+ * saldo em aberto − valor negociado. Parcelas já pagas não mudam.
+ */
+export async function renegociarPassivoAction(e: {
+  passivo_id: string
+  valor_negociado: number
+  parcelas_total: number
+  valor_parcela?: number | null
+  primeiro_vencimento: string
+  motivo?: string | null
+}): Promise<R<{ desconto: number }>> {
+  const { supabase, user, ok } = await admin()
+  if (!ok || !user) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  if (!(e.valor_negociado > 0)) return { erro: 'Informe o valor negociado' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(e.primeiro_vencimento || '')) return { erro: 'Informe o 1º vencimento' }
+  const n = Math.max(1, Math.min(420, Math.floor(e.parcelas_total || 1)))
+
+  const { data: p } = await supabase.from('fluxo_passivos').select('*').eq('id', e.passivo_id).maybeSingle()
+  if (!p) return { erro: 'Contrato não encontrado' }
+  if (!('renegociacoes' in p)) return { erro: 'Falta rodar a migration 130 no Supabase.' }
+  const { data: abertas } = await supabase.from('fluxo_lancamentos')
+    .select('id, valor_previsto').eq('passivo_id', e.passivo_id).eq('direcao', 'saida')
+    .is('data_realizada', null).is('cancelado_em', null)
+  const saldoAnterior = arred((abertas || []).reduce((s: number, l: any) => s + Number(l.valor_previsto || 0), 0))
+  const agora = new Date().toISOString()
+
+  if ((abertas || []).length) {
+    const { error: eCanc } = await supabase.from('fluxo_lancamentos')
+      .update({ cancelado_em: agora, observacoes: 'Substituída na renegociação' })
+      .in('id', (abertas || []).map((l: any) => l.id))
+    if (eCanc) return { erro: erroTabela(eCanc.message) }
+  }
+
+  const negociado = arred(e.valor_negociado)
+  const valores = e.valor_parcela && e.valor_parcela > 0 ? Array(n).fill(arred(e.valor_parcela)) : dividirEmParcelas(negociado, n)
+  const lote = randomUUID()
+  const nome = `${p.banco}${p.numero_contrato ? ` · ${p.numero_contrato}` : ''}`
+  const { error: eIns } = await supabase.from('fluxo_lancamentos').insert(valores.map((v, i) => ({
+    direcao: 'saida', grupo: 'passivo_bancario', origem: 'passivo', passivo_id: p.id,
+    descricao: `Parcela ${i + 1}/${n} (renegociada) — ${nome}`,
+    valor_previsto: v, data_prevista: addMeses(e.primeiro_vencimento, i),
+    parcela_num: i + 1, parcelas_total: n, lote_id: lote,
+    detalhes: { modalidade: p.modalidade, renegociacao: agora }, criado_por: user.id,
+  })))
+  if (eIns) return { erro: erroTabela(eIns.message) }
+
+  const historico = Array.isArray(p.renegociacoes) ? p.renegociacoes : []
+  await supabase.from('fluxo_passivos').update({
+    valor_negociado: negociado,
+    valor_face: p.valor_face ?? saldoAnterior,
+    renegociacoes: [...historico, {
+      data: agora.slice(0, 10), saldo_anterior: saldoAnterior, valor_negociado: negociado,
+      parcelas: n, primeiro_vencimento: e.primeiro_vencimento, motivo: e.motivo?.trim() || null,
+    }],
+  }).eq('id', p.id)
+
+  revalidar()
+  return { sucesso: true, desconto: arred(saldoAnterior - negociado) }
+}
+
 export async function excluirPassivoAction(id: string): Promise<R> {
   const { supabase, ok } = await admin()
   if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
@@ -239,17 +354,7 @@ export async function excluirPassivoAction(id: string): Promise<R> {
 
 // ─── Venda do sistema → recebimentos + custos PREVISTOS ─────────────────────
 
-export type LinhaProgramada = {
-  direcao: Direcao
-  grupo: Grupo
-  descricao: string
-  valor: number
-  data: string
-  forma_pagamento?: string | null
-  parcela_num?: number | null
-  parcelas_total?: number | null
-  detalhes?: Record<string, any>
-}
+export type LinhaProgramada = LinhaPlano
 
 export async function programarVendaAction(e: {
   origem: 'projeto' | 'venda_manual'
@@ -259,12 +364,22 @@ export async function programarVendaAction(e: {
   valor_venda: number
   condicao: Record<string, any>
   linhas: LinhaProgramada[]
+  /** Ajuste de venda já lançada (ex.: automática): troca a programação antiga por esta */
+  substituir_programacao_id?: string | null
 }): Promise<R<{ criados: number }>> {
   const { supabase, user, ok } = await admin()
   if (!ok || !user) return { erro: 'Só o admin mexe no fluxo de caixa' }
   const linhas = e.linhas.filter((l) => l.valor > 0)
   if (!linhas.some((l) => l.direcao === 'entrada')) return { erro: 'Programe pelo menos um recebimento' }
   if (linhas.some((l) => !/^\d{4}-\d{2}-\d{2}$/.test(l.data))) return { erro: 'Tem linha sem data válida' }
+
+  if (e.substituir_programacao_id) {
+    const { count } = await supabase.from('fluxo_lancamentos').select('id', { count: 'exact', head: true })
+      .eq('programacao_id', e.substituir_programacao_id).not('data_realizada', 'is', null)
+    if ((count || 0) > 0) return { erro: `Essa venda já tem ${count} lançamento(s) efetivado(s) — ajuste linha a linha na lista.` }
+    const { error: eDel } = await supabase.from('fluxo_programacoes').delete().eq('id', e.substituir_programacao_id)
+    if (eDel) return { erro: erroTabela(eDel.message) }
+  }
 
   const { data: prog, error } = await supabase.from('fluxo_programacoes').insert({
     origem: e.origem, origem_id: e.origem_id, situacao: 'programado',
@@ -290,6 +405,35 @@ export async function programarVendaAction(e: {
   }
   revalidar()
   return { sucesso: true, criados: linhas.length }
+}
+
+/** Dados da venda de uma programação (pra reabrir o "Programar" e ajustar a condição). */
+export async function vendaDaProgramacaoAction(programacaoId: string): Promise<R<{ venda: VendaPendente; automatica: boolean }>> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  const { data: prog } = await supabase.from('fluxo_programacoes')
+    .select('origem, origem_id, condicao').eq('id', programacaoId).maybeSingle()
+  if (!prog) return { erro: 'Programação não encontrada' }
+  const { data: perfis } = await supabase.from('profiles').select('id, nome_completo')
+  const nomes = new Map((perfis || []).map((p: any) => [p.id, p.nome_completo as string]))
+
+  if (prog.origem === 'projeto') {
+    const [{ data: p }, { data: hist }, { data: itemVd }] = await Promise.all([
+      supabase.from('projetos').select(SELECT_PROJETO_VENDA).eq('id', prog.origem_id).maybeSingle(),
+      supabase.from('projeto_status_historico').select('projeto_id, created_at').eq('projeto_id', prog.origem_id).in('status_novo', STATUS_FECHADOS),
+      supabase.from('projeto_itens').select('dados').eq('projeto_id', prog.origem_id).eq('tipo', 'venda_equipamentos').neq('status', 'removido').maybeSingle(),
+    ])
+    if (!p) return { erro: 'Projeto da venda não encontrado' }
+    return {
+      sucesso: true,
+      venda: vendaDoProjeto(p, nomes, mapaPrimeiroFechamento((hist || []) as any[]), (itemVd as any)?.dados?.calculo),
+      automatica: !!(prog.condicao as any)?.automatica,
+    }
+  }
+  const { data: v } = await supabase.from('vendas_manuais')
+    .select('id, cliente_nome, valor_venda, custo_estimado, data_venda, vendedor_id, observacao').eq('id', prog.origem_id).maybeSingle()
+  if (!v) return { erro: 'Venda manual não encontrada' }
+  return { sucesso: true, venda: vendaManual(v, nomes), automatica: !!(prog.condicao as any)?.automatica }
 }
 
 /** Venda antiga já liquidada fora do sistema: sai da lista "A programar". */
@@ -358,6 +502,7 @@ export async function criarCategoriaAction(nome: string, tipo: 'receita' | 'desp
 
 export async function salvarConfigFluxoAction(c: {
   saldo_inicial: number; data_inicio: string; reserva_minima: number; regime_imposto: 'competencia' | 'caixa'
+  kit_passa_caixa_padrao?: boolean
 }): Promise<R> {
   const { supabase, ok } = await admin()
   if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
@@ -368,6 +513,7 @@ export async function salvarConfigFluxoAction(c: {
     data_inicio: c.data_inicio,
     reserva_minima: arred(Math.max(0, c.reserva_minima || 0)),
     regime_imposto: c.regime_imposto === 'caixa' ? 'caixa' : 'competencia',
+    ...(c.kit_passa_caixa_padrao !== undefined ? { kit_passa_caixa_padrao: !!c.kit_passa_caixa_padrao } : {}),
     atualizado_em: new Date().toISOString(),
   })
   if (error) return { erro: erroTabela(error.message) }

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ModuloHub } from '@/components/ModuloHub'
 import { carregarFluxo } from '@/lib/financeiro/dados'
+import { sincronizarVendasNoFluxo } from '@/lib/financeiro/sync-vendas'
 import { brl, hojeBR } from '@/lib/financeiro/fluxo'
 
 export const dynamic = 'force-dynamic'
@@ -37,6 +38,7 @@ export default async function FinanceiroHubPage() {
   const r = { pendentes: 0, receber: 0, receberAtraso: 0, receberValor: 0, pagar: 0, pagarAtraso: 0, pagarValor: 0, passivo: 0, contratos: 0, fornecedores: 0 }
   let erro: string | null = null
   try {
+    await sincronizarVendasNoFluxo().catch(() => null)   // vendas novas entram sozinhas
     const dados = await carregarFluxo()
     if ('erro' in dados) erro = dados.erro || 'Falha ao carregar o fluxo'
     else {

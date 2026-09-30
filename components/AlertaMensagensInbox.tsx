@@ -64,11 +64,6 @@ function bip() {
   } catch {}
 }
 
-function aplicarTitulo(n: number) {
-  const base = document.title.replace(/^\(\d+\)\s*/, '')
-  document.title = n > 0 ? `(${n}) ${base}` : base
-}
-
 export function AlertaMensagensInbox() {
   const pathname = usePathname()
   const noInbox = !!pathname?.startsWith('/inbox')
@@ -80,8 +75,8 @@ export function AlertaMensagensInbox() {
   function publicar(n: number, espalhar = true) {
     qtdRef.current = Math.max(0, n)
     if (espalhar) gravar(CHAVE_NAO_LIDAS, String(qtdRef.current))
+    // O título da aba ("(n) Nome · Spin Solar") é montado pelo AbasPorArea ouvindo este evento
     window.dispatchEvent(new CustomEvent(EVENTO_NAO_LIDAS, { detail: qtdRef.current }))
-    aplicarTitulo(qtdRef.current)
   }
 
   // Entrou no inbox → tudo lido
@@ -92,12 +87,6 @@ export function AlertaMensagensInbox() {
     setAvisos([])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noInbox])
-
-  // Next troca o título ao navegar — reaplica o contador
-  useEffect(() => {
-    const t = setTimeout(() => aplicarTitulo(qtdRef.current), 300)
-    return () => clearTimeout(t)
-  }, [pathname])
 
   // Contagem inicial: mensagens recebidas desde a última visita ao inbox
   useEffect(() => {
