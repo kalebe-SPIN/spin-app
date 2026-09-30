@@ -29,7 +29,7 @@ export function PortalHeaderView({
       <AbasPorArea />
       {/* Kalebe 2026-09-30: alerta na tela quando chega mensagem no inbox */}
       <AlertaMensagensInbox />
-      <div className="max-w-screen-2xl mx-auto px-3 sm:px-4 md:px-6 py-2 md:py-2.5 flex items-center justify-between gap-2 md:gap-3">
+      <div className="max-w-screen-2xl mx-auto px-3 sm:px-4 md:px-6 py-1 md:py-1.5 flex items-center justify-between gap-2 md:gap-3">
         {/* Esquerda: ☰ (telas < 1024px) + logo + menu */}
         <div className="flex items-center gap-2 lg:gap-4 min-w-0">
           <MenuMobileHeader links={linksNav} />
@@ -37,8 +37,9 @@ export function PortalHeaderView({
           {/* Logo nunca encolhe (antes o menu esmagava até sumir) */}
           <Link href="/dashboard" className="flex items-center gap-2 shrink-0">
             {logoUrl ? (
+              // Kalebe 2026-09-30: logo em BRANCO (filtro — segue a logo cadastrada) e 30% maior
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt="Spin Solar" className="h-8 sm:h-9 md:h-11 w-auto max-w-[96px] sm:max-w-[140px] object-contain" />
+              <img src={logoUrl} alt="Spin Solar" className="h-[42px] sm:h-[47px] md:h-[57px] w-auto max-w-[125px] sm:max-w-[182px] object-contain brightness-0 invert" />
             ) : (
               <span className="text-sol font-black text-base md:text-lg">SPIN</span>
             )}
