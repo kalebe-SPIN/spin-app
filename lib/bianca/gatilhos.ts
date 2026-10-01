@@ -295,7 +295,8 @@ async function buscarAdminMaisRecente(supabase: any): Promise<string | null> {
   const { data } = await supabase
     .from('profiles')
     .select('id')
-    .in('role', ['admin', 'eletrotecnico'])
+    // enum user_role não tem 'eletrotecnico' — o valor inválido zerava a busca
+    .eq('role', 'admin')
     .limit(1)
     .maybeSingle()
   return data?.id ?? null

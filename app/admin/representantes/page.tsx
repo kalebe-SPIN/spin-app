@@ -41,7 +41,7 @@ export default async function AdminRepresentantesPage() {
   const { data: reps } = await supabase
     .from('profiles')
     .select('id, nome_completo, email, created_at, nivel_representante, mrr_carteira_atual, credenciados_formados, fechador_mes_count, ativo, role')
-    .in('role', ['representante', 'vendedor_servicos', 'consultor'])
+    .in('role', ['representante', 'vendedor_servicos'])   // enum não tem 'consultor'
     .eq('ativo', true)
     .order('nome_completo')
 

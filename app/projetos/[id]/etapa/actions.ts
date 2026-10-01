@@ -167,7 +167,8 @@ async function disparoAutomacoes(
       const { data: adminOuTecnico } = await supabase
         .from('profiles')
         .select('id')
-        .in('role', ['admin', 'eletrotecnico'])
+        // enum user_role não tem 'eletrotecnico' — o valor inválido zerava a busca
+        .eq('role', 'admin')
         .limit(1)
         .maybeSingle()
 

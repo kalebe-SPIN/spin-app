@@ -745,18 +745,24 @@ function ModalTransferir({ conversaId, nomeCliente, responsavelAtualId, onFechar
   onFechar: () => void
   onTransferido: (texto: string) => void
 }) {
-  const [atendentes, setAtendentes] = useState<Array<{ id: string; nome: string; papel: string }> | null>(null)
+  type Setor = { chave: string; nome: string; emoji: string; usuarios: Array<{ id: string; nome: string; papel: string }> }
+  const [setores, setSetores] = useState<Setor[] | null>(null)
+  const [setorChave, setSetorChave] = useState('')
   const [paraId, setParaId] = useState('')
   const [recado, setRecado] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
+  // Kalebe 2026-10-01: primeiro o setor, depois a pessoa do setor
   useEffect(() => {
     listarAtendentesAction().then((r) => {
-      if ('erro' in r) setErro(r.erro)
-      else setAtendentes(r.atendentes.filter((a) => a.id !== responsavelAtualId))
+      if ('erro' in r) { setErro(r.erro); return }
+      setSetores(r.setores
+        .map((s) => ({ ...s, usuarios: s.usuarios.filter((u) => u.id !== responsavelAtualId) }))
+        .filter((s) => s.usuarios.length > 0))
     })
   }, [responsavelAtualId])
+  const usuariosDoSetor = setores?.find((s) => s.chave === setorChave)?.usuarios || []
 
   async function transferir() {
     if (!paraId) return
@@ -771,7 +777,10 @@ function ModalTransferir({ conversaId, nomeCliente, responsavelAtualId, onFechar
     } finally { setEnviando(false) }
   }
 
-  const papel: Record<string, string> = { admin: 'admin', consultor: 'consultor', representante: 'representante' }
+  const papel: Record<string, string> = {
+    admin: 'admin', representante: 'representante', vendedor_servicos: 'vendedor de serviços',
+    colaborador: 'colaborador', instalador: 'instalador', profissional_campo: 'profissional de campo',
+  }
   const inputCls = 'w-full bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none'
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onFechar}>
@@ -781,15 +790,27 @@ function ModalTransferir({ conversaId, nomeCliente, responsavelAtualId, onFechar
           Conversa com <strong className="text-white">{nomeCliente}</strong>. Quem receber vira o responsável e a Laís
           avisa no WhatsApp com um resumo da conversa e o link.
         </p>
-        <label className="block">
-          <span className="block text-[11px] font-bold text-white/60 mb-1">Transferir pra</span>
-          <select value={paraId} onChange={(e) => setParaId(e.target.value)} className={inputCls} disabled={!atendentes}>
-            <option value="" className="bg-noite">{atendentes ? 'Escolha o usuário…' : 'Carregando…'}</option>
-            {(atendentes || []).map((a) => (
-              <option key={a.id} value={a.id} className="bg-noite">{a.nome} · {papel[a.papel] || a.papel}</option>
-            ))}
-          </select>
-        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <label className="block">
+            <span className="block text-[11px] font-bold text-white/60 mb-1">Setor</span>
+            <select value={setorChave} onChange={(e) => { setSetorChave(e.target.value); setParaId('') }}
+              className={inputCls} disabled={!setores}>
+              <option value="" className="bg-noite">{setores ? 'Escolha o setor…' : 'Carregando…'}</option>
+              {(setores || []).map((s) => (
+                <option key={s.chave} value={s.chave} className="bg-noite">{s.emoji} {s.nome} ({s.usuarios.length})</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="block text-[11px] font-bold text-white/60 mb-1">Usuário</span>
+            <select value={paraId} onChange={(e) => setParaId(e.target.value)} className={inputCls} disabled={!setorChave}>
+              <option value="" className="bg-noite">{setorChave ? 'Escolha quem recebe…' : 'Escolha o setor antes'}</option>
+              {usuariosDoSetor.map((a) => (
+                <option key={a.id} value={a.id} className="bg-noite">{a.nome} · {papel[a.papel] || a.papel}</option>
+              ))}
+            </select>
+          </label>
+        </div>
         <label className="block">
           <span className="block text-[11px] font-bold text-white/60 mb-1">Recado (opcional)</span>
           <textarea value={recado} onChange={(e) => setRecado(e.target.value)} rows={3} maxLength={500}

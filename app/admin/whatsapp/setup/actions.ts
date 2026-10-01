@@ -179,7 +179,7 @@ export async function verificarStatusSetupAction(): Promise<
   const { data: reps } = await supabase
     .from('profiles')
     .select('id, nome_completo, telefone, role')
-    .in('role', ['admin', 'representante', 'consultor'])
+    .in('role', ['admin', 'representante'])   // enum não tem 'consultor'
     .eq('ativo', true)
   const repsSemTel = (reps || []).filter((r) => !r.telefone || String(r.telefone).replace(/\D/g, '').length < 10)
   const totalReps = (reps || []).length

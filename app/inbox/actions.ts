@@ -170,23 +170,47 @@ export async function assumirConversaAction(conversa_id: string): Promise<
   return { sucesso: true }
 }
 
-/** Quem pode receber um atendimento transferido (A→Z). */
+type Atendente = { id: string; nome: string; papel: string }
+
+/**
+ * Quem pode receber um atendimento transferido, por setor (Kalebe
+ * 2026-10-01: escolhe o setor e depois a pessoa). Setores = grupos internos
+ * (mig 125/126); quem está bloqueado no grupo não aparece. Quem não está em
+ * setor nenhum cai em "Sem setor". Tudo A→Z.
+ */
 export async function listarAtendentesAction(): Promise<
-  { atendentes: Array<{ id: string; nome: string; papel: string }> } | { erro: string }
+  { setores: Array<{ chave: string; nome: string; emoji: string; usuarios: Atendente[] }> } | { erro: string }
 > {
   const check = await verificarUsuario()
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
-  const { data, error } = await createAdminClient()
-    .from('profiles')
-    .select('id, nome_completo, role')
-    .eq('ativo', true)
-    .in('role', ['admin', 'consultor', 'representante'])
+  const admin = createAdminClient()
+  // Toda a equipe ativa (candidato a vaga não atende). O enum user_role não
+  // tem 'consultor' — valor inválido no filtro derruba a consulta inteira.
+  const [{ data: perfis, error }, { data: grupos }, { data: membros }] = await Promise.all([
+    admin.from('profiles').select('id, nome_completo, role').eq('ativo', true).neq('role', 'candidato'),
+    admin.from('grupos_internos').select('id, chave, nome, emoji').eq('ativo', true),
+    admin.from('grupos_membros').select('grupo_id, usuario_id, bloqueado_em'),
+  ])
   if (error) return { erro: error.message }
-  return {
-    atendentes: ((data || []) as any[])
-      .map((p) => ({ id: p.id, nome: p.nome_completo || 'Sem nome', papel: p.role }))
-      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
-  }
+
+  const porId = new Map(((perfis || []) as any[]).map((p) => [
+    p.id as string,
+    { id: p.id as string, nome: (p.nome_completo as string) || 'Sem nome', papel: p.role as string },
+  ]))
+  const aZ = (a: Atendente, b: Atendente) => a.nome.localeCompare(b.nome, 'pt-BR')
+  const comSetor = new Set<string>()
+  const setores = ((grupos || []) as any[]).map((g) => {
+    const usuarios = ((membros || []) as any[])
+      .filter((m) => m.grupo_id === g.id && !m.bloqueado_em && porId.has(m.usuario_id))
+      .map((m) => { comSetor.add(m.usuario_id); return porId.get(m.usuario_id)! })
+      .sort(aZ)
+    return { chave: g.chave as string, nome: g.nome as string, emoji: (g.emoji as string) || '👥', usuarios }
+  }).filter((s) => s.usuarios.length > 0)
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+
+  const semSetor = Array.from(porId.values()).filter((p) => !comSetor.has(p.id)).sort(aZ)
+  if (semSetor.length) setores.push({ chave: 'sem_setor', nome: 'Sem setor', emoji: '👤', usuarios: semSetor })
+  return { setores }
 }
 
 /**
@@ -217,7 +241,7 @@ export async function transferirConversaAction(entrada: {
   const admin = createAdminClient()
   const { data: dest } = await admin
     .from('profiles').select('id, nome_completo, ativo, role').eq('id', entrada.para_id).maybeSingle()
-  if (!dest?.ativo || !['admin', 'consultor', 'representante'].includes(dest.role)) {
+  if (!dest?.ativo || dest.role === 'candidato') {
     return { erro: 'Usuário de destino inválido ou desativado' }
   }
 

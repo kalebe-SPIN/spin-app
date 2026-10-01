@@ -83,12 +83,12 @@ export async function buscarPainelWaAction(): Promise<PainelWa | { erro: string 
       .limit(200),
 
     // Kalebe 2026-09-14: cadastro de telefones dos usuários pra broadcast.
-    // Só quem participa do canal comercial (admin + representante + consultor
-    // + sdr + vendedor_servicos). Ordenado por nome.
+    // Só quem participa do canal comercial (admin + representante +
+    // vendedor_servicos). Ordenado por nome.
     supabase
       .from('profiles')
       .select('id, nome_completo, role, telefone, ativo')
-      .in('role', ['admin', 'representante', 'consultor', 'sdr', 'vendedor_servicos'])
+      .in('role', ['admin', 'representante', 'vendedor_servicos'])   // enum não tem 'consultor' nem 'sdr'
       .eq('ativo', true)
       .order('nome_completo', { ascending: true }),
   ])

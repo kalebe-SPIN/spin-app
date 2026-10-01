@@ -35,7 +35,7 @@ export default async function VendasManuaisPage() {
   const { data: vendedores } = await supabase
     .from('profiles')
     .select('id, nome_completo, role')
-    .in('role', ['admin', 'representante', 'consultor'])
+    .in('role', ['admin', 'representante', 'vendedor_servicos'])   // enum não tem 'consultor'
     .eq('ativo', true)
     .order('nome_completo')
 

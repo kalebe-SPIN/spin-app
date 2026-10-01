@@ -36,7 +36,7 @@ export async function RelacionamentoCard({ projetoId, clienteId, clienteTelefone
     .from('profiles')
     .select('id, nome_completo, role, telefone')
     .eq('ativo', true)
-    .in('role', ['admin', 'representante', 'consultor'])
+    .in('role', ['admin', 'representante', 'vendedor_servicos'])   // enum não tem 'consultor'
     .order('nome_completo', { ascending: true })
 
   const [

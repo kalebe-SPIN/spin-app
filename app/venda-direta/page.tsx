@@ -36,7 +36,7 @@ export default async function VendaDiretaPage() {
           .from('profiles')
           .select('id, nome_completo, role')
           .eq('ativo', true)
-          .in('role', ['admin', 'representante', 'consultor'])
+          .in('role', ['admin', 'representante', 'vendedor_servicos'])   // enum não tem 'consultor'
       : Promise.resolve({ data: [{ id: user.id, nome_completo: perfil?.nome_completo, role: perfil?.role || '' }] }),
   ])
 
