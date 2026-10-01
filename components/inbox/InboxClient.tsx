@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { ModalProjetoConversa } from './ModalProjetoConversa'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
+import { AvatarContato } from '@/components/AvatarContato'
 import { cartoesDoTexto, telefonesNoTexto, formatarTelefoneExibicao } from '@/lib/whatsapp/contatos-projeto'
 import { contatosDoProjetoDaConversaAction, salvarContatoDaConversaAction } from '@/app/inbox/contatos-actions'
 import {
@@ -36,6 +37,8 @@ type Conversa = {
     tipo: string
     cliente_id: string | null
     projeto_id: string | null
+    foto_url?: string | null                       // mig 131 (foto enviada à mão)
+    cliente?: { foto_url: string | null } | null
   } | null
   responsavel: { nome_completo: string | null } | null
   /** Mensagens do cliente ainda não lidas por este usuário (migration 131) */
@@ -382,6 +385,21 @@ export function InboxClient({
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
               </button>
+              {selecionada.contato && (
+                <AvatarContato
+                  nome={selecionada.contato.nome_exibicao || selecionada.contato.telefone || ''}
+                  semente={selecionada.contato.telefone}
+                  foto={fotoDoContato(selecionada)}
+                  tamanho={38}
+                  alvo={{ contato_id: selecionada.contato.id }}
+                  onFotoAlterada={(url) => {
+                    const contatoId = selecionada.contato?.id
+                    setConversas((cs) => cs.map((c) => c.contato?.id === contatoId
+                      ? { ...c, contato: { ...c.contato!, foto_url: url, cliente: url ? c.contato!.cliente : null } }
+                      : c))
+                  }}
+                />
+              )}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-white truncate">
                   {selecionada.contato?.nome_exibicao || selecionada.contato?.telefone || 'Contato'}
@@ -685,6 +703,11 @@ function BannerJanelaFechada({ conversaId, nuncaEscreveu, nomeCliente, telefone,
   )
 }
 
+/** Foto enviada à mão (contato ou cliente vinculado) — a Meta não entrega a do WhatsApp. */
+function fotoDoContato(c: Conversa): string | null {
+  return c.contato?.foto_url || c.contato?.cliente?.foto_url || null
+}
+
 function ItemConversa({ c, selecionada, onClick }: {
   c: Conversa; selecionada: boolean; onClick: () => void
 }) {
@@ -702,6 +725,9 @@ function ItemConversa({ c, selecionada, onClick }: {
         selecionada ? 'bg-sol/[0.06] border-l-2 border-l-sol' : 'hover:bg-white/[0.02]'
       } ${encerrada ? 'opacity-50' : ''}`}
     >
+      <div className="flex items-center gap-2.5">
+      <AvatarContato nome={c.contato?.nome_exibicao || c.contato?.telefone || ''} semente={c.contato?.telefone} foto={fotoDoContato(c)} tamanho={40} />
+      <div className="min-w-0 flex-1">
       <div className="flex items-center justify-between gap-2">
         <p className={`text-sm truncate flex-1 ${naoLidas > 0 ? 'font-black text-white' : 'font-semibold text-white'}`}>{nome}</p>
         <span className={`text-[10px] font-mono shrink-0 ${naoLidas > 0 ? 'text-verde font-bold' : 'text-white/40'}`}>{hora}</span>
@@ -732,6 +758,8 @@ function ItemConversa({ c, selecionada, onClick }: {
             👤 {c.responsavel.nome_completo?.split(' ')[0]}
           </span>
         )}
+      </div>
+      </div>
       </div>
     </button>
   )

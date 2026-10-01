@@ -13,6 +13,7 @@ import {
 } from '@/app/agenda/actions'
 import { ChatEquipeModal } from '@/components/ChatEquipeModal'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
+import { AvatarContato } from '@/components/AvatarContato'
 
 export type Responsavel = { id: string; nome: string; role: string }
 
@@ -27,6 +28,10 @@ export type DadosRelacionamento = {
   clienteId: string | null
   usuarioId: string
   responsaveis: Responsavel[]
+  // Kalebe 2026-10-01: avatar do cliente (foto enviada à mão ou iniciais)
+  nomeCliente?: string
+  fotoCliente?: string | null
+  contatoId?: string | null
 }
 
 const fmtHora = (iso: string) =>
@@ -89,7 +94,16 @@ function ColunaWhatsApp({ dados }: { dados: DadosRelacionamento }) {
   return (
     <div className="p-4 flex flex-col h-[520px]">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
-        <h3 className="text-[11px] uppercase tracking-wider font-bold text-verde flex items-center gap-1.5">
+        <h3 className="text-[11px] uppercase tracking-wider font-bold text-verde flex items-center gap-1.5 min-w-0">
+          {dados.temTelefone && (
+            <AvatarContato
+              nome={dados.nomeCliente || dados.telefoneCliente}
+              semente={(dados.telefoneCliente || '').replace(/\D/g, '')}
+              foto={dados.fotoCliente}
+              tamanho={28}
+              alvo={dados.clienteId || dados.contatoId ? { cliente_id: dados.clienteId, contato_id: dados.contatoId } : null}
+            />
+          )}
           💬 WhatsApp Spin
           <span className="text-white/40">·</span>
           <span className="text-white/60 font-mono normal-case tracking-normal">

@@ -1,6 +1,10 @@
 -- Kalebe 2026-09-30: inbox mostra na etiqueta de cada conversa quantas
 -- mensagens do cliente ainda não foram lidas (como no WhatsApp).
 -- Leitura é por pessoa: abrir a conversa zera pra quem abriu.
+-- Kalebe 2026-10-01 (mesma migration): foto de perfil do contato/cliente.
+-- A API oficial do WhatsApp NÃO entrega a foto do cliente — ela é enviada à
+-- mão (clique no avatar no inbox, no projeto ou na ficha do cliente). Sem
+-- foto, o portal mostra as iniciais numa cor fixa por contato.
 
 CREATE TABLE IF NOT EXISTS public.wa_leituras (
   conversa_id  uuid NOT NULL REFERENCES public.wa_conversas(id) ON DELETE CASCADE,
@@ -32,5 +36,22 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public AS $$
 $$;
 GRANT EXECUTE ON FUNCTION public.wa_nao_lidas() TO authenticated;
 
--- Conferência (como service role não há usuário: só confirma que a função existe)
-SELECT proname FROM pg_proc WHERE proname = 'wa_nao_lidas';
+-- Foto de perfil: no contato do WhatsApp e no cadastro do cliente (quando o
+-- contato está vinculado a um cliente, a foto vale pros dois)
+ALTER TABLE public.wa_contatos ADD COLUMN IF NOT EXISTS foto_url text;
+ALTER TABLE public.clientes    ADD COLUMN IF NOT EXISTS foto_url text;
+
+-- Bucket público (avatar carrega direto na tela). Upload só pelo servidor
+-- (service role) depois de conferir que o usuário enxerga o contato/cliente.
+-- Fotos já chegam cortadas e reduzidas (256×256, JPEG) — teto de 2 MB.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('fotos-perfil', 'fotos-perfil', true, 2097152, ARRAY['image/jpeg', 'image/png', 'image/webp'])
+ON CONFLICT (id) DO NOTHING;
+
+-- Conferência: função de não lidas + 2 colunas de foto + bucket
+SELECT 'funcao' AS item, proname AS nome FROM pg_proc WHERE proname = 'wa_nao_lidas'
+UNION ALL
+SELECT 'coluna', table_name || '.' || column_name FROM information_schema.columns
+WHERE table_schema = 'public' AND column_name = 'foto_url' AND table_name IN ('wa_contatos', 'clientes')
+UNION ALL
+SELECT 'bucket', id FROM storage.buckets WHERE id = 'fotos-perfil';

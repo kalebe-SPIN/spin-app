@@ -7,8 +7,11 @@
  * Kalebe 2026-08-31.
  */
 import { formatarCpfCnpj, formatarTelefone, formatarCep } from '@/lib/formatters'
+import { AvatarContato } from '@/components/AvatarContato'
 
 type ClienteFicha = {
+  id?: string | null
+  foto_url?: string | null          // mig 131 — enviada à mão (a Meta não entrega a do WhatsApp)
   razao_social?: string | null
   nome_fantasia?: string | null
   cpf_cnpj?: string | null
@@ -59,8 +62,18 @@ export function FichaClienteCard({
 
   return (
     <section className={`p-5 bg-white/[0.03] border border-white/10 rounded-xl ${className || ''}`}>
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-lg">{cliente.tipo === 'pj' ? '🏢' : '👤'}</span>
+      <div className="flex items-center gap-3 mb-4">
+        {cliente.id ? (
+          <AvatarContato
+            nome={cliente.razao_social || ''}
+            semente={(cliente.whatsapp || cliente.telefone || cliente.razao_social || '').replace(/\D/g, '') || undefined}
+            foto={cliente.foto_url}
+            tamanho={48}
+            alvo={{ cliente_id: cliente.id }}
+          />
+        ) : (
+          <span className="text-lg">{cliente.tipo === 'pj' ? '🏢' : '👤'}</span>
+        )}
         <h3 className="text-xs uppercase tracking-wider font-bold text-sol">Ficha do cliente</h3>
       </div>
 

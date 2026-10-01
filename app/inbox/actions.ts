@@ -39,17 +39,21 @@ export async function listarConversasAction(): Promise<
   const supabase = createClient()
 
   // RLS já filtra pra consultor/representante — admin vê tudo.
-  const { data, error } = await supabase
+  // Kalebe 2026-10-01: foto do contato/cliente (mig 131). Sem a migration as
+  // colunas não existem → lista sem foto em vez de quebrar o inbox.
+  const consulta = (comFoto: boolean) => supabase
     .from('wa_conversas')
     .select(`
       id, status, responsavel_id, agente_ativo, origem_campanha,
       ultima_mensagem_em, janela_24h_expira_em, sla_prazo_em,
       criada_em, encerrada_em,
-      contato:contato_id(id, telefone, nome_exibicao, tipo, cliente_id, projeto_id),
+      contato:contato_id(id, telefone, nome_exibicao, tipo, cliente_id, projeto_id${comFoto ? ', foto_url, cliente:cliente_id(foto_url)' : ''}),
       responsavel:responsavel_id(nome_completo)
     `)
     .order('ultima_mensagem_em', { ascending: false, nullsFirst: false })
     .limit(200)
+  let { data, error }: { data: any[] | null; error: any } = await consulta(true)
+  if (error && /foto_url/.test(error.message)) ({ data, error } = await consulta(false) as any)
 
   if (error) return { erro: error.message }
 

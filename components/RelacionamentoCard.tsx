@@ -44,6 +44,8 @@ export async function RelacionamentoCard({ projetoId, clienteId, clienteTelefone
     { data: tarefas },
     mensagensRes,
     { data: perfis },
+    { data: cliente },
+    { data: conversa },
   ] = await Promise.all([
     supabase
       .from('agenda_eventos')
@@ -66,7 +68,15 @@ export async function RelacionamentoCard({ projetoId, clienteId, clienteTelefone
           .limit(15)
       : Promise.resolve({ data: [] as any[] }),
     perfisPromise,
+    // Kalebe 2026-10-01: avatar (foto enviada à mão, mig 131 — '*' não quebra sem ela)
+    clienteId
+      ? supabase.from('clientes').select('*').eq('id', clienteId).maybeSingle()
+      : Promise.resolve({ data: null as any }),
+    conversaId
+      ? supabase.from('wa_conversas').select('contato:contato_id(*)').eq('id', conversaId).maybeSingle()
+      : Promise.resolve({ data: null as any }),
   ])
+  const contato: any = (conversa as any)?.contato || null
 
   const dados: DadosRelacionamento = {
     eventos: (eventos || []) as any[],
@@ -78,6 +88,9 @@ export async function RelacionamentoCard({ projetoId, clienteId, clienteTelefone
     projetoId,
     clienteId,
     usuarioId,
+    nomeCliente: (cliente as any)?.razao_social || contato?.nome_exibicao || '',
+    fotoCliente: (cliente as any)?.foto_url || contato?.foto_url || null,
+    contatoId: contato?.id || null,
     responsaveis: (perfis || []).map((p: any) => ({
       id: p.id,
       nome: p.nome_completo || 'Sem nome',
