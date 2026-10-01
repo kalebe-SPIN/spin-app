@@ -4,6 +4,7 @@ import { forwardRef } from 'react'
 import { calcularFormasPagamento, type PropostaCalculada } from '@/lib/precificacao/calcular'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
 import { estimarGeracaoMensal } from '@/lib/geracao-mensal'
+import { consolidarKitComExtras } from '@/lib/proposta/kit-consolidado'
 
 type Props = {
   projeto: any
@@ -53,7 +54,11 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
     const ehPorUc = modoComposicao === 'por_uc' && !!propostasPorUc?.length
     const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     const fmtInt = (v: number) => Math.round(v).toLocaleString('pt-BR')
-    const kit = projeto.kit_selecionado || {}
+    const kitBase = projeto.kit_selecionado || {}
+    // Kalebe 2026-10-01: placa/inversor EXTRA do orçamento entra na composição,
+    // na potência e na geração (antes só no preço — PDF mostrava 14 de 16 placas)
+    const kitC = consolidarKitComExtras(kitBase, Array.isArray(projeto.extras_proposta) ? projeto.extras_proposta : [])
+    const kit = { ...kitBase, potencia_cc_kwp: kitC.potencia_cc_kwp, potencia_ca_kw: kitC.potencia_ca_kw, fci_pct: kitC.fci_pct }
     const empresa = configEmpresa || {}
     const dataHoje = new Date().toLocaleDateString('pt-BR')
     const validade = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
@@ -247,24 +252,20 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
                 <p style={{ margin: 0, fontFamily: E.font.display, fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#F5F5F0' }}>
                   {fmtNum(kit.potencia_cc_kwp || 0, 2)} <span style={{ fontSize: 14, color: 'rgba(245,245,240,.6)', fontWeight: 500 }}>kWp CC</span>
                 </p>
-                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(245,245,240,.75)', fontWeight: 500 }}>
-                  {kit.qtd_placas || 0}× {kit.placa?.modelo || 'placa'} ({(kit.placa?.potencia_wp || 0)} Wp)
-                </p>
+                {kitC.placas.map((p, i) => (
+                  <p key={`p${i}`} style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(245,245,240,.75)', fontWeight: 500 }}>
+                    {p.qtd}× {p.modelo} ({p.potencia_wp} Wp)
+                  </p>
+                ))}
                 {/* Potência CA total + composição do(s) inversor(es) */}
                 <p style={{ margin: '10px 0 0', fontFamily: E.font.display, fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em', color: '#F5F5F0' }}>
                   {fmtNum(kit.potencia_ca_kw || 0, 2)} <span style={{ fontSize: 14, color: 'rgba(245,245,240,.6)', fontWeight: 500 }}>kW CA</span>
                 </p>
-                {(Array.isArray(kit.inversores) && kit.inversores.length > 0)
-                  ? kit.inversores.map((inv: any, i: number) => (
-                      <p key={i} style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(245,245,240,.75)', fontWeight: 500 }}>
-                        {inv.qtd || 1}× {inv.modelo} ({inv.potencia_kw} kW)
-                      </p>
-                    ))
-                  : (
-                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(245,245,240,.75)', fontWeight: 500 }}>
-                      {kit.qtd_inversores || 1}× {kit.inversor?.modelo || 'inversor'} ({kit.inversor?.potencia_kw || 0} kW)
-                    </p>
-                  )}
+                {kitC.inversores.map((inv, i) => (
+                  <p key={`i${i}`} style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(245,245,240,.75)', fontWeight: 500 }}>
+                    {inv.qtd}× {inv.modelo} ({fmtNum(inv.potencia_kw, 2)} kW)
+                  </p>
+                ))}
               </div>
             </div>
 
@@ -305,32 +306,23 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td style={E.td}>Módulo fotovoltaico</td>
-                  <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700, paddingRight: 14 }}>{kit.qtd_placas || 0}</td>
-                  <td style={{ ...E.td, paddingLeft: 14 }}>{kit.placa?.modelo || '—'}</td>
-                  <td style={{ ...E.td, textAlign: 'right' }}>{kit.placa?.potencia_wp || 0} Wp</td>
-                </tr>
-                {(Array.isArray(kit.inversores) && kit.inversores.length > 0)
-                  ? kit.inversores.map((inv: any, i: number) => {
-                      const isMicro = /^SIW100/i.test(inv.modelo || '')
-                      return (
-                        <tr key={i}>
-                          <td style={E.td}>{isMicro ? 'Microinversor' : 'Inversor'}{i > 0 ? '' : ''}</td>
-                          <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700, paddingRight: 14 }}>{inv.qtd || 1}</td>
-                          <td style={{ ...E.td, paddingLeft: 14 }}>{inv.modelo || '—'}</td>
-                          <td style={{ ...E.td, textAlign: 'right' }}>{inv.potencia_kw || 0} kW</td>
-                        </tr>
-                      )
-                    })
-                  : (
-                    <tr>
-                      <td style={E.td}>Inversor</td>
-                      <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700, paddingRight: 14 }}>{kit.qtd_inversores || 0}</td>
-                      <td style={{ ...E.td, paddingLeft: 14 }}>{kit.inversor?.modelo || '—'}</td>
-                      <td style={{ ...E.td, textAlign: 'right' }}>{kit.inversor?.potencia_kw || 0} kW</td>
-                    </tr>
-                  )}
+                {/* Kalebe 2026-10-01: kit + placas/inversores extras do orçamento */}
+                {kitC.placas.map((p, i) => (
+                  <tr key={`p${i}`}>
+                    <td style={E.td}>Módulo fotovoltaico</td>
+                    <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700, paddingRight: 14 }}>{p.qtd}</td>
+                    <td style={{ ...E.td, paddingLeft: 14 }}>{p.modelo || '—'}</td>
+                    <td style={{ ...E.td, textAlign: 'right' }}>{p.potencia_wp} Wp</td>
+                  </tr>
+                ))}
+                {kitC.inversores.map((inv, i) => (
+                  <tr key={`i${i}`}>
+                    <td style={E.td}>{/^SIW100/i.test(inv.modelo || '') ? 'Microinversor' : 'Inversor'}</td>
+                    <td style={{ ...E.td, textAlign: 'right', color: '#F5B400', fontWeight: 700, paddingRight: 14 }}>{inv.qtd}</td>
+                    <td style={{ ...E.td, paddingLeft: 14 }}>{inv.modelo || '—'}</td>
+                    <td style={{ ...E.td, textAlign: 'right' }}>{fmtNum(inv.potencia_kw, 2)} kW</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
 
@@ -348,7 +340,9 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
                 (amarelo) sobreposto à geração estimada mês a mês (azul). */}
             {(() => {
               const potCcKwp = ehPorUc
+                // por UC: soma das UCs + placas extras do projeto
                 ? (propostasPorUc || []).reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
+                  + (kitC.potencia_cc_kwp - (Number(kitBase.potencia_cc_kwp) || 0))
                 : (kit.potencia_cc_kwp || 0)
               const est = estimarGeracaoMensal({ potencia_kwp: potCcKwp, uf: projeto.uf || projeto.cliente_uf })
               return (

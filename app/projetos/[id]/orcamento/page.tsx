@@ -307,6 +307,27 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
   //   servicos/legado → continuam somados direto no PV pelo OrcamentoClient
   const extrasProj: any[] = Array.isArray((projeto as any).extras_proposta)
     ? (projeto as any).extras_proposta : []
+
+  // Kalebe 2026-10-01: placa/inversor extra precisa entrar na composição e na
+  // potência da proposta (não só no preço) → categoria e potência do catálogo
+  const idsExtrasKit = Array.from(new Set(extrasProj
+    .filter((e) => e?.secao === 'kit_weg' && e?.produto_id && !e?.categoria)
+    .map((e) => e.produto_id as string)))
+  if (idsExtrasKit.length) {
+    const { data: prodsExtras } = await supabase
+      .from('produtos').select('id, categoria, specs').in('id', idsExtrasKit)
+    const porIdExtra = new Map((prodsExtras || []).map((p: any) => [p.id, p]))
+    ;(projeto as any).extras_proposta = extrasProj.map((e) => {
+      const p: any = e?.produto_id ? porIdExtra.get(e.produto_id) : null
+      if (!p || e.categoria) return e
+      return {
+        ...e,
+        categoria: p.categoria || null,
+        potencia_wp: Number(p.specs?.potencia_wp) || null,
+        potencia_kw: Number(p.specs?.potencia_kw) || null,
+      }
+    })
+  }
   const extrasKitBruto = extrasProj
     .filter((e) => e?.secao === 'kit_weg')
     .reduce((s, e) => s + (Number(e.valor) || 0), 0)

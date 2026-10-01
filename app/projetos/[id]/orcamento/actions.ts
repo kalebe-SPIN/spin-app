@@ -312,6 +312,22 @@ export async function adicionarExtraAction(
     .from('projetos').select('extras_proposta').eq('id', projetoId).single()
   const atuais: any[] = Array.isArray(proj?.extras_proposta) ? proj.extras_proposta : []
 
+  // Kalebe 2026-10-01: guarda categoria/potência do catálogo — placa/inversor
+  // extra entra na composição e na potência da proposta, não só no preço
+  let catalogo: { categoria: string | null; potencia_wp: number | null; potencia_kw: number | null } = {
+    categoria: null, potencia_wp: null, potencia_kw: null,
+  }
+  if (entrada.produto_id) {
+    const { data: prod } = await supabase.from('produtos').select('categoria, specs').eq('id', entrada.produto_id).maybeSingle()
+    if (prod) {
+      catalogo = {
+        categoria: prod.categoria || null,
+        potencia_wp: Number((prod.specs as any)?.potencia_wp) || null,
+        potencia_kw: Number((prod.specs as any)?.potencia_kw) || null,
+      }
+    }
+  }
+
   const novoItem = {
     secao,
     descricao: desc,
@@ -321,6 +337,7 @@ export async function adicionarExtraAction(
     produto_id: entrada.produto_id || null,
     modelo: entrada.modelo || null,
     fabricante: entrada.fabricante || null,
+    ...catalogo,
     criado_em: new Date().toISOString(),
   }
   const novos = [...atuais, novoItem]
