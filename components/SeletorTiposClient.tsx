@@ -17,20 +17,11 @@ export function SeletorTiposClient({
 
   const grupos = tiposPorGrupo()
 
-  const ehExclusivo = (t: TipoItem) => !!TIPOS_ITEM.find((x) => x.chave === t)?.exclusivo
-
-  // Kalebe 2026-10-01: venda de equipamentos tem tela própria — escolher ela
-  // tira os outros itens e vice-versa.
   function toggle(t: TipoItem) {
     setSelecionados((prev) => {
-      if (prev.has(t)) {
-        const n = new Set(prev)
-        n.delete(t)
-        return n
-      }
-      if (ehExclusivo(t)) return new Set([t])
-      const n = new Set(Array.from(prev).filter((x) => !ehExclusivo(x)))
-      n.add(t)
+      const n = new Set(prev)
+      if (n.has(t)) n.delete(t)
+      else n.add(t)
       return n
     })
   }
@@ -94,9 +85,6 @@ export function SeletorTiposClient({
                         <p className="text-base font-bold text-white mb-0.5">{t.label}</p>
                         <p className="text-xs text-white/60 mb-1.5">{t.descricao}</p>
                         <p className="text-[10px] text-white/40 italic">Ex: {t.exemploUso}</p>
-                        {t.exclusivo && (
-                          <p className="text-[10px] text-weg-azul mt-1">Tela própria — não combina com outros itens</p>
-                        )}
                       </div>
                     </div>
                   </button>

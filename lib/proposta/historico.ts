@@ -21,9 +21,10 @@ export type VersaoProposta = {
   autor: string | null
   atualizado_em: string | null
   excluida_em: string | null
+  modo_composicao: string | null     // 'venda_direta' = PDF da venda de equipamentos
 }
 
-const BASE = 'id, url_pdf, arquivo_expirado_em, pv_total, desconto_pct, desconto_valor, desconto_motivo, potencia_cc_kwp, gerado_em, gerado_por_profile:gerado_por(nome_completo)'
+const BASE = 'id, url_pdf, arquivo_expirado_em, pv_total, desconto_pct, desconto_valor, desconto_motivo, potencia_cc_kwp, modo_composicao, gerado_em, gerado_por_profile:gerado_por(nome_completo)'
 
 export async function carregarHistoricoPropostas(
   supabase: ReturnType<typeof createClient>,
@@ -59,6 +60,7 @@ export async function carregarHistoricoPropostas(
     autor: h.gerado_por_profile?.nome_completo || null,
     atualizado_em: h.atualizado_em || null,
     excluida_em: h.excluida_em || null,
+    modo_composicao: h.modo_composicao || null,
   }))
   // Mais recente primeiro na tela
   return { versoes: versoes.reverse(), migracaoPendente }

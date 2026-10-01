@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { fmtNum } from '@/lib/formatters'
 import type { VersaoProposta } from '@/lib/proposta/historico'
@@ -105,10 +106,13 @@ export function HistoricoPropostasClient({
                 : (v.desconto_valor != null && v.desconto_valor !== 0 ? brl(v.desconto_valor) : '—')
               const emEdicao = v.id === versaoEmEdicaoId
               const travado = pending && ocupado === v.id
+              // PDF da venda de equipamentos (projeto combinado): edita na tela da venda
+              const ehVenda = v.modo_composicao === 'venda_direta'
               return (
                 <tr key={v.id} className={`border-b border-white/5 ${emEdicao ? 'bg-sol/5' : ''}`}>
                   <td className="py-3 pr-3 text-white/70 text-xs font-mono">
                     v{v.numero}
+                    {ehVenda && <span className="block text-[10px] text-weg-azul font-sans">📦 equipamentos</span>}
                     {emEdicao && <span className="block text-[10px] text-sol font-sans">editando</span>}
                   </td>
                   <td className="py-3 pr-3 text-white/80 text-xs">
@@ -135,16 +139,26 @@ export function HistoricoPropostasClient({
                   </td>
                   <td className="py-3">
                     <div className="flex flex-wrap gap-1.5">
-                      <button type="button" onClick={() => abrir(v, false)} disabled={pending || emEdicao}
-                        title="Abre o orçamento com o desconto desta versão; o próximo PDF substitui esta versão"
-                        className={`${btn} bg-white/5 border-white/15 text-white/80 hover:bg-white/10`}>
-                        ✏️ Editar
-                      </button>
-                      <button type="button" onClick={() => abrir(v, true)} disabled={pending}
-                        title="Gera de novo com kit, extras e preços atuais (mantém o desconto desta versão)"
-                        className={`${btn} bg-weg-azul/10 border-weg-azul/40 text-weg-azul hover:bg-weg-azul/20`}>
-                        {travado ? '⏳' : '🔄'} Atualizar valores
-                      </button>
+                      {ehVenda ? (
+                        <Link href={`/projetos/${projetoId}/venda-direta`}
+                          title="Abre a tela da venda de equipamentos pra ajustar e gerar o PDF de novo"
+                          className={`${btn} bg-white/5 border-white/15 text-white/80 hover:bg-white/10`}>
+                          ✏️ Editar
+                        </Link>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => abrir(v, false)} disabled={pending || emEdicao}
+                            title="Abre o orçamento com o desconto desta versão; o próximo PDF substitui esta versão"
+                            className={`${btn} bg-white/5 border-white/15 text-white/80 hover:bg-white/10`}>
+                            ✏️ Editar
+                          </button>
+                          <button type="button" onClick={() => abrir(v, true)} disabled={pending}
+                            title="Gera de novo com kit, extras e preços atuais (mantém o desconto desta versão)"
+                            className={`${btn} bg-weg-azul/10 border-weg-azul/40 text-weg-azul hover:bg-weg-azul/20`}>
+                            {travado ? '⏳' : '🔄'} Atualizar valores
+                          </button>
+                        </>
+                      )}
                       <button type="button" onClick={() => excluir(v)} disabled={pending}
                         className={`${btn} bg-coral/10 border-coral/30 text-coral hover:bg-coral/20`}>
                         🗑 Excluir

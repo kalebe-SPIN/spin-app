@@ -170,6 +170,22 @@ export async function criarVendaDiretaAction(input: {
   return { projeto_id: projeto.id }
 }
 
+/**
+ * Kalebe 2026-10-01: a venda pode vir junto com solar/serviço no mesmo
+ * projeto. Sozinha, ela É a proposta (PV, PDF e etapa do projeto); combinada,
+ * só o item muda — o valor entra no total consolidado e o PDF do projeto
+ * continua sendo o do orçamento principal.
+ */
+async function vendaEhOProjeto(supabase: ReturnType<typeof createClient>, projetoId: string): Promise<boolean> {
+  const { count } = await supabase
+    .from('projeto_itens')
+    .select('id', { count: 'exact', head: true })
+    .eq('projeto_id', projetoId)
+    .neq('tipo', TIPO)
+    .neq('status', 'removido')
+  return !count
+}
+
 async function carregarItem(supabase: ReturnType<typeof createClient>, projetoId: string) {
   const { data } = await supabase
     .from('projeto_itens')
@@ -336,12 +352,15 @@ export async function salvarEquipamentosVendaDiretaAction(
     .eq('id', item.id)
   if (error) return { erro: error.message }
 
-  await supabase
-    .from('projetos')
-    .update({ pv_total: pv, valor_total_proposta: pv })
-    .eq('id', projetoId)
+  if (await vendaEhOProjeto(supabase, projetoId)) {
+    await supabase
+      .from('projetos')
+      .update({ pv_total: pv, valor_total_proposta: pv })
+      .eq('id', projetoId)
+  }
 
   revalidatePath(`/projetos/${projetoId}/venda-direta`)
+  revalidatePath(`/projetos/${projetoId}`)
   return { sucesso: true, pv_total: pv }
 }
 
@@ -359,14 +378,18 @@ export async function registrarPdfVendaDiretaAction(
   const antesDoOrcamento = ['rascunho', 'dimensionado', 'kit_selecionado', 'lista_ca_confirmada']
   const agora = new Date().toISOString()
 
-  await supabase
-    .from('projetos')
-    .update({
-      url_pdf_proposta: urlPdf,
-      data_orcamento_gerado: agora,
-      ...(proj && antesDoOrcamento.includes(proj.status) ? { status: 'orcamento_gerado' } : {}),
-    })
-    .eq('id', projetoId)
+  // Combinada com outro item: o PDF da venda fica no item e no histórico, sem
+  // tomar o lugar da proposta principal do projeto
+  if (await vendaEhOProjeto(supabase, projetoId)) {
+    await supabase
+      .from('projetos')
+      .update({
+        url_pdf_proposta: urlPdf,
+        data_orcamento_gerado: agora,
+        ...(proj && antesDoOrcamento.includes(proj.status) ? { status: 'orcamento_gerado' } : {}),
+      })
+      .eq('id', projetoId)
+  }
 
   await supabase
     .from('projeto_itens')

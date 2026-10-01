@@ -26,7 +26,6 @@ export type InfoTipo = {
   disponivel: boolean          // false = em breve
   fluxoPassos: number          // qtd de passos que esse tipo tem
   oculto?: boolean             // não aparece no seletor de tipos (criado por atalho próprio)
-  exclusivo?: boolean          // não combina com outros itens (tem tela própria)
 }
 
 export const TIPOS_ITEM: InfoTipo[] = [
@@ -181,13 +180,13 @@ export const TIPOS_ITEM: InfoTipo[] = [
   {
     // Kalebe 2026-09-29: venda de equipamentos direto ao consumidor final.
     // Kalebe 2026-10-01: aberta a todos (vender e orçar); a estrutura de preço
-    // e os cupons continuam só do admin. Tem tela própria → não combina.
+    // e os cupons continuam só do admin. Combina com os outros itens: o valor
+    // entra no total consolidado e a tela própria abre pelo passo Equipamentos.
     chave: 'venda_equipamentos', emoji: '📦🚚', label: 'Venda de equipamentos', grupo: 'outros',
-    descricao: 'Só os equipamentos do catálogo, entregues ao cliente — sem projeto, instalação ou lista CA.',
+    descricao: 'Equipamentos do catálogo entregues ao cliente — sem projeto, instalação ou lista CA.',
     exemploUso: 'Integrador ou cliente final compra 10 placas + 1 inversor pra instalar por conta própria',
     disponivel: true,
     fluxoPassos: 2,
-    exclusivo: true,
   },
   {
     chave: 'outros', emoji: '📦', label: 'Outros (personalizado)', grupo: 'outros',
@@ -230,6 +229,7 @@ export function tiposPorGrupo(): Record<Grupo, InfoTipo[]> {
 export type PassoWorkflow =
   | 'cliente' | 'fatura' | 'telhado' | 'padrao' | 'dimensionar'
   | 'kit' | 'lista_ca' | 'bess_config' | 've_config' | 'servico_config'
+  | 'equipamentos'
   | 'orcamento'
 
 export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
@@ -270,8 +270,10 @@ export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
 
   // 📦 Outros
   outros:        ['cliente', 'servico_config', 'orcamento'],
-  // Venda direta: dados do cliente + tela própria (equipamentos, frete, PDF)
-  venda_equipamentos: ['cliente', 'orcamento'],
+  // Venda direta: dados do cliente + tela própria (equipamentos, frete, PDF).
+  // Kalebe 2026-10-01: passo próprio — combinada com solar/serviço, o
+  // 'orcamento' é o do outro item e a venda abre por aqui.
+  venda_equipamentos: ['cliente', 'equipamentos'],
 }
 
 export const INFO_PASSO: Record<PassoWorkflow, { titulo: string; path: string; ordem: number }> = {
@@ -285,6 +287,7 @@ export const INFO_PASSO: Record<PassoWorkflow, { titulo: string; path: string; o
   bess_config:    { titulo: 'BESS híbrido',   path: 'hibrido',      ordem: 6.5 },
   ve_config:      { titulo: 'Estação VE',     path: 've',           ordem: 5.5 },
   servico_config: { titulo: 'Escopo serviço', path: 'servico',      ordem: 5.5 },
+  equipamentos:   { titulo: 'Equipamentos',   path: 'venda-direta', ordem: 7.5 },
   orcamento:      { titulo: 'Orçamento',      path: 'orcamento',    ordem: 8 },
 }
 

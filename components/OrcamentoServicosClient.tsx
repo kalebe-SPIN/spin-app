@@ -27,6 +27,19 @@ type Props = {
   configEmpresa: any
 }
 
+/**
+ * Linhas do item no orçamento: quantidades do serviço ou — Kalebe 2026-10-01 —
+ * os equipamentos da venda de equipamentos (quando ela vem junto com serviço).
+ */
+function subitensDoItem(it: Item): { item: string; qtd: number }[] {
+  if (it.tipo === 'venda_equipamentos') {
+    return ((it.dados?.itens || []) as any[])
+      .filter((e) => Number(e?.qtd) > 0)
+      .map((e) => ({ item: [e.fabricante, e.modelo].filter(Boolean).join(' · '), qtd: Number(e.qtd) }))
+  }
+  return ((it.dados?.quantidades || []) as { item: string; qtd: number }[]).filter((s) => s.item?.trim())
+}
+
 type CondicaoPagamento = {
   id: string
   label: string
@@ -206,7 +219,7 @@ export function OrcamentoServicosClient({ projeto, itens, configEmpresa }: Props
                 quantidades?: { item: string; qtd: number }[]
                 observacoes?: string
               }
-              const subitens = (dados.quantidades || []).filter(s => s.item?.trim())
+              const subitens = subitensDoItem(it)
               const descCustom = dados.descricao?.trim()
               return (
                 <div key={it.id} className="bg-white/[0.02] border border-white/10 rounded-lg p-4">
@@ -670,7 +683,7 @@ function TemplatePdf({
                 quantidades?: { item: string; qtd: number }[]
                 observacoes?: string
               }
-              const subitens = (dados.quantidades || []).filter(s => s.item?.trim())
+              const subitens = subitensDoItem(it)
               const descCustom = dados.descricao?.trim()
               return (
                 <tr key={it.id} style={{ borderBottom: '1px solid #e5e7eb', background: idx % 2 === 0 ? '#FFFFFF' : '#f9fafb' }}>

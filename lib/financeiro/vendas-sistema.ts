@@ -92,6 +92,39 @@ export function vendaDoProjeto(
 ): VendaPendente {
   const valor = calculoVendaDireta ? (num(calculoVendaDireta.pv_total) || valorVendaProjeto(p)) : valorVendaProjeto(p)
   const vf = p.orcamento_consolidado?.venda_fechada || {}
+
+  // Kalebe 2026-10-01: venda de equipamentos JUNTO com orçamento solar no mesmo
+  // projeto → soma as duas partes. Preço final acordado no fechamento vale pelo
+  // negócio inteiro; sem ele, solar + equipamentos. O custo dos equipamentos
+  // vendidos sempre passa pelo caixa (entra como "custo da venda"); o kit
+  // solar segue a regra do projeto (kit_passa_caixa).
+  if (calculoVendaDireta && num(p.pv_orcamento) > 0) {
+    const pvEquip = num(calculoVendaDireta.pv_total)
+    const acordado = num(vf.preco_final)
+    const valorSolar = acordado > 0 ? Math.max(acordado - pvEquip, 0) : valorVendaProjeto(p)
+    const cSolar = custosProjeto(p, valorSolar)
+    const cEquip = custosVendaDireta(calculoVendaDireta)
+    return {
+      origem: 'projeto', origem_id: p.id, projeto_id: p.id,
+      cliente: p.cliente_razao_social || 'Cliente sem nome',
+      data_venda: dataFechamento(p, primeiroFechamento),
+      valor_venda: acordado > 0 ? acordado : valorSolar + pvEquip,
+      condicao_vendedor: vf.condicao_pagamento || null,
+      parcelas_vendedor: vf.parcelas || null,
+      observacoes_vendedor: vf.observacoes || null,
+      custos: {
+        kit: cSolar.kit,
+        comissao: cSolar.comissao + cEquip.comissao,
+        imposto: cSolar.imposto + cEquip.imposto,
+        instalacao: cSolar.instalacao,
+        frete: cSolar.frete + cEquip.frete,
+        projeto_art: cSolar.projeto_art,
+        custo_estimado: cEquip.kit,
+      },
+      vendedor_nome: nomes.get(p.consultor_id) || null,
+    }
+  }
+
   if (calculoVendaDireta) {
     return {
       origem: 'projeto', origem_id: p.id, projeto_id: p.id,

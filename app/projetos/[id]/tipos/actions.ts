@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getInfoTipo, type TipoItem } from '@/lib/tipos-projeto'
+import type { TipoItem } from '@/lib/tipos-projeto'
 
 export async function salvarTiposProjetoAction(projetoId: string, tipos: TipoItem[]) {
   const supabase = createClient()
@@ -11,11 +11,9 @@ export async function salvarTiposProjetoAction(projetoId: string, tipos: TipoIte
   if (!user) return { erro: 'Não autorizado' }
 
   if (tipos.length === 0) return { erro: 'Escolha pelo menos 1 tipo' }
-  // Kalebe 2026-10-01: venda de equipamentos tem tela própria (não combina)
+  // Kalebe 2026-10-01: venda de equipamentos sozinha vai direto pra tela dela;
+  // combinada, soma no total e abre pelo passo "Equipamentos" do item
   const soVenda = tipos.length === 1 && tipos[0] === 'venda_equipamentos'
-  if (tipos.length > 1 && tipos.some((t) => getInfoTipo(t)?.exclusivo)) {
-    return { erro: 'Venda de equipamentos não combina com outros itens — ela tem tela própria.' }
-  }
 
   const tiposSelecionados = new Set(tipos)
 

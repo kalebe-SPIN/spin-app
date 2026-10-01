@@ -134,7 +134,7 @@ function ItemProposta({ item, projetoId }: { item: any; projetoId: string }) {
           {passos.map((chave, idx) => {
             const p = INFO_PASSO[chave]
             // Destaca passos específicos do tipo (bess_config, ve_config, servico_config)
-            const isEspecifico = ['bess_config', 've_config', 'servico_config'].includes(chave)
+            const isEspecifico = ['bess_config', 've_config', 'servico_config', 'equipamentos'].includes(chave)
             // Path pode ser override por tipo (ex: srv_retirada_recolocacao -> servico-retirada)
             const pathReal = getPathPasso(chave, item.tipo as any)
             return (
