@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useRef, useTransition } from 'react'
+import { useState, useRef, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { salvarOrcamentoAction, marcarPropostaEnviadaAction, aplicarDescontoAdminAction, adicionarExtraAction, removerExtraAction } from '@/app/projetos/[id]/orcamento/actions'
+import { salvarOrcamentoAction, marcarPropostaEnviadaAction, aplicarDescontoAdminAction, adicionarExtraAction, removerExtraAction, cancelarEdicaoVersaoAction } from '@/app/projetos/[id]/orcamento/actions'
+import { consolidarKitComExtras } from '@/lib/proposta/kit-consolidado'
 import { BotaoAdicionarItemExtra } from '@/components/BotaoAdicionarItemExtra'
 import { PropostaPDFTemplate } from './PropostaPDFTemplate'
 import { GraficoGeracaoConsumo } from './GraficoGeracaoConsumo'
@@ -38,6 +39,10 @@ type Props = {
     condicao_especial: string
     vigente_ate?: string | null
   } | null
+  // Kalebe 2026-10-01: versão do histórico sendo editada/atualizada — o PDF
+  // gerado substitui essa versão em vez de criar uma nova
+  versaoEmEdicao?: { id: string; numero: number } | null
+  gerarAoAbrir?: boolean
 }
 
 const BUCKET_PROPOSTAS = 'propostas-pdf'
@@ -85,6 +90,7 @@ function calcularDescontoFinal(pvOriginal: number, pct?: number | null, valor?: 
 export function OrcamentoClient({
   projeto, proposta, configEmpresa, listaCa, ehAdmin = false,
   modoComposicao = 'centralizado', propostasPorUc = null, campanhaAplicada = null,
+  versaoEmEdicao = null, gerarAoAbrir = false,
 }: Props) {
   // No modo por_uc, escolhe a UC ativa (default: primeira). Todo o
   // dashboard/composição usa a proposta da UC ativa; o PDF unifica.
@@ -151,9 +157,18 @@ export function OrcamentoClient({
   const pvFinalUcAtiva = modoComposicao === 'por_uc'
     ? (ucAtiva?.proposta?.pv_total || 0)
     : descontoInfo.pvFinal
-  const potenciaCcConsolidada = modoComposicao === 'por_uc' && propostasPorUc
+  // Kalebe 2026-10-01: placa/inversor extra soma na potência mostrada aqui,
+  // no gráfico, no nome do arquivo, no WhatsApp e no histórico (igual ao PDF)
+  const kitBase = projeto.kit_selecionado || {}
+  const kitC = consolidarKitComExtras(kitBase, extras as any)
+  const extraCcKwp = kitC.tem_extras ? kitC.potencia_cc_kwp - (Number(kitBase.potencia_cc_kwp) || 0) : 0
+  const extraCaKw = kitC.tem_extras ? kitC.potencia_ca_kw - (Number(kitBase.potencia_ca_kw) || 0) : 0
+  const potenciaCcConsolidada = (modoComposicao === 'por_uc' && propostasPorUc
     ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
-    : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
+    : (Number(kitBase.potencia_cc_kwp) || 0)) + extraCcKwp
+  const potenciaCaConsolidada = (modoComposicao === 'por_uc' && propostasPorUc
+    ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_ca_kw || 0), 0)
+    : (Number(kitBase.potencia_ca_kw) || 0)) + extraCaKw
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [gerando, setGerando] = useState(false)
@@ -216,16 +231,10 @@ export function OrcamentoClient({
 
       // 1) Baixar automaticamente — Kalebe 2026-09-01: novo formato
       //    PROPOSTA_5.2CC-4.4CA_NOME DO CLIENTE.pdf
-      const potenciaCcTotal = modoComposicao === 'por_uc'
-        ? (propostasPorUc || []).reduce((s: number, u: any) => s + (u.kit?.potencia_cc_kwp || 0), 0)
-        : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
-      const potenciaCaTotal = modoComposicao === 'por_uc'
-        ? (propostasPorUc || []).reduce((s: number, u: any) => s + (u.kit?.potencia_ca_kw || 0), 0)
-        : (projeto.kit_selecionado?.potencia_ca_kw || 0)
       const nomeArquivo = nomearProposta({
         cliente: projeto.cliente_razao_social,
-        potenciaCcKwp: potenciaCcTotal,
-        potenciaCaKw: potenciaCaTotal,
+        potenciaCcKwp: potenciaCcConsolidada,
+        potenciaCaKw: potenciaCaConsolidada,
       })
       pdf.save(nomeArquivo)
 
@@ -251,21 +260,23 @@ export function OrcamentoClient({
         pv_bruto: totalConsolidadoBruto,
         modo_composicao: modoComposicao,
         ucs_qtd: modoComposicao === 'por_uc' ? (propostasPorUc?.length || 0) : 1,
+        potencia_cc_kwp: Math.round(potenciaCcConsolidada * 100) / 100,
+        potencia_ca_kw: Math.round(potenciaCaConsolidada * 100) / 100,
       }
       startTransition(async () => {
-        const result = await salvarOrcamentoAction(projeto.id, propostaEfetiva, publicUrl, consolidado)
+        // Kalebe 2026-09-22: o desconto admin zera após a emissão (a próxima
+        // proposta começa limpa) — agora feito no servidor, vale pra todo papel.
+        const result = await salvarOrcamentoAction(projeto.id, propostaEfetiva, publicUrl, consolidado, {
+          substituirHistoricoId: versaoEmEdicao?.id || null,
+          zerarDesconto: true,
+        })
         if (result.sucesso) {
           setUrlPdf(publicUrl)
-          // Kalebe 2026-09-22: zera desconto admin após emissão do PDF pra que
-          // a próxima proposta comece limpa. O desconto ainda foi aplicado na
-          // proposta atual (já persistiu no orcamento_final + PDF).
-          const tinhaDesconto =
-            (projeto as any)?.desconto_admin_pct != null ||
-            (projeto as any)?.desconto_admin_valor != null
-          if (tinhaDesconto) {
-            await aplicarDescontoAdminAction(projeto.id, { pct: 0, valor: 0 })
-          }
-          router.refresh()
+          if (result.aviso) setErro(result.aviso)
+          if (versaoEmEdicao) router.replace(`/projetos/${projeto.id}/orcamento`)
+          else router.refresh()
+        } else {
+          setErro(result.erro)
         }
       })
     } catch (e: any) {
@@ -276,14 +287,32 @@ export function OrcamentoClient({
     }
   }
 
+  // Kalebe 2026-10-01: "Atualizar valores" no histórico → gera sozinho ao
+  // abrir (espera o modelo do PDF montar; o ref evita gerar 2×)
+  const autoGerou = useRef(false)
+  useEffect(() => {
+    if (!gerarAoAbrir || !versaoEmEdicao) return
+    const t = setTimeout(() => {
+      if (autoGerou.current) return
+      autoGerou.current = true
+      gerarPDF()
+    }, 1200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gerarAoAbrir, versaoEmEdicao?.id])
+
+  function cancelarEdicaoVersao() {
+    if (!versaoEmEdicao) return
+    startTransition(async () => {
+      await cancelarEdicaoVersaoAction(projeto.id, versaoEmEdicao.id)
+      router.replace(`/projetos/${projeto.id}/orcamento`)
+    })
+  }
+
   // Kalebe 2026-09-29: proposta vai pelo canal Spin (inbox), não pelo wa.me
   const nomeClienteWa = (projeto.cliente_razao_social || 'cliente').split(' ')[0]
-  const potenciaCcWa = modoComposicao === 'por_uc' && propostasPorUc
-    ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
-    : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
-  const potenciaCaWa = modoComposicao === 'por_uc' && propostasPorUc
-    ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_ca_kw || 0), 0)
-    : (projeto.kit_selecionado?.potencia_ca_kw || 0)
+  const potenciaCcWa = potenciaCcConsolidada
+  const potenciaCaWa = potenciaCaConsolidada
   const sufixoUcsWa = modoComposicao === 'por_uc' && propostasPorUc
     ? ` (${propostasPorUc.length} UCs contempladas)` : ''
   const legendaWhatsApp = `Olá ${nomeClienteWa}! 🌞\n\nSegue a proposta do seu sistema fotovoltaico Spin Solar de ${fmtNum(potenciaCcWa, 2)} kWp${sufixoUcsWa}.\n\nQualquer dúvida estou à disposição!`
@@ -302,6 +331,24 @@ export function OrcamentoClient({
 
   return (
     <div className="space-y-6">
+      {versaoEmEdicao && (
+        <section className="bg-sol/10 border border-sol/40 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-white/85 min-w-0">
+            ✏️ <strong className="text-white">Editando a v{versaoEmEdicao.numero}</strong> —{' '}
+            {gerarAoAbrir && (gerando || isPending)
+              ? 'gerando o PDF com os valores atuais…'
+              : <>ajuste o que precisar e clique em <strong className="text-white">Gerar PDF</strong>: a v{versaoEmEdicao.numero} é substituída, sem criar versão nova.</>}
+            <span className="block text-xs text-white/55 mt-0.5">
+              Kit, extras e preços são os de hoje; o desconto da v{versaoEmEdicao.numero} já está aplicado.
+            </span>
+          </p>
+          <button type="button" onClick={cancelarEdicaoVersao} disabled={gerando || isPending}
+            className="px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-white/75 text-xs font-bold hover:bg-white/10 disabled:opacity-40">
+            Cancelar edição
+          </button>
+        </section>
+      )}
+
       {/* Consolidado (só modo por_uc) */}
       {modoComposicao === 'por_uc' && propostasPorUc && propostasPorUc.length > 0 && (
         <section className="bg-verde/5 border border-verde/40 rounded-xl p-6">
@@ -315,7 +362,7 @@ export function OrcamentoClient({
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Metric label="UCs contempladas" value={String(propostasPorUc.length)} highlight />
-            <Metric label="Potência CC total" value={`${potenciaCcConsolidada.toFixed(2)} kWp`} />
+            <Metric label="Potência CC total" value={`${fmtNum(potenciaCcConsolidada, 2)} kWp`} />
             <Metric
               label={descontoInfo.sentido === 'desconto' ? 'PV TOTAL (com desconto)'
                 : descontoInfo.sentido === 'acrescimo' ? 'PV TOTAL (com acréscimo)'
@@ -365,8 +412,8 @@ export function OrcamentoClient({
             recebe apenas Potência CC (técnica) e PV FINAL (preço ao cliente). */}
         <div className={`grid grid-cols-2 gap-3 ${ehAdmin ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
           <Metric
-            label="Potência CC"
-            value={`${((modoComposicao === 'por_uc' ? ucAtiva?.kit : projeto.kit_selecionado)?.potencia_cc_kwp || 0).toFixed(2)} kWp`}
+            label={extraCcKwp > 0 && modoComposicao !== 'por_uc' ? 'Potência CC (com extras)' : 'Potência CC'}
+            value={`${fmtNum(modoComposicao === 'por_uc' ? (ucAtiva?.kit?.potencia_cc_kwp || 0) : potenciaCcConsolidada, 2)} kWp`}
             highlight
           />
           {ehAdmin && (
@@ -396,9 +443,7 @@ export function OrcamentoClient({
           Aparece sempre (com ou sem consumo cadastrado). Se houver consumo,
           sobrepõe a linha de consumo pra visualizar cobertura. */}
       {(() => {
-        const potCcTotal = modoComposicao === 'por_uc' && propostasPorUc
-          ? propostasPorUc.reduce((s, u) => s + (u.kit?.potencia_cc_kwp || 0), 0)
-          : (projeto.kit_selecionado?.potencia_cc_kwp || 0)
+        const potCcTotal = potenciaCcConsolidada
         if (!potCcTotal) return null
         const uf = projeto.uf || projeto.cliente_uf || projeto.telhado_secoes?.[0]?.uf
         const geracao = estimarGeracaoMensal({ potencia_kwp: potCcTotal, uf })
@@ -476,7 +521,9 @@ export function OrcamentoClient({
             disabled={gerando || isPending}
             className="p-4 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {gerando ? '📄 Gerando PDF...' : urlPdf ? '📄 Baixar PDF novamente' : '📄 Gerar e baixar PDF'}
+            {gerando ? '📄 Gerando PDF...'
+              : versaoEmEdicao ? `📄 Gerar PDF e substituir a v${versaoEmEdicao.numero}`
+              : urlPdf ? '📄 Baixar PDF novamente' : '📄 Gerar e baixar PDF'}
           </button>
 
           <BotaoEnviarPropostaCanal

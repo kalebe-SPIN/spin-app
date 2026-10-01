@@ -26,6 +26,7 @@ export type InfoTipo = {
   disponivel: boolean          // false = em breve
   fluxoPassos: number          // qtd de passos que esse tipo tem
   oculto?: boolean             // não aparece no seletor de tipos (criado por atalho próprio)
+  exclusivo?: boolean          // não combina com outros itens (tem tela própria)
 }
 
 export const TIPOS_ITEM: InfoTipo[] = [
@@ -178,14 +179,15 @@ export const TIPOS_ITEM: InfoTipo[] = [
 
   // 📦 OUTROS
   {
-    // Kalebe 2026-09-29: venda de equipamentos WEG direto ao consumidor final.
-    // Só o admin cria, pelo atalho /venda-direta — fica fora do seletor.
-    chave: 'venda_equipamentos', emoji: '📦🚚', label: 'Venda direta de equipamentos', grupo: 'outros',
-    descricao: 'Só os equipamentos da planilha WEG, entregues ao cliente — sem projeto, instalação ou lista CA.',
+    // Kalebe 2026-09-29: venda de equipamentos direto ao consumidor final.
+    // Kalebe 2026-10-01: aberta a todos (vender e orçar); a estrutura de preço
+    // e os cupons continuam só do admin. Tem tela própria → não combina.
+    chave: 'venda_equipamentos', emoji: '📦🚚', label: 'Venda de equipamentos', grupo: 'outros',
+    descricao: 'Só os equipamentos do catálogo, entregues ao cliente — sem projeto, instalação ou lista CA.',
     exemploUso: 'Integrador ou cliente final compra 10 placas + 1 inversor pra instalar por conta própria',
     disponivel: true,
     fluxoPassos: 2,
-    oculto: true,
+    exclusivo: true,
   },
   {
     chave: 'outros', emoji: '📦', label: 'Outros (personalizado)', grupo: 'outros',

@@ -3,10 +3,25 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { paramsToRecord } from '@/lib/precificacao/calcular'
 import { precoVigente, type ProdutoCatalogoVD } from '@/lib/venda-direta/preco'
-import { dadosVazios, type ItemDadosVendaDireta } from '@/lib/venda-direta/tipos'
+import { dadosVazios, type DadosNF, type ItemDadosVendaDireta } from '@/lib/venda-direta/tipos'
 import { VendaDiretaClient } from '@/components/venda-direta/VendaDiretaClient'
 
 export const dynamic = 'force-dynamic'
+
+function nfDoProjeto(p: any): Partial<DadosNF> | null {
+  if (!p?.cliente_razao_social) return null
+  const e = (p.cliente_endereco && typeof p.cliente_endereco === 'object') ? p.cliente_endereco : {}
+  return {
+    nome: p.cliente_razao_social || '',
+    documento: p.cliente_cpf_cnpj || '',
+    email: p.cliente_email || '',
+    telefone: p.cliente_telefone || p.cliente_whatsapp || '',
+    endereco: {
+      cep: e.cep || '', rua: e.rua || e.logradouro || '', numero: e.numero ? String(e.numero) : '',
+      complemento: e.complemento || '', bairro: e.bairro || '', cidade: e.cidade || '', uf: e.uf || 'SC',
+    },
+  }
+}
 
 /**
  * /projetos/[id]/venda-direta — equipamentos + frete + PDF da venda direta
@@ -73,8 +88,11 @@ export default async function VendaDiretaProjetoPage({ params }: { params: { id:
 
   const base = dadosVazios()
   const salvo = (item.dados || {}) as Partial<ItemDadosVendaDireta>
+  // Kalebe 2026-10-01: venda criada pelo seletor de itens do projeto chega sem
+  // dados de NF → começa com o cliente do projeto (o vendedor só confere)
+  const nfSalva = salvo.nf?.nome ? salvo.nf : nfDoProjeto(projeto)
   const dadosIniciais: ItemDadosVendaDireta = {
-    nf: { ...base.nf, ...(salvo.nf || {}), endereco: { ...base.nf.endereco, ...(salvo.nf?.endereco || {}) } },
+    nf: { ...base.nf, ...(nfSalva || {}), endereco: { ...base.nf.endereco, ...(nfSalva?.endereco || {}) } },
     entrega: {
       ...base.entrega, ...(salvo.entrega || {}),
       endereco: { ...base.entrega.endereco, ...(salvo.entrega?.endereco || {}) },
@@ -91,7 +109,7 @@ export default async function VendaDiretaProjetoPage({ params }: { params: { id:
         <header className="mb-8">
           <div className="flex gap-4 text-xs mb-2">
             <Link href={`/projetos/${projeto.id}`} className="text-white/40 hover:text-white/60">← Projeto</Link>
-            {ehAdmin && <Link href="/venda-direta" className="text-white/40 hover:text-white/60">Todas as vendas diretas</Link>}
+            <Link href="/venda-direta" className="text-white/40 hover:text-white/60">{ehAdmin ? 'Todas as vendas diretas' : 'Minhas vendas de equipamentos'}</Link>
             {ehAdmin && <Link href="/admin/precificacao/venda-direta" className="text-sol/80 hover:text-sol">⚙️ Estrutura de preço e cupons</Link>}
           </div>
           <div className="flex items-center gap-3 mb-1">

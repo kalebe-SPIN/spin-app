@@ -7,6 +7,9 @@ import { OrcamentoClient } from '@/components/OrcamentoClient'
 import { OrcamentoServicosClient } from '@/components/OrcamentoServicosClient'
 import { apenasServicos, type TipoItem } from '@/lib/tipos-projeto'
 import { precificarComplementosCC } from '@/lib/kit-auto/complementos-cc'
+import { consolidarKitComExtras } from '@/lib/proposta/kit-consolidado'
+import { carregarHistoricoPropostas } from '@/lib/proposta/historico'
+import { HistoricoPropostasClient } from '@/components/proposta/HistoricoPropostasClient'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -27,7 +30,10 @@ function mapTipoProjeto(t: string | null | undefined): string | undefined {
   return undefined
 }
 
-export default async function OrcamentoPage(props: { params: { id: string } }) {
+export default async function OrcamentoPage(props: {
+  params: { id: string }
+  searchParams?: { versao?: string; gerar?: string }
+}) {
   const projetoId = props.params.id
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -328,6 +334,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
       }
     })
   }
+  const extrasEnriquecidos: any[] = (projeto as any).extras_proposta || []
   const extrasKitBruto = extrasProj
     .filter((e) => e?.secao === 'kit_weg')
     .reduce((s, e) => s + (Number(e.valor) || 0), 0)
@@ -352,10 +359,16 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
           + precoOuFallback(k.inversor) * (k.qtd_inversores || 1)
       brutoTotal = baseKit + extrasKitBruto
     }
+    // Kalebe 2026-10-01: placa/inversor extra muda nº de placas (instalação,
+    // frete) e potência (projeto/ART, faixa de margem) — o motor recebe o kit
+    // somado. Só com bruto consolidado, senão qtd × preço contaria em dobro.
+    const kc = comExtras && (Number(brutoTotal) || 0) > 0 ? consolidarKitComExtras(k, extrasEnriquecidos) : null
+    const qtdPlacasMotor = kc?.tem_extras ? kc.qtd_placas : (k.qtd_placas || 1)
+    const potenciaMotor = kc?.tem_extras ? kc.potencia_cc_kwp : (k.potencia_cc_kwp || 0)
     return calcularPropostaComFlag(
       {
         placa: {
-          qtd: k.qtd_placas || 1,
+          qtd: qtdPlacasMotor,
           preco_venda_unitario: precoOuFallback(k.placa),
           modelo: k.placa?.modelo || '—',
           potencia_wp: k.placa?.potencia_wp || 0,
@@ -373,7 +386,7 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
           categoria: i.categoria,
         })),
         subtotal_kit_weg_bruto_override: brutoTotal,
-        potencia_kwp: k.potencia_cc_kwp || 0,
+        potencia_kwp: potenciaMotor,
         distancia_km_extra: 0,
         // Kalebe 2026-09-18: usado pela matriz de margem fv_matriz_margem_kwp.
         // Mapeia tipo_projeto do banco (legado 'ongrid'/'hibrido_bess') para
@@ -440,6 +453,12 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
       : (projeto as any).kits_por_uc,
   }
 
+  // Kalebe 2026-10-01: editar / atualizar valores / excluir cada versão emitida
+  const historico = await carregarHistoricoPropostas(supabase, projetoId)
+  const versaoEmEdicao = props.searchParams?.versao
+    ? historico.versoes.find((v) => v.id === props.searchParams?.versao && !v.excluida_em) || null
+    : null
+
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
       <div className="max-w-screen-2xl mx-auto">
@@ -470,91 +489,17 @@ export default async function OrcamentoPage(props: { params: { id: string } }) {
           modoComposicao={modoComposicao}
           propostasPorUc={propostasPorUc as any}
           campanhaAplicada={campanhaAplicada as any}
+          versaoEmEdicao={versaoEmEdicao ? { id: versaoEmEdicao.id, numero: versaoEmEdicao.numero } : null}
+          gerarAoAbrir={!!versaoEmEdicao && props.searchParams?.gerar === '1'}
         />
 
-        <HistoricoPropostas projetoId={projeto.id} />
+        <HistoricoPropostasClient
+          projetoId={projeto.id}
+          versoes={historico.versoes.filter((v) => !v.excluida_em)}
+          migracaoPendente={historico.migracaoPendente}
+          versaoEmEdicaoId={versaoEmEdicao?.id || null}
+        />
       </div>
     </main>
-  )
-}
-
-/**
- * Kalebe 2026-09-22: lista as versões de PDF de proposta emitidas
- * (projeto_propostas_historico). Cada emissão grava aqui — inclui
- * PV, desconto aplicado e link de download.
- */
-async function HistoricoPropostas({ projetoId }: { projetoId: string }) {
-  const supabase = createClient()
-  const { data: historico } = await supabase
-    .from('projeto_propostas_historico')
-    .select('id, url_pdf, arquivo_expirado_em, pv_total, desconto_pct, desconto_valor, desconto_motivo, potencia_cc_kwp, gerado_em, gerado_por, gerado_por_profile:gerado_por(nome_completo)')
-    .eq('projeto_id', projetoId)
-    .order('gerado_em', { ascending: false })
-
-  if (!historico?.length) return null
-
-  const fmtBRL = (n: number | null) => n == null ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  const fmtDate = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-
-  return (
-    <section className="mt-8 bg-white/[0.03] border border-white/10 rounded-xl p-5">
-      <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-        📄 Histórico de propostas emitidas <span className="text-white/40 font-normal">({historico.length})</span>
-      </h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left border-b border-white/10 text-[10px] uppercase text-white/50 font-bold">
-              <th className="pb-2 pr-3">Versão</th>
-              <th className="pb-2 pr-3">Data</th>
-              <th className="pb-2 pr-3">Autor</th>
-              <th className="pb-2 pr-3">Potência</th>
-              <th className="pb-2 pr-3">Desconto</th>
-              <th className="pb-2 pr-3">PV total</th>
-              <th className="pb-2">PDF</th>
-            </tr>
-          </thead>
-          <tbody>
-            {historico.map((h: any, idx: number) => {
-              const versao = historico.length - idx
-              const desc = h.desconto_pct != null && h.desconto_pct !== 0
-                ? `${h.desconto_pct}%`
-                : (h.desconto_valor != null && h.desconto_valor !== 0 ? `R$ ${fmtBRL(h.desconto_valor)}` : '—')
-              const nomeAutor = h.gerado_por_profile?.nome_completo || '—'
-              return (
-                <tr key={h.id} className="border-b border-white/5">
-                  <td className="py-3 pr-3 text-white/70 text-xs font-mono">v{versao}</td>
-                  <td className="py-3 pr-3 text-white/80 text-xs">{fmtDate(h.gerado_em)}</td>
-                  <td className="py-3 pr-3 text-white/80 text-xs">{nomeAutor}</td>
-                  <td className="py-3 pr-3 text-white/80 text-xs">
-                    {h.potencia_cc_kwp ? `${Number(h.potencia_cc_kwp).toFixed(2).replace('.', ',')} kWp` : '—'}
-                  </td>
-                  <td className="py-3 pr-3 text-white/80 text-xs" title={h.desconto_motivo || ''}>
-                    {desc}
-                  </td>
-                  <td className="py-3 pr-3 text-sol font-bold text-sm">R$ {fmtBRL(h.pv_total)}</td>
-                  <td className="py-3">
-                    {h.arquivo_expirado_em ? (
-                      <span className="text-[11px] text-white/40" title="Removido pela regra de 180 dias (cliente sem negócio fechado)">
-                        🗑 removido
-                      </span>
-                    ) : (
-                      <a
-                        href={h.url_pdf}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-sol/10 border border-sol/40 text-sol text-[11px] font-bold hover:bg-sol/20 transition"
-                      >
-                        📥 Baixar
-                      </a>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </section>
   )
 }

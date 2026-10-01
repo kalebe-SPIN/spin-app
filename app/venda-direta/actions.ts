@@ -55,8 +55,9 @@ async function acharClientePorDocumento(supabase: ReturnType<typeof createClient
 export async function buscarClienteVendaDiretaAction(documento: string): Promise<
   { encontrado: false } | { encontrado: true; nome: string; email: string; telefone: string; endereco: any }
 > {
-  const { erro, supabase } = await exigirAdmin()
-  if (erro) return { encontrado: false }
+  // Kalebe 2026-10-01: todos vendem — o RLS de clientes limita o que cada um acha
+  const { supabase, user } = await exigirUsuario()
+  if (!user) return { encontrado: false }
   const c = await acharClientePorDocumento(supabase, documento)
   if (!c) return { encontrado: false }
   return {
@@ -119,12 +120,14 @@ export async function criarVendaDiretaAction(input: {
   dados: DadosVendaDireta
   vendedor_id: string
 }): Promise<{ projeto_id: string } | { erro: string }> {
-  const { erro, supabase, user } = await exigirAdmin()
-  if (erro || !user) return { erro: erro || 'Não autenticado' }
+  const { supabase, user } = await exigirUsuario()
+  if (!user) return { erro: 'Não autenticado' }
 
   const invalido = validarDadosVendaDireta(input.dados)
   if (invalido) return { erro: invalido }
-  const vendedorId = input.vendedor_id || user.id
+  // Kalebe 2026-10-01: todos vendem; só o admin lança em nome de outro vendedor
+  const { data: perfil } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  const vendedorId = perfil?.role === 'admin' ? (input.vendedor_id || user.id) : user.id
 
   const clienteId = await sincronizarCliente(supabase, input.dados, vendedorId)
 

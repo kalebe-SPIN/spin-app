@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import type { TipoItem } from '@/lib/tipos-projeto'
+import { getInfoTipo, type TipoItem } from '@/lib/tipos-projeto'
 
 export async function salvarTiposProjetoAction(projetoId: string, tipos: TipoItem[]) {
   const supabase = createClient()
@@ -11,6 +11,11 @@ export async function salvarTiposProjetoAction(projetoId: string, tipos: TipoIte
   if (!user) return { erro: 'Não autorizado' }
 
   if (tipos.length === 0) return { erro: 'Escolha pelo menos 1 tipo' }
+  // Kalebe 2026-10-01: venda de equipamentos tem tela própria (não combina)
+  const soVenda = tipos.length === 1 && tipos[0] === 'venda_equipamentos'
+  if (tipos.length > 1 && tipos.some((t) => getInfoTipo(t)?.exclusivo)) {
+    return { erro: 'Venda de equipamentos não combina com outros itens — ela tem tela própria.' }
+  }
 
   const tiposSelecionados = new Set(tipos)
 
@@ -32,6 +37,7 @@ export async function salvarTiposProjetoAction(projetoId: string, tipos: TipoIte
       ordem: idx,
       status: 'pendente' as const,
       dados: {},
+      ...(tipo === 'venda_equipamentos' ? { titulo: 'Venda de equipamentos', valor_estimado: 0 } : {}),
     }))
     const { error } = await supabase.from('projeto_itens').insert(registros)
     if (error) return { erro: error.message }
@@ -48,13 +54,19 @@ export async function salvarTiposProjetoAction(projetoId: string, tipos: TipoIte
     if (error) return { erro: error.message }
   }
 
+  // tipo_projeto = 'venda_equipamentos' põe a venda na lista /venda-direta,
+  // no financeiro e no rótulo de modalidade; saiu da venda → limpa
+  const { data: proj } = await supabase.from('projetos').select('tipo_projeto').eq('id', projetoId).maybeSingle()
+  const patchTipo = soVenda
+    ? { tipo_projeto: 'venda_equipamentos' }
+    : (proj?.tipo_projeto === 'venda_equipamentos' ? { tipo_projeto: null } : {})
   await supabase
     .from('projetos')
-    .update({ modo_proposta: tipos.length > 1 ? 'combinada' : 'simples' })
+    .update({ modo_proposta: tipos.length > 1 ? 'combinada' : 'simples', ...patchTipo })
     .eq('id', projetoId)
 
   revalidatePath(`/projetos/${projetoId}`)
-  redirect(`/projetos/${projetoId}`)
+  redirect(soVenda ? `/projetos/${projetoId}/venda-direta` : `/projetos/${projetoId}`)
 }
 
 export async function removerItemAction(itemId: string, projetoId: string) {

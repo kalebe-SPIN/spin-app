@@ -742,13 +742,22 @@ export async function enviarPropostaPeloCanalAction(entrada: {
  * últimas 24h). Fora dela a Meta aceita o envio e falha depois — então a
  * tela checa antes. Kalebe 2026-09-29.
  */
-export async function janelaAbertaAction(conversa_id: string): Promise<{ aberta: boolean } | { erro: string }> {
+export async function janelaAbertaAction(conversa_id: string): Promise<{ aberta: boolean; telefone: string | null } | { erro: string }> {
   const check = await verificarUsuario()
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
   const { data: conv } = await createAdminClient()
     .from('wa_conversas').select('janela_24h_expira_em').eq('id', conversa_id).maybeSingle()
   if (!conv) return { erro: 'Conversa não encontrada' }
-  return { aberta: !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date() }
+  const aberta = !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date()
+  // Kalebe 2026-10-01: janela fechada → a caixa oferece mandar pelo app
+  // WhatsApp Business (sem trava de 24h). Telefone pelo RLS: só quem vê a conversa.
+  let telefone: string | null = null
+  if (!aberta) {
+    const { data: c } = await createClient()
+      .from('wa_conversas').select('contato:contato_id(telefone)').eq('id', conversa_id).maybeSingle()
+    telefone = (c as any)?.contato?.telefone || null
+  }
+  return { aberta, telefone }
 }
 
 /**

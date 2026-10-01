@@ -7,33 +7,40 @@ import { formatarMoedaBRL } from '@/lib/formatters'
 export const dynamic = 'force-dynamic'
 
 /**
- * /venda-direta — atalho do admin (Kalebe 2026-09-29): venda de
- * equipamentos da planilha WEG direto ao consumidor final, sem projeto,
- * instalação nem lista CA. Cria o projeto e leva pra tela de equipamentos.
+ * /venda-direta — venda de equipamentos do catálogo direto ao consumidor
+ * final, sem projeto, instalação nem lista CA (Kalebe 2026-09-29). Cria o
+ * projeto e leva pra tela de equipamentos. Kalebe 2026-10-01: aberta a todos —
+ * quem não é admin vende em nome próprio e só vê as próprias vendas; estrutura
+ * de preço e cupons seguem só do admin.
  */
 export default async function VendaDiretaPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
-  const { data: perfil } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
-  if (perfil?.role !== 'admin') redirect('/dashboard')
+  const { data: perfil } = await supabase.from('profiles').select('role, nome_completo').eq('id', user.id).maybeSingle()
+  const ehAdmin = perfil?.role === 'admin'
+
+  let qVendas = supabase
+    .from('projetos')
+    .select('id, codigo, cliente_razao_social, status, pv_total, created_at, url_pdf_proposta')
+    .eq('tipo_projeto', 'venda_equipamentos')
+    .is('excluida_em', null)
+    .order('created_at', { ascending: false })
+    .limit(30)
+  if (!ehAdmin) qVendas = qVendas.eq('consultor_id', user.id)
 
   const [{ data: vendas }, { data: perfis }] = await Promise.all([
-    supabase
-      .from('projetos')
-      .select('id, codigo, cliente_razao_social, status, pv_total, created_at, url_pdf_proposta')
-      .eq('tipo_projeto', 'venda_equipamentos')
-      .is('excluida_em', null)
-      .order('created_at', { ascending: false })
-      .limit(30),
-    supabase
-      .from('profiles')
-      .select('id, nome_completo, role')
-      .eq('ativo', true)
-      .in('role', ['admin', 'representante', 'consultor']),
+    qVendas,
+    ehAdmin
+      ? supabase
+          .from('profiles')
+          .select('id, nome_completo, role')
+          .eq('ativo', true)
+          .in('role', ['admin', 'representante', 'consultor'])
+      : Promise.resolve({ data: [{ id: user.id, nome_completo: perfil?.nome_completo, role: perfil?.role || '' }] }),
   ])
 
-  const vendedores = (perfis || [])
+  const vendedores = ((perfis || []) as any[])
     .map((p: any) => ({ id: p.id, nome: p.nome_completo || 'Sem nome', papel: p.role }))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
 
@@ -52,11 +59,11 @@ export default async function VendaDiretaPage() {
           </p>
         </header>
 
-        <NovaVendaDiretaClient usuarioId={user.id} vendedores={vendedores} />
+        <NovaVendaDiretaClient usuarioId={user.id} vendedores={vendedores} escolherVendedor={ehAdmin} />
 
         <section>
           <h2 className="text-lg font-bold text-white mb-3">
-            Últimas vendas diretas <span className="text-xs font-normal text-white/40">({(vendas || []).length})</span>
+            {ehAdmin ? 'Últimas vendas diretas' : 'Minhas vendas de equipamentos'} <span className="text-xs font-normal text-white/40">({(vendas || []).length})</span>
           </h2>
           {(vendas || []).length === 0 ? (
             <p className="text-sm text-white/40 py-6 text-center bg-white/[0.02] border border-dashed border-white/10 rounded-lg">

@@ -52,7 +52,7 @@ export function CardBuscaCatalogo({ etapa, mostrarVendaDireta }: { etapa?: numbe
         </button>
       </div>
 
-      {/* Kalebe 2026-09-29: atalho do admin pra venda direta de equipamentos */}
+      {/* Kalebe 2026-09-29: atalho pra venda direta de equipamentos (todos desde 2026-10-01) */}
       {mostrarVendaDireta && (
         <button
           onClick={() => router.push('/venda-direta')}

@@ -9,9 +9,11 @@ import { buscarClienteVendaDiretaAction, criarVendaDiretaAction } from '@/app/ve
 export function NovaVendaDiretaClient({
   usuarioId,
   vendedores,
+  escolherVendedor = true,
 }: {
   usuarioId: string
   vendedores: Array<{ id: string; nome: string; papel: string }>
+  escolherVendedor?: boolean      // só o admin lança venda em nome de outro
 }) {
   const router = useRouter()
   const [dados, setDados] = useState<DadosVendaDireta>(dadosVazios())
@@ -65,14 +67,18 @@ export function NovaVendaDiretaClient({
       {aviso && <p className="text-xs text-verde">{aviso}</p>}
 
       <div className="flex flex-wrap items-end justify-between gap-4 pt-4 border-t border-white/5">
-        <label className="block min-w-[260px]">
-          <span className="block text-[11px] font-bold text-white/60 mb-1">Vendedor (recebe a comissão)</span>
-          <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} className={inputCls}>
-            {vendedores.map((v) => (
-              <option key={v.id} value={v.id} className="bg-noite">{v.nome} · {v.papel}</option>
-            ))}
-          </select>
-        </label>
+        {escolherVendedor ? (
+          <label className="block min-w-[260px]">
+            <span className="block text-[11px] font-bold text-white/60 mb-1">Vendedor (recebe a comissão)</span>
+            <select value={vendedorId} onChange={(e) => setVendedorId(e.target.value)} className={inputCls}>
+              {vendedores.map((v) => (
+                <option key={v.id} value={v.id} className="bg-noite">{v.nome} · {v.papel}</option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p className="text-xs text-white/50">Vendedor: <strong className="text-white/80">{vendedores[0]?.nome || 'você'}</strong></p>
+        )}
         <button
           type="button"
           onClick={criar}

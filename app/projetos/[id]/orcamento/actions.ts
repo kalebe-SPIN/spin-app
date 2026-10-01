@@ -67,8 +67,15 @@ export async function salvarOrcamentoAction(
   projetoId: string,
   proposta: any,
   urlPdf?: string,
-  consolidado?: { pv_total: number; pv_bruto: number; modo_composicao: string; ucs_qtd: number },
-) {
+  consolidado?: {
+    pv_total: number; pv_bruto: number; modo_composicao: string; ucs_qtd: number
+    potencia_cc_kwp?: number; potencia_ca_kw?: number
+  },
+  // Kalebe 2026-10-01: emitir SUBSTITUINDO uma versão do histórico (editar /
+  // atualizar valores) e zerar o desconto depois da emissão no servidor —
+  // vale pra qualquer papel (o desconto restaurado de uma versão também sai).
+  opcoes?: { substituirHistoricoId?: string | null; zerarDesconto?: boolean },
+): Promise<{ sucesso: true; aviso?: string } | { sucesso: false; erro: string }> {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { sucesso: false, erro: 'Não autenticado' }
@@ -84,6 +91,8 @@ export async function salvarOrcamentoAction(
   // emissão de PDF vira uma linha em projeto_propostas_historico com
   // snapshot financeiro + memória de cálculo. Assim o portal lista todas
   // as versões emitidas (v1, v2, v3...) sem depender do bucket.
+  let aviso: string | undefined
+  let substituiu = false
   if (urlPdf) {
     // Puxa desconto vigente do projeto pra registrar no snapshot histórico
     const { data: proj } = await supabase
@@ -92,30 +101,212 @@ export async function salvarOrcamentoAction(
       .eq('id', projetoId)
       .maybeSingle()
     const memoria = proposta?.memoria_calculo || null
-    await supabase
-      .from('projeto_propostas_historico')
-      .insert({
-        projeto_id: projetoId,
-        url_pdf: urlPdf,
-        pv_total: consolidado?.pv_total ?? proposta?.pv_total ?? null,
-        pv_bruto: consolidado?.pv_bruto ?? null,
-        desconto_pct: proj?.desconto_admin_pct ?? null,
-        desconto_valor: proj?.desconto_admin_valor ?? null,
-        desconto_motivo: proj?.desconto_admin_motivo ?? null,
-        potencia_cc_kwp: memoria?.potencia_cc_kwp ?? null,
-        potencia_ca_kw: memoria?.potencia_ca_kw ?? null,
-        modo_composicao: consolidado?.modo_composicao ?? null,
-        ucs_qtd: consolidado?.ucs_qtd ?? null,
-        memoria_calculo: memoria,
-        gerado_por: user.id,
-      })
+    const snapshot = {
+      url_pdf: urlPdf,
+      pv_total: consolidado?.pv_total ?? proposta?.pv_total ?? null,
+      pv_bruto: consolidado?.pv_bruto ?? null,
+      desconto_pct: proj?.desconto_admin_pct ?? null,
+      desconto_valor: proj?.desconto_admin_valor ?? null,
+      desconto_motivo: proj?.desconto_admin_motivo ?? null,
+      // Potência com placa/inversor extra (o client manda a consolidada)
+      potencia_cc_kwp: consolidado?.potencia_cc_kwp ?? memoria?.potencia_cc_kwp ?? null,
+      potencia_ca_kw: consolidado?.potencia_ca_kw ?? memoria?.potencia_ca_kw ?? null,
+      modo_composicao: consolidado?.modo_composicao ?? null,
+      ucs_qtd: consolidado?.ucs_qtd ?? null,
+      memoria_calculo: memoria,
+    }
+
+    if (opcoes?.substituirHistoricoId) {
+      const r = await substituirVersao(supabase, projetoId, opcoes.substituirHistoricoId, snapshot, user.id)
+      if (r === true) substituiu = true
+      else aviso = `${r} — o PDF entrou como versão nova.`
+    }
+    if (!substituiu) {
+      await supabase
+        .from('projeto_propostas_historico')
+        .insert({ projeto_id: projetoId, ...snapshot, gerado_por: user.id })
+    }
+
+    if (opcoes?.zerarDesconto && (proj?.desconto_admin_pct != null || proj?.desconto_admin_valor != null)) {
+      // Kalebe 2026-09-22: a próxima proposta começa sem desconto
+      await supabase
+        .from('projetos')
+        .update({
+          desconto_admin_pct: null, desconto_admin_valor: null, desconto_admin_motivo: null,
+          desconto_admin_por: null, desconto_admin_em: null,
+        })
+        .eq('id', projetoId)
+    }
   }
 
-  // Dispara transição de status com auditoria + automações
-  await mudarEtapaProjetoAction(projetoId, 'orcamento_gerado', 'Orçamento gerado pelo consultor')
+  // Dispara transição de status com auditoria + automações. Ao substituir uma
+  // versão (proposta que talvez já foi enviada) o status só AVANÇA — não volta
+  // de "proposta enviada"/"negociando" pra "orçamento gerado".
+  const { data: st } = await supabase.from('projetos').select('status').eq('id', projetoId).maybeSingle()
+  const antesDoOrcamento = ['rascunho', 'dimensionado', 'kit_selecionado', 'lista_ca_confirmada']
+  if (!substituiu || (st && antesDoOrcamento.includes(st.status))) {
+    await mudarEtapaProjetoAction(projetoId, 'orcamento_gerado', 'Orçamento gerado pelo consultor')
+  }
 
   revalidatePath(`/projetos/${projetoId}`)
   revalidatePath(`/projetos/${projetoId}/orcamento`)
+  return { sucesso: true, aviso }
+}
+
+const MSG_MIGRATION_132 = 'Falta rodar a migration 132 (editar/excluir versões) no Supabase'
+
+/** true = substituiu; string = motivo de não ter substituído. */
+async function substituirVersao(
+  supabase: ReturnType<typeof createClient>,
+  projetoId: string,
+  historicoId: string,
+  snapshot: Record<string, any>,
+  userId: string,
+): Promise<true | string> {
+  const { data: atual, error: eSel } = await supabase
+    .from('projeto_propostas_historico')
+    .select('id, url_pdf, pv_total, potencia_cc_kwp, desconto_pct, desconto_valor, gerado_em, atualizado_em, substituicoes, excluida_em')
+    .eq('id', historicoId)
+    .eq('projeto_id', projetoId)
+    .maybeSingle()
+  if (eSel) return MSG_MIGRATION_132
+  if (!atual || atual.excluida_em) return 'A versão não existe mais'
+
+  // Guarda o que havia antes (auditoria) — o arquivo antigo continua no bucket
+  const anteriores = Array.isArray(atual.substituicoes) ? atual.substituicoes : []
+  const agora = new Date().toISOString()
+  const { data: upd, error } = await supabase
+    .from('projeto_propostas_historico')
+    .update({
+      ...snapshot,
+      arquivo_expirado_em: null,
+      atualizado_em: agora,
+      atualizado_por: userId,
+      substituicoes: [
+        ...anteriores,
+        {
+          url_pdf: atual.url_pdf, pv_total: atual.pv_total, potencia_cc_kwp: atual.potencia_cc_kwp,
+          desconto_pct: atual.desconto_pct, desconto_valor: atual.desconto_valor,
+          emitida_em: atual.atualizado_em || atual.gerado_em, substituida_em: agora, substituida_por: userId,
+        },
+      ],
+    })
+    .eq('id', historicoId)
+    .select('id')
+  if (error) return MSG_MIGRATION_132
+  if (!upd?.length) return 'Sem permissão pra alterar essa versão'
+  return true
+}
+
+/**
+ * Kalebe 2026-10-01: abre uma versão do histórico pra editar / atualizar
+ * valores — o desconto daquela versão volta pro projeto (é o mesmo que o
+ * admin já tinha aprovado, por isso vale pra qualquer papel). Kit, extras e
+ * preços são os ATUAIS do projeto.
+ */
+export async function prepararVersaoPropostaAction(
+  projetoId: string,
+  historicoId: string,
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const { data: v, error } = await supabase
+    .from('projeto_propostas_historico')
+    .select('id, desconto_pct, desconto_valor, desconto_motivo, excluida_em')
+    .eq('id', historicoId)
+    .eq('projeto_id', projetoId)
+    .maybeSingle()
+  if (error) return { erro: MSG_MIGRATION_132 }
+  if (!v || v.excluida_em) return { erro: 'Versão não encontrada' }
+
+  const temDesconto = (Number(v.desconto_pct) || 0) !== 0 || (Number(v.desconto_valor) || 0) !== 0
+  const { error: eUpd } = await supabase
+    .from('projetos')
+    .update({
+      desconto_admin_pct: temDesconto ? v.desconto_pct : null,
+      desconto_admin_valor: temDesconto ? v.desconto_valor : null,
+      desconto_admin_motivo: temDesconto ? v.desconto_motivo : null,
+      desconto_admin_por: temDesconto ? user.id : null,
+      desconto_admin_em: temDesconto ? new Date().toISOString() : null,
+    })
+    .eq('id', projetoId)
+  if (eUpd) return { erro: eUpd.message }
+
+  revalidatePath(`/projetos/${projetoId}/orcamento`)
+  return { sucesso: true }
+}
+
+/** Cancela a edição: tira o desconto restaurado se ninguém mexeu nele. */
+export async function cancelarEdicaoVersaoAction(
+  projetoId: string,
+  historicoId: string,
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const [{ data: v }, { data: p }] = await Promise.all([
+    supabase.from('projeto_propostas_historico').select('desconto_pct, desconto_valor')
+      .eq('id', historicoId).eq('projeto_id', projetoId).maybeSingle(),
+    supabase.from('projetos').select('desconto_admin_pct, desconto_admin_valor').eq('id', projetoId).maybeSingle(),
+  ])
+  const igual = (a: any, b: any) => (Number(a) || 0) === (Number(b) || 0)
+  if (v && p && igual(v.desconto_pct, p.desconto_admin_pct) && igual(v.desconto_valor, p.desconto_admin_valor)) {
+    await supabase
+      .from('projetos')
+      .update({
+        desconto_admin_pct: null, desconto_admin_valor: null, desconto_admin_motivo: null,
+        desconto_admin_por: null, desconto_admin_em: null,
+      })
+      .eq('id', projetoId)
+  }
+  revalidatePath(`/projetos/${projetoId}/orcamento`)
+  return { sucesso: true }
+}
+
+/**
+ * Exclui uma versão do histórico (soft delete — fica a auditoria de quem e
+ * quando). Se era a proposta "atual" do projeto, a atual passa a ser a
+ * versão mais recente que sobrou.
+ */
+export async function excluirVersaoPropostaAction(
+  projetoId: string,
+  historicoId: string,
+): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+
+  const { data: upd, error } = await supabase
+    .from('projeto_propostas_historico')
+    .update({ excluida_em: new Date().toISOString(), excluida_por: user.id })
+    .eq('id', historicoId)
+    .eq('projeto_id', projetoId)
+    .is('excluida_em', null)
+    .select('url_pdf')
+  if (error) return { erro: MSG_MIGRATION_132 }
+  if (!upd?.length) return { erro: 'Versão não encontrada ou sem permissão pra excluir' }
+
+  const { data: proj } = await supabase.from('projetos').select('url_pdf_proposta').eq('id', projetoId).maybeSingle()
+  if (proj?.url_pdf_proposta && proj.url_pdf_proposta === upd[0].url_pdf) {
+    const { data: restante } = await supabase
+      .from('projeto_propostas_historico')
+      .select('url_pdf')
+      .eq('projeto_id', projetoId)
+      .is('excluida_em', null)
+      .is('arquivo_expirado_em', null)
+      .order('gerado_em', { ascending: false })
+      .limit(1)
+    await supabase
+      .from('projetos')
+      .update({ url_pdf_proposta: restante?.[0]?.url_pdf || null })
+      .eq('id', projetoId)
+  }
+
+  revalidatePath(`/projetos/${projetoId}/orcamento`)
+  revalidatePath(`/projetos/${projetoId}`)
   return { sucesso: true }
 }
 

@@ -40,6 +40,9 @@ export function ComposerWhatsApp({
   const [gravando, setGravando] = useState(false)
   const [segundos, setSegundos] = useState(0)
   const [agendaConversa, setAgendaConversa] = useState<string | null>(null)
+  // Kalebe 2026-10-01: janela de 24h fechada → em vez de só o erro, oferece
+  // mandar pelo app WhatsApp Business do número Spin com o texto já pronto
+  const [janelaFechada, setJanelaFechada] = useState<{ telefone: string | null; tipo: string } | null>(null)
   const inputArquivoRef = useRef<HTMLInputElement>(null)
   const gravadorRef = useRef<any>(null)
   const timerRef = useRef<any>(null)
@@ -62,7 +65,7 @@ export function ComposerWhatsApp({
   }, [texto])
 
   async function comConversa<T>(tipo: NonNullable<typeof ocupado>, fn: (id: string) => Promise<T>) {
-    onErro(null); setOcupado(tipo)
+    onErro(null); setOcupado(tipo); setJanelaFechada(null)
     try {
       const id = await obterConversaId()
       if (!id) return
@@ -70,7 +73,11 @@ export function ComposerWhatsApp({
       // ("Re-engagement message") — confere antes e explica o que fazer.
       const janela = await janelaAbertaAction(id)
       if ('erro' in janela) { onErro(janela.erro); return }
-      if (!janela.aberta) { onErro(MSG_JANELA_FECHADA); return }
+      if (!janela.aberta) {
+        if (janela.telefone) setJanelaFechada({ telefone: janela.telefone, tipo })
+        else onErro(MSG_JANELA_FECHADA)
+        return
+      }
       await fn(id)
     } catch (e: any) {
       onErro(e?.message || 'Falha no envio')
@@ -176,11 +183,46 @@ export function ComposerWhatsApp({
     }
   }
 
+  // App WhatsApp Business do número Spin (coexistência): sem a trava de 24h da
+  // API, e o que sai por ele volta pra esta conversa pelo eco
+  function enviarPeloApp() {
+    if (!janelaFechada?.telefone) return
+    let tel = janelaFechada.telefone.replace(/\D/g, '')
+    if (tel.length === 10 || tel.length === 11) tel = '55' + tel
+    const t = janelaFechada.tipo === 'texto' ? texto.trim() : ''
+    const celular = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)
+    const q = t ? `text=${encodeURIComponent(t)}` : ''
+    window.location.href = celular
+      ? `https://wa.me/${tel}${q ? `?${q}` : ''}`
+      : `whatsapp://send?phone=${tel}${q ? `&${q}` : ''}`
+    if (t) setTexto('')
+    setJanelaFechada(null)
+  }
+
   const mmss = `${Math.floor(segundos / 60)}:${String(segundos % 60).padStart(2, '0')}`
   const botao = 'w-9 h-9 shrink-0 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 disabled:opacity-30 transition'
 
   return (
     <>
+      {janelaFechada && (
+        <div className="mb-2 rounded-xl bg-sol/10 border border-sol/30 p-2.5 text-xs text-white/80 space-y-2">
+          <p>
+            🔒 <strong className="text-sol">Janela de 24h fechada</strong> — o cliente não escreveu pro número da Spin
+            nas últimas 24h e o WhatsApp não entrega o que sai do sistema.{' '}
+            <span className="text-white/60">Pelo app WhatsApp Business do número Spin não tem essa trava — e a mensagem aparece aqui.</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={enviarPeloApp}
+              className="px-3 py-1.5 rounded-lg bg-verde text-noite font-bold hover:bg-verde/90">
+              📱 {janelaFechada.tipo === 'texto' && texto.trim() ? 'Enviar pelo WhatsApp Business (mensagem pronta)' : 'Abrir no WhatsApp Business'}
+            </button>
+            <button type="button" onClick={() => setJanelaFechada(null)}
+              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/15 text-white/70 hover:bg-white/10">
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
       {gravando ? (
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => finalizarGravacao(false)} className={botao} title="Descartar áudio">
