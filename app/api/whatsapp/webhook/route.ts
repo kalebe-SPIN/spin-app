@@ -325,12 +325,29 @@ export async function POST(req: NextRequest) {
           }
 
           if (conversaId && !respondendoConsultor) {
+            // Kalebe 2026-10-01: cliente costuma mandar 2–3 mensagens seguidas.
+            // Espera uns segundos e só a rodada da mensagem MAIS NOVA chama a
+            // Laís — 1 resposta considerando tudo, em vez de 2 rodadas em que
+            // uma desiste e a outra mensagem fica sem resposta.
+            const cid = conversaId
+            const metaId: string | undefined = msg.id
             waitUntil(
-              processarMensagemQualificacao(conversaId)
-                .then((r) => {
-                  if ('erro' in r) console.error('[webhook agente-qualificacao] erro:', r.erro)
-                })
-                .catch((err) => console.error('[webhook agente-qualificacao]', err)),
+              (async () => {
+                await new Promise((ok) => setTimeout(ok, 4_000))
+                if (metaId) {
+                  const { data: ultimaIn } = await supabaseAdmin
+                    .from('wa_mensagens')
+                    .select('meta_message_id')
+                    .eq('conversa_id', cid)
+                    .eq('direcao', 'inbound')
+                    .order('criada_em', { ascending: false })
+                    .limit(1)
+                    .maybeSingle()
+                  if (ultimaIn?.meta_message_id && ultimaIn.meta_message_id !== metaId) return
+                }
+                const r = await processarMensagemQualificacao(cid)
+                if ('erro' in r) console.error('[webhook agente-qualificacao] erro:', r.erro)
+              })().catch((err) => console.error('[webhook agente-qualificacao]', err)),
             )
           }
 

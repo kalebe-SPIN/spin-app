@@ -4,7 +4,17 @@ import { enviarTextoPeloCanal } from './enviar-canal'
 import { iniciarBroadcastLead, RETOMADA_MIN } from './broadcast'
 import { getWaConfig } from './config'
 import { cadastroDoContato, avisarEquipe } from '@/lib/agentes/diretorio'
-import { NOME_SDR } from '@/lib/agentes/nomes'
+import { NOME_SDR, URL_PORTAL } from '@/lib/agentes/nomes'
+
+/** JSON da IA, tolerante a cercas de código e texto antes/depois. */
+function extrairJson(texto: string): any {
+  const limpo = String(texto || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '')
+  try { return JSON.parse(limpo) } catch { /* tenta o recorte abaixo */ }
+  const ini = limpo.indexOf('{')
+  const fim = limpo.lastIndexOf('}')
+  if (ini >= 0 && fim > ini) return JSON.parse(limpo.slice(ini, fim + 1))
+  throw new Error('resposta da IA sem JSON')
+}
 
 /**
  * Agente de qualificação de leads WhatsApp.
@@ -183,6 +193,11 @@ export async function processarMensagemQualificacao(
   if (ultima && ultima.direcao === 'outbound') {
     return { acao: 'ignorada', motivo: 'última mensagem é outbound' }
   }
+  // Kalebe 2026-10-01: a resposta vale até esta msg do cliente — se chegar
+  // outra enquanto a IA pensa, não responde por cima (a rodada da msg nova,
+  // disparada pelo webhook dela, responde considerando tudo)
+  const ultimaInboundUsada: string | null =
+    msgs.slice().reverse().find((m) => m.direcao === 'inbound')?.criada_em || null
 
   // Detecta se última msg é imagem/documento — provável fatura
   const detectouFatura = msgs?.slice(-3).some(
@@ -248,15 +263,25 @@ Retorne apenas o JSON.`
     })
     // Se a Anthropic não conseguir abrir o anexo, responde só com o texto
     // — melhor responder sem ver a foto do que deixar o lead sem resposta.
-    const resp = await chamar(true).catch((e) => {
-      if (anexos.length === 0) throw e
-      console.error('[agente-qualificacao] anexo recusado, tentando sem:', e?.message)
-      return chamar(false)
-    })
-    const bloco = resp.content?.[0]
-    const texto = bloco?.type === 'text' ? (bloco as any).text : ''
-    const limpo = String(texto).trim().replace(/^```(?:json)?\s*|\s*```$/g, '')
-    resposta = JSON.parse(limpo)
+    const consultar = async () => {
+      const resp = await chamar(true).catch((e) => {
+        if (anexos.length === 0) throw e
+        console.error('[agente-qualificacao] anexo recusado, tentando sem:', e?.message)
+        return chamar(false)
+      })
+      const texto = (resp.content || []).map((b: any) => (b.type === 'text' ? b.text : '')).join('')
+      return extrairJson(texto)
+    }
+    // Kalebe 2026-10-01: API sobrecarregada ou JSON torto → tenta de novo uma
+    // vez antes de desistir (sem isso a resposta só saía na rede de segurança
+    // do cron, minutos depois)
+    try {
+      resposta = await consultar()
+    } catch (e1: any) {
+      console.error('[agente-qualificacao] 1ª tentativa falhou:', e1?.message)
+      await new Promise((ok) => setTimeout(ok, 1500))
+      resposta = await consultar()
+    }
   } catch (e: any) {
     console.error('[agente-qualificacao]', e)
     return { erro: `IA falhou: ${e?.message || 'parse error'}` }
@@ -322,6 +347,17 @@ Retorne apenas o JSON.`
       const idadeMs = Date.now() - new Date((ultimaHumana as any).criada_em).getTime()
       if (idadeMs < 90_000) return false
     }
+    // Cliente mandou outra msg enquanto a IA pensava → a rodada dela responde
+    if (ultimaInboundUsada) {
+      const { data: maisNova } = await admin
+        .from('wa_mensagens')
+        .select('id')
+        .eq('conversa_id', conversa_id)
+        .eq('direcao', 'inbound')
+        .gt('criada_em', ultimaInboundUsada)
+        .limit(1)
+      if (maisNova?.length) return false
+    }
     return true
   }
 
@@ -332,6 +368,17 @@ Retorne apenas o JSON.`
       .from('wa_conversas')
       .update({ contexto_qualificacao: contextoNovo, status: 'em_atendimento', agente_ativo: null })
       .eq('id', conversa_id)
+    // Kalebe 2026-10-01: sem responsável, ninguém via e o cliente ficava sem
+    // resposta — a equipe é avisada (admins) pra alguém assumir
+    if (!(conv as any).responsavel_id) {
+      const quem = contextoNovo.nome_cliente || contato.nome_exibicao || contato.telefone
+      await avisarEquipe({
+        agente: 'qualificacao',
+        mensagem: `${quem} (${contato.telefone}) parece estar conversando com alguém da equipe, então saí da conversa — mas ela está sem responsável. Alguém assume? ${URL_PORTAL}/inbox?c=${conversa_id}`,
+        conversa_id,
+        projeto_id: contato.projeto_id || contextoNovo.projeto_id || null,
+      }).catch((e) => console.error('[agente-qualificacao] aviso conversa_humana', e))
+    }
     return { acao: 'ignorada', motivo: 'IA detectou conversa com consultor' }
   }
 
