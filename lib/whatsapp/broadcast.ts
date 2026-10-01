@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { enviarTextoPeloCanal } from './enviar-canal'
 import { upsertContato, findOrCreateConversaAtiva } from './conversas'
-import { NOME_SDR } from '@/lib/agentes/nomes'
+import { NOME_SDR, URL_PORTAL } from '@/lib/agentes/nomes'
 
 /**
  * Motor de broadcast/fila FIFO pros representantes.
@@ -56,19 +56,21 @@ export async function iniciarBroadcastLead(entrada: {
     }
   }
 
-  // Busca representantes ativos COM telefone cadastrado
-  const { data: reps } = await admin
+  // Representantes + admins ativos. Kalebe 2026-10-01: o filtro tinha
+  // 'consultor', que não existe no enum user_role — a consulta inteira falhava
+  // e o lead qualificado não chegava a ninguém.
+  const { data: reps, error: eReps } = await admin
     .from('profiles')
     .select('id, nome_completo, telefone')
-    .in('role', ['representante', 'admin', 'consultor'])   // MVP: admin + consultor também recebem
+    .in('role', ['representante', 'admin'])
     .eq('ativo', true)
+  if (eReps) console.error('[broadcast] representantes', eReps.message)
 
-  const repsValidos = (reps || []).filter((r) =>
-    r.telefone && String(r.telefone).replace(/\D/g, '').length >= 10,
-  )
+  // Sino vai pra todos; WhatsApp só pra quem tem telefone
+  const repsValidos = (reps || []) as Array<{ id: string; nome_completo: string | null; telefone: string | null }>
 
   if (repsValidos.length === 0) {
-    console.warn('[broadcast] Nenhum representante ativo com telefone cadastrado')
+    console.warn('[broadcast] Nenhum representante ativo')
   }
 
   // Cria broadcast
@@ -91,43 +93,28 @@ export async function iniciarBroadcastLead(entrada: {
     return { erro: error?.message || 'Falha ao criar broadcast' }
   }
 
-  // Notifica cada representante individualmente pelo canal Spin
-  // (usa upsert de contato — a maioria já deve existir).
+  // Kalebe 2026-10-01: cada um recebe pela Laís — sino do portal (com link
+  // pra aceitar no portal) + WhatsApp (texto com janela aberta; modelo
+  // spin_aviso_interno com janela fechada, quando aprovado). Responder
+  // ACEITAR no WhatsApp continua valendo.
+  const { avisarUsuario } = await import('@/lib/agentes/diretorio')
+  const linkAceitar = `${URL_PORTAL}/leads/aceitar/${broadcast.id}`
+  const msg = [
+    entrada.resumo,
+    `Quem aceitar primeiro fica com o lead e tem ${PRAZO_CONTATO_MIN} min pra contatar o cliente (áudio ou chamada) pelo canal Spin.`,
+    `👉 Aceitar: ${linkAceitar} — ou responda *ACEITAR* aqui.`,
+  ].join('\n')
   for (const rep of repsValidos) {
     try {
-      const tel = normalizarBR(rep.telefone!)
-      const contato = await upsertContato(admin, {
-        telefone: tel,
-        nome_exibicao: rep.nome_completo || undefined,
-        tipo_default: 'representante',
+      await avisarUsuario({
+        destinatario_id: rep.id,
+        agente: 'qualificacao',
+        titulo: '🎯 Novo lead disponível',
+        mensagem: msg,
+        urgente: true,
+        conversa_id: entrada.conversa_id,
+        projeto_id: entrada.projeto_id,
       })
-      if (!contato) continue
-      const conversaRep = await findOrCreateConversaAtiva(admin, contato.id, {
-        status_inicial: 'em_atendimento',
-      })
-      if (!conversaRep) continue
-
-      const primeiroNome = (rep.nome_completo || '').split(' ')[0]
-      const msg = [
-        `🎯 *Novo lead disponível*`,
-        ``,
-        entrada.resumo,
-        ``,
-        `Responda *ACEITAR* pra atender.`,
-        `Quem responder primeiro fica com o lead — depois disso você tem ${PRAZO_CONTATO_MIN} min pra contatar o cliente (mensagem de voz ou chamada) pelo canal Spin.`,
-      ].join('\n')
-
-      await enviarTextoPeloCanal({
-        conversa_id: conversaRep.id,
-        telefone: tel,
-        texto: msg,
-        remetente_agente: 'sistema',
-        origem_agente_nome: 'Central Spin',
-        prefixar_com_nome: false,     // template estruturado, não persona
-      })
-
-      // Guarda o vínculo broadcast → conversa do rep pra saber onde ele respondeu
-      // (sem tabela extra: guardamos em lead_aceites depois quando ele aceitar)
     } catch (e) {
       console.error('[broadcast/notifica_rep]', rep.id, e)
     }
@@ -225,6 +212,13 @@ export async function aceitarLead(entrada: {
         atualizado_em: agora.toISOString(),
       })
       .eq('id', entrada.broadcast_id)
+
+    // Kalebe 2026-10-01: quem está no volante vira o responsável da conversa
+    // — sem isso o representante nem enxergava a conversa no inbox
+    await admin
+      .from('wa_conversas')
+      .update({ responsavel_id: entrada.representante_id })
+      .eq('id', bc.conversa_id)
 
     // Avisa o REP: "você está no volante, tem 8 min. Contato = voz ou vídeo pelo canal Spin"
     await avisarNoVolante(admin, entrada.broadcast_id, entrada.representante_id, bc.contato_id)

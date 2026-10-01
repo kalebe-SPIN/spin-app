@@ -52,7 +52,7 @@ export async function middleware(request: NextRequest) {
     const rotasPrivadas = [
       '/dashboard', '/conta', '/admin', '/parceiro', '/cliente',
       '/projetos', '/crm', '/agenda', '/homologacoes',
-      '/financeiro', '/grupos', '/erp',
+      '/financeiro', '/grupos', '/erp', '/leads',
     ]
     const ehRotaPrivada = rotasPrivadas.some((r) => pathname.startsWith(r))
 

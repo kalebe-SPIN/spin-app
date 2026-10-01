@@ -275,7 +275,7 @@ export async function POST(req: NextRequest) {
                 .from('profiles')
                 .select('id, role, ativo')
                 .or(`telefone.eq.${telNorm},telefone.eq.${telSemDDI}`)
-                .in('role', ['representante', 'admin', 'consultor'])
+                .in('role', ['representante', 'admin'])   // enum não tem 'consultor' (derrubava o aceite)
                 .maybeSingle()
               if (perfilRep?.ativo) {
                 // Pega broadcast mais recente aguardando/atribuído — MVP: 1 broadcast ativo por vez

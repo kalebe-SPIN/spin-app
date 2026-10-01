@@ -9,7 +9,9 @@ import {
 } from '@/lib/whatsapp/broadcast'
 import { processarMensagemQualificacao } from '@/lib/whatsapp/agente-qualificacao'
 import { getWaConfig } from '@/lib/whatsapp/config'
-import { NOME_SDR } from '@/lib/agentes/nomes'
+import { NOME_SDR, URL_PORTAL } from '@/lib/agentes/nomes'
+import { avisarEquipe } from '@/lib/agentes/diretorio'
+import { rodarPlantaoLais } from '@/lib/whatsapp/plantao'
 
 /**
  * Cron SLA do canal WhatsApp Spin.
@@ -185,6 +187,15 @@ export async function GET(req: NextRequest) {
             })
             .eq('id', aceite.broadcast_id)
 
+          // Kalebe 2026-10-01: a conversa passa pro próximo da fila
+          const { data: bcConv } = await admin
+            .from('lead_broadcasts').select('conversa_id').eq('id', aceite.broadcast_id).maybeSingle()
+          if (bcConv?.conversa_id) {
+            await admin.from('wa_conversas')
+              .update({ responsavel_id: proximo.representante_id })
+              .eq('id', bcConv.conversa_id)
+          }
+
           stats.failovers++
 
           // Avisa o próximo rep
@@ -234,6 +245,18 @@ export async function GET(req: NextRequest) {
               encerrado_em: agoraIso,
             })
             .eq('id', aceite.broadcast_id)
+          // Kalebe 2026-10-01: ninguém da fila contatou → conversa volta a ficar
+          // sem dono (aparece em "s/ dono" no inbox) e os admins são avisados
+          const { data: bcExp } = await admin
+            .from('lead_broadcasts').select('conversa_id').eq('id', aceite.broadcast_id).maybeSingle()
+          if (bcExp?.conversa_id) {
+            await admin.from('wa_conversas').update({ responsavel_id: null }).eq('id', bcExp.conversa_id)
+            await avisarEquipe({
+              agente: 'qualificacao',
+              mensagem: `Ninguém da fila contatou o lead dentro do prazo — a conversa ficou sem dono. ${URL_PORTAL}/inbox?c=${bcExp.conversa_id}`,
+              conversa_id: bcExp.conversa_id,
+            }).catch((e) => console.error('[cron lead-sla/expirado aviso]', e))
+          }
           stats.broadcasts_expirados++
         }
       } catch (e) {
@@ -310,6 +333,19 @@ export async function GET(req: NextRequest) {
         console.error('[cron lead-sla/rede_seguranca]', e)
         stats.erros++
       }
+    }
+
+    // ─── 5. PLANTÃO DA LAÍS — cliente esperando o responsável humano ────
+    // Kalebe 2026-10-01: conversa "em atendimento" com msg do cliente sem
+    // resposta há alguns minutos no horário comercial → Laís acolhe o
+    // cliente (sem negociar nada) e cobra o responsável com resumo e link.
+    try {
+      const p = await rodarPlantaoLais()
+      ;(stats as any).plantao_acolhidos = p.acolhidos
+      ;(stats as any).plantao_so_aviso = p.so_aviso
+    } catch (e) {
+      console.error('[cron lead-sla/plantao]', e)
+      stats.erros++
     }
 
     return NextResponse.json({ ok: true, stats })
