@@ -17,6 +17,8 @@ import {
   statusModeloRetomadaAction,
   reabrirComModeloAction,
   marcarConversaLidaAction,
+  listarAtendentesAction,
+  transferirConversaAction,
 } from '@/app/inbox/actions'
 
 type Conversa = {
@@ -89,6 +91,9 @@ export function InboxClient({
   const empurrouHistorico = useRef(false)
   const [modalAberto, setModalAberto] = useState(false)
   const [modalProjeto, setModalProjeto] = useState(false)
+  // Kalebe 2026-10-01: transferir atendimento (Laís avisa quem recebe)
+  const [modalTransferir, setModalTransferir] = useState(false)
+  const [okMsg, setOkMsg] = useState<string | null>(null)
   // Kalebe 2026-09-29: contatos do projeto (decisor etc.) repassados na conversa
   const [contatosProj, setContatosProj] = useState<{ projeto_id: string | null; codigo: string | null; telefones: string[] }>({ projeto_id: null, codigo: null, telefones: [] })
   const [contatoPraSalvar, setContatoPraSalvar] = useState<null | { nome: string; telefone: string; origem: 'whatsapp_cartao' | 'whatsapp_texto'; wa_mensagem_id: string }>(null)
@@ -449,6 +454,16 @@ export function InboxClient({
                     {selecionada.contato?.projeto_id ? '＋ Projeto' : '📁 Transformar em projeto'}
                   </button>
                 )}
+                {!selecionada.encerrada_em && (usuarioRole === 'admin' || !selecionada.responsavel_id || selecionada.responsavel_id === usuarioId) && (
+                  <button
+                    onClick={() => { setOkMsg(null); setModalTransferir(true) }}
+                    disabled={isPending}
+                    title="Passa o atendimento pra outro usuário — a Laís avisa no WhatsApp com resumo e link"
+                    className="px-3 py-1.5 rounded bg-weg-azul/15 border border-weg-azul/40 text-weg-azul text-xs font-bold hover:bg-weg-azul/25 disabled:opacity-40"
+                  >
+                    ↪ Transferir
+                  </button>
+                )}
                 {(!selecionada.responsavel_id || selecionada.responsavel_id !== usuarioId) && (
                   <button
                     onClick={assumir}
@@ -537,6 +552,12 @@ export function InboxClient({
                 conversa empilhadas) fica sticky no rodapé enquanto rola. */}
             <div className="shrink-0 sticky bottom-0 z-10 bg-noite p-3 border-t border-white/10 space-y-2">
               {erro && <p className="text-xs text-coral bg-coral/10 border border-coral/30 rounded p-2">{erro}</p>}
+              {okMsg && (
+                <p className="text-xs text-verde bg-verde/10 border border-verde/30 rounded p-2 flex items-start justify-between gap-2">
+                  <span>{okMsg}</span>
+                  <button onClick={() => setOkMsg(null)} className="text-white/50 hover:text-white shrink-0">✕</button>
+                </p>
+              )}
               {/* Kalebe 2026-09-29: caixa estilo WhatsApp — clipe, agenda da
                   Bianca, áudio gravado, ícones brancos minimalistas */}
               <ComposerWhatsApp
@@ -552,6 +573,16 @@ export function InboxClient({
       </section>
 
       {/* Modal — transformar a conversa em projeto */}
+      {modalTransferir && selecionada && (
+        <ModalTransferir
+          conversaId={selecionada.id}
+          nomeCliente={selecionada.contato?.nome_exibicao || selecionada.contato?.telefone || 'cliente'}
+          responsavelAtualId={selecionada.responsavel_id}
+          onFechar={() => setModalTransferir(false)}
+          onTransferido={(texto) => { setModalTransferir(false); setOkMsg(texto); refreshConversas() }}
+        />
+      )}
+
       {modalProjeto && selecionadaId && (
         <ModalProjetoConversa
           conversaId={selecionadaId}
@@ -699,6 +730,81 @@ function BannerJanelaFechada({ conversaId, nuncaEscreveu, nomeCliente, telefone,
         </div>
       )}
       {msg && <p className={msg.ok ? 'text-verde' : 'text-coral'}>{msg.ok ? '✓' : '⚠'} {msg.texto}</p>}
+    </div>
+  )
+}
+
+/**
+ * Kalebe 2026-10-01: transferir o atendimento — escolhe o usuário (A→Z), deixa
+ * um recado opcional; a Laís avisa quem recebe no WhatsApp e no sino.
+ */
+function ModalTransferir({ conversaId, nomeCliente, responsavelAtualId, onFechar, onTransferido }: {
+  conversaId: string
+  nomeCliente: string
+  responsavelAtualId: string | null
+  onFechar: () => void
+  onTransferido: (texto: string) => void
+}) {
+  const [atendentes, setAtendentes] = useState<Array<{ id: string; nome: string; papel: string }> | null>(null)
+  const [paraId, setParaId] = useState('')
+  const [recado, setRecado] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    listarAtendentesAction().then((r) => {
+      if ('erro' in r) setErro(r.erro)
+      else setAtendentes(r.atendentes.filter((a) => a.id !== responsavelAtualId))
+    })
+  }, [responsavelAtualId])
+
+  async function transferir() {
+    if (!paraId) return
+    setEnviando(true); setErro(null)
+    try {
+      const r = await transferirConversaAction({ conversa_id: conversaId, para_id: paraId, recado })
+      if ('erro' in r) { setErro(r.erro); return }
+      const primeiro = r.nome.split(' ')[0] || 'o colega'
+      onTransferido(r.whatsapp
+        ? `↪ Transferido pra ${r.nome}. A Laís avisou ${primeiro} no WhatsApp com o resumo e o link.`
+        : `↪ Transferido pra ${r.nome}. Aviso no sino do portal${r.motivo ? ` — WhatsApp não foi (${r.motivo})` : ''}.`)
+    } finally { setEnviando(false) }
+  }
+
+  const papel: Record<string, string> = { admin: 'admin', consultor: 'consultor', representante: 'representante' }
+  const inputCls = 'w-full bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none'
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onFechar}>
+      <div className="w-full max-w-md bg-noite border border-white/15 rounded-xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-base font-bold text-white">↪ Transferir atendimento</h2>
+        <p className="text-xs text-white/60">
+          Conversa com <strong className="text-white">{nomeCliente}</strong>. Quem receber vira o responsável e a Laís
+          avisa no WhatsApp com um resumo da conversa e o link.
+        </p>
+        <label className="block">
+          <span className="block text-[11px] font-bold text-white/60 mb-1">Transferir pra</span>
+          <select value={paraId} onChange={(e) => setParaId(e.target.value)} className={inputCls} disabled={!atendentes}>
+            <option value="" className="bg-noite">{atendentes ? 'Escolha o usuário…' : 'Carregando…'}</option>
+            {(atendentes || []).map((a) => (
+              <option key={a.id} value={a.id} className="bg-noite">{a.nome} · {papel[a.papel] || a.papel}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="block text-[11px] font-bold text-white/60 mb-1">Recado (opcional)</span>
+          <textarea value={recado} onChange={(e) => setRecado(e.target.value)} rows={3} maxLength={500}
+            placeholder="Ex.: cliente quer visita técnica essa semana; já mandei a proposta v2."
+            className={`${inputCls} resize-none`} />
+        </label>
+        {erro && <p className="text-xs text-coral">⚠ {erro}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onFechar} className="px-4 py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg">Cancelar</button>
+          <button onClick={transferir} disabled={enviando || !paraId}
+            className="px-4 py-2 bg-weg-azul text-white font-bold text-sm rounded-lg disabled:opacity-50">
+            {enviando ? 'Transferindo e avisando…' : 'Transferir e avisar'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

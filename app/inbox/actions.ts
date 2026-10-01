@@ -170,6 +170,101 @@ export async function assumirConversaAction(conversa_id: string): Promise<
   return { sucesso: true }
 }
 
+/** Quem pode receber um atendimento transferido (A→Z). */
+export async function listarAtendentesAction(): Promise<
+  { atendentes: Array<{ id: string; nome: string; papel: string }> } | { erro: string }
+> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const { data, error } = await createAdminClient()
+    .from('profiles')
+    .select('id, nome_completo, role')
+    .eq('ativo', true)
+    .in('role', ['admin', 'consultor', 'representante'])
+  if (error) return { erro: error.message }
+  return {
+    atendentes: ((data || []) as any[])
+      .map((p) => ({ id: p.id, nome: p.nome_completo || 'Sem nome', papel: p.role }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+  }
+}
+
+/**
+ * Kalebe 2026-10-01: transfere o atendimento pra outro usuário. A Laís avisa
+ * o novo responsável (WhatsApp + sino) com resumo da conversa, recado e
+ * links. Pode transferir: admin, o responsável atual ou qualquer um quando a
+ * conversa ainda não tem responsável.
+ */
+export async function transferirConversaAction(entrada: {
+  conversa_id: string
+  para_id: string
+  recado?: string
+}): Promise<{ sucesso: true; nome: string; whatsapp: boolean; motivo: string | null } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+
+  // RLS: só transfere conversa que enxerga
+  const { data: conv } = await createClient()
+    .from('wa_conversas').select('id, responsavel_id, encerrada_em').eq('id', entrada.conversa_id).maybeSingle()
+  if (!conv) return { erro: 'Conversa não encontrada' }
+  if (conv.encerrada_em) return { erro: 'Conversa encerrada' }
+  const ehAdmin = check.perfil?.role === 'admin'
+  if (!ehAdmin && conv.responsavel_id && conv.responsavel_id !== check.user.id) {
+    return { erro: 'Só o responsável atual ou o admin transfere esta conversa' }
+  }
+  if (entrada.para_id === conv.responsavel_id) return { erro: 'Essa pessoa já é a responsável' }
+
+  const admin = createAdminClient()
+  const { data: dest } = await admin
+    .from('profiles').select('id, nome_completo, ativo, role').eq('id', entrada.para_id).maybeSingle()
+  if (!dest?.ativo || !['admin', 'consultor', 'representante'].includes(dest.role)) {
+    return { erro: 'Usuário de destino inválido ou desativado' }
+  }
+
+  const { error } = await admin
+    .from('wa_conversas')
+    .update({ responsavel_id: dest.id, status: 'em_atendimento', agente_ativo: null })
+    .eq('id', conv.id)
+  if (error) return { erro: error.message }
+  revalidatePath('/inbox')
+
+  // Transferiu pra si mesmo = assumiu; não precisa de aviso
+  if (dest.id === check.user.id) return { sucesso: true, nome: dest.nome_completo || '', whatsapp: false, motivo: null }
+
+  const { dadosContatoConversa, transcricaoDaConversa, resumirConversa, cortar } = await import('@/lib/whatsapp/resumo-conversa')
+  const { avisarUsuario } = await import('@/lib/agentes/diretorio')
+  const d = await dadosContatoConversa(admin, conv.id)
+  const { linhas } = await transcricaoDaConversa(admin, conv.id, { limite: 40 })
+  const resumo = await resumirConversa(linhas, 'atendimento')
+  const recado = (entrada.recado || '').trim()
+  const de = (check.perfil?.nome_completo || 'Alguém da equipe').split(' ')[0]
+
+  const mensagem = [
+    `↪ *${de}* transferiu pra você o atendimento de *${d?.nome || 'cliente'}*${d ? ` · ${d.telefoneFmt}` : ''}`,
+    d ? `${d.cliente ? '🏷️' : '🆕'} ${d.situacao}` : null,
+    recado ? `🗒️ Recado: ${cortar(recado, 500)}` : null,
+    resumo ? `📝 Resumo: ${resumo}` : null,
+    d ? `🔗 Conversa: ${d.linkConversa}` : null,
+    d?.linkCard ? `🔗 Card do cliente: ${d.linkCard}` : null,
+  ].filter(Boolean).join('\n')
+
+  const r = await avisarUsuario({
+    destinatario_id: dest.id,
+    agente: 'qualificacao',
+    remetente_usuario_id: check.user.id,
+    titulo: 'Atendimento transferido pra você',
+    mensagem,
+    conversa_id: conv.id,
+    projeto_id: d?.projetoId || null,
+  })
+  return {
+    sucesso: true,
+    nome: dest.nome_completo || '',
+    whatsapp: !!r.whatsapp_status?.startsWith('enviado'),
+    motivo: r.whatsapp_status === 'sem_telefone' ? 'sem telefone no cadastro' : (r.whatsapp_erro || null),
+  }
+}
+
 export async function encerrarConversaAction(conversa_id: string): Promise<
   | { sucesso: true }
   | { erro: string }
