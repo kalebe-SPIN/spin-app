@@ -14,6 +14,7 @@ import {
 import { ChatEquipeModal } from '@/components/ChatEquipeModal'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 import { AvatarContato } from '@/components/AvatarContato'
+import { rotuloNaTela } from '@/lib/equipe/rotulo'
 
 export type Responsavel = { id: string; nome: string; role: string }
 
@@ -168,7 +169,8 @@ function MensagemBubble({ msg }: { msg: any }) {
   const remetente =
     inbound
       ? 'Cliente'
-      : msg.origem_agente_nome || msg.remetente?.nome_completo || 'Spin'
+      // Kalebe 2026-10-01: pessoa da equipe por "primeiro nome · setor"
+      : rotuloNaTela(msg) || 'Spin'
   const url: string | null = msg.midia_url || null
   return (
     <div className={`flex ${inbound ? 'justify-start' : 'justify-end'}`}>

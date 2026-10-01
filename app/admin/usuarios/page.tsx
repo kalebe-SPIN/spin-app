@@ -37,7 +37,7 @@ export default async function AdminUsuariosPage() {
   // Precisa do admin client pra ler auth.users (emails, confirmação, último login)
   const admin = createAdminClient()
 
-  const [{ data: profiles }, { data: authList }, { data: grupos }, { data: membros }] = await Promise.all([
+  const [{ data: profiles }, { data: authList }, { data: grupos }, { data: membros }, { data: setorMsg }] = await Promise.all([
     admin
       .from('profiles')
       .select('id, nome_completo, telefone, role, avatar_url, ativo, created_at, updated_at')
@@ -46,7 +46,10 @@ export default async function AdminUsuariosPage() {
     // Kalebe 2026-09-29: setor = grupo interno (vazio se a migration 125 não rodou)
     admin.from('grupos_internos').select('id, chave, nome, emoji').eq('ativo', true).order('ordem'),
     admin.from('grupos_membros').select('*'),
+    // Kalebe 2026-10-01: setor nas mensagens (mig 134; sem ela vem vazio)
+    admin.from('profiles').select('id, setor_mensagens'),
   ])
+  const setorMsgPorId = new Map(((setorMsg || []) as any[]).map((p) => [p.id, p.setor_mensagens as string | null]))
 
   // Junta perfil + email/last_sign_in do auth.users
   const authById = new Map(
@@ -69,6 +72,7 @@ export default async function AdminUsuariosPage() {
       ultimo_login: au?.last_sign_in_at || null,
       convite_pendente: !au?.last_sign_in_at && !!au?.invited_at,
       setores: setoresPorUsuario.get(p.id) || [],
+      setor_mensagens: setorMsgPorId.get(p.id) || null,
     }
   })
 

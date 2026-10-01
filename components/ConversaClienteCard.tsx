@@ -8,6 +8,7 @@ import {
   abrirCanalDoProjetoAction,
 } from '@/app/inbox/actions'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
+import { rotuloNaTela } from '@/lib/equipe/rotulo'
 
 /**
  * Kalebe 2026-09-15: 'acesso a conversa e comunicação diretamente com
@@ -174,7 +175,8 @@ function SectionCard({ children }: { children: React.ReactNode }) {
 
 function BolhaCompacta({ m }: { m: any }) {
   const isInbound = m.direcao === 'inbound'
-  const nome = m.remetente?.nome_completo || m.origem_agente_nome || m.remetente_agente
+  // Kalebe 2026-10-01: pessoa da equipe por "primeiro nome · setor"
+  const nome = rotuloNaTela(m)
   const hora = new Date(m.criada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
   const statusIcon = m.status_entrega === 'lida' ? '✓✓'
     : m.status_entrega === 'entregue' ? '✓✓'

@@ -4,10 +4,12 @@ import { useState, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   convidarUsuarioAction, mudarRoleAction, toggleAtivoAction, reenviarConviteAction, definirSetoresAction,
+  definirSetorMensagensAction,
   type Role,
 } from '@/app/admin/usuarios/actions'
 import { formatarTelefone } from '@/lib/formatters'
 import { setoresPadraoDoRole, type SetorResumo } from '@/lib/grupos/setores'
+import { montarRotulo } from '@/lib/equipe/rotulo'
 
 type Usuario = {
   id: string
@@ -22,6 +24,7 @@ type Usuario = {
   ultimo_login: string | null
   convite_pendente: boolean
   setores: string[]          // chaves dos grupos internos
+  setor_mensagens: string | null   // setor que aparece nas mensagens (mig 134)
 }
 
 type RoleInfo = { label: string; emoji: string; cor: string; bg: string }
@@ -240,6 +243,22 @@ function LinhaUsuario({
     })
   }
 
+  // Kalebe 2026-10-01: setor que aparece nas mensagens ("Luciane · Financeiro")
+  function handleSetorMensagens(chave: string) {
+    startTransition(async () => {
+      const res = await definirSetorMensagensAction(usuario.id, chave || null)
+      if ('erro' in res) onMsg({ tipo: 'erro', texto: res.erro })
+      else {
+        const efetivo = chave || (setoresDoUsuario.length === 1 ? setoresDoUsuario[0].chave : null)
+        onMsg({
+          tipo: 'sucesso',
+          texto: `${usuario.nome_completo.split(' ')[0]} aparece nas mensagens como "${montarRotulo(usuario.nome_completo, efetivo)}"`,
+        })
+        router.refresh()
+      }
+    })
+  }
+
   function handleSalvarRole() {
     if (novoRole === usuario.role) { setEditando(false); return }
     startTransition(async () => {
@@ -386,6 +405,31 @@ Ao entrar o sistema pede pra trocar por uma senha só sua.`
                   </button>
                 )}
               </div>
+            )}
+            {setoresDoUsuario.length > 0 && !editandoSetores && (
+              <label className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                <span className="text-[10px] text-white/40">Nas mensagens:</span>
+                <select
+                  value={usuario.setor_mensagens || ''}
+                  onChange={(e) => handleSetorMensagens(e.target.value)}
+                  disabled={pending}
+                  className="text-[11px] bg-white/5 border border-white/15 rounded px-1.5 py-0.5 text-white focus:outline-none disabled:opacity-40"
+                  title="Como a pessoa aparece no WhatsApp: primeiro nome · setor"
+                >
+                  <option value="" className="bg-noite">
+                    {setoresDoUsuario.length === 1
+                      ? `Automático (${montarRotulo(usuario.nome_completo, setoresDoUsuario[0].chave)})`
+                      : `Só o nome (${montarRotulo(usuario.nome_completo, null)})`}
+                  </option>
+                  {[...setoresDoUsuario]
+                    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+                    .map((s) => (
+                      <option key={s.chave} value={s.chave} className="bg-noite">
+                        {montarRotulo(usuario.nome_completo, s.chave)}
+                      </option>
+                    ))}
+                </select>
+              </label>
             )}
             {editandoSetores && (
               <div className="mt-2 space-y-2 max-w-md">

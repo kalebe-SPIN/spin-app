@@ -5,6 +5,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { ModalProjetoConversa } from './ModalProjetoConversa'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 import { AvatarContato } from '@/components/AvatarContato'
+import { rotuloNaTela } from '@/lib/equipe/rotulo'
 import { cartoesDoTexto, telefonesNoTexto, formatarTelefoneExibicao } from '@/lib/whatsapp/contatos-projeto'
 import { contatosDoProjetoDaConversaAction, salvarContatoDaConversaAction } from '@/app/inbox/contatos-actions'
 import {
@@ -1040,7 +1041,9 @@ function BolhaMensagem({ m, contatos }: { m: Mensagem; contatos?: ContextoContat
       {erroRecuperar && <p className="text-[10px] text-coral mt-0.5">{erroRecuperar}</p>}
     </div>
   )
-  const nomeRemetente = m.remetente?.nome_completo || m.origem_agente_nome || m.remetente_agente || null
+  // Kalebe 2026-10-01: pessoa da equipe por "primeiro nome · setor" (agentes
+  // e "WhatsApp (celular)" ficam como estão)
+  const nomeRemetente = rotuloNaTela(m)
   const hora = new Date(m.criada_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
   const statusIcon = m.status_entrega === 'lida' ? '✓✓' :

@@ -158,6 +158,26 @@ export async function definirSetoresAction(userId: string, setores: string[]): P
 }
 
 /**
+ * Kalebe 2026-10-01: setor que aparece nas mensagens do WhatsApp ("Luciane ·
+ * Financeiro"). null = automático (setor único) / só o primeiro nome.
+ */
+export async function definirSetorMensagensAction(userId: string, chave: string | null): Promise<
+  { sucesso: true } | { erro: string }
+> {
+  const check = await verificarAdmin()
+  if (!check.ok) return { erro: check.erro }
+  const { error } = await createAdminClient()
+    .from('profiles')
+    .update({ setor_mensagens: chave || null })
+    .eq('id', userId)
+  if (error) {
+    return { erro: /setor_mensagens/.test(error.message) ? 'Falta rodar a migration 134 no Supabase.' : error.message }
+  }
+  revalidatePath('/admin/usuarios')
+  return { sucesso: true }
+}
+
+/**
  * Reseta senha do usuário — gera NOVA senha temporária + força troca no próximo login.
  * Usado quando:
  *   - Usuário esqueceu senha (sem depender de link mágico que expira)

@@ -11,6 +11,8 @@ import { marcarContatoConfirmado } from '@/lib/whatsapp/broadcast'
 import { getWaConfig } from '@/lib/whatsapp/config'
 import { baixarESalvarMidiaWa, salvarBufferMidiaWa } from '@/lib/whatsapp/midia'
 import { revalidatePath } from 'next/cache'
+// Kalebe 2026-10-01: mensagens identificam o usuário por "primeiro nome · setor"
+import { rotuloRemetente } from '@/lib/equipe/rotulo-servidor'
 
 /**
  * Inbox WhatsApp — Sprint 1 do canal integrado.
@@ -355,7 +357,7 @@ export async function enviarTextoAction(entrada: {
 
   // Multi-persona: prefixa com nome do agente (default) pra o cliente saber
   // quem tá falando dentro do canal Spin.
-  const nomeAgente = check.perfil?.nome_completo || 'Spin'
+  const nomeAgente = (await rotuloRemetente(check.user!.id, check.perfil?.nome_completo)) || 'Spin'
   const prefixar = entrada.prefixar_com_nome !== false
   const corpo = prefixar ? `*${nomeAgente}:*\n${texto}` : texto
 
@@ -535,7 +537,7 @@ export async function iniciarChamadaAction(entrada: {
   const salaId = `spin-${entrada.tipo}-${Math.random().toString(36).slice(2, 10)}`
   const url_sala = `https://meet.jit.si/${salaId}`
 
-  const nomeAgente = check.perfil?.nome_completo || 'Spin'
+  const nomeAgente = (await rotuloRemetente(check.user!.id, check.perfil?.nome_completo)) || 'Spin'
   const emoji = entrada.tipo === 'video' ? '📹' : '📞'
   const titulo = entrada.tipo === 'video' ? 'Videochamada' : 'Chamada de voz'
   const nomeLead = ((conv.contato as any)?.nome_exibicao || '').split(' ')[0] || 'você'
@@ -697,7 +699,7 @@ export async function enviarArquivoAction(formData: FormData): Promise<
     nome_original: arquivo.name,
   })
 
-  const nomeAgente = check.perfil?.nome_completo || 'Spin'
+  const nomeAgente = (await rotuloRemetente(check.user!.id, check.perfil?.nome_completo)) || 'Spin'
   await gravarMensagem(admin, {
     conversa_id,
     direcao: 'outbound',
@@ -804,7 +806,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
           ],
           botao_url_sufixo: sufixo,
           remetente_id: check.user.id,
-          origem_agente_nome: check.perfil?.nome_completo || 'Spin',
+          origem_agente_nome: (await rotuloRemetente(check.user!.id, check.perfil?.nome_completo)) || 'Spin',
         })
         if ('sucesso' in r) {
           revalidatePath('/inbox')
@@ -825,7 +827,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
   const _cfg = await getWaConfig()
   if (!_cfg.access_token || !_cfg.phone_number_id) return { erro: 'Meta Cloud API não configurada.' }
   const tel = (conv.contato as any)?.telefone
-  const nomeAgente = check.perfil?.nome_completo || 'Spin'
+  const nomeAgente = (await rotuloRemetente(check.user!.id, check.perfil?.nome_completo)) || 'Spin'
   const legenda = `*${nomeAgente}:*\n${entrada.legenda}`.slice(0, 1024)
 
   const resp = await fetch(`https://graph.facebook.com/v20.0/${_cfg.phone_number_id}/messages`, {

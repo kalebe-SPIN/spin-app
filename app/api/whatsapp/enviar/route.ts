@@ -7,6 +7,7 @@ import {
   gravarMensagem,
 } from '@/lib/whatsapp/conversas'
 import { getWaConfig } from '@/lib/whatsapp/config'
+import { rotuloRemetente } from '@/lib/equipe/rotulo-servidor'
 
 /**
  * Envia WhatsApp via Meta Cloud API.
@@ -142,7 +143,8 @@ export async function POST(req: NextRequest) {
             texto: com.mensagem,
             meta_message_id: metaMessageId,
             remetente_id: user.id,
-            origem_agente_nome: perfilRemetente?.nome_completo || null,
+            // Kalebe 2026-10-01: "primeiro nome · setor" identifica o usuário
+            origem_agente_nome: (await rotuloRemetente(user.id, perfilRemetente?.nome_completo)) || null,
             status_entrega: 'enviada',
             bianca_comunicacao_id: comunicacao_id,
           })
