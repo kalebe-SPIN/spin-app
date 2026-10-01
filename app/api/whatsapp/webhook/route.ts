@@ -13,6 +13,7 @@ import { processarMensagemQualificacao } from '@/lib/whatsapp/agente-qualificaca
 import { baixarESalvarMidiaWa } from '@/lib/whatsapp/midia'
 import { extrairCartoes, textoDosCartoes, salvarContatosNoProjeto } from '@/lib/whatsapp/contatos-projeto'
 import { aceitarLead } from '@/lib/whatsapp/broadcast'
+import { clienteIniciandoConversa, avisarKalebeConversaNova } from '@/lib/whatsapp/aviso-conversa-nova'
 import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
@@ -197,6 +198,17 @@ export async function POST(req: NextRequest) {
             })
             conversaId = conversa?.id || null
             if (conversaId) {
+              // Kalebe 2026-10-01: conversa iniciada pelo cliente (nova, vazia ou
+              // parada há 24h+) → Laís avisa o Kalebe. Checa ANTES de gravar.
+              const desdeAviso = new Date(Date.now() - 5_000).toISOString()
+              const iniciouConversa = conversa?.criada || await clienteIniciandoConversa(supabaseAdmin, conversaId)
+              if (iniciouConversa) {
+                const idAviso = conversaId
+                waitUntil(
+                  avisarKalebeConversaNova(idAviso, desdeAviso)
+                    .catch((err) => console.error('[webhook aviso-conversa-nova]', err)),
+                )
+              }
               const midiaObj = (msg as any)[tipoMsg] || {}
               // Kalebe 2026-09-21: URL da Meta é temporária (5min). Baixa e
               // salva no Storage pra o inbox conseguir mostrar preview/download
