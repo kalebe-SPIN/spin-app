@@ -17,8 +17,11 @@ export default async function InboxPage() {
   if (!user) redirect('/login')
 
   const { data: perfil } = await supabase
-    .from('profiles').select('role, nome_completo').eq('id', user.id).maybeSingle()
-  const podeAcessar = ['admin', 'representante', 'consultor', 'sdr'].includes(perfil?.role || '')
+    .from('profiles').select('role, nome_completo, ativo').eq('id', user.id).maybeSingle()
+  // Kalebe 2026-10-01: toda a equipe ativa usa o inbox (profissional de campo
+  // recebe atendimento transferido). A lista antiga só tinha admin e
+  // representante — 'consultor' e 'sdr' nem existem no enum user_role.
+  const podeAcessar = !!perfil?.role && perfil.role !== 'candidato' && perfil.ativo !== false
   if (!podeAcessar) redirect('/dashboard')
 
   return (
