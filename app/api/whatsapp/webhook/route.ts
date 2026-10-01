@@ -14,6 +14,7 @@ import { baixarESalvarMidiaWa } from '@/lib/whatsapp/midia'
 import { extrairCartoes, textoDosCartoes, salvarContatosNoProjeto } from '@/lib/whatsapp/contatos-projeto'
 import { aceitarLead } from '@/lib/whatsapp/broadcast'
 import { clienteIniciandoConversa, avisarKalebeConversaNova } from '@/lib/whatsapp/aviso-conversa-nova'
+import { traduzirErroMeta } from '@/lib/whatsapp/erros-meta'
 import { getWaConfig } from '@/lib/whatsapp/config'
 
 /**
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
           }
           if (evento === 'failed') {
             patch.status = 'falhou'
-            patch.erro_envio = status.errors?.[0]?.title || 'Falhou (webhook)'
+            patch.erro_envio = traduzirErroMeta(status.errors?.[0])
           }
 
           if (Object.keys(patch).length > 0) {
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
           if (evento === 'sent') patchWa.status_entrega = 'enviada'
           if (evento === 'delivered') { patchWa.status_entrega = 'entregue'; patchWa.entregue_em = timestamp }
           if (evento === 'read') { patchWa.status_entrega = 'lida'; patchWa.lida_em = timestamp }
-          if (evento === 'failed') { patchWa.status_entrega = 'falhou'; patchWa.erro = status.errors?.[0]?.title || 'Falhou (webhook)' }
+          if (evento === 'failed') { patchWa.status_entrega = 'falhou'; patchWa.erro = traduzirErroMeta(status.errors?.[0]) }
           if (Object.keys(patchWa).length > 0) {
             await atualizarStatusPorMetaId(supabaseAdmin, metaId, patchWa)
           }
