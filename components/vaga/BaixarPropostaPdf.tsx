@@ -64,7 +64,7 @@ export function BaixarPropostaPdf({
       </button>
 
       {/* Template A4 fora da tela */}
-      <div style={{ position: 'fixed', left: -9999, top: 0 }} aria-hidden>
+      <div className="tema-fixo" style={{ position: 'fixed', left: -9999, top: 0 }} aria-hidden>
         <div ref={ref} style={{ background: '#fff', color: '#111', width: 794, fontFamily: 'Inter, system-ui, sans-serif' }}>
           <PdfPaginas nomeCandidato={nomeCandidato} empresa={empresa} />
         </div>

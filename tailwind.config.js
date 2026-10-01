@@ -7,10 +7,15 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Kalebe 2026-10-01: modo claro/escuro. O portal foi desenhado escuro
+        // com "branco translúcido" por cima do fundo noite; no modo claro as
+        // duas cores-base se invertem (globals.css, data-tema="claro") e todas
+        // as telas acompanham sem mexer nelas. PDFs ficam fixos (.tema-fixo).
+        white: 'rgb(var(--c-branco) / <alpha-value>)',
         // Paleta v3 Spin Solar (mesma do menu-spin pra consistência visual)
         noite: {
-          0: '#050B16',   // background mais escuro
-          DEFAULT: '#0F1825',
+          0: 'rgb(var(--c-noite-0) / <alpha-value>)',   // background mais escuro
+          DEFAULT: 'rgb(var(--c-noite) / <alpha-value>)',
         },
         sol: {
           DEFAULT: '#F5B400',  // amarelo principal

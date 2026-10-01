@@ -6,6 +6,7 @@ import { MenuMobileHeader } from '@/components/MenuMobileHeader'
 import { AbasPorArea } from '@/components/AbasPorArea'
 import { AlertaMensagensInbox } from '@/components/AlertaMensagensInbox'
 import { NavPortal, type LinkNav } from '@/components/NavPortal'
+import { AlternarTema } from '@/components/AlternarTema'
 
 /**
  * Parte visual do cabeçalho (Kalebe 2026-09-30) — o PortalHeader busca os
@@ -37,9 +38,10 @@ export function PortalHeaderView({
           {/* Logo nunca encolhe (antes o menu esmagava até sumir) */}
           <Link href="/dashboard" className="flex items-center gap-2 shrink-0">
             {logoUrl ? (
-              // Kalebe 2026-09-30: logo em BRANCO (filtro — segue a logo cadastrada) e 30% maior
+              // Kalebe 2026-09-30: logo em BRANCO (filtro — segue a logo cadastrada) e 30% maior.
+              // 2026-10-01: no modo claro volta à cor original (.logo-portal no globals.css)
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt="Spin Solar" className="h-[42px] sm:h-[47px] md:h-[57px] w-auto max-w-[125px] sm:max-w-[182px] object-contain brightness-0 invert" />
+              <img src={logoUrl} alt="Spin Solar" className="logo-portal h-[42px] sm:h-[47px] md:h-[57px] w-auto max-w-[125px] sm:max-w-[182px] object-contain brightness-0 invert" />
             ) : (
               <span className="text-sol font-black text-base md:text-lg">SPIN</span>
             )}
@@ -52,6 +54,8 @@ export function PortalHeaderView({
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <SinoBianca contadorInicial={sugestoesPendentes} />
           {ehAdminReal && <AlternarModoButton modoAtual={modoAtivo} />}
+          {/* Kalebe 2026-10-01: modo noturno ou claro, escolha de cada usuário */}
+          <AlternarTema />
 
           <div className="flex items-center gap-2 pl-2 border-l border-white/10">
             <div className="text-right hidden xl:block">

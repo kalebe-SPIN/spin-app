@@ -547,7 +547,7 @@ export function OrcamentoClient({
       </section>
 
       {/* Template escondido (renderizado offscreen pra virar PDF) */}
-      <div style={{ position: 'absolute', left: '-99999px', top: 0, zIndex: -1 }}>
+      <div className="tema-fixo" style={{ position: 'absolute', left: '-99999px', top: 0, zIndex: -1 }}>
         <PropostaPDFTemplate
           ref={templateRef}
           projeto={projeto}

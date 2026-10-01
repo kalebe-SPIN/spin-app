@@ -520,7 +520,7 @@ export function VendaDiretaClient({
           desenha elemento escondido). A prévia visível é uma cópia. */}
       {calculo.qtd_itens > 0 && !validarDadosVendaDireta(dados) && (
         <>
-          <div aria-hidden style={{ position: 'fixed', left: -10000, top: 0, width: 794, pointerEvents: 'none' }}>
+          <div aria-hidden className="tema-fixo" style={{ position: 'fixed', left: -10000, top: 0, width: 794, pointerEvents: 'none' }}>
             <PropostaVendaDiretaPDF ref={templateRef} projeto={projeto} dados={dadosPdf} calculo={calculo} configEmpresa={configEmpresa} />
           </div>
           <details className="bg-white/[0.02] border border-white/10 rounded-xl p-4">

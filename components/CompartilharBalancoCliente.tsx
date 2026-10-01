@@ -121,7 +121,7 @@ export function CompartilharBalancoCliente({
       {erro && <p className="text-xs text-coral bg-coral/10 border border-coral/30 rounded-lg p-2">⚠ {erro}</p>}
 
       {/* Versão pro cliente — fora da tela, só pra virar imagem */}
-      <div aria-hidden style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none' }}>
+      <div aria-hidden className="tema-fixo" style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none' }}>
         <div ref={ref} style={{ width: 900, padding: 32, background: '#0B0F1A', color: '#F5F5F0', fontFamily: 'Inter, system-ui, sans-serif' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
             <div>

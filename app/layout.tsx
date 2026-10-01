@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
 import './globals.css'
 import { PortalHeader } from '@/components/PortalHeader'
 import { AutoRefresh } from '@/components/AutoRefresh'
@@ -29,8 +30,11 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  // Kalebe 2026-10-01: modo claro/noturno escolhido no ☀️/🌙 do cabeçalho —
+  // vem do cookie pra página já abrir no modo certo (sem piscar)
+  const tema = cookies().get('spin_tema')?.value === 'claro' ? 'claro' : 'escuro'
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" data-tema={tema}>
       <head>
         {/* Favicon explicito — reforca alem do metadata.icons pra bypass cache */}
         <link rel="icon" type="image/png" href="/icon.png?v=2" />

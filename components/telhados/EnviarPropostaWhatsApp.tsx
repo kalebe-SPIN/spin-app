@@ -137,7 +137,7 @@ export function EnviarPropostaWhatsApp({
       {erro && <p className="text-xs text-coral mt-1">{erro}</p>}
 
       {/* Template A4 — fica escondido, só renderiza pra virar PDF */}
-      <div ref={pdfRef} style={{ display: 'none', background: '#FFFFFF', color: '#111', width: 794, padding: '48px 56px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <div ref={pdfRef} className="tema-fixo" style={{ display: 'none', background: '#FFFFFF', color: '#111', width: 794, padding: '48px 56px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
         {/* Cabeçalho */}
         <div style={{ borderBottom: '3px solid #FFB94D', paddingBottom: 16, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>

@@ -595,6 +595,7 @@ function TemplatePdf({
   return (
     <div
       ref={pdfRef}
+      className="tema-fixo"
       style={{
         display: 'none',
         position: 'fixed',

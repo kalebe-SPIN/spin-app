@@ -372,7 +372,7 @@ export function BessPropostaClient({ projeto, kit, proposta, configEmpresa, ehAd
 
       {/* Template PDF escondido — renderizado fora do viewport pra html2canvas
           poder capturar sem que apareça na tela do consultor. */}
-      <div style={{ position: 'absolute', left: -99999, top: 0, width: 794 }} aria-hidden="true">
+      <div className="tema-fixo" style={{ position: 'absolute', left: -99999, top: 0, width: 794 }} aria-hidden="true">
         <PropostaPDFTemplateBess
           ref={templateRef}
           projeto={projeto}

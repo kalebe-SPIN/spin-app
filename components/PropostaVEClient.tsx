@@ -125,7 +125,7 @@ export function PropostaVEClient({ projeto, selecao, configEmpresa }: Props) {
 
       {/* Preview do template — mesmo escala usada pra gerar o PDF (794px) */}
       <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 overflow-auto">
-        <div style={{ transform: 'scale(0.85)', transformOrigin: 'top left', width: 934 }}>
+        <div className="tema-fixo" style={{ transform: 'scale(0.85)', transformOrigin: 'top left', width: 934 }}>
           <PropostaVEPDFTemplate
             ref={templateRef}
             projeto={projeto}

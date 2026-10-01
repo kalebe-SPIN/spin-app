@@ -6,6 +6,10 @@
    Design system Spin Solar — variáveis CSS reaproveitando paleta do menu-spin
    ========================================================================= */
 :root {
+  /* Cores-base em RGB (Tailwind usa com opacidade: bg-white/5, bg-noite/80) */
+  --c-branco: 255 255 255;
+  --c-noite-0: 5 11 22;
+  --c-noite: 15 24 37;
   --noite-0: #050B16;
   --noite:   #0F1825;
   --sol:     #F5B400;
@@ -14,12 +18,50 @@
   --weg-azul: #0047BB;
   --verde:   #4EDC8A;
   --coral:   #E85C5C;
+  color-scheme: dark;
+}
+
+/* =========================================================================
+   Modo claro (Kalebe 2026-10-01) — escolhido no ☀️/🌙 do cabeçalho.
+   "Branco" vira tinta escura e "noite" vira fundo claro: texto, bordas e
+   cartões translúcidos de todas as telas se ajustam sozinhos.
+   ========================================================================= */
+:root[data-tema="claro"] {
+  --c-branco: 17 24 39;
+  --c-noite-0: 241 244 248;
+  --c-noite: 255 255 255;
+  --noite-0: #F1F4F8;
+  --noite:   #FFFFFF;
+  color-scheme: light;
+}
+/* Texto escuro dos botões coloridos (bg-sol text-noite) continua escuro */
+:root[data-tema="claro"] .text-noite:not(.tema-fixo *) { color: #0F1825; }
+/* Branco sólido de verdade (fundo de logo, papel) continua branco */
+:root[data-tema="claro"] .bg-white:not(.tema-fixo *) { background-color: #FFFFFF; }
+/* Texto branco em botão azul/vermelho continua branco */
+:root[data-tema="claro"] :is(.bg-weg-azul, .bg-coral).text-white:not(.tema-fixo *) { color: #FFFFFF; }
+/* Amarelo, verde e vermelho dos TEXTOS mais escuros pra ler em fundo claro */
+:root[data-tema="claro"] :is([class~="text-sol"], [class~="text-sol/70"], [class~="text-sol/80"], [class~="text-sol/90"], [class~="text-sol-claro"], .hover\:text-sol:hover):not(.tema-fixo *) { color: #9A6A00; }
+:root[data-tema="claro"] :is([class~="text-verde"], [class~="text-verde/70"], [class~="text-verde/80"], [class~="text-verde/90"], .hover\:text-verde:hover):not(.tema-fixo *) { color: #157A45; }
+:root[data-tema="claro"] :is([class~="text-coral"], [class~="text-coral/70"], [class~="text-coral/80"], [class~="text-coral/90"], .hover\:text-coral:hover):not(.tema-fixo *) { color: #B42318; }
+/* Logo do cabeçalho: branco no escuro, cor original no claro */
+:root[data-tema="claro"] .logo-portal { filter: none; }
+/* Cartões ganham uma sombra leve no claro (no escuro o contraste já separa) */
+:root[data-tema="claro"] :is(.rounded-xl, .rounded-2xl)[class*="border-white/"]:not(.tema-fixo *) { box-shadow: 0 1px 2px rgb(15 23 42 / 0.05); }
+
+/* PDFs e imagens geradas (html2canvas) ficam SEMPRE com as cores originais */
+.tema-fixo {
+  --c-branco: 255 255 255;
+  --c-noite-0: 5 11 22;
+  --c-noite: 15 24 37;
+  --noite-0: #050B16;
+  --noite:   #0F1825;
 }
 
 /* Reset + base */
 html, body {
-  background: var(--noite-0);
-  color: #fff;
+  background: rgb(var(--c-noite-0));
+  color: rgb(var(--c-branco));
   min-height: 100vh;
   font-family: 'Inter', system-ui, sans-serif;
 }
@@ -55,6 +97,9 @@ input, textarea, select, button {
 ::-webkit-scrollbar-thumb {
   background: rgba(245, 180, 0, 0.3);
   border-radius: 4px;
+}
+:root[data-tema="claro"] ::-webkit-scrollbar-thumb {
+  background: rgba(17, 24, 39, 0.2);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--sol);
