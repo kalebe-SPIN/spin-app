@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { enviarTextoAction, enviarArquivoAction, iniciarChamadaAction, janelaAbertaAction } from '@/app/inbox/actions'
+import {
+  enviarTextoAction, enviarArquivoAction, iniciarChamadaAction, janelaAbertaAction,
+  statusModeloRetomadaAction, reabrirComModeloAction,
+} from '@/app/inbox/actions'
 import { ModalAgendaBianca } from './ModalAgendaBianca'
 import {
   IconeClipe, IconeAgenda, IconeTelefone, IconeVideo, IconeMicrofone, IconeEnviar, IconeLixeira, IconeCarregando,
@@ -42,7 +45,29 @@ export function ComposerWhatsApp({
   const [agendaConversa, setAgendaConversa] = useState<string | null>(null)
   // Kalebe 2026-10-01: janela de 24h fechada → em vez de só o erro, oferece
   // mandar pelo app WhatsApp Business do número Spin com o texto já pronto
-  const [janelaFechada, setJanelaFechada] = useState<{ telefone: string | null; tipo: string } | null>(null)
+  const [janelaFechada, setJanelaFechada] = useState<{ telefone: string | null; tipo: string; conversaId: string } | null>(null)
+  // Kalebe 2026-10-01: modelo de retomada aprovado + pagamento ativo → dá pra
+  // reabrir a conversa pelo próprio sistema
+  const [modelo, setModelo] = useState<{ status: string; rotulo: string } | null>(null)
+  const [assunto, setAssunto] = useState('energia solar')
+  const [enviandoModelo, setEnviandoModelo] = useState(false)
+  const [modeloOk, setModeloOk] = useState<string | null>(null)
+  useEffect(() => {
+    if (!janelaFechada || modelo) return
+    statusModeloRetomadaAction().then(setModelo).catch(() => {})
+  }, [janelaFechada, modelo])
+
+  async function enviarModeloRetomada() {
+    if (!janelaFechada) return
+    setEnviandoModelo(true); onErro(null)
+    try {
+      const r = await reabrirComModeloAction({ conversa_id: janelaFechada.conversaId, nome_cliente: '', assunto })
+      if ('erro' in r) { onErro(r.erro); return }
+      setModeloOk('Modelo enviado. Quando o cliente responder, a conversa reabre por 24h — sua mensagem continua aqui na caixa.')
+      setJanelaFechada(null)
+      onEnviado()
+    } finally { setEnviandoModelo(false) }
+  }
   const inputArquivoRef = useRef<HTMLInputElement>(null)
   const gravadorRef = useRef<any>(null)
   const timerRef = useRef<any>(null)
@@ -74,8 +99,8 @@ export function ComposerWhatsApp({
       const janela = await janelaAbertaAction(id)
       if ('erro' in janela) { onErro(janela.erro); return }
       if (!janela.aberta) {
-        if (janela.telefone) setJanelaFechada({ telefone: janela.telefone, tipo })
-        else onErro(MSG_JANELA_FECHADA)
+        setModeloOk(null)
+        setJanelaFechada({ telefone: janela.telefone, tipo, conversaId: id })
         return
       }
       await fn(id)
@@ -208,20 +233,54 @@ export function ComposerWhatsApp({
         <div className="mb-2 rounded-xl bg-sol/10 border border-sol/30 p-2.5 text-xs text-white/80 space-y-2">
           <p>
             🔒 <strong className="text-sol">Janela de 24h fechada</strong> — o cliente não escreveu pro número da Spin
-            nas últimas 24h e o WhatsApp não entrega o que sai do sistema.{' '}
-            <span className="text-white/60">Pelo app WhatsApp Business do número Spin não tem essa trava — e a mensagem aparece aqui.</span>
+            nas últimas 24h, então texto livre não chega.{' '}
+            <span className="text-white/60">
+              {modelo?.status === 'APPROVED'
+                ? 'Mande o modelo de retomada: quando o cliente responder, a conversa reabre e sua mensagem segue normal.'
+                : 'Pelo app WhatsApp Business do número Spin não tem essa trava — e a mensagem aparece aqui.'}
+            </span>
           </p>
+          {modelo?.status === 'APPROVED' && (
+            <div className="rounded-lg bg-noite/60 border border-white/10 p-2 space-y-1.5">
+              <p className="text-white/70">
+                “Olá, <em>cliente</em>! Aqui é <em>você</em>, da Spin Solar. Estou dando continuidade ao seu atendimento sobre{' '}
+                <strong className="text-white">{assunto || '…'}</strong>. Podemos continuar a conversa por aqui?”{' '}
+                <span className="text-white/40">[Sim, pode falar]</span>
+              </p>
+              <label className="flex items-center gap-2">
+                <span className="text-[11px] text-white/50 shrink-0">Assunto:</span>
+                <input value={assunto} onChange={(e) => setAssunto(e.target.value)} maxLength={60}
+                  className="flex-1 min-w-0 px-2 py-1 bg-white/5 border border-white/10 rounded text-white text-xs focus:outline-none focus:border-white/25" />
+              </label>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={enviarPeloApp}
-              className="px-3 py-1.5 rounded-lg bg-verde text-noite font-bold hover:bg-verde/90">
-              📱 {janelaFechada.tipo === 'texto' && texto.trim() ? 'Enviar pelo WhatsApp Business (mensagem pronta)' : 'Abrir no WhatsApp Business'}
-            </button>
+            {modelo?.status === 'APPROVED' && (
+              <button type="button" onClick={enviarModeloRetomada} disabled={enviandoModelo || !assunto.trim()}
+                className="px-3 py-1.5 rounded-lg bg-verde text-noite font-bold hover:bg-verde/90 disabled:opacity-50">
+                {enviandoModelo ? 'Enviando…' : '📨 Enviar modelo de retomada'}
+              </button>
+            )}
+            {janelaFechada.telefone && (
+              <button type="button" onClick={enviarPeloApp}
+                className={modelo?.status === 'APPROVED'
+                  ? 'px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white font-bold hover:bg-white/15'
+                  : 'px-3 py-1.5 rounded-lg bg-verde text-noite font-bold hover:bg-verde/90'}>
+                📱 {janelaFechada.tipo === 'texto' && texto.trim() ? 'Enviar pelo WhatsApp Business (mensagem pronta)' : 'Abrir no WhatsApp Business'}
+              </button>
+            )}
             <button type="button" onClick={() => setJanelaFechada(null)}
               className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/15 text-white/70 hover:bg-white/10">
               Fechar
             </button>
           </div>
         </div>
+      )}
+      {modeloOk && !janelaFechada && (
+        <p className="mb-2 rounded-xl bg-verde/10 border border-verde/30 p-2 text-xs text-verde flex items-start justify-between gap-2">
+          <span>✓ {modeloOk}</span>
+          <button type="button" onClick={() => setModeloOk(null)} className="text-white/50 hover:text-white shrink-0">✕</button>
+        </p>
       )}
       {gravando ? (
         <div className="flex items-center gap-2">

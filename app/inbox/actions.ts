@@ -933,7 +933,7 @@ export async function reabrirComModeloAction(entrada: {
       entrada.assunto.trim() || 'energia solar',
     ],
     remetente_id: check.user.id,
-    origem_agente_nome: nomeUsuario,
+    origem_agente_nome: (await rotuloRemetente(check.user.id, check.perfil?.nome_completo)) || nomeUsuario,
   })
   if ('erro' in r) return { erro: r.erro }
   revalidatePath('/inbox')
