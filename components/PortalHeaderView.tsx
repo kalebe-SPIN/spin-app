@@ -7,6 +7,7 @@ import { AbasPorArea } from '@/components/AbasPorArea'
 import { AlertaMensagensInbox } from '@/components/AlertaMensagensInbox'
 import { NavPortal, type LinkNav } from '@/components/NavPortal'
 import { AlternarTema } from '@/components/AlternarTema'
+import { LancamentoRapido } from '@/components/financeiro/LancamentoRapido'
 
 /**
  * Parte visual do cabeçalho (Kalebe 2026-09-30) — o PortalHeader busca os
@@ -30,6 +31,8 @@ export function PortalHeaderView({
       <AbasPorArea />
       {/* Kalebe 2026-09-30: alerta na tela quando chega mensagem no inbox */}
       <AlertaMensagensInbox />
+      {/* Kalebe 2026-10-01: "Registrar saída" de qualquer tela (só quem vê o Financeiro) */}
+      {linksNav.some((l) => l.href === '/financeiro') && <LancamentoRapido />}
       <div className="max-w-screen-2xl mx-auto px-3 sm:px-4 md:px-6 py-1 md:py-1.5 flex items-center justify-between gap-2 md:gap-3">
         {/* Esquerda: ☰ (telas < 1024px) + logo + menu */}
         <div className="flex items-center gap-2 lg:gap-4 min-w-0">

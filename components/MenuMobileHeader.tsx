@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { usePathname } from 'next/navigation'
 import { linkAtivo, useInboxNaoLidas, type LinkNav } from '@/components/NavPortal'
+import { abrirRegistroSaida } from '@/components/financeiro/LancamentoRapido'
 
 /**
  * Menu ☰ do PortalHeader — aparece abaixo de 1024px (Kalebe 2026-09-30:
@@ -73,22 +74,34 @@ export function MenuMobileHeader({ links }: { links: LinkNav[] }) {
               {links.map((l) => {
                 const ativo = linkAtivo(pathname, l.href)
                 return (
-                  <Link
-                    key={l.href}
-                    href={l.href}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-md text-sm transition ${
-                      ativo
-                        ? 'bg-sol/15 text-sol border border-sol/30'
-                        : 'text-white/70 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    {l.label}
-                    {l.href === '/inbox' && naoLidas > 0 && (
-                      <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-verde text-noite text-[10px] font-black flex items-center justify-center">
-                        {naoLidas > 99 ? '99+' : naoLidas}
-                      </span>
+                  <div key={l.href}>
+                    <Link
+                      href={l.href}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-md text-sm transition ${
+                        ativo
+                          ? 'bg-sol/15 text-sol border border-sol/30'
+                          : 'text-white/70 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      {l.label}
+                      {l.href === '/inbox' && naoLidas > 0 && (
+                        <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-verde text-noite text-[10px] font-black flex items-center justify-center">
+                          {naoLidas > 99 ? '99+' : naoLidas}
+                        </span>
+                      )}
+                    </Link>
+                    {/* Kalebe 2026-10-01: atalho do dia a dia também no celular */}
+                    {l.href === '/financeiro' && (
+                      <button
+                        type="button"
+                        onClick={() => { setAberto(false); abrirRegistroSaida() }}
+                        className="w-full flex items-center gap-2 pl-6 pr-3 py-2 rounded-md text-sm text-white/70 hover:text-white hover:bg-white/5 text-left"
+                      >
+                        <span className="w-5 h-5 rounded-full bg-coral/15 text-coral flex items-center justify-center font-black text-xs">−</span>
+                        Registrar saída
+                      </button>
                     )}
-                  </Link>
+                  </div>
                 )
               })}
             </nav>

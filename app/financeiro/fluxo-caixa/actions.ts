@@ -156,6 +156,33 @@ export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ 
   return { sucesso: true, criados: linhas.length }
 }
 
+/**
+ * Kalebe 2026-10-01: atalho "Registrar saída" no menu Financeiro (qualquer
+ * tela) — carrega só o que o formulário de lançamento precisa.
+ */
+export async function dadosLancamentoRapidoAction(): Promise<R<{
+  fornecedores: any[]; categorias: any[]
+  projetos: Array<{ id: string; nome: string }>; equipe: Array<{ id: string; nome: string }>
+}>> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  const [{ data: fornecedores }, { data: categorias, error }, { data: projetos }, { data: perfis }] = await Promise.all([
+    supabase.from('fornecedores').select('id, razao_social, nome_fantasia, cnpj, categoria, contato_telefone, ativo').order('razao_social'),
+    supabase.from('categorias_financeiras').select('id, nome, tipo').eq('ativo', true).order('nome'),
+    supabase.from('projetos').select('id, cliente_razao_social').in('status', STATUS_FECHADOS).is('excluida_em', null).limit(2000),
+    supabase.from('profiles').select('id, nome_completo').eq('ativo', true).neq('role', 'candidato'),
+  ])
+  if (error) return { erro: erroTabela(error.message) }
+  const aZ = (a: { nome: string }, b: { nome: string }) => a.nome.localeCompare(b.nome, 'pt-BR')
+  return {
+    sucesso: true,
+    fornecedores: fornecedores || [],
+    categorias: categorias || [],
+    projetos: ((projetos || []) as any[]).map((p) => ({ id: p.id, nome: p.cliente_razao_social || 'Sem nome' })).sort(aZ),
+    equipe: ((perfis || []) as any[]).map((p) => ({ id: p.id, nome: p.nome_completo || 'Sem nome' })).sort(aZ),
+  }
+}
+
 /** Efetivar = registrar o valor EFETIVAMENTE pago/recebido e a data. */
 export async function efetivarLancamentoAction(id: string, valor: number, data: string, forma?: string | null): Promise<R> {
   const { supabase, ok } = await admin()

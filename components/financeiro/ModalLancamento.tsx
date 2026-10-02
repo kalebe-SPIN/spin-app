@@ -33,9 +33,15 @@ type Props = {
   onFechar: () => void
   onSalvo: (msg: string) => void
   onAbrirPassivo: () => void
+  /** Kalebe 2026-10-01: atalho "Registrar saída" — só os tipos de saída e "já foi pago" marcado */
+  apenasSaidas?: boolean
+  jaPagoPadrao?: boolean
 }
 
-export function ModalLancamento({ fornecedores, categorias, projetos, equipe, editando, qtdSerie = 0, onFechar, onSalvo, onAbrirPassivo }: Props) {
+export function ModalLancamento({
+  fornecedores, categorias, projetos, equipe, editando, qtdSerie = 0, onFechar, onSalvo, onAbrirPassivo,
+  apenasSaidas = false, jaPagoPadrao = false,
+}: Props) {
   const d = editando?.detalhes || {}
   const [tipo, setTipo] = useState<Tipo | null>((editando?.grupo as Tipo) || null)
   const [direcaoCg, setDirecaoCg] = useState<Direcao>(editando?.direcao || 'saida')
@@ -61,7 +67,7 @@ export function ModalLancamento({ fornecedores, categorias, projetos, equipe, ed
   const [repeticao, setRepeticao] = useState<'unica' | 'parcelado' | 'recorrente'>('unica')
   const [vezes, setVezes] = useState('2')
   const [forma, setForma] = useState(editando?.forma_pagamento || '')
-  const [jaPago, setJaPago] = useState(false)
+  const [jaPago, setJaPago] = useState(!editando && jaPagoPadrao)
   const [valorPago, setValorPago] = useState('')
   const [dataPago, setDataPago] = useState(hojeBR())
   const [obs, setObs] = useState(editando?.observacoes || '')
@@ -178,7 +184,11 @@ export function ModalLancamento({ fornecedores, categorias, projetos, equipe, ed
       </button>
     )
     return (
-      <Modal titulo="➕ Novo lançamento" subtitulo="Escolha o tipo — o formulário se ajusta a ele." onFechar={onFechar}>
+      <Modal
+        titulo={apenasSaidas ? '➖ Registrar saída' : '➕ Novo lançamento'}
+        subtitulo={apenasSaidas ? 'Despesa ou custo — escolha o tipo e o formulário se ajusta a ele.' : 'Escolha o tipo — o formulário se ajusta a ele.'}
+        onFechar={onFechar}
+      >
         <p className="text-[11px] uppercase font-bold text-coral/80 tracking-wider">Saídas (custos e despesas)</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {TIPOS_SAIDA.map((t) => <Cartao key={t} t={t} dir="saida" />)}
@@ -189,13 +199,17 @@ export function ModalLancamento({ fornecedores, categorias, projetos, equipe, ed
             <span className="block text-[10px] text-white/45">contrato com parcelas</span>
           </button>
         </div>
-        <p className="text-[11px] uppercase font-bold text-verde/80 tracking-wider pt-1">Entradas</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {TIPOS_ENTRADA.map((t) => <Cartao key={`e-${t}`} t={t} dir="entrada" />)}
-        </div>
-        <p className="text-[10px] text-white/40">
-          Recebimentos das vendas do sistema entram pela aba <strong>“A programar”</strong>, com os custos do orçamento já previstos.
-        </p>
+        {!apenasSaidas && (
+          <>
+            <p className="text-[11px] uppercase font-bold text-verde/80 tracking-wider pt-1">Entradas</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {TIPOS_ENTRADA.map((t) => <Cartao key={`e-${t}`} t={t} dir="entrada" />)}
+            </div>
+            <p className="text-[10px] text-white/40">
+              Recebimentos das vendas do sistema entram pela aba <strong>“A programar”</strong>, com os custos do orçamento já previstos.
+            </p>
+          </>
+        )}
       </Modal>
     )
   }
@@ -376,7 +390,8 @@ export function ModalLancamento({ fornecedores, categorias, projetos, equipe, ed
       )}
 
       {erro && <Aviso tipo="erro">⚠️ {erro}</Aviso>}
-      <Botoes onCancelar={onFechar} onConfirmar={salvar} processando={salvando} rotulo={editando ? 'Salvar alterações' : 'Lançar previsto'} />
+      <Botoes onCancelar={onFechar} onConfirmar={salvar} processando={salvando}
+        rotulo={editando ? 'Salvar alterações' : jaPago && repeticao === 'unica' ? (direcao === 'entrada' ? 'Registrar recebimento' : 'Registrar pagamento') : 'Lançar previsto'} />
     </Modal>
   )
 }
