@@ -8,6 +8,7 @@ import {
   type Direcao, type Grupo,
 } from '@/lib/financeiro/fluxo'
 import type { LinhaPlano } from '@/lib/financeiro/plano-venda'
+import { carregarProjetosEServicos, type OpcaoProjeto, type OpcaoServico } from '@/lib/financeiro/opcoes-lancamento'
 import type { VendaPendente } from '@/lib/financeiro/fluxo'
 import {
   STATUS_FECHADOS, SELECT_PROJETO_VENDA, mapaPrimeiroFechamento, vendaDoProjeto, vendaManual,
@@ -162,14 +163,15 @@ export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ 
  */
 export async function dadosLancamentoRapidoAction(): Promise<R<{
   fornecedores: any[]; categorias: any[]
-  projetos: Array<{ id: string; nome: string }>; equipe: Array<{ id: string; nome: string }>
+  projetos: OpcaoProjeto[]; servicos: OpcaoServico[]; equipe: Array<{ id: string; nome: string }>
 }>> {
   const { supabase, ok } = await admin()
   if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
-  const [{ data: fornecedores }, { data: categorias, error }, { data: projetos }, { data: perfis }] = await Promise.all([
+  const [{ data: fornecedores }, { data: categorias, error }, { projetos, servicos }, { data: perfis }] = await Promise.all([
     supabase.from('fornecedores').select('id, razao_social, nome_fantasia, cnpj, categoria, contato_telefone, ativo').order('razao_social'),
     supabase.from('categorias_financeiras').select('id, nome, tipo').eq('ativo', true).order('nome'),
-    supabase.from('projetos').select('id, cliente_razao_social').in('status', STATUS_FECHADOS).is('excluida_em', null).limit(2000),
+    // Kalebe 2026-10-02: custo/despesa ligado a qualquer projeto ativo + serviço do projeto
+    carregarProjetosEServicos(supabase),
     supabase.from('profiles').select('id, nome_completo').eq('ativo', true).neq('role', 'candidato'),
   ])
   if (error) return { erro: erroTabela(error.message) }
@@ -178,9 +180,24 @@ export async function dadosLancamentoRapidoAction(): Promise<R<{
     sucesso: true,
     fornecedores: fornecedores || [],
     categorias: categorias || [],
-    projetos: ((projetos || []) as any[]).map((p) => ({ id: p.id, nome: p.cliente_razao_social || 'Sem nome' })).sort(aZ),
+    projetos,
+    servicos,
     equipe: ((perfis || []) as any[]).map((p) => ({ id: p.id, nome: p.nome_completo || 'Sem nome' })).sort(aZ),
   }
+}
+
+/**
+ * Kalebe 2026-10-02: abre o comprovante (foto/PDF) de um lançamento — bucket
+ * privado 'comprovantes', link assinado de 5 minutos, só admin.
+ */
+export async function urlComprovanteAction(caminho: string): Promise<R<{ url: string }>> {
+  const { ok } = await admin()
+  if (!ok) return { erro: 'Só o admin vê comprovantes' }
+  if (!/^[\w-]+(\/[\w.-]+)+$/.test(caminho || '')) return { erro: 'Comprovante inválido' }
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const { data, error } = await createAdminClient().storage.from('comprovantes').createSignedUrl(caminho, 300)
+  if (error || !data?.signedUrl) return { erro: error?.message || 'Comprovante não encontrado' }
+  return { sucesso: true, url: data.signedUrl }
 }
 
 /** Efetivar = registrar o valor EFETIVAMENTE pago/recebido e a data. */

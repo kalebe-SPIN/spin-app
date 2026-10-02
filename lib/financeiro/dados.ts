@@ -6,6 +6,7 @@ import {
 import {
   STATUS_FECHADOS, SELECT_PROJETO_VENDA, dataFechamento, mapaPrimeiroFechamento, mapaVendaDireta, valorVendaProjeto, vendaDoProjeto, vendaManual,
 } from '@/lib/financeiro/vendas-sistema'
+import { carregarProjetosEServicos } from '@/lib/financeiro/opcoes-lancamento'
 
 /**
  * Carrega tudo que a tela de fluxo de caixa precisa (Kalebe 2026-09-29).
@@ -51,9 +52,11 @@ export async function carregarFluxo() {
     supabase.from('profiles').select('id, nome_completo'),
   ])
   // Data real da venda = 1ª entrada em etapa de fechado (não muda com as etapas seguintes)
-  const [{ data: historico }, { data: itensVd }] = await Promise.all([
+  const [{ data: historico }, { data: itensVd }, opcoesProjeto] = await Promise.all([
     supabase.from('projeto_status_historico').select('projeto_id, created_at').in('status_novo', STATUS_FECHADOS).limit(20000),
     supabase.from('projeto_itens').select('projeto_id, dados').eq('tipo', 'venda_equipamentos').neq('status', 'removido').limit(10000),
+    // Kalebe 2026-10-02: custo/despesa ligado a qualquer projeto ativo + serviço do projeto
+    carregarProjetosEServicos(supabase),
   ])
   const primeiro = mapaPrimeiroFechamento((historico || []) as any[])
   const vendaDireta = mapaVendaDireta((itensVd || []) as any[])
@@ -92,10 +95,11 @@ export async function carregarFluxo() {
   }
   pendentes.sort((a, b) => b.data_venda.localeCompare(a.data_venda))
 
-  // Projetos pra vincular custo (select do cadastro) — A→Z
-  const projetosLista = ((projetos || []) as any[])
-    .map((p) => ({ id: p.id, nome: p.cliente_razao_social || 'Sem nome' }))
-    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  // Projetos pra vincular custo (select do cadastro) — todos os ativos, A→Z.
+  // Kalebe 2026-10-02: antes só as vendas fechadas; custo de visita/serviço
+  // também precisa entrar no projeto.
+  const projetosLista = opcoesProjeto.projetos
+  const servicosLista = opcoesProjeto.servicos
 
   const equipe = (perfis || [])
     .map((p: any) => ({ id: p.id, nome: p.nome_completo || 'Sem nome' }))
@@ -116,6 +120,7 @@ export async function carregarFluxo() {
     pendentes,
     faturamentoPorMes,
     projetosLista,
+    servicosLista,
     equipe,
   } as const
 }

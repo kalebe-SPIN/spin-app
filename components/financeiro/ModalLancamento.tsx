@@ -10,6 +10,9 @@ import {
   type Categoria, type Direcao, type Fornecedor, type Grupo, type Lancamento,
 } from '@/lib/financeiro/fluxo'
 import { Campo, InputValor, Selecao, Modal, Aviso, Botoes, classeInput } from './ui'
+import { PreencherPorVozOuFoto, type ResultadoIA } from './PreencherPorVozOuFoto'
+import { urlComprovanteAction } from '@/app/financeiro/fluxo-caixa/actions'
+import type { OpcaoServico } from '@/lib/financeiro/opcoes-lancamento'
 
 /**
  * Cadastro dinâmico (Kalebe 2026-09-29): escolhe o TIPO e o formulário
@@ -26,6 +29,8 @@ type Props = {
   fornecedores: Fornecedor[]
   categorias: Categoria[]
   projetos: Array<{ id: string; nome: string }>
+  /** Kalebe 2026-10-02: serviços (itens) de cada projeto pra ligar o custo */
+  servicos?: OpcaoServico[]
   equipe: Array<{ id: string; nome: string }>
   editando?: Lancamento | null
   /** Edição: quantos lançamentos em aberto vêm depois deste na mesma série */
@@ -39,7 +44,7 @@ type Props = {
 }
 
 export function ModalLancamento({
-  fornecedores, categorias, projetos, equipe, editando, qtdSerie = 0, onFechar, onSalvo, onAbrirPassivo,
+  fornecedores, categorias, projetos, servicos = [], equipe, editando, qtdSerie = 0, onFechar, onSalvo, onAbrirPassivo,
   apenasSaidas = false, jaPagoPadrao = false,
 }: Props) {
   const d = editando?.detalhes || {}
@@ -81,6 +86,55 @@ export function ModalLancamento({
 
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
+
+  // Kalebe 2026-10-02: serviço do projeto, comprovante anexado e avisos da IA
+  const [servicoId, setServicoId] = useState<string>(d.servico_item_id || '')
+  const [comprovante, setComprovante] = useState<string | null>(d.comprovante || null)
+  const [avisosIA, setAvisosIA] = useState<string[] | null>(null)
+  const servicosDoProjeto = servicos.filter((s) => s.projeto_id === projetoId)
+
+  /** Resultado da voz/foto → preenche o formulário (o admin confere antes de registrar). */
+  function aplicarIA(r: ResultadoIA) {
+    const x = r.dados
+    setErro(null)
+    const t = (TIPOS_SAIDA as string[]).includes(x.grupo) ? (x.grupo as Tipo) : 'outras_despesas'
+    setTipo(t)
+    if (x.valor) setValor(x.valor.toFixed(2).replace('.', ','))
+    if (x.data) { setData(x.data); setDataPago(x.data) }
+    setJaPago(!!x.ja_pago)
+    setValorPago('')
+    if (x.forma_pagamento) setForma(x.forma_pagamento)
+    if (x.fornecedor_id) { setFornecedorId(x.fornecedor_id); setNovoFornec(null) }
+    else if (x.fornecedor_nome && (t === 'fornecedores' || t === 'custos_projeto')) {
+      setNovoFornec({ razao: x.fornecedor_nome, cnpj: x.fornecedor_cnpj || '' })
+    }
+    if (x.nf) setNf(x.nf)
+    if (x.tipo_imposto) setTipoImposto(x.tipo_imposto)
+    if (x.competencia) setCompetencia(x.competencia)
+    if (x.subtipo_pessoal) setSubtipoPessoal(x.subtipo_pessoal)
+    if (x.favorecido) {
+      setFavorecido(x.favorecido)
+      const alvo = x.favorecido.toLowerCase()
+      const pessoa = equipe.find((p) => p.nome.toLowerCase().includes(alvo) || alvo.includes(p.nome.toLowerCase().split(' ')[0]))
+      if (pessoa) setVendedorId(pessoa.id)
+    }
+    if (x.categoria_id) setCategoriaId(x.categoria_id)
+    if (x.projeto_id) setProjetoId(x.projeto_id)
+    setServicoId(x.servico_id || '')
+    if (x.descricao) { setDescricao(x.descricao); setDescricaoMexida(true) }
+    if (x.observacoes) setObs(x.observacoes)
+    if (r.comprovante) setComprovante(r.comprovante)
+    setAvisosIA(r.avisos || [])
+  }
+
+  async function verComprovante() {
+    if (!comprovante) return
+    const janela = window.open('', '_blank')
+    const r = await urlComprovanteAction(comprovante)
+    if ('erro' in r) { janela?.close(); setErro(r.erro); return }
+    if (janela) janela.location.href = r.url
+    else window.location.href = r.url
+  }
 
   const subCg = SUBTIPOS_CAPITAL_GIRO.find((s) => s.chave === subtipoCg)
   const direcao: Direcao = tipo === 'capital_giro' ? (subCg?.direcao || direcaoCg)
@@ -148,6 +202,11 @@ export function ModalLancamento({
     if (tipo === 'pessoal') { detalhes.subtipo = subtipoPessoal; if (favorecido) detalhes.favorecido = favorecido }
     if (tipo === 'comissoes' && vendedorId) { detalhes.vendedor_id = vendedorId; detalhes.vendedor = nomeVendedor }
     if (tipo === 'receita_vendas' && cliente) detalhes.cliente = cliente
+    // Kalebe 2026-10-02: projeto/serviço e comprovante ficam no lançamento
+    if (projetoId && nomeProjeto) detalhes.projeto_rotulo = nomeProjeto
+    const servico = servicosDoProjeto.find((s) => s.id === servicoId)
+    if (servico) { detalhes.servico_item_id = servico.id; detalhes.servico = servico.nome }
+    if (comprovante) detalhes.comprovante = comprovante
 
     setSalvando(true)
     try {
@@ -189,6 +248,8 @@ export function ModalLancamento({
         subtitulo={apenasSaidas ? 'Despesa ou custo — escolha o tipo e o formulário se ajusta a ele.' : 'Escolha o tipo — o formulário se ajusta a ele.'}
         onFechar={onFechar}
       >
+        {/* Kalebe 2026-10-02: preencher por voz e/ou foto do comprovante */}
+        <PreencherPorVozOuFoto onResultado={aplicarIA} />
         <p className="text-[11px] uppercase font-bold text-coral/80 tracking-wider">Saídas (custos e despesas)</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {TIPOS_SAIDA.map((t) => <Cartao key={t} t={t} dir="saida" />)}
@@ -222,8 +283,29 @@ export function ModalLancamento({
       subtitulo={direcao === 'entrada' ? 'Entrada de caixa (previsto)' : 'Saída de caixa (previsto)'}
       onFechar={onFechar}
     >
-      {!editando && (
-        <button type="button" onClick={() => setTipo(null)} className="text-xs text-white/50 hover:text-white">← trocar tipo</button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {!editando ? (
+          <button type="button" onClick={() => setTipo(null)} className="text-xs text-white/50 hover:text-white">← trocar tipo</button>
+        ) : <span />}
+        {direcao === 'saida' && <PreencherPorVozOuFoto onResultado={aplicarIA} compacto />}
+      </div>
+
+      {avisosIA && (
+        <Aviso tipo="info">
+          ⚡ Preenchido pela IA — confira os campos antes de registrar.
+          {avisosIA.length > 0 && (
+            <ul className="mt-1 list-disc pl-4 text-[11px] text-white/70">
+              {avisosIA.map((a, i) => <li key={i}>{a}</li>)}
+            </ul>
+          )}
+        </Aviso>
+      )}
+      {comprovante && (
+        <div className="flex items-center gap-2 text-xs text-white/70">
+          📎 Comprovante anexado
+          <button type="button" onClick={verComprovante} className="text-sol hover:underline">ver</button>
+          <button type="button" onClick={() => setComprovante(null)} className="text-white/40 hover:text-coral">remover</button>
+        </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -292,10 +374,17 @@ export function ModalLancamento({
           <Campo rotulo="Cliente"><input className={classeInput} value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Nome do cliente" /></Campo>
         )}
 
-        {/* Projeto vinculado */}
-        {(tipo === 'custos_projeto' || tipo === 'comissoes' || tipo === 'fornecedores' || tipo === 'receita_vendas') && (
+        {/* Projeto vinculado — Kalebe 2026-10-02: qualquer tipo pode ser ligado a
+            um projeto e, dentro dele, a um serviço (solar, limpeza, venda...) */}
+        {tipo !== 'capital_giro' && (
           <Campo rotulo={tipo === 'custos_projeto' ? 'Projeto' : 'Projeto (opcional)'}>
-            <Selecao valor={projetoId} onChange={setProjetoId} vazio="—" opcoes={opcoesProjetos} />
+            <Selecao valor={projetoId} onChange={(v) => { setProjetoId(v); setServicoId('') }} vazio="—" opcoes={opcoesProjetos} />
+          </Campo>
+        )}
+        {tipo !== 'capital_giro' && projetoId && servicosDoProjeto.length > 0 && (
+          <Campo rotulo="Serviço do projeto (opcional)">
+            <Selecao valor={servicoId} onChange={setServicoId} vazio="Projeto inteiro"
+              opcoes={servicosDoProjeto.map((s) => ({ valor: s.id, rotulo: s.nome }))} />
           </Campo>
         )}
 

@@ -25,7 +25,9 @@ export function abrirRegistroSaida() {
 
 type Dados = {
   fornecedores: any[]; categorias: any[]
-  projetos: Array<{ id: string; nome: string }>; equipe: Array<{ id: string; nome: string }>
+  projetos: Array<{ id: string; nome: string }>
+  servicos: Array<{ id: string; projeto_id: string; nome: string }>
+  equipe: Array<{ id: string; nome: string }>
 }
 
 export function LancamentoRapido() {
@@ -47,7 +49,7 @@ export function LancamentoRapido() {
       try {
         const r = await dadosLancamentoRapidoAction()
         if ('erro' in r) { setAviso({ ok: false, texto: r.erro }); setAberto(null); return }
-        setDados({ fornecedores: r.fornecedores, categorias: r.categorias, projetos: r.projetos, equipe: r.equipe })
+        setDados({ fornecedores: r.fornecedores, categorias: r.categorias, projetos: r.projetos, servicos: r.servicos, equipe: r.equipe })
       } finally { setCarregando(false) }
     }
     window.addEventListener(EVENTO_REGISTRAR_SAIDA, abrir)
@@ -81,6 +83,7 @@ export function LancamentoRapido() {
           fornecedores={dados.fornecedores}
           categorias={dados.categorias}
           projetos={dados.projetos}
+          servicos={dados.servicos}
           equipe={dados.equipe}
           apenasSaidas
           jaPagoPadrao

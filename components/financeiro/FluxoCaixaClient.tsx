@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   efetivarLancamentoAction, desfazerEfetivacaoAction, cancelarLancamentoAction, excluirPassivoAction,
   ignorarVendaAction, salvarConfigFluxoAction, salvarFornecedorAction,
-  vendaDaProgramacaoAction, renegociarPassivoAction,
+  vendaDaProgramacaoAction, renegociarPassivoAction, urlComprovanteAction,
 } from '@/app/financeiro/fluxo-caixa/actions'
 import {
   GRUPOS, FORMAS_PAGAMENTO, MODALIDADES_PASSIVO,
@@ -33,7 +33,7 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const hoje = hojeBR()
-  const { config, lancamentos, passivos, fornecedores, categorias, pendentes, faturamentoPorMes, projetosLista, equipe } = dados
+  const { config, lancamentos, passivos, fornecedores, categorias, pendentes, faturamentoPorMes, projetosLista, servicosLista, equipe } = dados
   // Links do hub: ?aba=receber / ?aba=pagar abrem Lançamentos já filtrados
   const contas = abaInicial === 'receber' ? 'entrada' : abaInicial === 'pagar' ? 'saida' : ''
 
@@ -329,7 +329,7 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
 
       {/* Modais */}
       {modal?.t === 'lancamento' && (
-        <ModalLancamento fornecedores={fornecedores} categorias={categorias} projetos={projetosLista} equipe={equipe}
+        <ModalLancamento fornecedores={fornecedores} categorias={categorias} projetos={projetosLista} servicos={servicosLista} equipe={equipe}
           editando={modal.editando}
           qtdSerie={modal.editando?.lote_id ? lancamentos.filter((x) => x.lote_id === modal.editando!.lote_id && x.id !== modal.editando!.id
             && !x.data_realizada && x.data_prevista > modal.editando!.data_prevista).length : 0}
@@ -566,6 +566,26 @@ type AcoesLancamento = {
   onAjustarVenda: (l: Lancamento) => void
 }
 
+/** 📎 abre o comprovante (foto/PDF) por link temporário — bucket privado. */
+function BotaoComprovante({ caminho }: { caminho: string }) {
+  const [abrindo, setAbrindo] = useState(false)
+  async function abrir() {
+    setAbrindo(true)
+    const janela = window.open('', '_blank')
+    try {
+      const r = await urlComprovanteAction(caminho)
+      if ('erro' in r) { janela?.close(); window.alert(r.erro); return }
+      if (janela) janela.location.href = r.url
+      else window.location.href = r.url
+    } finally { setAbrindo(false) }
+  }
+  return (
+    <button type="button" onClick={abrir} disabled={abrindo} className="text-sol hover:underline disabled:opacity-50">
+      📎 comprovante
+    </button>
+  )
+}
+
 /** Uma linha de lançamento com ações rápidas (lista, detalhe da visão mensal). */
 function LinhaLancamento({ l, hoje, acoes }: { l: Lancamento; hoje: string; acoes: AcoesLancamento }) {
   const st = statusDe(l, hoje)
@@ -590,6 +610,9 @@ function LinhaLancamento({ l, hoje, acoes }: { l: Lancamento; hoje: string; acoe
           {l.forma_pagamento && <span>{l.forma_pagamento}</span>}
           {l.detalhes?.tipo_imposto && <span>{l.detalhes.tipo_imposto}</span>}
           {l.detalhes?.nf && <span>NF {l.detalhes.nf}</span>}
+          {/* Kalebe 2026-10-02: projeto/serviço ligado e comprovante */}
+          {l.detalhes?.projeto_rotulo && <span>📁 {l.detalhes.projeto_rotulo}{l.detalhes?.servico ? ` · ${l.detalhes.servico}` : ''}</span>}
+          {l.detalhes?.comprovante && <BotaoComprovante caminho={l.detalhes.comprovante} />}
         </p>
       </div>
       <div className="text-right md:w-32 shrink-0">
