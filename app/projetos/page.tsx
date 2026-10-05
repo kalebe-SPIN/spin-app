@@ -27,7 +27,7 @@ export default async function ProjetosPage() {
   if (!user) redirect('/login')
 
   const { modo } = await getModoVisualizacao()
-  if (modo === 'profissional_campo') redirect('/agenda')
+  if (modo === 'profissional_campo') redirect('/campo')
 
   // Query tolerante: tenta filtrar excluída_em (migration 095); se a
   // coluna não existir ainda, cai pra query sem filtro. Assim a listagem

@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/bianca-eventos",
-      "schedule": "0 12 * * *"
+      "schedule": "0 10 * * *"
     },
     {
       "path": "/api/cron/retencao-arquivos",

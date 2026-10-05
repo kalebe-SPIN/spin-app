@@ -51,9 +51,13 @@ export async function PortalHeader() {
   // Kalebe 2026-09-09: representante = navegação idêntica ao consultor.
   // O portal só diverge de verdade pra profissional_campo (foco execução) e admin.
   // Kalebe 2026-09-30: itens só com texto (sem ícones) — cabem na tela
+  // Kalebe 2026-10-05: profissional de campo entra pelo painel /campo
+  // (demandas, agenda e ordens de serviço); admin e instalador também veem.
+  const ehCampo = modoAtivo === 'profissional_campo'
+  const veCampo = ehCampo || modoAtivo === 'admin' || perfil.role === 'instalador'
   const linksNav = [
-    { href: '/dashboard', label: 'Dashboard' },
-    ...(modoAtivo !== 'profissional_campo'
+    ehCampo ? { href: '/campo', label: 'Campo' } : { href: '/dashboard', label: 'Dashboard' },
+    ...(!ehCampo
       ? [{ href: '/projetos', label: 'Projetos' }] : []),
     {
       href:
@@ -62,6 +66,7 @@ export async function PortalHeader() {
       label: 'CRM',
     },
     { href: '/agenda', label: 'Agenda' },
+    ...(veCampo && !ehCampo ? [{ href: '/campo', label: 'Campo' }] : []),
     // Kalebe 2026-09-30: Grupos saiu do menu — fica dentro do Inbox
     { href: '/inbox', label: 'Inbox' },
     // Kalebe 2026-09-30: Admin já tem botão "Administração" no dashboard → aqui vira Financeiro

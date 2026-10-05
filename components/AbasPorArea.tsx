@@ -38,6 +38,7 @@ const NOMES_AREA: Record<string, string> = {
   inbox: 'Inbox', grupos: 'Grupos', financeiro: 'Financeiro', admin: 'Admin', 'venda-direta': 'Venda direta',
   erp: 'ERP', conta: 'Minha conta', homologacoes: 'Homologações', operacoes: 'Operações', 'pos-venda': 'Pós-venda',
   fiscal: 'Fiscal', cliente: 'Portal do cliente', catalogo: 'Catálogo', parceiro: 'Parceiro',
+  campo: 'Campo',
 }
 const NOMES_ADMIN: Record<string, string> = {
   agentes: 'Agentes', arquivos: 'Arquivos', bianca: 'Bianca', campanhas: 'Campanhas', catalogo: 'Catálogo',

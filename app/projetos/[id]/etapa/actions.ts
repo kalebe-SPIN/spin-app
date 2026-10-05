@@ -3,6 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { dispararGatilho } from '@/lib/bianca/gatilhos'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checklistPadrao } from '@/lib/campo/checklists'
+import { linhaEndereco } from '@/lib/campo/comum'
 
 export async function mudarEtapaProjetoAction(
   projetoId: string,
@@ -15,7 +18,7 @@ export async function mudarEtapaProjetoAction(
 
   const { data: projeto } = await supabase
     .from('projetos')
-    .select('id, codigo, status, cliente_id, consultor_id, cliente_razao_social, cliente_telefone')
+    .select('id, codigo, status, cliente_id, consultor_id, cliente_razao_social, cliente_telefone, endereco_instalacao, cliente_endereco')
     .eq('id', projetoId)
     .single()
 
@@ -123,32 +126,54 @@ async function disparoAutomacoes(
       },
     }).catch((e) => console.error('[gatilho proposta_aceita]', e))
 
-    // 1.2 Cria execução pra cada item da proposta (pipeline de obra)
+    // 1.2 Cria execução pra cada item da proposta (pipeline de obra).
+    // Kalebe 2026-10-05: cada execução é uma demanda do painel do campo
+    // (/campo) — já nasce com cliente, contato, endereço e checklist, sem
+    // dono (o profissional de campo pega e agenda). Venda de equipamento não
+    // tem serviço em campo. Service role: o consultor não grava execuções
+    // pelo RLS (o projeto acima já foi lido com a permissão dele).
     try {
+      const admin = createAdminClient()
       const { data: itensProjeto } = await supabase
         .from('projeto_itens')
         .select('id, tipo, titulo, valor_estimado')
         .eq('projeto_id', projeto.id)
         .neq('status', 'removido')
 
+      const end = projeto.endereco_instalacao && Object.keys(projeto.endereco_instalacao).length
+        ? projeto.endereco_instalacao : projeto.cliente_endereco || null
       for (const item of itensProjeto || []) {
-        const { data: jaTem } = await supabase
+        if (item.tipo === 'venda_equipamentos') continue
+        const { data: jaTem } = await admin
           .from('execucoes_servicos')
           .select('id')
           .eq('item_id', item.id)
           .maybeSingle()
 
         if (!jaTem) {
-          await supabase.from('execucoes_servicos').insert({
+          const base = {
             projeto_id: projeto.id,
             item_id: item.id,
             tipo_servico: item.tipo,
             titulo: `${item.titulo || item.tipo} — ${cliente}`,
             valor_contratado: item.valor_estimado,
             status: 'aguardando_pre_requisitos',
-            responsavel_tecnico: projeto.consultor_id || userId,
+            responsavel_tecnico: null,
+            endereco_execucao: linhaEndereco(end) || null,
             criada_por: userId,
+          }
+          const { error } = await admin.from('execucoes_servicos').insert({
+            ...base,
+            origem: 'projeto',
+            cliente_nome: projeto.cliente_razao_social || null,
+            contato_telefone: projeto.cliente_telefone || null,
+            endereco: end,
+            cidade: end?.cidade || null,
+            bairro: end?.bairro || null,
+            checklist: checklistPadrao(item.tipo),
           })
+          // Migration 137 ainda não rodada → grava só o básico
+          if (error && /column/.test(error.message)) await admin.from('execucoes_servicos').insert(base)
         }
       }
     } catch (execErr) {

@@ -40,9 +40,9 @@ export default async function DashboardPage() {
   const { modo } = await getModoVisualizacao()
   const mostraAdmin = profile?.role === 'admin' && modo === 'admin'
 
-  // Profissional de campo ainda não tem dashboard próprio — o fluxo dele é
-  // executar OS na agenda. Manda direto pra /agenda até criarmos DashboardCampo.
-  if (modo === 'profissional_campo') redirect('/agenda')
+  // Kalebe 2026-10-05: o painel do profissional de campo é /campo
+  // (demandas por região, agenda e ordens de serviço).
+  if (modo === 'profissional_campo') redirect('/campo')
 
   // Kalebe 2026-09-09: Dashboard dedicado do Representante temporariamente
   // desativado — o componente DashboardRepresentante exibe cards de ganhos

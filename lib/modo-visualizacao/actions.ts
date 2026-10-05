@@ -38,7 +38,7 @@ export async function definirModoAction(novo: ModoVisualizacao) {
   // Se saiu do admin, volta pra rota segura pro modo escolhido
   if (novo === 'consultor') redirect('/projetos')
   if (novo === 'representante') redirect('/')
-  if (novo === 'profissional_campo') redirect('/agenda')
+  if (novo === 'profissional_campo') redirect('/campo')
 
   revalidatePath('/', 'layout')
 }
@@ -80,7 +80,7 @@ export async function alternarModoAction() {
 
   if (novo === 'consultor') redirect('/projetos')
   if (novo === 'representante') redirect('/')
-  if (novo === 'profissional_campo') redirect('/agenda')
+  if (novo === 'profissional_campo') redirect('/campo')
 
   revalidatePath('/', 'layout')
 }
