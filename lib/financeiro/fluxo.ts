@@ -30,6 +30,66 @@ export type Lancamento = {
   lote_id: string | null
   detalhes: Record<string, any>
   observacoes: string | null
+  /** Kalebe 2026-10-02 (mig 136): com o que foi pago — conta, cartão ou caixa */
+  conta_id?: string | null
+  /** Cartão: conta bancária de onde saiu o pagamento da fatura */
+  pago_pela_conta_id?: string | null
+}
+
+/** Conta bancária, cartão de crédito ou caixa (mig 136). */
+export type ContaFluxo = {
+  id: string
+  tipo: 'conta_bancaria' | 'cartao_credito' | 'caixa'
+  nome: string
+  banco: string | null
+  final: string | null
+  dia_fechamento: number | null
+  dia_vencimento: number | null
+  saldo_inicial: number
+  ativo: boolean
+}
+
+export const ICONE_CONTA: Record<ContaFluxo['tipo'], string> = { conta_bancaria: '🏦', cartao_credito: '💳', caixa: '💵' }
+
+export const rotuloConta = (c: Pick<ContaFluxo, 'tipo' | 'nome' | 'final'>) =>
+  `${ICONE_CONTA[c.tipo]} ${c.nome}${c.final ? ` •••• ${c.final}` : ''}`
+
+/**
+ * Vencimento da fatura em que cai uma compra no cartão. Compra até a véspera
+ * do fechamento entra na fatura que fecha naquele mês; do dia do fechamento
+ * em diante, na seguinte. Vencimento depois do fechamento = mesmo mês; antes
+ * (ex.: fecha 28, vence 5) = mês seguinte.
+ */
+export function vencimentoFatura(dataCompra: string, diaFechamento: number, diaVencimento: number): string {
+  const [a, m, d] = dataCompra.split('-').map(Number)
+  const primeiroDoMes = `${a}-${String(m).padStart(2, '0')}-01`
+  const mesFechamento = addMeses(primeiroDoMes, d < diaFechamento ? 0 : 1)
+  return addMeses(mesFechamento, diaVencimento > diaFechamento ? 0 : 1, diaVencimento)
+}
+
+/** Datas (vencimento de fatura) de cada parcela/repetição de uma compra no cartão. */
+export function datasNoCartao(
+  dataCompra: string, qtd: number, rep: 'unica' | 'parcelado' | 'recorrente',
+  diaFechamento: number, diaVencimento: number,
+): string[] {
+  const primeira = vencimentoFatura(dataCompra, diaFechamento, diaVencimento)
+  return Array.from({ length: Math.max(1, qtd) }, (_, i) => rep === 'recorrente'
+    ? vencimentoFatura(addMeses(dataCompra, i), diaFechamento, diaVencimento)
+    : addMeses(primeira, i, diaVencimento))
+}
+
+/** Conta onde o dinheiro de fato entrou/saiu (cartão: a conta que pagou a fatura). */
+export const contaDoCaixa = (l: Lancamento) => l.pago_pela_conta_id || l.conta_id || null
+
+/** Saldo efetivado de uma conta bancária/caixa até a data (saldo inicial + realizados). */
+export function saldoDaConta(lancs: Lancamento[], conta: ContaFluxo, cfg: ConfigFluxo, data: string): number {
+  let s = Number(conta.saldo_inicial) || 0
+  for (const l of lancs) {
+    if (!l.data_realizada || l.data_realizada < cfg.data_inicio || l.data_realizada > data) continue
+    if (contaDoCaixa(l) !== conta.id) continue
+    s += (l.direcao === 'entrada' ? 1 : -1) * (Number(l.valor_realizado) || 0)
+  }
+  return arred(s)
 }
 
 export type ConfigFluxo = {

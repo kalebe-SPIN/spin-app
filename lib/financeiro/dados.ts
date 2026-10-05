@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import {
   addMeses, hojeBR, mesDe,
-  type Categoria, type ConfigFluxo, type Fornecedor, type Lancamento, type Passivo, type VendaPendente,
+  type Categoria, type ConfigFluxo, type ContaFluxo, type Fornecedor, type Lancamento, type Passivo, type VendaPendente,
 } from '@/lib/financeiro/fluxo'
 import {
   STATUS_FECHADOS, SELECT_PROJETO_VENDA, dataFechamento, mapaPrimeiroFechamento, mapaVendaDireta, valorVendaProjeto, vendaDoProjeto, vendaManual,
@@ -52,12 +52,17 @@ export async function carregarFluxo() {
     supabase.from('profiles').select('id, nome_completo'),
   ])
   // Data real da venda = 1ª entrada em etapa de fechado (não muda com as etapas seguintes)
-  const [{ data: historico }, { data: itensVd }, opcoesProjeto] = await Promise.all([
+  const [{ data: historico }, { data: itensVd }, opcoesProjeto, { data: contasRows, error: eContas }] = await Promise.all([
     supabase.from('projeto_status_historico').select('projeto_id, created_at').in('status_novo', STATUS_FECHADOS).limit(20000),
     supabase.from('projeto_itens').select('projeto_id, dados').eq('tipo', 'venda_equipamentos').neq('status', 'removido').limit(10000),
     // Kalebe 2026-10-02: custo/despesa ligado a qualquer projeto ativo + serviço do projeto
     carregarProjetosEServicos(supabase),
+    // Kalebe 2026-10-02: contas bancárias, cartões e caixa (mig 136 — sem ela, vazio)
+    supabase.from('fluxo_contas').select('*').order('nome'),
   ])
+  const contas = ((eContas ? [] : contasRows) || []).map((c: any) => ({
+    ...c, saldo_inicial: num(c.saldo_inicial),
+  })) as ContaFluxo[]
   const primeiro = mapaPrimeiroFechamento((historico || []) as any[])
   const vendaDireta = mapaVendaDireta((itensVd || []) as any[])
 
@@ -122,6 +127,8 @@ export async function carregarFluxo() {
     projetosLista,
     servicosLista,
     equipe,
+    contas,
+    contasPendente: !!eContas,
   } as const
 }
 

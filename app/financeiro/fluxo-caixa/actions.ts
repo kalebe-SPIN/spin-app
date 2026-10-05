@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import {
-  addMeses, arred, dividirEmParcelas, GRUPOS,
+  addMeses, arred, dividirEmParcelas, GRUPOS, vencimentoFatura, datasNoCartao,
   type Direcao, type Grupo,
 } from '@/lib/financeiro/fluxo'
 import type { LinhaPlano } from '@/lib/financeiro/plano-venda'
@@ -72,6 +72,16 @@ export type EntradaLancamento = {
   realizado?: { valor: number; data: string } | null
   /** Edição: aplica valor/dados também aos próximos EM ABERTO da mesma série */
   aplicar_serie?: boolean
+  /** Kalebe 2026-10-02 (mig 136): conta/cartão/caixa usado. Cartão: data_prevista = data da COMPRA */
+  conta_id?: string | null
+}
+
+/** Cartão de crédito da conta informada (ou null se não for cartão). */
+async function cartaoDe(supabase: ReturnType<typeof createClient>, contaId: string | null | undefined) {
+  if (!contaId) return null
+  const { data } = await supabase.from('fluxo_contas')
+    .select('id, tipo, nome, dia_fechamento, dia_vencimento').eq('id', contaId).maybeSingle()
+  return data?.tipo === 'cartao_credito' && data.dia_fechamento && data.dia_vencimento ? data : null
 }
 
 export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ criados: number }>> {
@@ -82,16 +92,21 @@ export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(e.data_prevista || '')) return { erro: 'Data prevista inválida' }
   if (!GRUPOS[e.grupo]) return { erro: 'Tipo de lançamento inválido' }
 
+  // Kalebe 2026-10-02: compra no cartão de crédito vira saída PREVISTA no
+  // vencimento da fatura (parcelas nas faturas seguintes) — nunca "já paga"
+  const cartao = e.direcao === 'saida' ? await cartaoDe(supabase, e.conta_id) : null
+
   const base = {
     direcao: e.direcao,
     grupo: e.grupo,
     categoria_id: e.categoria_id || null,
     descricao: e.descricao.trim(),
-    forma_pagamento: e.forma_pagamento || null,
+    forma_pagamento: cartao ? 'Cartão de crédito' : e.forma_pagamento || null,
     fornecedor_id: e.fornecedor_id || null,
     projeto_id: e.projeto_id || null,
-    detalhes: e.detalhes || {},
+    detalhes: { ...(e.detalhes || {}), ...(cartao ? { data_compra: e.data_prevista } : {}) },
     observacoes: e.observacoes?.trim() || null,
+    ...(e.conta_id !== undefined ? { conta_id: e.conta_id || null } : {}),
   }
 
   // Edição: este lançamento (e, se pedido, os próximos em aberto da série)
@@ -103,7 +118,7 @@ export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ 
     const { error } = await supabase.from('fluxo_lancamentos').update({
       ...base,
       valor_previsto: arred(e.valor_previsto),
-      data_prevista: e.data_prevista,
+      data_prevista: cartao ? vencimentoFatura(e.data_prevista, cartao.dia_fechamento, cartao.dia_vencimento) : e.data_prevista,
       atualizado_em: agora,
     }).eq('id', e.id)
     if (error) return { erro: erroTabela(error.message) }
@@ -136,23 +151,28 @@ export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ 
     : rep === 'recorrente' ? Array(vezes).fill(arred(e.valor_previsto))
     : [arred(e.valor_previsto)]
 
+  const datas = cartao
+    ? datasNoCartao(e.data_prevista, valores.length, rep, cartao.dia_fechamento, cartao.dia_vencimento)
+    : valores.map((_, i) => addMeses(e.data_prevista, i))
+
   const linhas = valores.map((v, i) => ({
     ...base,
     descricao: valores.length > 1 && rep === 'parcelado' ? `${base.descricao} (${i + 1}/${valores.length})` : base.descricao,
     valor_previsto: v,
-    data_prevista: addMeses(e.data_prevista, i),
+    data_prevista: datas[i],
     parcela_num: valores.length > 1 ? i + 1 : null,
     parcelas_total: valores.length > 1 ? valores.length : null,
     lote_id: lote,
     origem: 'manual',
     criado_por: user.id,
-    ...(rep === 'unica' && e.realizado && e.realizado.valor >= 0 && e.realizado.data
+    // Cartão: só sai do caixa quando a fatura é paga
+    ...(!cartao && rep === 'unica' && e.realizado && e.realizado.valor >= 0 && e.realizado.data
       ? { valor_realizado: arred(e.realizado.valor), data_realizada: e.realizado.data }
       : {}),
   }))
 
   const { error } = await supabase.from('fluxo_lancamentos').insert(linhas)
-  if (error) return { erro: erroTabela(error.message) }
+  if (error) return { erro: /conta_id/.test(error.message) ? 'Falta rodar a migration 136 (contas e cartões) no Supabase.' : erroTabela(error.message) }
   revalidar()
   return { sucesso: true, criados: linhas.length }
 }
@@ -164,15 +184,18 @@ export async function salvarLancamentoAction(e: EntradaLancamento): Promise<R<{ 
 export async function dadosLancamentoRapidoAction(): Promise<R<{
   fornecedores: any[]; categorias: any[]
   projetos: OpcaoProjeto[]; servicos: OpcaoServico[]; equipe: Array<{ id: string; nome: string }>
+  contas: any[]
 }>> {
   const { supabase, ok } = await admin()
   if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
-  const [{ data: fornecedores }, { data: categorias, error }, { projetos, servicos }, { data: perfis }] = await Promise.all([
+  const [{ data: fornecedores }, { data: categorias, error }, { projetos, servicos }, { data: perfis }, { data: contas }] = await Promise.all([
     supabase.from('fornecedores').select('id, razao_social, nome_fantasia, cnpj, categoria, contato_telefone, ativo').order('razao_social'),
     supabase.from('categorias_financeiras').select('id, nome, tipo').eq('ativo', true).order('nome'),
     // Kalebe 2026-10-02: custo/despesa ligado a qualquer projeto ativo + serviço do projeto
     carregarProjetosEServicos(supabase),
     supabase.from('profiles').select('id, nome_completo').eq('ativo', true).neq('role', 'candidato'),
+    // Kalebe 2026-10-02: contas/cartões (mig 136 — sem ela vem vazio)
+    supabase.from('fluxo_contas').select('*').eq('ativo', true).order('nome'),
   ])
   if (error) return { erro: erroTabela(error.message) }
   const aZ = (a: { nome: string }, b: { nome: string }) => a.nome.localeCompare(b.nome, 'pt-BR')
@@ -182,6 +205,7 @@ export async function dadosLancamentoRapidoAction(): Promise<R<{
     categorias: categorias || [],
     projetos,
     servicos,
+    contas: contas || [],
     equipe: ((perfis || []) as any[]).map((p) => ({ id: p.id, nome: p.nome_completo || 'Sem nome' })).sort(aZ),
   }
 }
@@ -200,21 +224,126 @@ export async function urlComprovanteAction(caminho: string): Promise<R<{ url: st
   return { sucesso: true, url: data.signedUrl }
 }
 
-/** Efetivar = registrar o valor EFETIVAMENTE pago/recebido e a data. */
-export async function efetivarLancamentoAction(id: string, valor: number, data: string, forma?: string | null): Promise<R> {
+/**
+ * Efetivar = registrar o valor EFETIVAMENTE pago/recebido e a data.
+ * Kalebe 2026-10-02: `contaId` = conta onde o dinheiro entrou/saiu (se o
+ * lançamento é de cartão, vira a conta que pagou — pago_pela_conta_id).
+ */
+export async function efetivarLancamentoAction(id: string, valor: number, data: string, forma?: string | null, contaId?: string | null): Promise<R> {
   const { supabase, ok } = await admin()
   if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
   if (!(valor >= 0)) return { erro: 'Valor inválido' }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data || '')) return { erro: 'Data inválida' }
+  let patchConta: Record<string, string> = {}
+  if (contaId) {
+    const { data: lanc } = await supabase.from('fluxo_lancamentos').select('conta_id').eq('id', id).maybeSingle()
+    patchConta = (await cartaoDe(supabase, (lanc as any)?.conta_id)) ? { pago_pela_conta_id: contaId } : { conta_id: contaId }
+  }
   const { error } = await supabase.from('fluxo_lancamentos').update({
     valor_realizado: arred(valor),
     data_realizada: data,
     ...(forma ? { forma_pagamento: forma } : {}),
+    ...patchConta,
     atualizado_em: new Date().toISOString(),
   }).eq('id', id)
   if (error) return { erro: erroTabela(error.message) }
   revalidar()
   return { sucesso: true }
+}
+
+// ─── Contas e cartões (mig 136) ─────────────────────────────────────────────
+
+export async function salvarContaAction(c: {
+  id?: string
+  tipo: 'conta_bancaria' | 'cartao_credito' | 'caixa'
+  nome: string
+  banco?: string | null
+  final?: string | null
+  dia_fechamento?: number | null
+  dia_vencimento?: number | null
+  saldo_inicial?: number
+  ativo?: boolean
+}): Promise<R<{ id: string }>> {
+  const { supabase, ok } = await admin()
+  if (!ok) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  if (!c.nome?.trim()) return { erro: 'Dê um nome (ex.: "Itaú PJ", "Nubank PJ")' }
+  const ehCartao = c.tipo === 'cartao_credito'
+  const dia = (n: any) => (Number.isInteger(Number(n)) && Number(n) >= 1 && Number(n) <= 31 ? Number(n) : null)
+  if (ehCartao && (!dia(c.dia_fechamento) || !dia(c.dia_vencimento))) return { erro: 'Cartão precisa do dia de fechamento e do dia de vencimento da fatura' }
+  const final = String(c.final || '').replace(/\D/g, '').slice(-4) || null
+  const linha = {
+    tipo: c.tipo,
+    nome: c.nome.trim(),
+    banco: c.banco?.trim() || null,
+    final,
+    dia_fechamento: ehCartao ? dia(c.dia_fechamento) : null,
+    dia_vencimento: ehCartao ? dia(c.dia_vencimento) : null,
+    saldo_inicial: ehCartao ? 0 : arred(Number(c.saldo_inicial) || 0),
+    ...(c.ativo !== undefined ? { ativo: c.ativo } : {}),
+  }
+  const q = c.id
+    ? supabase.from('fluxo_contas').update(linha).eq('id', c.id).select('id').single()
+    : supabase.from('fluxo_contas').insert(linha).select('id').single()
+  const { data, error } = await q
+  if (error || !data) {
+    return { erro: /fluxo_contas/.test(error?.message || '') ? 'Falta rodar a migration 136 (contas e cartões) no Supabase.' : error?.message || 'Falha ao salvar' }
+  }
+  revalidar()
+  return { sucesso: true, id: data.id }
+}
+
+/**
+ * Pagar a fatura do cartão: efetiva de uma vez todos os itens em aberto
+ * daquele vencimento e grava de qual conta saiu o dinheiro. Se pagou mais que
+ * a soma (juros/encargos), a diferença vira um lançamento à parte.
+ */
+export async function pagarFaturaAction(e: {
+  cartao_id: string
+  vencimento: string
+  valor_pago: number
+  data: string
+  conta_pagamento_id: string
+}): Promise<R<{ itens: number }>> {
+  const { supabase, user, ok } = await admin()
+  if (!ok || !user) return { erro: 'Só o admin mexe no fluxo de caixa' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(e.data || '') || !/^\d{4}-\d{2}-\d{2}$/.test(e.vencimento || '')) return { erro: 'Data inválida' }
+  if (!e.conta_pagamento_id) return { erro: 'Escolha de qual conta saiu o pagamento' }
+  const cartao = await cartaoDe(supabase, e.cartao_id)
+  if (!cartao) return { erro: 'Cartão não encontrado' }
+
+  const { data: itens, error } = await supabase.from('fluxo_lancamentos')
+    .select('id, valor_previsto')
+    .eq('conta_id', e.cartao_id).eq('data_prevista', e.vencimento).eq('direcao', 'saida')
+    .is('data_realizada', null).is('cancelado_em', null)
+  if (error) return { erro: erroTabela(error.message) }
+  if (!itens?.length) return { erro: 'Nenhum item em aberto nessa fatura' }
+
+  const total = arred(itens.reduce((s, i: any) => s + Number(i.valor_previsto || 0), 0))
+  const pago = arred(Number(e.valor_pago) || 0)
+  if (pago < total - 0.009) {
+    return { erro: `Pagamento menor que a fatura (${total.toFixed(2).replace('.', ',')}): pagamento parcial não é suportado — confira estornos e ajuste os itens antes.` }
+  }
+
+  const agora = new Date().toISOString()
+  for (const i of itens as any[]) {
+    const { error: eUp } = await supabase.from('fluxo_lancamentos').update({
+      valor_realizado: arred(Number(i.valor_previsto)), data_realizada: e.data,
+      pago_pela_conta_id: e.conta_pagamento_id, atualizado_em: agora,
+    }).eq('id', i.id)
+    if (eUp) return { erro: eUp.message }
+  }
+  if (pago - total > 0.009) {
+    await supabase.from('fluxo_lancamentos').insert({
+      direcao: 'saida', grupo: 'outras_despesas',
+      descricao: `Juros/encargos da fatura — ${cartao.nome}`,
+      valor_previsto: arred(pago - total), data_prevista: e.data,
+      valor_realizado: arred(pago - total), data_realizada: e.data,
+      forma_pagamento: 'Cartão de crédito', conta_id: e.cartao_id, pago_pela_conta_id: e.conta_pagamento_id,
+      origem: 'manual', criado_por: user.id, detalhes: { fatura: e.vencimento },
+    })
+  }
+  revalidar()
+  return { sucesso: true, itens: itens.length }
 }
 
 export async function desfazerEfetivacaoAction(id: string): Promise<R> {

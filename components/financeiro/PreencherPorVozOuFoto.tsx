@@ -29,6 +29,8 @@ export type DadosIA = {
   projeto_id: string | null
   servico_id: string | null
   observacoes: string | null
+  /** Conta/cartão usado (mig 136) — pelo final do cartão ou nome do banco no comprovante */
+  conta_id?: string | null
 }
 export type ResultadoIA = { dados: DadosIA; comprovante: string | null; avisos: string[] }
 

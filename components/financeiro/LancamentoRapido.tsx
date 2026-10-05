@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { dadosLancamentoRapidoAction } from '@/app/financeiro/fluxo-caixa/actions'
 import { ModalLancamento } from './ModalLancamento'
 import { ModalPassivo } from './ModalPassivo'
+import type { ContaFluxo } from '@/lib/financeiro/fluxo'
 
 /**
  * Atalho "Registrar saída" (Kalebe 2026-10-01): de qualquer tela, pelo menu
@@ -28,6 +29,7 @@ type Dados = {
   projetos: Array<{ id: string; nome: string }>
   servicos: Array<{ id: string; projeto_id: string; nome: string }>
   equipe: Array<{ id: string; nome: string }>
+  contas: ContaFluxo[]
 }
 
 export function LancamentoRapido() {
@@ -49,7 +51,7 @@ export function LancamentoRapido() {
       try {
         const r = await dadosLancamentoRapidoAction()
         if ('erro' in r) { setAviso({ ok: false, texto: r.erro }); setAberto(null); return }
-        setDados({ fornecedores: r.fornecedores, categorias: r.categorias, projetos: r.projetos, servicos: r.servicos, equipe: r.equipe })
+        setDados({ fornecedores: r.fornecedores, categorias: r.categorias, projetos: r.projetos, servicos: r.servicos, equipe: r.equipe, contas: r.contas })
       } finally { setCarregando(false) }
     }
     window.addEventListener(EVENTO_REGISTRAR_SAIDA, abrir)
@@ -85,6 +87,7 @@ export function LancamentoRapido() {
           projetos={dados.projetos}
           servicos={dados.servicos}
           equipe={dados.equipe}
+          contas={dados.contas}
           apenasSaidas
           jaPagoPadrao
           onFechar={() => setAberto(null)}

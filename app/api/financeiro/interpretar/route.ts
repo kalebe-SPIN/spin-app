@@ -27,7 +27,7 @@ const SCHEMA = {
   required: [
     'grupo', 'descricao', 'valor', 'data', 'ja_pago', 'forma_pagamento', 'fornecedor_id', 'fornecedor_nome',
     'fornecedor_cnpj', 'nf', 'tipo_imposto', 'competencia', 'subtipo_pessoal', 'favorecido', 'categoria_id',
-    'projeto_id', 'servico_id', 'observacoes', 'avisos',
+    'projeto_id', 'servico_id', 'conta_id', 'observacoes', 'avisos',
   ],
   properties: {
     grupo: { type: 'string', enum: [...GRUPOS_SAIDA] },
@@ -47,6 +47,7 @@ const SCHEMA = {
     categoria_id: { ...TEXTO_OU_NULO, description: 'id da lista CATEGORIAS (despesas operacionais/outras)' },
     projeto_id: { ...TEXTO_OU_NULO, description: 'id da lista PROJETOS quando o custo é de um projeto' },
     servico_id: { ...TEXTO_OU_NULO, description: 'id da lista SERVIÇOS (do mesmo projeto)' },
+    conta_id: { ...TEXTO_OU_NULO, description: 'id da lista CONTAS E CARTÕES quando o comprovante/fala indicar (final do cartão, banco, "dinheiro")' },
     observacoes: TEXTO_OU_NULO,
     avisos: { type: 'array', items: { type: 'string' }, description: 'o que ficou incerto ou faltando, em português' },
   },
@@ -85,12 +86,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Listas pra IA ligar o lançamento ao que já existe
-  const [{ data: fornecedores }, { data: categorias }, { projetos, servicos }, { data: perfis }] = await Promise.all([
+  const [{ data: fornecedores }, { data: categorias }, { projetos, servicos }, { data: perfis }, { data: contasRows }] = await Promise.all([
     supabase.from('fornecedores').select('id, razao_social, nome_fantasia, cnpj').eq('ativo', true).order('razao_social').limit(1000),
     supabase.from('categorias_financeiras').select('id, nome').eq('ativo', true).eq('tipo', 'despesa').order('nome'),
     carregarProjetosEServicos(supabase),
     supabase.from('profiles').select('nome_completo').eq('ativo', true).neq('role', 'candidato'),
+    // Kalebe 2026-10-02: contas/cartões (mig 136 — sem ela vem vazio)
+    supabase.from('fluxo_contas').select('id, tipo, nome, banco, final').eq('ativo', true),
   ])
+  const contas = (contasRows || []) as Array<{ id: string; tipo: string; nome: string; banco: string | null; final: string | null }>
   const sistema = [
     'Você lê comprovantes, notas fiscais, boletos e relatos falados da Spin Solar (empresa de energia solar em Santa Catarina) e preenche UM lançamento de SAÍDA de caixa (custo ou despesa).',
     'Regras:',
@@ -101,6 +105,7 @@ export async function POST(req: NextRequest) {
     '- Datas: AAAA-MM-DD. Se só vier dia/mês, use o ano de HOJE. "hoje"/"ontem" contam a partir de HOJE.',
     '- IDs (fornecedor_id, categoria_id, projeto_id, servico_id) SÓ das listas abaixo — se não tiver certeza, null. Fornecedor novo: preencha fornecedor_nome e fornecedor_cnpj e deixe fornecedor_id null.',
     '- servico_id só se pertencer ao projeto escolhido.',
+    '- conta_id: cartão pelo final (4 últimos dígitos) ou conta pelo banco que aparece no comprovante/fala; "dinheiro" → conta de caixa. Compra no cartão de crédito: forma_pagamento = "Cartão de crédito" (o sistema lança na fatura).',
     '- descricao curta e útil (ex.: "Combustível — visita técnica Tijucas", "NF 1234 — cabos solares").',
     '',
     'FORNECEDORES (id | razão social | nome fantasia | CNPJ):',
@@ -117,6 +122,9 @@ export async function POST(req: NextRequest) {
     '',
     'EQUIPE:',
     ...((perfis || []) as any[]).map((p) => p.nome_completo).filter(Boolean),
+    '',
+    'CONTAS E CARTÕES (id | tipo | apelido | banco | final):',
+    ...contas.map((c) => `${c.id} | ${c.tipo} | ${c.nome} | ${c.banco || ''} | ${c.final || ''}`),
   ].join('\n')
 
   const conteudo: Anthropic.Beta.BetaContentBlockParam[] = []
@@ -158,6 +166,7 @@ export async function POST(req: NextRequest) {
     if (dados.projeto_id && !idsProj.has(dados.projeto_id)) dados.projeto_id = null
     const serv = servicos.find((s) => s.id === dados.servico_id)
     if (!serv || serv.projeto_id !== dados.projeto_id) dados.servico_id = null
+    if (dados.conta_id && !contas.some((c) => c.id === dados.conta_id)) dados.conta_id = null
     if (dados.data && !/^\d{4}-\d{2}-\d{2}$/.test(dados.data)) dados.data = null
     if (dados.competencia && !/^\d{4}-\d{2}$/.test(dados.competencia)) dados.competencia = null
     if (!(Number(dados.valor) > 0)) dados.valor = null

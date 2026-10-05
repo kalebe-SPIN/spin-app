@@ -5,13 +5,13 @@ import { useRouter } from 'next/navigation'
 import {
   efetivarLancamentoAction, desfazerEfetivacaoAction, cancelarLancamentoAction, excluirPassivoAction,
   ignorarVendaAction, salvarConfigFluxoAction, salvarFornecedorAction,
-  vendaDaProgramacaoAction, renegociarPassivoAction, urlComprovanteAction,
+  vendaDaProgramacaoAction, renegociarPassivoAction, urlComprovanteAction, salvarContaAction, pagarFaturaAction,
 } from '@/app/financeiro/fluxo-caixa/actions'
 import {
   GRUPOS, FORMAS_PAGAMENTO, MODALIDADES_PASSIVO,
   addDias, addMeses, arred, brl, consolidarMensal, dataBR, fimDoMes, hojeBR, lerValor, mesDe, mesesJanela, rotuloMes,
-  saldoProjetadoAte, saldoRealizadoAte, statusDe,
-  type ConfigFluxo, type Fornecedor, type Grupo, type Lancamento, type VendaPendente,
+  saldoProjetadoAte, saldoRealizadoAte, statusDe, rotuloConta, saldoDaConta, contaDoCaixa,
+  type ConfigFluxo, type ContaFluxo, type Fornecedor, type Grupo, type Lancamento, type VendaPendente,
 } from '@/lib/financeiro/fluxo'
 import type { DadosFluxo } from '@/lib/financeiro/dados'
 import { ModalLancamento } from './ModalLancamento'
@@ -24,16 +24,16 @@ import { Campo, InputValor, Selecao, Modal, Aviso, Botoes, classeInput } from '.
  * vendas do sistema. Tudo nasce PREVISTO; "Efetivar" grava o valor pago.
  */
 
-type Aba = 'mensal' | 'lancamentos' | 'programar' | 'passivo' | 'fornecedores'
+type Aba = 'mensal' | 'lancamentos' | 'programar' | 'contas' | 'passivo' | 'fornecedores'
 type Msg = { tipo: 'ok' | 'erro'; texto: string } | null
 
-const ABAS: Aba[] = ['mensal', 'lancamentos', 'programar', 'passivo', 'fornecedores']
+const ABAS: Aba[] = ['mensal', 'lancamentos', 'programar', 'contas', 'passivo', 'fornecedores']
 
 export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; abaInicial?: string }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const hoje = hojeBR()
-  const { config, lancamentos, passivos, fornecedores, categorias, pendentes, faturamentoPorMes, projetosLista, servicosLista, equipe } = dados
+  const { config, lancamentos, passivos, fornecedores, categorias, pendentes, faturamentoPorMes, projetosLista, servicosLista, equipe, contas: contasFluxo, contasPendente } = dados
   // Links do hub: ?aba=receber / ?aba=pagar abrem Lançamentos já filtrados
   const contas = abaInicial === 'receber' ? 'entrada' : abaInicial === 'pagar' ? 'saida' : ''
 
@@ -49,6 +49,8 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
     | { t: 'detalhe'; filtro: FiltroDetalhe }
     | { t: 'excluir'; lanc: Lancamento }
     | { t: 'renegociar'; passivo: DadosFluxo['passivos'][number] }
+    | { t: 'conta'; c?: ContaFluxo }
+    | { t: 'fatura'; cartao: ContaFluxo; vencimento: string; total: number; itens: number }
     | null
   >(null)
   // Ação aberta a partir do detalhe de um valor → ao terminar, volta pro detalhe
@@ -63,6 +65,7 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
   const [fBusca, setFBusca] = useState('')
   const [fPassivo, setFPassivo] = useState<string | null>(null)
   const [fFornec, setFFornec] = useState<string | null>(null)
+  const [fConta, setFConta] = useState<string | null>(null)
 
   // Janela da visão mensal
   const [inicioJanela, setInicioJanela] = useState(mesDe(addMeses(hoje, -2)))
@@ -86,6 +89,10 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
   // Ações rápidas de um lançamento (lista e detalhe da visão mensal)
   const acoes: AcoesLancamento = {
     pending,
+    nomeConta: (id) => {
+      const c = id ? contasFluxo.find((x) => x.id === id) : null
+      return c ? rotuloConta(c) : null
+    },
     onEfetivar: (l) => setModal({ t: 'efetivar', lanc: l }),
     onEditar: (l) => setModal({ t: 'lancamento', editando: l }),
     onDesfazer: (l) => rodar(() => desfazerEfetivacaoAction(l.id), 'Efetivação desfeita — voltou a previsto'),
@@ -174,6 +181,7 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
           ['mensal', '📊 Visão mensal'],
           ['lancamentos', '📋 Lançamentos'],
           ['programar', `📥 Vendas a programar${pendentes.length ? ` (${pendentes.length})` : ''}`],
+          ['contas', '💳 Contas e cartões'],
           ['passivo', '🏦 Passivo bancário'],
           ['fornecedores', '🏭 Fornecedores'],
         ] as Array<[Aba, string]>).map(([k, r]) => (
@@ -192,7 +200,7 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
       {aba === 'lancamentos' && (
         <ListaLancamentos
           lancamentos={lancamentos} hoje={hoje}
-          filtros={{ fMes, setFMes, fTodos, setFTodos, fDirecao, setFDirecao, fGrupo, setFGrupo, fStatus, setFStatus, fBusca, setFBusca, fPassivo, setFPassivo, fFornec, setFFornec }}
+          filtros={{ fMes, setFMes, fTodos, setFTodos, fDirecao, setFDirecao, fGrupo, setFGrupo, fStatus, setFStatus, fBusca, setFBusca, fPassivo, setFPassivo, fFornec, setFFornec, fConta, setFConta }}
           passivos={passivos} fornecedores={fornecedores}
           acoes={acoes}
         />
@@ -228,6 +236,16 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
             </div>
           ))}
         </div>
+      )}
+
+      {aba === 'contas' && (
+        <AbaContas
+          contas={contasFluxo} pendenteMigracao={contasPendente} lancamentos={lancamentos} config={config} hoje={hoje}
+          onNova={() => setModal({ t: 'conta' })}
+          onEditar={(c) => setModal({ t: 'conta', c })}
+          onPagarFatura={(cartao, vencimento, total, itens) => setModal({ t: 'fatura', cartao, vencimento, total, itens })}
+          onVerLancamentos={(id) => { setFConta(id); setFPassivo(null); setFFornec(null); setFTodos(true); setAba('lancamentos') }}
+        />
       )}
 
       {aba === 'passivo' && (
@@ -329,7 +347,7 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
 
       {/* Modais */}
       {modal?.t === 'lancamento' && (
-        <ModalLancamento fornecedores={fornecedores} categorias={categorias} projetos={projetosLista} servicos={servicosLista} equipe={equipe}
+        <ModalLancamento fornecedores={fornecedores} categorias={categorias} projetos={projetosLista} servicos={servicosLista} contas={contasFluxo} equipe={equipe}
           editando={modal.editando}
           qtdSerie={modal.editando?.lote_id ? lancamentos.filter((x) => x.lote_id === modal.editando!.lote_id && x.id !== modal.editando!.id
             && !x.data_realizada && x.data_prevista > modal.editando!.data_prevista).length : 0}
@@ -341,7 +359,12 @@ export function FluxoCaixaClient({ dados, abaInicial }: { dados: DadosFluxo; aba
         <ModalProgramarVenda venda={modal.venda} regimeImposto={config.regime_imposto} substituirProgramacaoId={modal.substituir}
           onFechar={fecharModal} onSalvo={pronto} />
       )}
-      {modal?.t === 'efetivar' && <ModalEfetivar lanc={modal.lanc} onFechar={fecharModal} onSalvo={pronto} />}
+      {modal?.t === 'efetivar' && <ModalEfetivar lanc={modal.lanc} contas={contasFluxo} onFechar={fecharModal} onSalvo={pronto} />}
+      {modal?.t === 'conta' && <ModalConta c={modal.c} onFechar={fecharModal} onSalvo={pronto} />}
+      {modal?.t === 'fatura' && (
+        <ModalPagarFatura cartao={modal.cartao} vencimento={modal.vencimento} total={modal.total} itens={modal.itens}
+          contas={contasFluxo} onFechar={fecharModal} onSalvo={pronto} />
+      )}
       {modal?.t === 'config' && <ModalConfig config={config} onFechar={fecharModal} onSalvo={pronto} />}
       {modal?.t === 'fornecedor' && <ModalFornecedor f={modal.f} onFechar={fecharModal} onSalvo={pronto} />}
       {modal?.t === 'detalhe' && (
@@ -559,6 +582,7 @@ function GraficoFluxo({ meses, mesAtual, entradas, saidas, saldos, reserva }: {
 
 type AcoesLancamento = {
   pending: boolean
+  nomeConta: (id: string | null | undefined) => string | null
   onEfetivar: (l: Lancamento) => void
   onEditar: (l: Lancamento) => void
   onDesfazer: (l: Lancamento) => void
@@ -608,6 +632,8 @@ function LinhaLancamento({ l, hoje, acoes }: { l: Lancamento; hoje: string; acoe
           {l.detalhes?.revisar_condicao && <span className="text-sol font-bold">⚠ conferir condição de pagamento</span>}
           {l.origem === 'passivo' && <span>🏦 contrato</span>}
           {l.forma_pagamento && <span>{l.forma_pagamento}</span>}
+          {acoes.nomeConta(l.conta_id) && <span>{acoes.nomeConta(l.conta_id)}</span>}
+          {l.pago_pela_conta_id && <span>pago por {acoes.nomeConta(l.pago_pela_conta_id)}</span>}
           {l.detalhes?.tipo_imposto && <span>{l.detalhes.tipo_imposto}</span>}
           {l.detalhes?.nf && <span>NF {l.detalhes.nf}</span>}
           {/* Kalebe 2026-10-02: projeto/serviço ligado e comprovante */}
@@ -654,6 +680,7 @@ function ListaLancamentos({ lancamentos, hoje, filtros: f, passivos, fornecedore
     return lancamentos.filter((l) => {
       if (f.fPassivo && l.passivo_id !== f.fPassivo) return false
       if (f.fFornec && l.fornecedor_id !== f.fFornec) return false
+      if (f.fConta && l.conta_id !== f.fConta && l.pago_pela_conta_id !== f.fConta) return false
       if (!f.fTodos) {
         const m = mesDe(l.data_realizada || l.data_prevista)
         if (m !== f.fMes && mesDe(l.data_prevista) !== f.fMes) return false
@@ -691,10 +718,10 @@ function ListaLancamentos({ lancamentos, hoje, filtros: f, passivos, fornecedore
         ]} />
         <input value={f.fBusca} onChange={(e) => f.setFBusca(e.target.value)} placeholder="🔍 Buscar" className={classeInput} />
       </div>
-      {(nomePassivo || nomeFornec) && (
+      {(nomePassivo || nomeFornec || f.fConta) && (
         <p className="text-xs text-sol">
-          Filtrando por {nomePassivo ? `contrato ${nomePassivo}` : `fornecedor ${nomeFornec}`}
-          <button onClick={() => { f.setFPassivo(null); f.setFFornec(null) }} className="ml-2 underline">limpar</button>
+          Filtrando por {nomePassivo ? `contrato ${nomePassivo}` : nomeFornec ? `fornecedor ${nomeFornec}` : acoes.nomeConta(f.fConta)}
+          <button onClick={() => { f.setFPassivo(null); f.setFFornec(null); f.setFConta(null) }} className="ml-2 underline">limpar</button>
         </p>
       )}
 
@@ -813,7 +840,7 @@ function ModalRenegociar({ passivo, saldoAberto, onFechar, onSalvo }: {
 
 // ─── Efetivar (valor efetivamente pago/recebido) ────────────────────────────
 
-function ModalEfetivar({ lanc, onFechar, onSalvo }: { lanc: Lancamento; onFechar: () => void; onSalvo: (m: string) => void }) {
+function ModalEfetivar({ lanc, contas, onFechar, onSalvo }: { lanc: Lancamento; contas: ContaFluxo[]; onFechar: () => void; onSalvo: (m: string) => void }) {
   const [valor, setValor] = useState(String(lanc.valor_previsto).replace('.', ','))
   const [data, setData] = useState(hojeBR())
   const [forma, setForma] = useState(lanc.forma_pagamento || '')
@@ -822,11 +849,19 @@ function ModalEfetivar({ lanc, onFechar, onSalvo }: { lanc: Lancamento; onFechar
   const v = lerValor(valor)
   const dif = arred(v - lanc.valor_previsto)
   const entrada = lanc.direcao === 'entrada'
+  // Kalebe 2026-10-02: de qual conta saiu / em qual entrou (cartão: conta que pagou)
+  const contaAtual = contas.find((c) => c.id === lanc.conta_id)
+  const ehCartao = contaAtual?.tipo === 'cartao_credito'
+  const [contaId, setContaId] = useState<string>(ehCartao ? '' : lanc.conta_id || '')
+  const opcoesContas = contas
+    .filter((c) => c.ativo && c.tipo !== 'cartao_credito')
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map((c) => ({ valor: c.id, rotulo: rotuloConta(c) }))
 
   async function salvar() {
     setSalvando(true); setErro(null)
     try {
-      const r = await efetivarLancamentoAction(lanc.id, v, data, forma || null)
+      const r = await efetivarLancamentoAction(lanc.id, v, data, forma || null, contaId || null)
       if ('erro' in r) { setErro(r.erro); return }
       onSalvo(`${entrada ? 'Recebimento' : 'Pagamento'} efetivado: ${brl(v)}`)
     } finally { setSalvando(false) }
@@ -847,8 +882,231 @@ function ModalEfetivar({ lanc, onFechar, onSalvo }: { lanc: Lancamento; onFechar
         <Campo rotulo="Data"><input type="date" className={classeInput} value={data} onChange={(e) => setData(e.target.value)} /></Campo>
         <Campo rotulo="Forma"><Selecao valor={forma} onChange={setForma} vazio="—" opcoes={FORMAS_PAGAMENTO.map((x) => ({ valor: x, rotulo: x }))} /></Campo>
       </div>
+      {opcoesContas.length > 0 && (
+        <Campo rotulo={ehCartao ? 'Fatura paga pela conta' : entrada ? 'Recebido na conta' : 'Pago pela conta'}
+          dica={ehCartao ? `Item do ${contaAtual?.nome} — pra pagar a fatura inteira, use "Pagar fatura" na aba Contas e cartões` : undefined}>
+          <Selecao valor={contaId} onChange={setContaId} vazio="—" opcoes={opcoesContas} />
+        </Campo>
+      )}
       {erro && <Aviso tipo="erro">⚠️ {erro}</Aviso>}
       <Botoes onCancelar={onFechar} onConfirmar={salvar} processando={salvando} rotulo="✓ Efetivar" />
+    </Modal>
+  )
+}
+
+// ─── Contas e cartões (Kalebe 2026-10-02, mig 136) ─────────────────────────
+
+function AbaContas({ contas, pendenteMigracao, lancamentos, config, hoje, onNova, onEditar, onPagarFatura, onVerLancamentos }: {
+  contas: ContaFluxo[]; pendenteMigracao: boolean; lancamentos: Lancamento[]; config: ConfigFluxo; hoje: string
+  onNova: () => void; onEditar: (c: ContaFluxo) => void
+  onPagarFatura: (cartao: ContaFluxo, vencimento: string, total: number, itens: number) => void
+  onVerLancamentos: (contaId: string) => void
+}) {
+  if (pendenteMigracao) {
+    return <Aviso tipo="info">Falta rodar a migration 136 (contas e cartões) no Supabase pra usar esta aba.</Aviso>
+  }
+  const aZ = (a: ContaFluxo, b: ContaFluxo) => a.nome.localeCompare(b.nome, 'pt-BR')
+  const bancarias = contas.filter((c) => c.tipo !== 'cartao_credito').sort(aZ)
+  const cartoes = contas.filter((c) => c.tipo === 'cartao_credito').sort(aZ)
+  const somaContas = arred(bancarias.filter((c) => c.ativo).reduce((s, c) => s + saldoDaConta(lancamentos, c, config, hoje), 0))
+  const saldoFluxo = saldoRealizadoAte(lancamentos, config, hoje)
+  const semConta = lancamentos.filter((l) => l.data_realizada && l.data_realizada >= config.data_inicio && !contaDoCaixa(l)).length
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-white/60 max-w-2xl">
+          Saldo de cada conta = saldo inicial em {dataBR(config.data_inicio)} + o que entrou − o que saiu por ela. Compra no cartão
+          fica prevista no vencimento da fatura até você pagar a fatura.
+        </p>
+        <button onClick={onNova} className="px-3 py-2 bg-sol text-noite text-xs font-bold rounded-lg">+ Conta ou cartão</button>
+      </div>
+
+      <section className="space-y-2">
+        <h3 className="text-xs uppercase tracking-wider font-bold text-white/60">🏦 Contas e caixa</h3>
+        {bancarias.length === 0 && <p className="text-sm text-white/40">Nenhuma conta cadastrada.</p>}
+        {bancarias.map((c) => {
+          const saldo = saldoDaConta(lancamentos, c, config, hoje)
+          const aPagar = arred(lancamentos.filter((l) => !l.data_realizada && l.direcao === 'saida' && l.conta_id === c.id).reduce((s, l) => s + l.valor_previsto, 0))
+          return (
+            <div key={c.id} className={`bg-white/[0.03] border border-white/10 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-2 ${c.ativo ? '' : 'opacity-50'}`}>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white truncate">{rotuloConta(c)}{!c.ativo && <span className="text-white/40 font-normal"> · inativa</span>}</p>
+                <p className="text-xs text-white/50">{[c.banco, `saldo inicial ${brl(c.saldo_inicial)}`].filter(Boolean).join(' · ')}{aPagar > 0 ? ` · ${brl(aPagar)} previsto a sair` : ''}</p>
+              </div>
+              <p className={`text-lg font-black shrink-0 ${saldo >= 0 ? 'text-white' : 'text-coral'}`}>{brl(saldo)}</p>
+              <div className="flex gap-3 text-xs shrink-0">
+                <button className="text-sol hover:underline" onClick={() => onVerLancamentos(c.id)}>lançamentos</button>
+                <button className="text-white/60 hover:underline" onClick={() => onEditar(c)}>editar</button>
+              </div>
+            </div>
+          )
+        })}
+        {bancarias.length > 0 && (
+          <p className="text-[11px] text-white/45">
+            Soma das contas: <strong className="text-white/70">{brl(somaContas)}</strong> · saldo do fluxo hoje: <strong className="text-white/70">{brl(saldoFluxo)}</strong>
+            {semConta > 0 && <> · {semConta} lançamento(s) efetivado(s) sem conta informada</>}
+          </p>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-xs uppercase tracking-wider font-bold text-white/60">💳 Cartões de crédito</h3>
+        {cartoes.length === 0 && <p className="text-sm text-white/40">Nenhum cartão cadastrado.</p>}
+        {cartoes.map((c) => {
+          const abertos = lancamentos.filter((l) => !l.data_realizada && l.direcao === 'saida' && l.conta_id === c.id)
+          const faturas = new Map<string, { total: number; itens: number }>()
+          for (const l of abertos) {
+            const f = faturas.get(l.data_prevista) || { total: 0, itens: 0 }
+            f.total = arred(f.total + l.valor_previsto); f.itens++
+            faturas.set(l.data_prevista, f)
+          }
+          // Faturas em ordem de vencimento (ordem com sentido — não alfabética)
+          const lista = Array.from(faturas.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+          return (
+            <div key={c.id} className={`bg-white/[0.03] border border-white/10 rounded-xl p-3 space-y-2 ${c.ativo ? '' : 'opacity-50'}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-bold text-white">{rotuloConta(c)}{!c.ativo && <span className="text-white/40 font-normal"> · inativo</span>}</p>
+                  <p className="text-xs text-white/50">{c.banco ? `${c.banco} · ` : ''}fecha dia {c.dia_fechamento} · vence dia {c.dia_vencimento}</p>
+                </div>
+                <div className="flex gap-3 text-xs">
+                  <button className="text-sol hover:underline" onClick={() => onVerLancamentos(c.id)}>compras</button>
+                  <button className="text-white/60 hover:underline" onClick={() => onEditar(c)}>editar</button>
+                </div>
+              </div>
+              {lista.length === 0 && <p className="text-xs text-white/40">Nenhuma fatura em aberto.</p>}
+              {lista.map(([venc, f]) => (
+                <div key={venc} className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg border ${venc < hoje ? 'border-coral/40 bg-coral/5' : 'border-white/10 bg-white/[0.02]'}`}>
+                  <span className="text-xs text-white/75">
+                    Fatura vence <strong className={venc < hoje ? 'text-coral' : 'text-white'}>{dataBR(venc)}</strong>{venc < hoje ? ' ⚠ vencida' : ''} · {f.itens} item(ns)
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <strong className="text-coral">{brl(f.total)}</strong>
+                    <button onClick={() => onPagarFatura(c, venc, f.total, f.itens)} className="px-2.5 py-1 bg-verde/15 border border-verde/40 text-verde text-xs font-bold rounded">
+                      ✓ Pagar fatura
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </section>
+    </div>
+  )
+}
+
+function ModalConta({ c, onFechar, onSalvo }: { c?: ContaFluxo; onFechar: () => void; onSalvo: (m: string) => void }) {
+  const [tipo, setTipo] = useState<ContaFluxo['tipo']>(c?.tipo || 'conta_bancaria')
+  const [nome, setNome] = useState(c?.nome || '')
+  const [banco, setBanco] = useState(c?.banco || '')
+  const [final, setFinal] = useState(c?.final || '')
+  const [fech, setFech] = useState(c?.dia_fechamento ? String(c.dia_fechamento) : '')
+  const [venc, setVenc] = useState(c?.dia_vencimento ? String(c.dia_vencimento) : '')
+  const [saldo, setSaldo] = useState(c ? String(c.saldo_inicial).replace('.', ',') : '')
+  const [ativo, setAtivo] = useState(c?.ativo ?? true)
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+  const ehCartao = tipo === 'cartao_credito'
+
+  async function salvar() {
+    setSalvando(true); setErro(null)
+    try {
+      const r = await salvarContaAction({
+        id: c?.id, tipo, nome, banco, final,
+        dia_fechamento: ehCartao ? Number(fech) : null, dia_vencimento: ehCartao ? Number(venc) : null,
+        saldo_inicial: ehCartao ? 0 : lerValor(saldo), ativo,
+      })
+      if ('erro' in r) { setErro(r.erro); return }
+      onSalvo(c ? 'Conta atualizada' : `${ehCartao ? 'Cartão' : 'Conta'} cadastrado(a)`)
+    } finally { setSalvando(false) }
+  }
+
+  return (
+    <Modal titulo={c ? '✏️ Editar conta / cartão' : '➕ Conta ou cartão'} onFechar={onFechar} largura="max-w-md">
+      <Campo rotulo="Tipo">
+        <Selecao valor={tipo} onChange={(v) => setTipo(v as ContaFluxo['tipo'])} opcoes={[
+          { valor: 'cartao_credito', rotulo: '💳 Cartão de crédito' },
+          { valor: 'conta_bancaria', rotulo: '🏦 Conta bancária (PIX, transferência, débito, boleto)' },
+          { valor: 'caixa', rotulo: '💵 Dinheiro / caixa' },
+        ]} />
+      </Campo>
+      <div className="grid grid-cols-2 gap-3">
+        <Campo rotulo="Apelido *" className="col-span-2">
+          <input className={classeInput} value={nome} onChange={(e) => setNome(e.target.value)} placeholder={ehCartao ? 'Ex.: Nubank PJ' : 'Ex.: Itaú PJ'} autoFocus />
+        </Campo>
+        {tipo !== 'caixa' && (
+          <>
+            <Campo rotulo="Banco"><input className={classeInput} value={banco} onChange={(e) => setBanco(e.target.value)} placeholder="Ex.: Itaú" /></Campo>
+            <Campo rotulo={ehCartao ? 'Final do cartão' : 'Final da conta'}>
+              <input className={classeInput} value={final} onChange={(e) => setFinal(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="1234" inputMode="numeric" />
+            </Campo>
+          </>
+        )}
+        {ehCartao ? (
+          <>
+            <Campo rotulo="Dia do fechamento *"><input className={classeInput} value={fech} onChange={(e) => setFech(e.target.value.replace(/\D/g, '').slice(0, 2))} inputMode="numeric" placeholder="Ex.: 28" /></Campo>
+            <Campo rotulo="Dia do vencimento *"><input className={classeInput} value={venc} onChange={(e) => setVenc(e.target.value.replace(/\D/g, '').slice(0, 2))} inputMode="numeric" placeholder="Ex.: 5" /></Campo>
+          </>
+        ) : (
+          <Campo rotulo="Saldo inicial" dica="Saldo na data de início do fluxo" className="col-span-2">
+            <InputValor valor={saldo} onChange={setSaldo} />
+          </Campo>
+        )}
+      </div>
+      {c && (
+        <label className="flex items-center gap-2 text-sm text-white/75 cursor-pointer">
+          <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /> Ativa (aparece pra escolher nos lançamentos)
+        </label>
+      )}
+      {erro && <Aviso tipo="erro">⚠️ {erro}</Aviso>}
+      <Botoes onCancelar={onFechar} onConfirmar={salvar} processando={salvando} rotulo="Salvar" />
+    </Modal>
+  )
+}
+
+function ModalPagarFatura({ cartao, vencimento, total, itens, contas, onFechar, onSalvo }: {
+  cartao: ContaFluxo; vencimento: string; total: number; itens: number; contas: ContaFluxo[]
+  onFechar: () => void; onSalvo: (m: string) => void
+}) {
+  const [valor, setValor] = useState(total.toFixed(2).replace('.', ','))
+  const [data, setData] = useState(hojeBR() < vencimento ? hojeBR() : vencimento)
+  const opcoes = contas.filter((c) => c.ativo && c.tipo !== 'cartao_credito')
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map((c) => ({ valor: c.id, rotulo: rotuloConta(c) }))
+  const [conta, setConta] = useState(opcoes.length === 1 ? opcoes[0].valor : '')
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+  const v = lerValor(valor)
+  const dif = arred(v - total)
+
+  async function salvar() {
+    setSalvando(true); setErro(null)
+    try {
+      const r = await pagarFaturaAction({ cartao_id: cartao.id, vencimento, valor_pago: v, data, conta_pagamento_id: conta })
+      if ('erro' in r) { setErro(r.erro); return }
+      onSalvo(`Fatura ${cartao.nome} de ${dataBR(vencimento)} paga — ${r.itens} item(ns) efetivado(s)${dif > 0.009 ? ` + ${brl(dif)} de encargos` : ''}`)
+    } finally { setSalvando(false) }
+  }
+
+  return (
+    <Modal titulo={`✓ Pagar fatura — ${cartao.nome}`} subtitulo={`Vencimento ${dataBR(vencimento)} · ${itens} item(ns)`} onFechar={onFechar} largura="max-w-md">
+      <p className="text-xs text-white/60">Soma dos itens: <strong className="text-white">{brl(total)}</strong></p>
+      <div className="grid grid-cols-2 gap-3">
+        <Campo rotulo="Valor pago" dica="Com juros/encargos, se houver">
+          <InputValor valor={valor} onChange={setValor} autoFocus />
+        </Campo>
+        <Campo rotulo="Data do pagamento"><input type="date" className={classeInput} value={data} onChange={(e) => setData(e.target.value)} /></Campo>
+      </div>
+      {dif > 0.009 && <Aviso tipo="info">+{brl(dif)} vira um lançamento de juros/encargos da fatura.</Aviso>}
+      {dif < -0.009 && <Aviso tipo="erro">Valor menor que a soma da fatura — confira estornos antes (pagamento parcial não é suportado).</Aviso>}
+      <Campo rotulo="Pago pela conta *">
+        <Selecao valor={conta} onChange={setConta} vazio="Escolha a conta…" opcoes={opcoes} />
+      </Campo>
+      {opcoes.length === 0 && <Aviso tipo="info">Cadastre a conta bancária que paga a fatura (aba Contas e cartões).</Aviso>}
+      {erro && <Aviso tipo="erro">⚠️ {erro}</Aviso>}
+      <Botoes onCancelar={onFechar} onConfirmar={salvar} processando={salvando} rotulo="✓ Pagar fatura" desabilitado={!conta || dif < -0.009} />
     </Modal>
   )
 }

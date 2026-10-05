@@ -6,8 +6,8 @@ import {
 } from '@/app/financeiro/fluxo-caixa/actions'
 import {
   GRUPOS, TIPOS_IMPOSTO, SUBTIPOS_CAPITAL_GIRO, SUBTIPOS_PESSOAL, FORMAS_PAGAMENTO,
-  hojeBR, lerValor, brl, dividirEmParcelas, addMeses, dataBR,
-  type Categoria, type Direcao, type Fornecedor, type Grupo, type Lancamento,
+  hojeBR, lerValor, brl, dividirEmParcelas, addMeses, dataBR, rotuloConta, datasNoCartao,
+  type Categoria, type ContaFluxo, type Direcao, type Fornecedor, type Grupo, type Lancamento,
 } from '@/lib/financeiro/fluxo'
 import { Campo, InputValor, Selecao, Modal, Aviso, Botoes, classeInput } from './ui'
 import { PreencherPorVozOuFoto, type ResultadoIA } from './PreencherPorVozOuFoto'
@@ -31,6 +31,8 @@ type Props = {
   projetos: Array<{ id: string; nome: string }>
   /** Kalebe 2026-10-02: serviços (itens) de cada projeto pra ligar o custo */
   servicos?: OpcaoServico[]
+  /** Kalebe 2026-10-02 (mig 136): contas bancárias, cartões e caixa */
+  contas?: ContaFluxo[]
   equipe: Array<{ id: string; nome: string }>
   editando?: Lancamento | null
   /** Edição: quantos lançamentos em aberto vêm depois deste na mesma série */
@@ -44,7 +46,7 @@ type Props = {
 }
 
 export function ModalLancamento({
-  fornecedores, categorias, projetos, servicos = [], equipe, editando, qtdSerie = 0, onFechar, onSalvo, onAbrirPassivo,
+  fornecedores, categorias, projetos, servicos = [], contas = [], equipe, editando, qtdSerie = 0, onFechar, onSalvo, onAbrirPassivo,
   apenasSaidas = false, jaPagoPadrao = false,
 }: Props) {
   const d = editando?.detalhes || {}
@@ -68,7 +70,8 @@ export function ModalLancamento({
   const [descricao, setDescricao] = useState(editando?.descricao || '')
   const [descricaoMexida, setDescricaoMexida] = useState(!!editando)
   const [valor, setValor] = useState(editando ? String(editando.valor_previsto).replace('.', ',') : '')
-  const [data, setData] = useState(editando?.data_prevista || hojeBR())
+  // Cartão: a data do formulário é a da COMPRA (a do lançamento é o vencimento da fatura)
+  const [data, setData] = useState(editando ? (d.data_compra || editando.data_prevista) : hojeBR())
   const [repeticao, setRepeticao] = useState<'unica' | 'parcelado' | 'recorrente'>('unica')
   const [vezes, setVezes] = useState('2')
   const [forma, setForma] = useState(editando?.forma_pagamento || '')
@@ -92,6 +95,21 @@ export function ModalLancamento({
   const [comprovante, setComprovante] = useState<string | null>(d.comprovante || null)
   const [avisosIA, setAvisosIA] = useState<string[] | null>(null)
   const servicosDoProjeto = servicos.filter((s) => s.projeto_id === projetoId)
+
+  // Kalebe 2026-10-02: com o que foi pago — conta, cartão (fatura) ou caixa
+  const [contaId, setContaId] = useState<string>(editando?.conta_id || '')
+  const contaSel = contas.find((c) => c.id === contaId) || null
+  const cartoes = contas.filter((c) => c.tipo === 'cartao_credito' && c.ativo)
+  const opcoesContas = contas
+    .filter((c) => c.ativo || c.id === contaId)
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map((c) => ({ valor: c.id, rotulo: rotuloConta(c) }))
+  function escolherConta(id: string) {
+    setContaId(id)
+    const c = contas.find((x) => x.id === id)
+    if (c?.tipo === 'cartao_credito') setForma('Cartão de crédito')
+    else if (forma === 'Cartão de crédito') setForma('')
+  }
 
   /** Resultado da voz/foto → preenche o formulário (o admin confere antes de registrar). */
   function aplicarIA(r: ResultadoIA) {
@@ -121,6 +139,7 @@ export function ModalLancamento({
     if (x.categoria_id) setCategoriaId(x.categoria_id)
     if (x.projeto_id) setProjetoId(x.projeto_id)
     setServicoId(x.servico_id || '')
+    if (x.conta_id && contas.some((c) => c.id === x.conta_id)) escolherConta(x.conta_id)
     if (x.descricao) { setDescricao(x.descricao); setDescricaoMexida(true) }
     if (x.observacoes) setObs(x.observacoes)
     if (r.comprovante) setComprovante(r.comprovante)
@@ -139,6 +158,7 @@ export function ModalLancamento({
   const subCg = SUBTIPOS_CAPITAL_GIRO.find((s) => s.chave === subtipoCg)
   const direcao: Direcao = tipo === 'capital_giro' ? (subCg?.direcao || direcaoCg)
     : tipo && GRUPOS[tipo].direcao === 'entrada' ? 'entrada' : 'saida'
+  const ehCartao = direcao === 'saida' && contaSel?.tipo === 'cartao_credito'
   const tipoCategoria = direcao === 'entrada' ? 'receita' : 'despesa'
   const usaCategoria = tipo === 'despesas_operacionais' || tipo === 'outras_despesas' || tipo === 'outras_receitas'
 
@@ -194,6 +214,9 @@ export function ModalLancamento({
     if (tipo === 'fornecedores' && !fornecedorId) { setErro('Escolha o fornecedor (ou cadastre um novo)'); return }
     if (!(valorNum > 0)) { setErro('Informe o valor previsto'); return }
     if (!descricaoFinal.trim()) { setErro('Informe a descrição'); return }
+    if (direcao === 'saida' && forma === 'Cartão de crédito' && cartoes.length > 0 && !ehCartao) {
+      setErro('Escolha em "Pago com" qual cartão foi usado — a compra cai na fatura dele'); return
+    }
 
     const detalhes: Record<string, any> = {}
     if (tipo === 'fornecedores' && nf) detalhes.nf = nf
@@ -223,8 +246,10 @@ export function ModalLancamento({
         detalhes,
         observacoes: obs,
         repeticao, vezes: vezesNum,
-        realizado: repeticao === 'unica' && jaPago ? { valor: lerValor(valorPago) || valorNum, data: dataPago } : null,
+        realizado: !ehCartao && repeticao === 'unica' && jaPago ? { valor: lerValor(valorPago) || valorNum, data: dataPago } : null,
         aplicar_serie: !!editando && aplicarSerie,
+        // Sem a migration 136 a lista de contas vem vazia → não manda o campo
+        conta_id: contas.length ? (contaId || null) : undefined,
       })
       if ('erro' in r) { setErro(r.erro); return }
       onSalvo(editando
@@ -416,12 +441,21 @@ export function ModalLancamento({
         <Campo rotulo={repeticao === 'parcelado' ? 'Valor total previsto *' : 'Valor previsto *'}>
           <InputValor valor={valor} onChange={setValor} />
         </Campo>
-        <Campo rotulo={repeticao === 'unica' ? 'Vencimento / data prevista *' : '1º vencimento *'}>
+        <Campo rotulo={ehCartao ? 'Data da compra *' : repeticao === 'unica' ? 'Vencimento / data prevista *' : '1º vencimento *'}>
           <input type="date" className={classeInput} value={data} onChange={(e) => setData(e.target.value)} />
         </Campo>
         <Campo rotulo="Forma de pagamento">
           <Selecao valor={forma} onChange={setForma} vazio="—" opcoes={FORMAS_PAGAMENTO.map((f) => ({ valor: f, rotulo: f }))} />
         </Campo>
+        {opcoesContas.length > 0 && (
+          <Campo rotulo={direcao === 'entrada' ? 'Recebido em (conta)' : 'Pago com (conta / cartão)'}
+            dica={forma === 'Cartão de crédito' && !ehCartao ? 'Escolha o cartão usado' : undefined}>
+            <Selecao valor={contaId} onChange={escolherConta} vazio="—"
+              opcoes={direcao === 'entrada'
+                ? opcoesContas.filter((o) => contas.find((c) => c.id === o.valor)?.tipo !== 'cartao_credito')
+                : opcoesContas} />
+          </Campo>
+        )}
 
         {!editando && (
           <Campo rotulo="Repetição">
@@ -439,6 +473,20 @@ export function ModalLancamento({
         )}
       </div>
 
+      {/* Cartão: mostra em qual fatura cai (parcelas nas faturas seguintes) */}
+      {ehCartao && contaSel?.dia_fechamento && contaSel?.dia_vencimento && /^\d{4}-\d{2}-\d{2}$/.test(data) && (() => {
+        const qtd = repeticao === 'unica' ? 1 : vezesNum
+        const datas = datasNoCartao(data, qtd, repeticao, contaSel.dia_fechamento, contaSel.dia_vencimento)
+        return (
+          <Aviso tipo="info">
+            💳 {qtd === 1
+              ? <>Cai na fatura que vence em <strong>{dataBR(datas[0])}</strong>.</>
+              : <>{repeticao === 'parcelado' ? `${qtd} parcelas` : `${qtd} meses`}: 1ª na fatura de <strong>{dataBR(datas[0])}</strong>, última em <strong>{dataBR(datas[datas.length - 1])}</strong>.</>}
+            {' '}Fica como previsto até você pagar a fatura (aba Contas e cartões).
+          </Aviso>
+        )
+      })()}
+
       {previa.length > 1 && valorNum > 0 && (
         <p className="text-[11px] text-white/55">
           {previa.length}× — {previa.slice(0, 3).map((v, i) => `${dataBR(addMeses(data, i))}: ${brl(v)}`).join(' · ')}
@@ -447,7 +495,7 @@ export function ModalLancamento({
         </p>
       )}
 
-      {!editando && repeticao === 'unica' && (
+      {!editando && repeticao === 'unica' && !ehCartao && (
         <div className="rounded-lg border border-white/10 p-3 space-y-2">
           <label className="flex items-center gap-2 text-sm text-white/80 cursor-pointer">
             <input type="checkbox" checked={jaPago} onChange={(e) => setJaPago(e.target.checked)} />
@@ -480,7 +528,10 @@ export function ModalLancamento({
 
       {erro && <Aviso tipo="erro">⚠️ {erro}</Aviso>}
       <Botoes onCancelar={onFechar} onConfirmar={salvar} processando={salvando}
-        rotulo={editando ? 'Salvar alterações' : jaPago && repeticao === 'unica' ? (direcao === 'entrada' ? 'Registrar recebimento' : 'Registrar pagamento') : 'Lançar previsto'} />
+        rotulo={editando ? 'Salvar alterações'
+          : ehCartao ? '💳 Lançar na fatura'
+          : jaPago && repeticao === 'unica' ? (direcao === 'entrada' ? 'Registrar recebimento' : 'Registrar pagamento')
+          : 'Lançar previsto'} />
     </Modal>
   )
 }
