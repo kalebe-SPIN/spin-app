@@ -59,12 +59,13 @@ export async function PortalHeader() {
     ehCampo ? { href: '/campo', label: 'Campo' } : { href: '/dashboard', label: 'Dashboard' },
     ...(!ehCampo
       ? [{ href: '/projetos', label: 'Projetos' }] : []),
-    {
+    // Kalebe 2026-10-05: o campo não acessa o CRM
+    ...(!ehCampo ? [{
       href:
         modoAtivo === 'admin' ? '/crm/pipeline'
         : '/crm',
       label: 'CRM',
-    },
+    }] : []),
     { href: '/agenda', label: 'Agenda' },
     ...(veCampo && !ehCampo ? [{ href: '/campo', label: 'Campo' }] : []),
     // Kalebe 2026-09-30: Grupos saiu do menu — fica dentro do Inbox

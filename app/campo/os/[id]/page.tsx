@@ -63,6 +63,8 @@ export default async function OrdemServicoPage({ params }: { params: { id: strin
     endereco: os.endereco || (os.endereco_execucao ? { logradouro: os.endereco_execucao } : null),
     data_agendada: os.data_agendada,
     hora_agendada: os.hora_agendada ? String(os.hora_agendada).slice(0, 5) : null,
+    aprovacao: os.aprovacao || null,
+    ehAdmin: papel === 'admin',
     checklist,
     observacoes: os.observacoes || '',
     problemas: os.problemas_encontrados || '',

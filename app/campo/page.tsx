@@ -26,7 +26,7 @@ export default async function CampoPage() {
         <header>
           <h1 className="text-2xl sm:text-3xl font-black text-white">🔧 Campo</h1>
           <p className="text-white/60 text-sm mt-0.5">
-            Demandas de serviço, sua agenda e as ordens de serviço. Agrupe por região pra fazer vários no mesmo dia.
+            Demandas de serviço, sua agenda, ordens de serviço e diárias. Agrupe por região pra fazer vários no mesmo dia.
           </p>
         </header>
         {'erro' in dados ? (
@@ -34,6 +34,7 @@ export default async function CampoPage() {
         ) : (
           <CampoClient
             demandas={dados.demandas} agenda={dados.agenda} feitos={dados.feitos}
+            dias={dados.dias} mes={dados.mes}
             equipe={dados.equipe} ehAdmin={papel === 'admin'} usuarioId={user.id}
           />
         )}

@@ -4,14 +4,26 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { StatusExecucao } from '@/lib/execucoes'
 
+/**
+ * Kalebe 2026-10-05: só o admin libera e altera execuções por aqui. O
+ * profissional de campo trabalha pelo /campo (server actions com checagem).
+ */
+async function exigirAdmin(supabase: ReturnType<typeof createClient>) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { user: null, erro: 'Nao autorizado' }
+  const { data: p } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (p?.role !== 'admin') return { user: null, erro: 'Só o admin altera execuções — o profissional de campo usa o painel Campo' }
+  return { user, erro: null }
+}
+
 export async function mudarStatusExecucaoAction(
   execucaoId: string,
   novoStatus: StatusExecucao,
   observacoes?: string,
 ) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { erro: 'Nao autorizado' }
+  const { user, erro } = await exigirAdmin(supabase)
+  if (!user) return { erro }
 
   const { data: execAtual } = await supabase
     .from('execucoes_servicos')
@@ -71,8 +83,8 @@ export async function atualizarExecucaoAction(
   },
 ) {
   const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { erro: 'Nao autorizado' }
+  const { user, erro } = await exigirAdmin(supabase)
+  if (!user) return { erro }
 
   const { error } = await supabase
     .from('execucoes_servicos')

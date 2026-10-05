@@ -7,10 +7,13 @@ import { getTituloTipo } from '@/lib/execucoes'
  * Ciclo de uma demanda (execucoes_servicos):
  *   DEMANDA  status 'agendando' (pronta) ou 'aguardando_pre_requisitos'
  *            (esperando liberação do admin — aparece, mas não dá pra agendar)
- *   AGENDA   'agendado' / 'preparando_material' com data → sai das demandas
+ *   AGENDA   'agendado' / 'preparando_material' com data → sai das demandas.
+ *            O profissional monta o dia e pede aprovação (aprovacao
+ *            'pendente'); só o admin aprova ('aprovada') — aí a OS pode começar.
  *   OS       'em_execucao' → checklist, fotos, custos extras
  *   FIM      'concluido' com assinatura do cliente
- *   Passou a data sem execução → a Bianca devolve pra 'agendando'.
+ *   Passou a data sem concluir → a Bianca devolve pra 'agendando' e fecha a
+ *   diária do dia (lib/campo/diarias.ts).
  */
 
 export type EnderecoCampo = {
@@ -46,9 +49,26 @@ export type Demanda = {
   hora_agendada: string | null
   responsavel_tecnico: string | null
   responsavel_nome: string | null
+  aprovacao: 'pendente' | 'aprovada' | null
   vezes_reaberta: number
   data_conclusao: string | null
 }
+
+/** Dia de trabalho de um profissional (campo_agenda_dias) com a diária. */
+export type DiaCampo = {
+  id: string
+  profissional_id: string
+  profissional_nome: string
+  data: string
+  status: 'pendente' | 'aprovada' | 'recusada' | 'expirada' | 'fechada'
+  previstos: number
+  concluidos: number
+  valor: number | null          // fechada: valor pago; aberta: null
+  tipo: 'integral' | 'parcial' | null
+}
+
+export const hojeBRT = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+export const dataCurtaBR = (d: string | null | undefined) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—')
 
 export const STATUS_DEMANDA = ['agendando', 'aguardando_pre_requisitos']
 export const STATUS_AGENDA = ['agendado', 'preparando_material', 'em_execucao']

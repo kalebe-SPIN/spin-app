@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { dispararGatilho } from '@/lib/bianca/gatilhos'
-import { reabrirServicosVencidos, resumoDoDiaCampo } from '@/lib/campo/bianca'
+import { rotinaDiariaCampo } from '@/lib/campo/bianca'
 
 /**
  * Cron diario da Bianca — dispara gatilhos TEMPORAIS.
@@ -13,8 +13,9 @@ import { reabrirServicosVencidos, resumoDoDiaCampo } from '@/lib/campo/bianca'
  *   1. proposta_followup_3d — propostas enviadas ha 3+ dias sem 'aceito'/'recusado'
  *   2. modulo_pendente_7d — projeto_itens sem valor_estimado ha 7+ dias
  *   3. instalacao_amanha — homologacoes com data_instalacao = amanha
- *   4. campo — serviço agendado que passou da data volta pras demandas;
- *      resumo dos serviços de hoje pra cada profissional (lib/campo/bianca)
+ *   4. campo — fecha as diárias, devolve pras demandas o que não foi
+ *      executado, resumo do dia por profissional e pendências do admin
+ *      (lib/campo/bianca)
  *
  * Cada gatilho e disparado UMA VEZ por entidade — checa se ja existe
  * bianca_eventos_disparados com esse gatilho+entidade no mesmo dia.
@@ -41,9 +42,8 @@ export async function GET(req: NextRequest) {
     resultados.push(await processarFollowUp3d(supabase))
     resultados.push(await processarModuloPendente7d(supabase))
     resultados.push(await processarInstalacaoAmanha(supabase))
-    // Campo: serviço que passou da data volta pras demandas + resumo do dia
-    resultados.push(await reabrirServicosVencidos(supabase))
-    resultados.push(await resumoDoDiaCampo(supabase))
+    // Campo: fecha diárias, devolve o não executado, resumo do dia, pendências do admin
+    resultados.push(...(await rotinaDiariaCampo(supabase)))
 
     return NextResponse.json({
       sucesso: true,

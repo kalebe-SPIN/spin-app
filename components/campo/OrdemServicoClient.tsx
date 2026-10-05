@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getTituloTipo } from '@/lib/execucoes'
 import { formatarCpfCnpj, formatarMoedaBRL } from '@/lib/formatters'
-import { linhaEndereco, linkMapa, linkWhatsApp, rotuloOs, type EnderecoCampo, type ItemChecklist } from '@/lib/campo/comum'
+import { dataCurtaBR, hojeBRT, linhaEndereco, linkMapa, linkWhatsApp, rotuloOs, type EnderecoCampo, type ItemChecklist } from '@/lib/campo/comum'
 import { fotoReduzida } from '@/lib/campo/imagem'
 import { AssinaturaCanvas, type AssinaturaRef } from './AssinaturaCanvas'
 import {
@@ -28,6 +28,8 @@ export type OsTela = {
   endereco: EnderecoCampo | null
   data_agendada: string | null
   hora_agendada: string | null
+  aprovacao: 'pendente' | 'aprovada' | null
+  ehAdmin: boolean
   checklist: ItemChecklist[]
   observacoes: string
   problemas: string
@@ -101,6 +103,11 @@ export function OrdemServicoClient({ os }: { os: OsTela }) {
   }
 
   const feitos = checklist.filter((x) => x.feito).length
+  const bloqueioInicio = os.ehAdmin ? null
+    : !['agendado', 'preparando_material'].includes(os.status) ? 'Essa OS ainda não está na sua agenda.'
+    : os.aprovacao !== 'aprovada' ? 'Aguardando o admin aprovar a agenda desse dia.'
+    : os.data_agendada !== hojeBRT() ? `Aprovada pra ${dataCurtaBR(os.data_agendada)} — inicie no dia.`
+    : null
 
   return (
     <div className="space-y-4 pb-10">
@@ -130,12 +137,16 @@ export function OrdemServicoClient({ os }: { os: OsTela }) {
 
       {erro && <div className="p-3 rounded-lg bg-coral/10 border border-coral/30 text-sm text-coral">⚠ {erro}<button onClick={() => setErro(null)} className="float-right text-xs">✕</button></div>}
 
-      {/* Iniciar */}
+      {/* Iniciar — só com a agenda aprovada pelo admin e no dia aprovado */}
       {!emExecucao && !fechada && (
         <section className={cardCls}>
-          <p className="text-sm text-white/70">Chegou no local? Inicie a OS pra liberar o checklist, as fotos e a assinatura do cliente.</p>
+          {bloqueioInicio ? (
+            <p className="text-sm text-sol">⏳ {bloqueioInicio}</p>
+          ) : (
+            <p className="text-sm text-white/70">Chegou no local? Inicie a OS pra liberar o checklist, as fotos e a assinatura do cliente.</p>
+          )}
           <button
-            disabled={iniciando}
+            disabled={iniciando || !!bloqueioInicio}
             onClick={async () => {
               setIniciando(true); setErro(null)
               const r = await iniciarOsAction(os.id)

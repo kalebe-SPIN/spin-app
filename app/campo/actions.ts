@@ -5,7 +5,8 @@ import { randomUUID } from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checklistPadrao } from '@/lib/campo/checklists'
-import { linhaEndereco, rotuloOs, type EnderecoCampo, type ItemChecklist } from '@/lib/campo/comum'
+import { dataCurtaBR, hojeBRT, linhaEndereco, rotuloOs, type EnderecoCampo, type ItemChecklist } from '@/lib/campo/comum'
+import { DIARIA_INTEGRAL } from '@/lib/campo/diarias'
 import { getTituloTipo } from '@/lib/execucoes'
 import { formatarMoedaBRL } from '@/lib/formatters'
 
@@ -19,6 +20,7 @@ import { formatarMoedaBRL } from '@/lib/formatters'
 type R<T = {}> = ({ sucesso: true } & T) | { erro: string }
 const PAPEIS_CAMPO = ['profissional_campo', 'instalador', 'admin']
 const MSG_MIG = 'Falta rodar a migration 137 (painel do campo) no Supabase.'
+const MSG_MIG138 = 'Falta rodar a migration 138 (aprovação da agenda e diárias) no Supabase.'
 const erroMig = (m: string) => (/column|origem|cidade|os_numero|checklist|assinatura|agenda_evento_id/.test(m) ? MSG_MIG : m)
 
 async function exigirCampo() {
@@ -63,6 +65,7 @@ export async function criarDemandaAction(d: {
   if (String(d.contato_telefone || '').replace(/\D/g, '').length < 10) return { erro: 'Telefone de contato com DDD' }
   if (!d.endereco?.cidade?.trim()) return { erro: 'Informe ao menos a cidade (é o filtro de região)' }
 
+  // Vai direto pro quadro; o controle do admin é na aprovação da agenda do dia
   const { data, error } = await createAdminClient().from('execucoes_servicos').insert({
     origem: 'manual',
     tipo_servico: d.tipo_servico,
@@ -85,32 +88,88 @@ export async function criarDemandaAction(d: {
 }
 
 /**
+ * Dia de trabalho (campo_agenda_dias) depois de mexer nos serviços de
+ * (profissional, data): `servicos` = aprovados; status 'pendente' enquanto
+ * houver serviço esperando aprovação. Dia vazio some.
+ */
+async function sincronizarDia(
+  admin: ReturnType<typeof createAdminClient>,
+  profissional: string, data: string,
+  mudar: { adicionarAprovados?: string[]; remover?: string; aprovadoPor?: string | null; motivo?: string | null } = {},
+) {
+  const agora = new Date().toISOString()
+  const { data: dia } = await admin.from('campo_agenda_dias').select('id, servicos, status, solicitado_em')
+    .eq('profissional_id', profissional).eq('data', data).maybeSingle()
+  if (dia?.status === 'fechada') return
+  let servicos: string[] = ((dia?.servicos || []) as string[]).filter((x) => x !== mudar.remover)
+  for (const id of mudar.adicionarAprovados || []) if (!servicos.includes(id)) servicos.push(id)
+  const { count: pendentes } = await admin.from('execucoes_servicos').select('id', { count: 'exact', head: true })
+    .eq('responsavel_tecnico', profissional).eq('data_agendada', data).eq('aprovacao', 'pendente')
+
+  if (!servicos.length && !pendentes) {
+    if (!dia) return
+    if (mudar.motivo !== undefined) {
+      await admin.from('campo_agenda_dias').update({ servicos, status: 'recusada', motivo_recusa: mudar.motivo, updated_at: agora }).eq('id', dia.id)
+    } else {
+      await admin.from('campo_agenda_dias').delete().eq('id', dia.id)
+    }
+    return
+  }
+  const campos: Record<string, any> = {
+    servicos,
+    status: pendentes ? 'pendente' : 'aprovada',
+    solicitado_em: pendentes ? (dia?.status === 'pendente' && dia.solicitado_em ? dia.solicitado_em : agora) : dia?.solicitado_em || null,
+    updated_at: agora,
+  }
+  if (mudar.aprovadoPor) { campos.aprovado_por = mudar.aprovadoPor; campos.aprovado_em = agora }
+  if (mudar.motivo !== undefined) campos.motivo_recusa = mudar.motivo
+  if (dia) await admin.from('campo_agenda_dias').update(campos).eq('id', dia.id)
+  else await admin.from('campo_agenda_dias').insert({ profissional_id: profissional, data, ...campos })
+}
+
+/** Serviço aprovado de hoje (ou de dia que já passou) só o admin mexe — é a base da diária. */
+function travadoPelaDiaria(os: any, papel: string | null) {
+  return papel !== 'admin' && os.aprovacao === 'aprovada' && !!os.data_agendada && os.data_agendada <= hojeBRT()
+}
+
+/**
  * Agendar = a demanda sai do quadro e vai pra agenda do profissional (evento
  * na agenda dele). Várias de uma vez: mesma região, mesmo dia.
+ * Kalebe 2026-10-05: o profissional monta o dia e PEDE APROVAÇÃO — só o
+ * admin aprova (agendamento feito pelo admin já nasce aprovado).
  */
 export async function agendarDemandasAction(e: {
   ids: string[]
   data: string
   hora?: string | null
   responsavel_id?: string | null   // admin escolhe; o campo agenda pra si
-}): Promise<R<{ agendadas: number }>> {
+}): Promise<R<{ agendadas: number; pendente: boolean }>> {
   const c = await exigirCampo()
   if (c.erro || !c.user) return { erro: c.erro || 'Não autenticado' }
   if (!e.ids?.length) return { erro: 'Marque ao menos um serviço' }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(e.data || '')) return { erro: 'Escolha a data' }
+  if (e.data < hojeBRT()) return { erro: 'Escolha hoje ou uma data futura' }
   const hora = /^\d{2}:\d{2}$/.test(e.hora || '') ? e.hora! : '08:00'
-  const responsavel = c.papel === 'admin' && e.responsavel_id ? e.responsavel_id : c.user.id
+  const ehAdmin = c.papel === 'admin'
+  const responsavel = ehAdmin && e.responsavel_id ? e.responsavel_id : c.user.id
 
   const admin = createAdminClient()
   const { data: lista, error } = await admin.from('execucoes_servicos')
-    .select('id, status, titulo, tipo_servico, projeto_id, cliente_nome, contato_telefone, endereco, endereco_execucao, os_numero, agenda_evento_id')
+    .select('id, status, titulo, tipo_servico, projeto_id, cliente_nome, contato_telefone, endereco, endereco_execucao, cidade, os_numero, agenda_evento_id, data_agendada, responsavel_tecnico, aprovacao')
     .in('id', e.ids)
-  if (error) return { erro: erroMig(error.message) }
+  if (error) return { erro: /aprovacao/.test(error.message) ? MSG_MIG138 : erroMig(error.message) }
 
   let agendadas = 0
+  const aprovados: string[] = []
+  const pedidos: any[] = []
+  const diasAntigos: Array<[string, string, string]> = []
   for (const os of (lista || []) as any[]) {
-    if (os.status === 'aguardando_pre_requisitos') continue   // ainda não liberada
+    if (os.status === 'aguardando_pre_requisitos') continue   // venda ainda não liberada pelo admin
     if (!['agendando', 'agendado', 'cancelado'].includes(os.status)) continue
+    if (travadoPelaDiaria(os, c.papel)) continue                 // aprovado de hoje: só o admin remaneja
+    const mesmoDia = os.responsavel_tecnico === responsavel && os.data_agendada === e.data
+    const aprovacao = ehAdmin || (mesmoDia && os.aprovacao === 'aprovada') ? 'aprovada' : 'pendente'
+    if (os.responsavel_tecnico && os.data_agendada && !mesmoDia) diasAntigos.push([os.responsavel_tecnico, os.data_agendada, os.id])
     const local = linhaEndereco(os.endereco) || os.endereco_execucao || null
     const evento = {
       usuario_id: responsavel,
@@ -121,7 +180,7 @@ export async function agendarDemandasAction(e: {
       tipo: 'servico_campo',
       projeto_id: os.projeto_id || null,
       cliente_nome: os.cliente_nome || null,
-      status: 'agendado',
+      status: aprovacao === 'aprovada' ? 'confirmado' : 'agendado',
       criado_por_usuario_id: c.user.id,
     }
     let eventoId = os.agenda_evento_id as string | null
@@ -132,32 +191,115 @@ export async function agendarDemandasAction(e: {
       eventoId = ev?.id || null
     }
     const { error: eUp } = await admin.from('execucoes_servicos').update({
-      status: 'agendado', data_agendada: e.data, hora_agendada: hora,
+      status: 'agendado', data_agendada: e.data, hora_agendada: hora, aprovacao,
       responsavel_tecnico: responsavel, agenda_evento_id: eventoId, updated_at: new Date().toISOString(),
     }).eq('id', os.id)
-    if (!eUp) agendadas++
+    if (eUp) continue
+    agendadas++
+    if (aprovacao === 'aprovada') aprovados.push(os.id)
+    else pedidos.push(os)
   }
-  if (!agendadas) return { erro: 'Nenhum serviço pôde ser agendado (aguardando liberação ou já em execução)' }
+  if (!agendadas) return { erro: 'Nenhum serviço pôde ser agendado (aguardando liberação, já em execução ou aprovado pra hoje)' }
+
+  for (const [prof, dia, id] of diasAntigos) await sincronizarDia(admin, prof, dia, { remover: id })
+  await sincronizarDia(admin, responsavel, e.data, { adicionarAprovados: aprovados, aprovadoPor: aprovados.length ? c.user.id : null })
+
+  if (pedidos.length) {
+    const cidades = Array.from(new Set(pedidos.map((o) => o.cidade).filter(Boolean))).join(', ')
+    const { avisarEquipe } = await import('@/lib/agentes/diretorio')
+    await avisarEquipe({
+      agente: 'bianca',
+      mensagem: `${c.nome.split(' ')[0] || 'Campo'} montou a agenda de ${dataCurtaBR(e.data)} e pede aprovação: ${pedidos.length} serviço(s)${cidades ? ` em ${cidades}` : ''}. Aprove em /campo.`,
+    }).catch(() => {})
+  }
   revalidar()
-  return { sucesso: true, agendadas }
+  return { sucesso: true, agendadas, pendente: pedidos.length > 0 }
 }
 
-/** Admin libera a demanda que nasceu da venda (pré-requisitos ok) → pode ser agendada. */
-export async function liberarDemandaAction(id: string): Promise<R> {
+/** Admin aprova os serviços que o profissional pediu pra um dia. */
+export async function aprovarAgendaAction(e: { profissional_id: string; data: string }): Promise<R<{ aprovados: number }>> {
   const c = await exigirCampo()
   if (c.erro || !c.user) return { erro: c.erro || 'Não autenticado' }
-  if (c.papel !== 'admin') return { erro: 'Só o admin libera demanda' }
+  if (c.papel !== 'admin') return { erro: 'Só o admin aprova a agenda do campo' }
   const admin = createAdminClient()
-  const { error } = await admin.from('execucoes_servicos')
-    .update({ status: 'agendando', updated_at: new Date().toISOString() })
-    .eq('id', id).eq('status', 'aguardando_pre_requisitos')
-  if (error) return { erro: error.message }
-  await admin.from('execucoes_status_historico').insert({
-    execucao_id: id, status_anterior: 'aguardando_pre_requisitos', status_novo: 'agendando',
-    observacoes: 'Liberada no painel do campo', usuario_id: c.user.id,
-  })
+  const { data: pend, error } = await admin.from('execucoes_servicos').select('id, agenda_evento_id')
+    .eq('responsavel_tecnico', e.profissional_id).eq('data_agendada', e.data).eq('aprovacao', 'pendente')
+  if (error) return { erro: /aprovacao/.test(error.message) ? MSG_MIG138 : error.message }
+  const lista = (pend || []) as Array<{ id: string; agenda_evento_id: string | null }>
+  if (!lista.length) return { erro: 'Nada esperando aprovação nesse dia' }
+
+  await admin.from('execucoes_servicos').update({ aprovacao: 'aprovada', updated_at: new Date().toISOString() }).in('id', lista.map((x) => x.id))
+  const eventos = lista.map((x) => x.agenda_evento_id).filter(Boolean) as string[]
+  if (eventos.length) await admin.from('agenda_eventos').update({ status: 'confirmado' }).in('id', eventos)
+  await sincronizarDia(admin, e.profissional_id, e.data, { adicionarAprovados: lista.map((x) => x.id), aprovadoPor: c.user.id })
+
+  const { avisarUsuario } = await import('@/lib/agentes/diretorio')
+  await avisarUsuario({
+    destinatario_id: e.profissional_id,
+    agente: 'bianca',
+    titulo: 'Agenda aprovada',
+    mensagem: `Sua agenda de ${dataCurtaBR(e.data)} foi aprovada: ${lista.length} serviço(s). Diária integral (${formatarMoedaBRL(DIARIA_INTEGRAL)}) concluindo todos; o que não for concluído volta pras demandas. Abra cada OS em /campo.`,
+  }).catch(() => {})
   revalidar()
-  return { sucesso: true }
+  return { sucesso: true, aprovados: lista.length }
+}
+
+/** Admin recusa o pedido: os serviços pedidos voltam pras demandas. */
+export async function recusarAgendaAction(e: { profissional_id: string; data: string; motivo?: string }): Promise<R<{ devolvidos: number }>> {
+  const c = await exigirCampo()
+  if (c.erro || !c.user) return { erro: c.erro || 'Não autenticado' }
+  if (c.papel !== 'admin') return { erro: 'Só o admin aprova a agenda do campo' }
+  const admin = createAdminClient()
+  const { data: pend, error } = await admin.from('execucoes_servicos').select('id, agenda_evento_id')
+    .eq('responsavel_tecnico', e.profissional_id).eq('data_agendada', e.data).eq('aprovacao', 'pendente')
+  if (error) return { erro: /aprovacao/.test(error.message) ? MSG_MIG138 : error.message }
+  const lista = (pend || []) as Array<{ id: string; agenda_evento_id: string | null }>
+  if (!lista.length) return { erro: 'Nada esperando aprovação nesse dia' }
+
+  await admin.from('execucoes_servicos').update({
+    status: 'agendando', data_agendada: null, hora_agendada: null, responsavel_tecnico: null,
+    agenda_evento_id: null, aprovacao: null, updated_at: new Date().toISOString(),
+  }).in('id', lista.map((x) => x.id))
+  const eventos = lista.map((x) => x.agenda_evento_id).filter(Boolean) as string[]
+  if (eventos.length) await admin.from('agenda_eventos').update({ status: 'cancelado' }).in('id', eventos)
+  const motivo = e.motivo?.trim() || null
+  await sincronizarDia(admin, e.profissional_id, e.data, { motivo })
+
+  const { avisarUsuario } = await import('@/lib/agentes/diretorio')
+  await avisarUsuario({
+    destinatario_id: e.profissional_id,
+    agente: 'bianca',
+    titulo: 'Agenda não aprovada',
+    mensagem: `A agenda de ${dataCurtaBR(e.data)} não foi aprovada${motivo ? ` (${motivo})` : ''}. ${lista.length} serviço(s) voltaram pras demandas em /campo.`,
+  }).catch(() => {})
+  revalidar()
+  return { sucesso: true, devolvidos: lista.length }
+}
+
+/**
+ * Liberar = a demanda que nasceu da venda (pré-requisitos ok) pode ser
+ * agendada. Kalebe 2026-10-05: SÓ O ADMIN libera serviço de campo.
+ */
+export async function liberarDemandasAction(ids: string[]): Promise<R<{ liberadas: number }>> {
+  const c = await exigirCampo()
+  if (c.erro || !c.user) return { erro: c.erro || 'Não autenticado' }
+  if (c.papel !== 'admin') return { erro: 'Só o admin libera serviço de campo' }
+  if (!ids?.length) return { erro: 'Nenhuma demanda escolhida' }
+  const admin = createAdminClient()
+  const { data, error } = await admin.from('execucoes_servicos')
+    .update({ status: 'agendando', updated_at: new Date().toISOString() })
+    .in('id', ids).eq('status', 'aguardando_pre_requisitos')
+    .select('id')
+  if (error) return { erro: error.message }
+  const liberadas = (data || []) as Array<{ id: string }>
+  if (liberadas.length) {
+    await admin.from('execucoes_status_historico').insert(liberadas.map((x) => ({
+      execucao_id: x.id, status_anterior: 'aguardando_pre_requisitos', status_novo: 'agendando',
+      observacoes: 'Liberada pelo admin no painel do campo', usuario_id: c.user!.id,
+    })))
+  }
+  revalidar()
+  return { sucesso: true, liberadas: liberadas.length }
 }
 
 /** Tira da agenda e devolve pras demandas. */
@@ -165,12 +307,14 @@ export async function desmarcarAction(id: string): Promise<R> {
   const c = await exigirOs(id)
   if (c.erro || !c.os) return { erro: c.erro || 'Sem permissão' }
   if (!['agendado', 'preparando_material'].includes(c.os.status)) return { erro: 'Só dá pra desmarcar serviço agendado' }
+  if (travadoPelaDiaria(c.os, c.papel)) return { erro: 'Serviço aprovado pra hoje — se não der pra fazer, ele volta sozinho pras demandas amanhã (ou peça ao admin).' }
   const admin = createAdminClient()
   if (c.os.agenda_evento_id) await admin.from('agenda_eventos').update({ status: 'cancelado' }).eq('id', c.os.agenda_evento_id)
   await admin.from('execucoes_servicos').update({
     status: 'agendando', data_agendada: null, hora_agendada: null, responsavel_tecnico: null,
-    agenda_evento_id: null, updated_at: new Date().toISOString(),
+    agenda_evento_id: null, aprovacao: null, updated_at: new Date().toISOString(),
   }).eq('id', id)
+  if (c.os.responsavel_tecnico && c.os.data_agendada) await sincronizarDia(admin, c.os.responsavel_tecnico, c.os.data_agendada, { remover: id })
   revalidar(id)
   return { sucesso: true }
 }
@@ -180,6 +324,12 @@ export async function desmarcarAction(id: string): Promise<R> {
 export async function iniciarOsAction(id: string): Promise<R> {
   const c = await exigirOs(id)
   if (c.erro || !c.os) return { erro: c.erro || 'Sem permissão' }
+  if (!['agendado', 'preparando_material', 'em_execucao'].includes(c.os.status)) return { erro: 'Essa OS não está na agenda' }
+  // Kalebe 2026-10-05: só executa o que o admin aprovou, no dia aprovado (base da diária)
+  if (c.papel !== 'admin') {
+    if (c.os.aprovacao !== 'aprovada') return { erro: 'Aguardando o admin aprovar a agenda desse dia' }
+    if (c.os.data_agendada !== hojeBRT()) return { erro: `Essa OS está aprovada pra ${dataCurtaBR(c.os.data_agendada)}` }
+  }
   const admin = createAdminClient()
   const checklist = Array.isArray(c.os.checklist) && c.os.checklist.length ? c.os.checklist : checklistPadrao(c.os.tipo_servico)
   await admin.from('execucoes_servicos').update({
