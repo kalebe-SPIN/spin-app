@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * Kalebe 2026-09-17: modal reutilizável de confirmação de venda.
@@ -21,6 +21,9 @@ type Props = {
   /** Rótulo do preço no header — "Preço final da proposta", etc. */
   rotuloPreco?: string
   processando?: boolean
+  /** Kalebe 2026-10-06: editar uma venda já fechada (troca de projeto) */
+  modoEdicao?: boolean
+  inicial?: Partial<DadosConfirmacao> | null
 }
 
 export type DadosConfirmacao = {
@@ -28,7 +31,12 @@ export type DadosConfirmacao = {
   condicao_pagamento: string
   parcelas: number | null
   observacoes: string | null
+  /** Kalebe 2026-10-06: data da venda e do 1º pagamento (YYYY-MM-DD) */
+  data_venda: string
+  data_pagamento: string | null
 }
+
+const hojeBRT = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
 
 const CONDICOES_PADRAO = [
   'À vista (PIX/transferência)',
@@ -50,18 +58,37 @@ export function ConfirmarVendaModal({
   condicoesDisponiveis,
   rotuloPreco = 'Preço final acordado com o cliente',
   processando = false,
+  modoEdicao = false,
+  inicial = null,
 }: Props) {
   const [preco, setPreco] = useState<string>(String(precoSugerido.toFixed(2)))
   const [condicao, setCondicao] = useState<string>(CONDICOES_PADRAO[0])
   const [parcelas, setParcelas] = useState<string>('1')
   const [observacoes, setObservacoes] = useState<string>('')
+  const [dataVenda, setDataVenda] = useState<string>(hojeBRT())
+  const [dataPagamento, setDataPagamento] = useState<string>('')
   const [erro, setErro] = useState<string | null>(null)
+
+  // Ao abrir: valores da venda atual (edição) ou sugeridos (fechamento)
+  useEffect(() => {
+    if (!aberto) return
+    setErro(null)
+    setPreco(String((inicial?.preco_final ?? precoSugerido).toFixed(2)))
+    setCondicao(inicial?.condicao_pagamento || CONDICOES_PADRAO[0])
+    setParcelas(String(inicial?.parcelas || 1))
+    setObservacoes(inicial?.observacoes || '')
+    setDataVenda(inicial?.data_venda || hojeBRT())
+    setDataPagamento(inicial?.data_pagamento || '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto])
 
   if (!aberto) return null
 
-  const opcoes = condicoesDisponiveis && condicoesDisponiveis.length > 0
+  const opcoesBase = condicoesDisponiveis && condicoesDisponiveis.length > 0
     ? [...condicoesDisponiveis, 'Outra (descrever nas observações)']
     : CONDICOES_PADRAO
+  // Venda antiga com condição fora da lista continua selecionável
+  const opcoes = condicao && !opcoesBase.includes(condicao) ? [condicao, ...opcoesBase] : opcoesBase
 
   const precoNum = parseFloat(preco.replace(',', '.')) || 0
   const parcelasNum = parseInt(parcelas, 10) || 1
@@ -78,12 +105,22 @@ export function ConfirmarVendaModal({
       setErro('Escolha a condição de pagamento.')
       return
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataVenda)) {
+      setErro('Informe a data da venda.')
+      return
+    }
+    if (dataPagamento && dataPagamento < dataVenda) {
+      setErro('A data do pagamento não pode ser antes da data da venda.')
+      return
+    }
     try {
       await onConfirmar({
         preco_final: precoNum,
         condicao_pagamento: condicao,
         parcelas: parcelasNum > 0 ? parcelasNum : null,
         observacoes: observacoes.trim() || null,
+        data_venda: dataVenda,
+        data_pagamento: dataPagamento || null,
       })
     } catch (e: any) {
       setErro(e?.message || 'Erro ao fechar venda')
@@ -97,11 +134,37 @@ export function ConfirmarVendaModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <h2 className="text-xl font-black text-white">🎯 Fechar venda</h2>
+          <h2 className="text-xl font-black text-white">{modoEdicao ? '✏️ Atualizar dados da venda' : '🎯 Fechar venda'}</h2>
           <p className="text-xs text-white/60 mt-1">
-            Confirme o preço final acordado e a condição de pagamento com o cliente. Isso vai virar o
-            valor real da venda no sistema.
+            {modoEdicao
+              ? 'Venda já fechada (troca de projeto, novo valor ou nova condição). O que estava antes fica registrado no histórico da venda e o fluxo de caixa é refeito quando dá.'
+              : 'Confirme o preço final acordado e a condição de pagamento com o cliente. Isso vai virar o valor real da venda no sistema.'}
           </p>
+        </div>
+
+        {/* Kalebe 2026-10-06: data da venda e do 1º pagamento */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] uppercase font-bold text-white/70 tracking-wider">Data da venda</label>
+            <input
+              type="date"
+              value={dataVenda}
+              max={hojeBRT()}
+              onChange={(e) => setDataVenda(e.target.value)}
+              className="mt-1 w-full bg-white/5 border border-white/15 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-verde"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase font-bold text-white/70 tracking-wider">Data do pagamento</label>
+            <input
+              type="date"
+              value={dataPagamento}
+              min={dataVenda}
+              onChange={(e) => setDataPagamento(e.target.value)}
+              className="mt-1 w-full bg-white/5 border border-white/15 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-verde"
+            />
+            <p className="text-[10px] text-white/40 mt-1">À vista, entrada ou 1ª parcela. Vazio = na data da venda.</p>
+          </div>
         </div>
 
         {/* Preço final */}
@@ -196,7 +259,7 @@ export function ConfirmarVendaModal({
             disabled={processando || precoNum <= 0}
             className="flex-1 px-4 py-2.5 bg-verde text-white font-bold text-sm rounded-lg hover:bg-verde/90 disabled:opacity-40"
           >
-            {processando ? 'Fechando…' : '🎯 Confirmar venda'}
+            {processando ? 'Salvando…' : modoEdicao ? '✏️ Salvar alterações' : '🎯 Confirmar venda'}
           </button>
         </div>
       </div>

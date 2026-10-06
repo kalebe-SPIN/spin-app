@@ -48,7 +48,7 @@ export async function carregarFluxo() {
       .is('excluida_em', null)
       .limit(10000),
     // Migration 107 pode não estar aplicada — sem a tabela, só ignora
-    supabase.from('vendas_manuais').select('id, cliente_nome, valor_venda, custo_estimado, data_venda, vendedor_id, observacao').is('deletada_em', null).limit(10000),
+    supabase.from('vendas_manuais').select('*').is('deletada_em', null).limit(10000),
     supabase.from('profiles').select('id, nome_completo'),
   ])
   // Data real da venda = 1ª entrada em etapa de fechado (não muda com as etapas seguintes)

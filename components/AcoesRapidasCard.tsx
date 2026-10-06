@@ -15,9 +15,11 @@ import { useRouter } from 'next/navigation'
 import {
   marcarPropostaEnviadaAction,
   marcarPropostaAceitaAction,
+  atualizarVendaAction,
 } from '@/app/projetos/[id]/orcamento/actions'
 import { mudarEtapaProjetoAction } from '@/app/projetos/[id]/etapa/actions'
 import { ConfirmarVendaModal, type DadosConfirmacao } from '@/components/ConfirmarVendaModal'
+import { STATUS_FECHADOS } from '@/lib/financeiro/vendas-sistema'
 
 type Props = {
   projetoId: string
@@ -26,13 +28,18 @@ type Props = {
   clienteNome?: string
   /** Kalebe 2026-09-17: pv_total pra pré-preencher o modal de confirmação. */
   precoSugerido?: number
+  /** Kalebe 2026-10-06: admin atualiza venda já fechada (troca de projeto) */
+  ehAdmin?: boolean
+  vendaAtual?: Partial<DadosConfirmacao> | null
 }
 
-export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome, precoSugerido = 0 }: Props) {
+export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome, precoSugerido = 0, ehAdmin = false, vendaAtual = null }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
   const [confirmandoVenda, setConfirmandoVenda] = useState(false)
+  const [editandoVenda, setEditandoVenda] = useState(false)
 
   async function confirmarVenda(dados: DadosConfirmacao) {
     setErro(null)
@@ -42,6 +49,18 @@ export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome
       throw new Error(r.erro)
     }
     setConfirmandoVenda(false)
+    router.refresh()
+  }
+
+  async function salvarEdicaoVenda(dados: DadosConfirmacao) {
+    setErro(null); setAviso(null)
+    const r = await atualizarVendaAction(projetoId, dados)
+    if (!r.sucesso) {
+      setErro(r.erro)
+      throw new Error(r.erro)
+    }
+    setEditandoVenda(false)
+    setAviso(`Venda atualizada.${r.aviso ? ` ${r.aviso}` : ''}`)
     router.refresh()
   }
 
@@ -56,6 +75,17 @@ export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome
 
   // Não mostra card se status não tem ação rápida associada
   const acoes = getAcoes(status, projetoId, homologacaoId)
+  // Kalebe 2026-10-06: venda fechada → admin pode atualizar (troca de projeto)
+  if (ehAdmin && STATUS_FECHADOS.includes(status)) {
+    acoes.push({
+      chave: 'editar_venda',
+      emoji: '✏️',
+      titulo: 'Atualizar dados da venda',
+      desc: 'Troca de projeto, novo valor, condição ou datas — o anterior fica no histórico da venda',
+      classe: 'bg-sol/10 border-sol/40 hover:bg-sol/20',
+      acao: 'editar_venda',
+    })
+  }
   if (acoes.length === 0) return null
 
   return (
@@ -95,6 +125,10 @@ export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome
                   setConfirmandoVenda(true)
                   return
                 }
+                if (a.acao === 'editar_venda') {
+                  setEditandoVenda(true)
+                  return
+                }
                 if (a.confirm && !window.confirm(a.confirm)) return
                 acionar(() => {
                   if (a.acao === 'enviar') return marcarPropostaEnviadaAction(projetoId)
@@ -121,12 +155,28 @@ export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome
       {erro && (
         <p className="mt-2 text-xs text-coral">⚠️ {erro}</p>
       )}
+      {aviso && (
+        <p className="mt-2 text-xs text-sol bg-sol/10 border border-sol/30 rounded p-2">
+          ✓ {aviso}
+          <button onClick={() => setAviso(null)} className="ml-2 text-white/50 hover:text-white">✕</button>
+        </p>
+      )}
 
       <ConfirmarVendaModal
         aberto={confirmandoVenda}
         onCancelar={() => setConfirmandoVenda(false)}
         onConfirmar={confirmarVenda}
         precoSugerido={precoSugerido}
+        processando={isPending}
+      />
+      <ConfirmarVendaModal
+        aberto={editandoVenda}
+        modoEdicao
+        inicial={vendaAtual}
+        onCancelar={() => setEditandoVenda(false)}
+        onConfirmar={salvarEdicaoVenda}
+        precoSugerido={precoSugerido}
+        rotuloPreco="Preço final acordado (novo)"
         processando={isPending}
       />
     </section>
@@ -139,7 +189,7 @@ type Acao = {
   titulo: string
   desc: string
   classe: string
-  acao?: 'enviar' | 'aceita' | 'recusar' | 'perdido'
+  acao?: 'enviar' | 'aceita' | 'recusar' | 'perdido' | 'editar_venda'
   href?: string
   confirm?: string
 }

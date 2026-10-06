@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { arred } from './fluxo'
-import { planoAutomatico } from './plano-venda'
+import { assinaturaVenda, planoAutomatico } from './plano-venda'
 import {
   STATUS_FECHADOS, SELECT_PROJETO_VENDA, dataFechamento, mapaPrimeiroFechamento, mapaVendaDireta, vendaDoProjeto, vendaManual,
 } from './vendas-sistema'
@@ -32,7 +32,7 @@ export async function sincronizarVendasNoFluxo(): Promise<{ criadas: number; ref
 
   const [{ data: projetos }, manuaisRes, { data: progs }, { data: perfis }, { data: historico }] = await Promise.all([
     admin.from('projetos').select(SELECT_PROJETO_VENDA).in('status', STATUS_FECHADOS).is('excluida_em', null).limit(10000),
-    admin.from('vendas_manuais').select('id, cliente_nome, valor_venda, custo_estimado, data_venda, vendedor_id, observacao').is('deletada_em', null).limit(10000),
+    admin.from('vendas_manuais').select('*').is('deletada_em', null).limit(10000),
     admin.from('fluxo_programacoes').select('id, origem, origem_id, situacao, valor_venda, condicao'),
     admin.from('profiles').select('id, nome_completo'),
     admin.from('projeto_status_historico').select('projeto_id, created_at').in('status_novo', STATUS_FECHADOS).limit(20000),
@@ -66,7 +66,12 @@ export async function sincronizarVendasNoFluxo(): Promise<{ criadas: number; ref
     if (prog) {
       // Só mexe no que o sistema lançou sozinho; programação manual é do admin
       if (!prog.condicao?.automatica || prog.situacao !== 'programado') continue
-      if (Math.abs(Number(prog.valor_venda || 0) - venda.valor_venda) <= 1) continue
+      // Kalebe 2026-10-06: refaz quando a venda mudou (valor, datas, condição,
+      // custos). Programação antiga sem assinatura: só pelo valor, como antes.
+      const mudou = prog.condicao?.assinatura
+        ? prog.condicao.assinatura !== assinaturaVenda(venda)
+        : Math.abs(Number(prog.valor_venda || 0) - venda.valor_venda) > 1
+      if (!mudou) continue
       if (await temEfetivado(prog.id)) continue
       await admin.from('fluxo_programacoes').delete().eq('id', prog.id)   // cascata leva os previstos
       refeitas += 1

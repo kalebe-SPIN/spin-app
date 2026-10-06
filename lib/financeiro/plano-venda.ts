@@ -133,9 +133,12 @@ export function planoAutomatico(venda: VendaPendente, cfg: { regime_imposto: 'co
   const kitIncoerente = !kitPassa && venda.custos.kit >= venda.valor_venda
   if (kitIncoerente) kitPassa = false
   const baseReceber = arred(Math.max(venda.valor_venda - (kitPassa || kitIncoerente ? 0 : venda.custos.kit), 0))
+  // Kalebe 2026-10-06: recebimentos a partir da data de pagamento informada no
+  // fechamento; custos (comissão, instalação…) seguem a data da venda
+  const dataReceber = venda.data_pagamento || venda.data_venda
   const recebimentos = gerarRecebimentos({
-    cliente: venda.cliente, baseReceber, modelo, data1: venda.data_venda, n: m.n,
-    dataSaldo: addMeses(venda.data_venda, 1), forma: m.forma || null,
+    cliente: venda.cliente, baseReceber, modelo, data1: dataReceber, n: m.n,
+    dataSaldo: addMeses(dataReceber, 1), forma: m.forma || null,
   })
   const custos = gerarCustos({ venda, kitPassa, data1: venda.data_venda, regime: cfg.regime_imposto, recebimentos })
   return {
@@ -146,6 +149,17 @@ export function planoAutomatico(venda: VendaPendente, cfg: { regime_imposto: 'co
       condicao_vendedor: venda.condicao_vendedor, observacoes_vendedor: venda.observacoes_vendedor,
       // "Outra"/sem condição (lançado à vista) ou kit incoerente com o valor: conferir
       revisar: m.modelo === 'livre' || kitIncoerente,
+      assinatura: assinaturaVenda(venda),
     },
   }
+}
+
+/**
+ * O que, se mudar, refaz o previsto automático da venda (Kalebe 2026-10-06:
+ * venda alterada depois de fechada — valor, datas, condição ou custos).
+ */
+export function assinaturaVenda(v: VendaPendente): string {
+  const c = v.custos
+  const custos = arred(c.kit + c.comissao + c.imposto + c.instalacao + c.frete + c.projeto_art + c.custo_estimado)
+  return [arred(v.valor_venda), v.data_venda, v.data_pagamento || '', v.condicao_vendedor || '', v.parcelas_vendedor || '', custos].join('|')
 }

@@ -195,6 +195,21 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             || Number(projeto.orcamento_final?.pv_total)
             || 0
           }
+          ehAdmin={perfil?.role === 'admin'}
+          vendaAtual={(() => {
+            // Kalebe 2026-10-06: venda fechada editável (troca de projeto)
+            const c: any = projeto.orcamento_consolidado || {}
+            const vf: any = c.venda_fechada
+            if (!vf && !c.pv_acordado) return null
+            return {
+              preco_final: Number(vf?.preco_final ?? c.pv_acordado) || undefined,
+              condicao_pagamento: vf?.condicao_pagamento ?? c.condicao_pagamento_acordada ?? undefined,
+              parcelas: vf?.parcelas ?? c.parcelas_acordadas ?? null,
+              observacoes: vf?.observacoes ?? null,
+              data_venda: vf?.data_venda || (vf?.fechada_em ? String(vf.fechada_em).slice(0, 10) : undefined),
+              data_pagamento: vf?.data_pagamento ?? null,
+            }
+          })()}
         />
 
         {/* Kalebe 2026-09-17: card único de relacionamento com o cliente

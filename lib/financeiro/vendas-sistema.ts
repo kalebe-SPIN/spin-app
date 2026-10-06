@@ -19,14 +19,21 @@ export const SELECT_PROJETO_VENDA = `
 const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0)
 
 /**
- * Data da venda = 1ª entrada numa etapa de "fechado" (projeto_status_historico).
+ * Data da venda = a informada no fechamento (Kalebe 2026-10-06); senão a 1ª
+ * entrada numa etapa de "fechado" (projeto_status_historico).
  * status_atualizado_em muda a cada etapa (vendido → homologação → execução),
  * então só serve de último recurso.
  */
 export function dataFechamento(p: any, primeiroFechamento?: Map<string, string>): string {
   return String(
-    primeiroFechamento?.get(p.id) || p.orcamento_consolidado?.venda_fechada?.fechada_em || p.status_atualizado_em || p.updated_at || '',
+    p.orcamento_consolidado?.venda_fechada?.data_venda || primeiroFechamento?.get(p.id)
+      || p.orcamento_consolidado?.venda_fechada?.fechada_em || p.status_atualizado_em || p.updated_at || '',
   ).slice(0, 10)
+}
+
+const dataPagamento = (p: any): string | null => {
+  const d = p.orcamento_consolidado?.venda_fechada?.data_pagamento
+  return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10) : null
 }
 
 /** Mapa projeto → data da 1ª vez que entrou em etapa de fechado. */
@@ -108,6 +115,7 @@ export function vendaDoProjeto(
       origem: 'projeto', origem_id: p.id, projeto_id: p.id,
       cliente: p.cliente_razao_social || 'Cliente sem nome',
       data_venda: dataFechamento(p, primeiroFechamento),
+      data_pagamento: dataPagamento(p),
       valor_venda: acordado > 0 ? acordado : valorSolar + pvEquip,
       condicao_vendedor: vf.condicao_pagamento || null,
       parcelas_vendedor: vf.parcelas || null,
@@ -130,6 +138,7 @@ export function vendaDoProjeto(
       origem: 'projeto', origem_id: p.id, projeto_id: p.id,
       cliente: p.cliente_razao_social || 'Cliente sem nome',
       data_venda: dataFechamento(p, primeiroFechamento),
+      data_pagamento: dataPagamento(p),
       valor_venda: valor,
       condicao_vendedor: vf.condicao_pagamento || null,
       parcelas_vendedor: vf.parcelas || null,
@@ -145,6 +154,7 @@ export function vendaDoProjeto(
     projeto_id: p.id,
     cliente: p.cliente_razao_social || 'Cliente sem nome',
     data_venda: dataFechamento(p, primeiroFechamento),
+      data_pagamento: dataPagamento(p),
     valor_venda: valor,
     condicao_vendedor: vf.condicao_pagamento || null,
     parcelas_vendedor: vf.parcelas || null,
@@ -168,6 +178,7 @@ export function vendaManual(v: any, nomes: Map<string, string>): VendaPendente {
     projeto_id: null,
     cliente: v.cliente_nome || 'Cliente',
     data_venda: String(v.data_venda || '').slice(0, 10),
+    data_pagamento: v.data_pagamento ? String(v.data_pagamento).slice(0, 10) : null,
     valor_venda: num(v.valor_venda),
     condicao_vendedor: null,
     parcelas_vendedor: null,

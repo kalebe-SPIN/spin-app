@@ -28,6 +28,8 @@ export type EntradaVendaManual = {
   valor_venda: number
   custo_estimado?: number
   data_venda: string   // ISO date (yyyy-mm-dd)
+  /** Kalebe 2026-10-06: 1º pagamento do cliente (vazio = na data da venda) — mig 140 */
+  data_pagamento?: string
   vendedor_id?: string
   observacao?: string
 }
@@ -47,26 +49,28 @@ export async function cadastrarVendaManualAction(
   const custo = Number(entrada.custo_estimado || 0)
   if (custo < 0) return { erro: 'Custo estimado não pode ser negativo.' }
   if (custo > entrada.valor_venda) return { erro: 'Custo maior que o valor da venda.' }
+  const dataPagamento = /^\d{4}-\d{2}-\d{2}$/.test(entrada.data_pagamento || '') ? entrada.data_pagamento! : null
+  if (dataPagamento && dataPagamento < entrada.data_venda) return { erro: 'A data do pagamento não pode ser antes da data da venda.' }
 
   const supabase = createClient()
-  const { data, error } = await supabase
-    .from('vendas_manuais')
-    .insert({
-      cliente_nome: entrada.cliente_nome.trim(),
-      cliente_documento: entrada.cliente_documento?.trim() || null,
-      categoria: entrada.categoria,
-      tipo_detalhado: entrada.tipo_detalhado || null,
-      valor_venda: entrada.valor_venda,
-      custo_estimado: custo,
-      data_venda: entrada.data_venda,
-      vendedor_id: entrada.vendedor_id || null,
-      observacao: entrada.observacao?.trim() || null,
-      criada_por: check.user.id,
-    })
-    .select('id')
-    .single()
+  const registro: Record<string, any> = {
+    cliente_nome: entrada.cliente_nome.trim(),
+    cliente_documento: entrada.cliente_documento?.trim() || null,
+    categoria: entrada.categoria,
+    tipo_detalhado: entrada.tipo_detalhado || null,
+    valor_venda: entrada.valor_venda,
+    custo_estimado: custo,
+    data_venda: entrada.data_venda,
+    vendedor_id: entrada.vendedor_id || null,
+    observacao: entrada.observacao?.trim() || null,
+    criada_por: check.user.id,
+  }
+  if (dataPagamento) registro.data_pagamento = dataPagamento
+  const { data, error } = await supabase.from('vendas_manuais').insert(registro).select('id').single()
 
-  if (error) return { erro: error.message }
+  if (error) {
+    return { erro: /data_pagamento/.test(error.message) ? 'Falta rodar a migration 140 (data do pagamento) no Supabase.' : error.message }
+  }
 
   revalidatePath('/admin/vendas')
   revalidatePath('/dashboard')

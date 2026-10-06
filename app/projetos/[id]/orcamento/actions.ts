@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { mudarEtapaProjetoAction } from '@/app/projetos/[id]/etapa/actions'
+import { STATUS_FECHADOS } from '@/lib/financeiro/vendas-sistema'
 
 /**
  * Define o valor_estimado de um projeto_item manualmente. Usado quando
@@ -82,7 +83,24 @@ export async function salvarOrcamentoAction(
 
   const patch: any = { orcamento_final: proposta }
   if (urlPdf) patch.url_pdf_proposta = urlPdf
-  if (consolidado) patch.orcamento_consolidado = consolidado
+
+  // Kalebe 2026-10-06: troca de projeto numa venda já fechada — a proposta
+  // nova não apaga o que foi acordado (preço, condição, datas). O valor da
+  // venda só muda em "Atualizar dados da venda".
+  const { data: antes } = await supabase.from('projetos').select('status, orcamento_consolidado').eq('id', projetoId).maybeSingle()
+  const jaVendido = STATUS_FECHADOS.includes(String(antes?.status || ''))
+  if (consolidado) {
+    const c0: any = antes?.orcamento_consolidado || {}
+    patch.orcamento_consolidado = {
+      ...consolidado,
+      ...(c0.venda_fechada ? {
+        venda_fechada: c0.venda_fechada,
+        pv_acordado: c0.pv_acordado ?? null,
+        condicao_pagamento_acordada: c0.condicao_pagamento_acordada ?? null,
+        parcelas_acordadas: c0.parcelas_acordadas ?? null,
+      } : {}),
+    }
+  }
 
   const { error } = await supabase.from('projetos').update(patch).eq('id', projetoId)
   if (error) return { sucesso: false, erro: error.message }
@@ -144,7 +162,7 @@ export async function salvarOrcamentoAction(
   // de "proposta enviada"/"negociando" pra "orçamento gerado".
   const { data: st } = await supabase.from('projetos').select('status').eq('id', projetoId).maybeSingle()
   const antesDoOrcamento = ['rascunho', 'dimensionado', 'kit_selecionado', 'lista_ca_confirmada']
-  if (!substituiu || (st && antesDoOrcamento.includes(st.status))) {
+  if (!jaVendido && (!substituiu || (st && antesDoOrcamento.includes(st.status)))) {
     await mudarEtapaProjetoAction(projetoId, 'orcamento_gerado', 'Orçamento gerado pelo consultor')
   }
 
@@ -340,6 +358,23 @@ export type DadosVendaAceita = {
   condicao_pagamento: string
   parcelas?: number | null
   observacoes?: string | null
+  /** Kalebe 2026-10-06: data em que a venda foi fechada (YYYY-MM-DD) */
+  data_venda?: string | null
+  /** Kalebe 2026-10-06: 1º pagamento do cliente (à vista / entrada / 1ª parcela) */
+  data_pagamento?: string | null
+}
+
+const hojeBRT = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+const dataValida = (d: any) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null)
+
+/** Vendas do sistema → fluxo de caixa logo depois de fechar/alterar (service role). */
+async function sincronizarFluxo() {
+  try {
+    const { sincronizarVendasNoFluxo } = await import('@/lib/financeiro/sync-vendas')
+    await sincronizarVendasNoFluxo()
+  } catch (e: any) {
+    console.error('[venda] sincronizar fluxo:', e?.message)
+  }
 }
 
 export async function marcarPropostaAceitaAction(
@@ -383,6 +418,8 @@ export async function marcarPropostaAceitaAction(
         condicao_pagamento: venda.condicao_pagamento,
         parcelas: venda.parcelas || null,
         observacoes: venda.observacoes || null,
+        data_venda: dataValida(venda.data_venda) || hojeBRT(),
+        data_pagamento: dataValida(venda.data_pagamento),
         fechada_em: new Date().toISOString(),
         fechada_por: user.id,
       },
@@ -396,6 +433,7 @@ export async function marcarPropostaAceitaAction(
 
   const res = await mudarEtapaProjetoAction(projetoId, 'vendido', observacoes)
   if ('erro' in res && res.erro) return { sucesso: false, erro: res.erro }
+  await sincronizarFluxo()
 
   // Kalebe 2026-08-29: ao aceitar, exclui automaticamente as outras
   // propostas em andamento do mesmo cliente. Preserva as que já estão
@@ -409,6 +447,111 @@ export async function marcarPropostaAceitaAction(
     console.error('[marcarPropostaAceitaAction] falha auto-exclusão:', e?.message)
   }
   return { sucesso: true, outras_excluidas: excluidas }
+}
+
+/**
+ * Kalebe 2026-10-06: "cliente solicitou troca de projeto" — ajustar uma venda
+ * JÁ FECHADA sem desfazer nada. Só admin. Atualiza preço, condição, parcelas
+ * e datas (o anterior fica em venda_fechada.alteracoes), põe o valor novo
+ * dos itens nas execuções ainda abertas e refaz o previsto do fluxo de caixa
+ * quando nada foi efetivado nem ajustado à mão.
+ */
+export async function atualizarVendaAction(
+  projetoId: string,
+  venda: DadosVendaAceita,
+): Promise<{ sucesso: true; aviso?: string } | { sucesso: false; erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { sucesso: false, erro: 'Não autenticado' }
+  const { data: perfil } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (perfil?.role !== 'admin') return { sucesso: false, erro: 'Só o admin altera uma venda já fechada' }
+  if (!(Number(venda.preco_final) > 0)) return { sucesso: false, erro: 'Preço final tem que ser maior que zero' }
+  if (!venda.condicao_pagamento) return { sucesso: false, erro: 'Escolha a condição de pagamento' }
+
+  const { data: proj } = await supabase
+    .from('projetos').select('status, orcamento_consolidado').eq('id', projetoId).maybeSingle()
+  if (!proj) return { sucesso: false, erro: 'Projeto não encontrado' }
+  if (!STATUS_FECHADOS.includes(String(proj.status))) {
+    return { sucesso: false, erro: 'Esse projeto ainda não é uma venda fechada — use "Cliente aceitou — fechar venda".' }
+  }
+
+  const agora = new Date().toISOString()
+  const c0: any = proj.orcamento_consolidado || {}
+  const vf0: any = c0.venda_fechada || {}
+  const dataVendaAntes = vf0.data_venda || String(vf0.fechada_em || '').slice(0, 10) || null
+  const anterior = {
+    preco_final: vf0.preco_final ?? c0.pv_acordado ?? null,
+    condicao_pagamento: vf0.condicao_pagamento ?? null,
+    parcelas: vf0.parcelas ?? null,
+    data_venda: dataVendaAntes,
+    data_pagamento: vf0.data_pagamento ?? null,
+    alterada_em: agora,
+    alterada_por: user.id,
+  }
+  const consolidado = {
+    ...c0,
+    pv_total: venda.preco_final,
+    pv_acordado: venda.preco_final,
+    condicao_pagamento_acordada: venda.condicao_pagamento,
+    parcelas_acordadas: venda.parcelas || null,
+    venda_fechada: {
+      ...vf0,
+      preco_final: venda.preco_final,
+      condicao_pagamento: venda.condicao_pagamento,
+      parcelas: venda.parcelas || null,
+      observacoes: venda.observacoes ?? vf0.observacoes ?? null,
+      data_venda: dataValida(venda.data_venda) || dataVendaAntes || hojeBRT(),
+      data_pagamento: dataValida(venda.data_pagamento),
+      fechada_em: vf0.fechada_em || agora,
+      fechada_por: vf0.fechada_por || user.id,
+      atualizada_em: agora,
+      atualizada_por: user.id,
+      alteracoes: [...(Array.isArray(vf0.alteracoes) ? vf0.alteracoes : []), anterior].slice(-20),
+    },
+  }
+  const { error } = await supabase.from('projetos').update({ orcamento_consolidado: consolidado }).eq('id', projetoId)
+  if (error) return { sucesso: false, erro: error.message }
+
+  // Execuções ainda abertas acompanham o valor atual de cada item
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const admin = createAdminClient()
+  const { data: itens } = await admin.from('projeto_itens').select('id, valor_estimado')
+    .eq('projeto_id', projetoId).neq('status', 'removido')
+  for (const it of (itens || []) as Array<{ id: string; valor_estimado: number | null }>) {
+    await admin.from('execucoes_servicos').update({ valor_contratado: it.valor_estimado, updated_at: agora })
+      .eq('item_id', it.id).not('status', 'in', '(concluido,entregue,pos_venda,cancelado)')
+  }
+
+  // Previsto automático lançado antes da assinatura (só comparava o valor):
+  // marca como alterado pra sincronização refazer com as datas novas
+  const { data: progAntes } = await admin.from('fluxo_programacoes').select('id, condicao')
+    .eq('origem', 'projeto').eq('origem_id', projetoId).maybeSingle()
+  if ((progAntes as any)?.condicao?.automatica) {
+    await admin.from('fluxo_programacoes')
+      .update({ condicao: { ...(progAntes as any).condicao, assinatura: `alterada ${agora}` } })
+      .eq('id', (progAntes as any).id)
+  }
+
+  await sincronizarFluxo()
+
+  // O que não deu pra refazer sozinho
+  const avisos: string[] = []
+  const { data: prog } = await admin.from('fluxo_programacoes').select('id, condicao, valor_venda')
+    .eq('origem', 'projeto').eq('origem_id', projetoId).maybeSingle()
+  if (!prog) {
+    avisos.push('A venda não está no fluxo de caixa (data antes do início do fluxo?) — confira em Financeiro → Fluxo de caixa.')
+  } else if (!(prog as any).condicao?.automatica) {
+    avisos.push('O fluxo de caixa desta venda foi programado à mão — ajuste os recebimentos em Financeiro → Fluxo de caixa.')
+  } else if (String((prog as any).condicao?.assinatura || '').startsWith('alterada')
+    || Math.abs(Number((prog as any).valor_venda || 0) - venda.preco_final) > 1) {
+    avisos.push('Já tem recebimento efetivado nesta venda — o fluxo não foi refeito; ajuste as parcelas em Financeiro → Fluxo de caixa.')
+  }
+  const { data: hom } = await admin.from('homologacoes').select('id').eq('projeto_id', projetoId).maybeSingle()
+  if (hom) avisos.push('Se o kit mudou, reprocesse os arquivos da homologação (diagrama, memorial e listas).')
+
+  revalidatePath(`/projetos/${projetoId}`)
+  revalidatePath('/financeiro/fluxo-caixa')
+  return { sucesso: true, aviso: avisos.join(' ') || undefined }
 }
 
 /**

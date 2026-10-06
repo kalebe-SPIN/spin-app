@@ -129,6 +129,8 @@ export type VendaPendente = {
   projeto_id: string | null
   cliente: string
   data_venda: string
+  /** Kalebe 2026-10-06: 1º pagamento informado no fechamento (senão = data da venda) */
+  data_pagamento?: string | null
   valor_venda: number
   condicao_vendedor: string | null
   parcelas_vendedor: number | null

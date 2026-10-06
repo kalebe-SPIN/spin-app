@@ -74,7 +74,8 @@ export function VendasManuaisClient({
   const [clienteDocumento, setClienteDocumento] = useState('')
   const [valorVenda, setValorVenda] = useState('')
   const [custoEstimado, setCustoEstimado] = useState('')
-  const [dataVenda, setDataVenda] = useState(new Date().toISOString().slice(0, 10))
+  const [dataVenda, setDataVenda] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }))
+  const [dataPagamento, setDataPagamento] = useState('')
   const [vendedorId, setVendedorId] = useState('')
   const [observacao, setObservacao] = useState('')
 
@@ -103,6 +104,7 @@ export function VendasManuaisClient({
       valor_venda: valorNum,
       custo_estimado: custoNum,
       data_venda: dataVenda,
+      data_pagamento: dataPagamento || undefined,
       vendedor_id: vendedorId || undefined,
       observacao: observacao || undefined,
     }
@@ -237,6 +239,15 @@ export function VendasManuaisClient({
               type="date"
               value={dataVenda}
               onChange={(e) => setDataVenda(e.target.value)}
+              className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white"
+            />
+          </Field>
+          <Field label="Data do pagamento (vazio = na data da venda)">
+            <input
+              type="date"
+              value={dataPagamento}
+              min={dataVenda}
+              onChange={(e) => setDataPagamento(e.target.value)}
               className="w-full px-3 py-2 bg-noite/40 border border-white/10 rounded text-sm text-white"
             />
           </Field>

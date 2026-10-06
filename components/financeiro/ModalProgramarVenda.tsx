@@ -38,10 +38,11 @@ export function ModalProgramarVenda({ venda, regimeImposto, substituirProgramaca
   const [kitPassa, setKitPassa] = useState<boolean | null>(venda.kit_sempre_caixa ? true : temKit ? null : false)
   const [valorVenda, setValorVenda] = useState(String(arred(venda.valor_venda)).replace('.', ','))
   const [modelo, setModelo] = useState<Modelo>(inicial.modelo)
-  const [data1, setData1] = useState(venda.data_venda)
+  // Kalebe 2026-10-06: 1º recebimento na data do pagamento informada no fechamento
+  const [data1, setData1] = useState(venda.data_pagamento || venda.data_venda)
   const [entrada, setEntrada] = useState('')
   const [n, setN] = useState(String(inicial.n))
-  const [dataSaldo, setDataSaldo] = useState(addMeses(venda.data_venda, 1))
+  const [dataSaldo, setDataSaldo] = useState(addMeses(venda.data_pagamento || venda.data_venda, 1))
   const [forma, setForma] = useState(inicial.forma)
   const [regime, setRegime] = useState(regimeImposto)
 

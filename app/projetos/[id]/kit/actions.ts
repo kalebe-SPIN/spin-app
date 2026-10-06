@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { montarListaComplementarCA, type ItemKit } from '@/lib/kit-auto/montar-kit'
 import { precificarLista, calcularSubtotais } from '@/lib/kit-auto/precificar-lista'
+import { STATUS_FECHADOS } from '@/lib/financeiro/vendas-sistema'
 
 export type InversorNoKit = {
   id: string
@@ -93,7 +94,11 @@ async function _salvarKitActionImpl(
   const modoPorUc = !!ucRef
 
   // 1. Grava kit — global (kit_selecionado) OU dentro de kits_por_uc[uc_ref]
-  const patch: any = { status: 'kit_selecionado' }
+  // Kalebe 2026-10-06: troca de projeto numa venda já fechada — refazer o kit
+  // não pode derrubar o projeto de "vendido" (nem apagar os dados da venda)
+  const { data: stAtual } = await supabase.from('projetos').select('status').eq('id', projetoId).maybeSingle()
+  const jaVendido = STATUS_FECHADOS.includes(String(stAtual?.status || ''))
+  const patch: any = jaVendido ? {} : { status: 'kit_selecionado' }
   if (tipoProjeto) patch.tipo_projeto = tipoProjeto
 
   if (modoPorUc) {
