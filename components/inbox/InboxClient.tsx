@@ -667,7 +667,7 @@ function BannerJanelaFechada({ conversaId, nuncaEscreveu, nomeCliente, telefone,
     const celular = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)
     window.location.href = celular ? `https://wa.me/${tel}` : `whatsapp://send?phone=${tel}`
   }
-  const [status, setStatus] = useState<{ status: string; rotulo: string } | null>(null)
+  const [status, setStatus] = useState<{ status: string; rotulo: string; livre: string } | null>(null)
   const [aberto, setAberto] = useState(false)
   const [nome, setNome] = useState(nomeCliente)
   const [assunto, setAssunto] = useState(temProjeto ? 'o seu projeto de energia solar' : 'energia solar')
@@ -692,7 +692,11 @@ function BannerJanelaFechada({ conversaId, nuncaEscreveu, nomeCliente, telefone,
         <p className="min-w-0">
           🔒 <strong className="text-sol">Janela de 24h fechada</strong> —{' '}
           {nuncaEscreveu ? 'o cliente ainda não escreveu pro número da Spin.' : 'o cliente não fala com o número da Spin há mais de 24h.'}{' '}
-          <span className="text-white/60">Texto livre não chega; o primeiro contato é pelo modelo aprovado.</span>
+          <span className="text-white/60">
+            {status?.livre === 'APPROVED'
+              ? 'Pode escrever normalmente: sua mensagem vai pelo modelo de atendimento (cobrado pela Meta) até o cliente responder.'
+              : 'Texto livre não chega; o primeiro contato é pelo modelo aprovado.'}
+          </span>
         </p>
         <div className="flex flex-wrap gap-2 shrink-0">
           {telefone && (

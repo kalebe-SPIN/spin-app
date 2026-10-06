@@ -48,14 +48,16 @@ export function ComposerWhatsApp({
   const [janelaFechada, setJanelaFechada] = useState<{ telefone: string | null; tipo: string; conversaId: string } | null>(null)
   // Kalebe 2026-10-01: modelo de retomada aprovado + pagamento ativo → dá pra
   // reabrir a conversa pelo próprio sistema
-  const [modelo, setModelo] = useState<{ status: string; rotulo: string } | null>(null)
+  const [modelo, setModelo] = useState<{ status: string; rotulo: string; livre: string } | null>(null)
   const [assunto, setAssunto] = useState('energia solar')
   const [enviandoModelo, setEnviandoModelo] = useState(false)
   const [modeloOk, setModeloOk] = useState<string | null>(null)
+  // Kalebe 2026-10-06: "falar sem barreiras" — com o modelo de mensagem livre
+  // aprovado, texto com a janela fechada sai direto (vai dentro do modelo)
   useEffect(() => {
-    if (!janelaFechada || modelo) return
     statusModeloRetomadaAction().then(setModelo).catch(() => {})
-  }, [janelaFechada, modelo])
+  }, [])
+  const textoSemBarreira = modelo?.livre === 'APPROVED'
 
   async function enviarModeloRetomada() {
     if (!janelaFechada) return
@@ -89,19 +91,21 @@ export function ComposerWhatsApp({
     t.style.height = `${Math.min(t.scrollHeight, 120)}px`
   }, [texto])
 
-  async function comConversa<T>(tipo: NonNullable<typeof ocupado>, fn: (id: string) => Promise<T>) {
+  async function comConversa<T>(tipo: NonNullable<typeof ocupado>, fn: (id: string) => Promise<T>, semChecarJanela = false) {
     onErro(null); setOcupado(tipo); setJanelaFechada(null)
     try {
       const id = await obterConversaId()
       if (!id) return
       // Kalebe 2026-09-29: fora da janela de 24h a Meta aceita e recusa depois
       // ("Re-engagement message") — confere antes e explica o que fazer.
-      const janela = await janelaAbertaAction(id)
-      if ('erro' in janela) { onErro(janela.erro); return }
-      if (!janela.aberta) {
-        setModeloOk(null)
-        setJanelaFechada({ telefone: janela.telefone, tipo, conversaId: id })
-        return
+      if (!semChecarJanela) {
+        const janela = await janelaAbertaAction(id)
+        if ('erro' in janela) { onErro(janela.erro); return }
+        if (!janela.aberta) {
+          setModeloOk(null)
+          setJanelaFechada({ telefone: janela.telefone, tipo, conversaId: id })
+          return
+        }
       }
       await fn(id)
     } catch (e: any) {
@@ -116,8 +120,9 @@ export function ComposerWhatsApp({
       const r = await enviarTextoAction({ conversa_id: id, texto: t })
       if ('erro' in r) { onErro(r.erro); return }
       setTexto('')
+      if (r.via_modelo) setModeloOk('Janela de 24h fechada: a mensagem foi pelo modelo de atendimento (cobrado pela Meta). Quando o cliente responder, volta a ser texto normal.')
       onEnviado()
-    })
+    }, textoSemBarreira)
   }
 
   async function enviarArquivoFile(arquivo: File, legenda: string, tipo: 'arquivo' | 'audio') {
@@ -150,7 +155,7 @@ export function ComposerWhatsApp({
       if ('erro' in r) { onErro(r.erro); return }
       window.open(r.url_sala, '_blank', 'noopener')
       onEnviado()
-    })
+    }, textoSemBarreira)
   }
 
   async function abrirAgenda() {

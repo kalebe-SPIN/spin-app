@@ -12,7 +12,7 @@
 
 export const WABA_ID_SPIN = '286157384591672'
 
-export type ChaveTemplate = 'retomar_atendimento' | 'aviso_interno' | 'etapa_concluida' | 'lead_novo' | 'proposta_pronta'
+export type ChaveTemplate = 'retomar_atendimento' | 'aviso_interno' | 'etapa_concluida' | 'lead_novo' | 'proposta_pronta' | 'mensagem_atendimento'
 
 export type DefinicaoTemplate = {
   nome: string
@@ -71,6 +71,16 @@ export const DEFINICOES_TEMPLATES: Record<ChaveTemplate, DefinicaoTemplate> = {
     corpo: 'Olá, {{1}}! Aqui é {{2}}, da Spin Solar.\nA sua proposta de {{3}} está pronta.\n\nToque no botão abaixo para abrir o PDF. Qualquer dúvida, é só responder esta mensagem.',
     exemplo: ['Paulo', 'Kalebe', 'energia solar'],
     botao_url: { texto: 'Ver proposta', url: `${URL_PROPOSTA}{{1}}`, exemplo: `${URL_PROPOSTA}exemplo/proposta.pdf` },
+  },
+  // Kalebe 2026-10-06: "falar sem barreiras" — com a janela de 24h fechada, o
+  // texto digitado no inbox vai dentro deste modelo ({{3}} = a mensagem).
+  // RASCUNHO: só criar na Meta depois do OK do Kalebe no texto.
+  mensagem_atendimento: {
+    nome: 'spin_mensagem_atendimento',
+    idioma: 'pt_BR',
+    categoria: 'UTILITY',
+    corpo: 'Olá, {{1}}! Aqui é {{2}}, da Spin Solar, sobre o seu atendimento:\n\n{{3}}\n\nÉ só responder por aqui.',
+    exemplo: ['Luciane', 'Kalebe', 'A CELESC aprovou o seu projeto e a instalação já pode ser agendada. Qual dia da próxima semana fica melhor para você?'],
   },
 }
 

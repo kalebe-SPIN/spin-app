@@ -332,7 +332,7 @@ export async function enviarTextoAction(entrada: {
   conversa_id: string
   texto: string
   prefixar_com_nome?: boolean  // default true
-}): Promise<{ sucesso: true; meta_message_id: string | null } | { erro: string }> {
+}): Promise<{ sucesso: true; meta_message_id: string | null; via_modelo?: boolean } | { erro: string }> {
   const check = await verificarUsuario()
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
   const texto = String(entrada.texto || '').trim()
@@ -348,7 +348,7 @@ export async function enviarTextoAction(entrada: {
   // Recupera telefone do contato via conversa
   const { data: conv } = await admin
     .from('wa_conversas')
-    .select('id, contato:contato_id(telefone)')
+    .select('id, janela_24h_expira_em, contato:contato_id(telefone, nome_exibicao)')
     .eq('id', entrada.conversa_id)
     .maybeSingle()
   if (!conv) return { erro: 'Conversa não encontrada' }
@@ -361,43 +361,77 @@ export async function enviarTextoAction(entrada: {
   const prefixar = entrada.prefixar_com_nome !== false
   const corpo = prefixar ? `*${nomeAgente}:*\n${texto}` : texto
 
-  // Envia via Cloud API
-  const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: tel,
-      type: 'text',
-      text: { body: corpo, preview_url: false },
-    }),
-  })
-  const data = await resp.json()
-  if (!resp.ok) {
-    const erroMsg = data?.error?.message || 'Erro Meta API'
-    const erroCode = data?.error?.code
-    const foraJanela = erroCode === 131047 || String(erroMsg).includes('24 hours')
-    return {
-      erro: foraJanela
-        ? 'Cliente não respondeu nas últimas 24h — precisa mensagem template pré-aprovada pela Meta.'
-        : erroMsg,
+  let metaMessageId: string | null = null
+  let viaModelo = false
+  const janelaAberta = !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date()
+
+  if (!janelaAberta) {
+    // Kalebe 2026-10-06: "falar sem barreiras" — janela de 24h fechada: o texto
+    // vai dentro do modelo aprovado spin_mensagem_atendimento (regra da Meta:
+    // fora da janela só sai mensagem por modelo). Quando o cliente responde, a
+    // janela reabre e volta a ser texto livre.
+    const { enviarTemplatePeloCanal, templateAprovado, primeiroNome } = await import('@/lib/whatsapp/templates')
+    if (!(await templateAprovado('mensagem_atendimento'))) {
+      return { erro: 'Cliente não respondeu nas últimas 24h — precisa mensagem template pré-aprovada pela Meta.' }
     }
+    if (texto.length > 900) return { erro: 'Fora da janela de 24h a mensagem vai por modelo e cabe até 900 caracteres — divida em partes.' }
+    const r = await enviarTemplatePeloCanal({
+      conversa_id: entrada.conversa_id,
+      telefone: tel,
+      template: 'mensagem_atendimento',
+      parametros: [
+        primeiroNome((conv.contato as any)?.nome_exibicao) || 'tudo bem',
+        primeiroNome(check.perfil?.nome_completo) || 'a equipe',
+        texto,
+      ],
+      remetente_id: check.user.id,
+      origem_agente_nome: nomeAgente,
+    })
+    if ('erro' in r) {
+      const { traduzirErroMeta } = await import('@/lib/whatsapp/erros-meta')
+      return { erro: r.codigo ? traduzirErroMeta({ code: r.codigo, message: r.erro }) : r.erro }
+    }
+    metaMessageId = r.meta_message_id
+    viaModelo = true
+  } else {
+    // Envia via Cloud API
+    const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: tel,
+        type: 'text',
+        text: { body: corpo, preview_url: false },
+      }),
+    })
+    const data = await resp.json()
+    if (!resp.ok) {
+      const erroMsg = data?.error?.message || 'Erro Meta API'
+      const erroCode = data?.error?.code
+      const foraJanela = erroCode === 131047 || String(erroMsg).includes('24 hours')
+      return {
+        erro: foraJanela
+          ? 'Cliente não respondeu nas últimas 24h — precisa mensagem template pré-aprovada pela Meta.'
+          : erroMsg,
+      }
+    }
+
+    metaMessageId = data?.messages?.[0]?.id || null
+
+    // Grava no modelo canônico. Não precisa upsert de contato (já existe).
+    await gravarMensagem(admin, {
+      conversa_id: entrada.conversa_id,
+      direcao: 'outbound',
+      tipo: 'text',
+      texto,  // guarda SEM prefixo pra ver limpo no inbox
+      meta_message_id: metaMessageId,
+      remetente_id: check.user.id,
+      origem_agente_nome: nomeAgente,
+      status_entrega: 'enviada',
+    })
   }
-
-  const metaMessageId: string | null = data?.messages?.[0]?.id || null
-
-  // Grava no modelo canônico. Não precisa upsert de contato (já existe).
-  await gravarMensagem(admin, {
-    conversa_id: entrada.conversa_id,
-    direcao: 'outbound',
-    tipo: 'text',
-    texto,  // guarda SEM prefixo pra ver limpo no inbox
-    meta_message_id: metaMessageId,
-    remetente_id: check.user.id,
-    origem_agente_nome: nomeAgente,
-    status_entrega: 'enviada',
-  })
 
   // Se conversa estava 'nova' ou 'em_qualificacao', humano assumiu
   await admin
@@ -426,7 +460,7 @@ export async function enviarTextoAction(entrada: {
   }
 
   revalidatePath('/inbox')
-  return { sucesso: true, meta_message_id: metaMessageId }
+  return { sucesso: true, meta_message_id: metaMessageId, via_modelo: viaModelo }
 }
 
 /**
@@ -525,7 +559,7 @@ export async function iniciarChamadaAction(entrada: {
 
   const { data: conv } = await admin
     .from('wa_conversas')
-    .select('id, contato:contato_id(telefone, nome_exibicao)')
+    .select('id, janela_24h_expira_em, contato:contato_id(telefone, nome_exibicao)')
     .eq('id', entrada.conversa_id)
     .maybeSingle()
   if (!conv) return { erro: 'Conversa não encontrada' }
@@ -553,37 +587,60 @@ export async function iniciarChamadaAction(entrada: {
     `Funciona no navegador do celular ou computador, sem instalar nada.`,
   ].join('\n')
 
-  // Envia pelo canal
-  const _cfg = await getWaConfig()
-  const token = _cfg.access_token
-  const phoneNumberId = _cfg.phone_number_id
-  if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada. Cadastre em /admin/whatsapp/config.' }
-  const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: tel,
-      type: 'text',
-      text: { body: texto, preview_url: true },
-    }),
-  })
-  const data = await resp.json()
-  if (!resp.ok) {
-    return { erro: data?.error?.message || 'Erro Meta API' }
-  }
-  const metaMessageId: string | null = data?.messages?.[0]?.id || null
+  const janelaAberta = !!conv.janela_24h_expira_em && new Date(conv.janela_24h_expira_em) > new Date()
+  if (!janelaAberta) {
+    // Kalebe 2026-10-06: janela fechada → o convite vai pelo modelo de mensagem
+    // de atendimento (o link da sala segue clicável no WhatsApp)
+    const { enviarTemplatePeloCanal, templateAprovado, primeiroNome } = await import('@/lib/whatsapp/templates')
+    if (!(await templateAprovado('mensagem_atendimento'))) {
+      return { erro: 'Cliente não respondeu nas últimas 24h — o convite pra chamada precisa do modelo de mensagem aprovado pela Meta.' }
+    }
+    const r = await enviarTemplatePeloCanal({
+      conversa_id: entrada.conversa_id,
+      telefone: tel,
+      template: 'mensagem_atendimento',
+      parametros: [
+        nomeLead === 'você' ? 'tudo bem' : nomeLead,
+        primeiroNome(check.perfil?.nome_completo) || 'a equipe',
+        `${emoji} Preparei uma sala de ${titulo.toLowerCase()} pra gente conversar agora: ${url_sala} — funciona no navegador do celular ou do computador, sem instalar nada.`,
+      ],
+      remetente_id: check.user.id,
+      origem_agente_nome: nomeAgente,
+    })
+    if ('erro' in r) return { erro: r.erro }
+  } else {
+    // Envia pelo canal
+    const _cfg = await getWaConfig()
+    const token = _cfg.access_token
+    const phoneNumberId = _cfg.phone_number_id
+    if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada. Cadastre em /admin/whatsapp/config.' }
+    const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: tel,
+        type: 'text',
+        text: { body: texto, preview_url: true },
+      }),
+    })
+    const data = await resp.json()
+    if (!resp.ok) {
+      return { erro: data?.error?.message || 'Erro Meta API' }
+    }
+    const metaMessageId: string | null = data?.messages?.[0]?.id || null
 
-  await gravarMensagem(admin, {
-    conversa_id: entrada.conversa_id,
-    direcao: 'outbound',
-    tipo: 'text',
-    texto,
-    meta_message_id: metaMessageId,
-    remetente_id: check.user.id,
-    origem_agente_nome: nomeAgente,
-    status_entrega: 'enviada',
-  })
+    await gravarMensagem(admin, {
+      conversa_id: entrada.conversa_id,
+      direcao: 'outbound',
+      tipo: 'text',
+      texto,
+      meta_message_id: metaMessageId,
+      remetente_id: check.user.id,
+      origem_agente_nome: nomeAgente,
+      status_entrega: 'enviada',
+    })
+  }
 
   // Marca contato no broadcast atribuído a esse humano (SLA cumprido)
   try {
@@ -899,10 +956,11 @@ export async function janelaAbertaAction(conversa_id: string): Promise<{ aberta:
  * aprovado spin_retomar_atendimento. Quando o cliente responde, a janela
  * reabre e o inbox volta a mandar texto livre.
  */
-export async function statusModeloRetomadaAction(): Promise<{ status: string; rotulo: string }> {
+export async function statusModeloRetomadaAction(): Promise<{ status: string; rotulo: string; livre: string }> {
   const { statusDoTemplate, STATUS_TEMPLATE_PT } = await import('@/lib/whatsapp/templates')
-  const status = await statusDoTemplate('retomar_atendimento')
-  return { status, rotulo: STATUS_TEMPLATE_PT[status] || status }
+  const [status, livre] = await Promise.all([statusDoTemplate('retomar_atendimento'), statusDoTemplate('mensagem_atendimento')])
+  // livre: modelo que leva o texto digitado com a janela fechada (Kalebe 2026-10-06)
+  return { status, rotulo: STATUS_TEMPLATE_PT[status] || status, livre }
 }
 
 export async function reabrirComModeloAction(entrada: {
