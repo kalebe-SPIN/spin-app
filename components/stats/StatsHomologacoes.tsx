@@ -28,14 +28,14 @@ export async function StatsHomologacoes() {
   return (
     <div className="mt-4 pt-3 border-t border-white/10">
       <KpiRow>
-        <Kpi valor={total} label="total" />
-        <Kpi valor={emAndamento} label="ativas" cor="sol" />
-        <Kpi valor={aprovadas} label="aprovadas" cor="verde" />
+        <Kpi valor={total} label="total" href="/dashboard/lista?m=hom_todas" />
+        <Kpi valor={emAndamento} label="ativas" cor="sol" href="/dashboard/lista?m=hom_ativas" />
+        <Kpi valor={aprovadas} label="aprovadas" cor="verde" href="/dashboard/lista?m=hom_aprovadas" />
       </KpiRow>
       <StatusChips
         chips={[
-          { label: 'atrasadas', valor: atrasadas, cor: 'coral' },
-          { label: 'rejeitadas', valor: c['rejeitada'] || 0, cor: 'coral' },
+          { label: 'atrasadas', valor: atrasadas, cor: 'coral', href: '/dashboard/lista?m=hom_atrasadas' },
+          { label: 'rejeitadas', valor: c['rejeitada'] || 0, cor: 'coral', href: '/dashboard/lista?m=hom_rejeitadas' },
         ]}
       />
     </div>

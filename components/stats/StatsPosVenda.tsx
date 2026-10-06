@@ -14,15 +14,15 @@ export async function StatsPosVenda() {
   const [instalados, emGarantia, ativosPos] = await Promise.all([
     safeCount(() => supabase.from('execucoes_servicos').select('id', { count: 'exact', head: true }).eq('status', 'entregue')),
     safeCount(() => supabase.from('execucoes_servicos').select('id', { count: 'exact', head: true }).eq('status', 'pos_venda')),
-    safeCount(() => supabase.from('projetos').select('id', { count: 'exact', head: true }).eq('status', 'ativo_pos_venda')),
+    safeCount(() => supabase.from('projetos').select('id', { count: 'exact', head: true }).is('excluida_em', null).eq('status', 'ativo_pos_venda')),
   ])
 
   return (
     <div className="mt-4 pt-3 border-t border-white/10">
       <KpiRow>
-        <Kpi valor={instalados} label="entregues" cor="verde" />
-        <Kpi valor={emGarantia} label="em garantia" cor="azul" />
-        <Kpi valor={ativosPos} label="ativos O&M" cor="sol" />
+        <Kpi valor={instalados} label="entregues" cor="verde" href="/dashboard/lista?m=op_entregues" />
+        <Kpi valor={emGarantia} label="em garantia" cor="azul" href="/dashboard/lista?m=pv_garantia" />
+        <Kpi valor={ativosPos} label="ativos O&M" cor="sol" href="/dashboard/lista?m=pv_om" />
       </KpiRow>
     </div>
   )

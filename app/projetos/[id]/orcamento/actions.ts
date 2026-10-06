@@ -407,6 +407,16 @@ export async function marcarPropostaAceitaAction(
     // Kalebe 2026-09-17: tudo vive dentro de orcamento_consolidado (jsonb
     // da migration 092) — evita coluna nova. Guarda também um bloco
     // venda_fechada:{...} pra histórico do fechamento (quem/quando).
+    // Refechamento (projeto que voltou de etapa): a venda anterior fica no histórico
+    const vfAntes: any = (proj?.orcamento_consolidado as any)?.venda_fechada
+    const alteracoes = vfAntes
+      ? [...(Array.isArray(vfAntes.alteracoes) ? vfAntes.alteracoes : []), {
+          preco_final: vfAntes.preco_final ?? null, condicao_pagamento: vfAntes.condicao_pagamento ?? null,
+          parcelas: vfAntes.parcelas ?? null,
+          data_venda: vfAntes.data_venda || String(vfAntes.fechada_em || '').slice(0, 10) || null,
+          data_pagamento: vfAntes.data_pagamento ?? null, alterada_em: new Date().toISOString(), alterada_por: user.id,
+        }].slice(-20)
+      : undefined
     const consolidado = {
       ...(proj?.orcamento_consolidado || {}),
       pv_total: venda.preco_final,
@@ -422,6 +432,7 @@ export async function marcarPropostaAceitaAction(
         data_pagamento: dataValida(venda.data_pagamento),
         fechada_em: new Date().toISOString(),
         fechada_por: user.id,
+        ...(alteracoes ? { alteracoes } : {}),
       },
     }
     const { error: eUp } = await supabase

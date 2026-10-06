@@ -291,16 +291,17 @@ function DashboardCard({
   destaque?: boolean
   etapa?: number
 }) {
-  const Tag = disponivel ? 'a' : 'div'
+  // Kalebe 2026-10-06: o card era um <a> inteiro — os números dentro dele não
+  // podiam ser links. Agora o título é o link (esticado pra cobrir o card) e
+  // cada número abre a lista do que conta (relative z-10, acima do esticado).
   return (
-    <Tag
-      href={disponivel ? href : undefined}
+    <div
       className={`
         relative p-5 rounded-xl border transition-all flex flex-col
         ${disponivel
           ? destaque
-            ? 'bg-gradient-to-br from-coral/10 to-sol/5 border-coral/40 hover:border-coral/70 cursor-pointer'
-            : 'bg-white/5 border-white/10 hover:border-sol/40 hover:bg-white/[0.07] cursor-pointer'
+            ? 'bg-gradient-to-br from-coral/10 to-sol/5 border-coral/40 hover:border-coral/70'
+            : 'bg-white/5 border-white/10 hover:border-sol/40 hover:bg-white/[0.07]'
           : 'bg-white/[0.02] border-white/5 opacity-60 cursor-not-allowed'
         }
       `}
@@ -320,7 +321,11 @@ function DashboardCard({
           Novo
         </span>
       )}
-      <h3 className="text-base font-bold text-white mb-1.5">{titulo}</h3>
+      <h3 className="text-base font-bold text-white mb-1.5">
+        {disponivel ? (
+          <Link href={href} className="after:absolute after:inset-0 after:rounded-xl hover:text-sol">{titulo}</Link>
+        ) : titulo}
+      </h3>
       <p className="text-xs text-white/60 leading-relaxed">{desc}</p>
       {!disponivel && (
         <span className="mt-3 inline-block text-xs uppercase tracking-wider text-white/40 font-semibold">
@@ -328,6 +333,6 @@ function DashboardCard({
         </span>
       )}
       {children}
-    </Tag>
+    </div>
   )
 }

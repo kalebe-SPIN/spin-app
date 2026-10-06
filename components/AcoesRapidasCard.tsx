@@ -168,6 +168,9 @@ export function AcoesRapidasCard({ projetoId, status, homologacaoId, clienteNome
         onConfirmar={confirmarVenda}
         precoSugerido={precoSugerido}
         processando={isPending}
+        // Refechamento (projeto que voltou de etapa): condição e datas da
+        // venda anterior; o preço sugerido é o da proposta nova
+        inicial={vendaAtual ? { ...vendaAtual, preco_final: undefined } : null}
       />
       <ConfirmarVendaModal
         aberto={editandoVenda}

@@ -1,11 +1,19 @@
+import Link from 'next/link'
+
+/**
+ * Kalebe 2026-10-06: número com `href` vira link pra lista do que ele conta
+ * (/dashboard/lista). `relative z-10` fica acima do link que cobre o card.
+ */
 export function Kpi({
   valor,
   label,
   cor = 'sol',
+  href,
 }: {
   valor: string | number
   label: string
   cor?: 'sol' | 'verde' | 'coral' | 'branco' | 'azul'
+  href?: string
 }) {
   const cores = {
     sol: 'text-sol',
@@ -14,11 +22,18 @@ export function Kpi({
     branco: 'text-white',
     azul: 'text-weg-azul',
   }
-  return (
-    <div className="flex items-center gap-3">
+  const conteudo = (
+    <>
       <span className={`text-2xl font-black ${cores[cor]} leading-none tabular-nums w-10 text-right shrink-0`}>{valor}</span>
-      <span className="text-[10px] uppercase tracking-wider text-white/50 leading-tight">{label}</span>
-    </div>
+      <span className={`text-[10px] uppercase tracking-wider leading-tight ${href ? 'text-white/60 group-hover:text-white underline decoration-dotted underline-offset-2' : 'text-white/50'}`}>{label}</span>
+    </>
+  )
+  return href ? (
+    <Link href={href} className="group relative z-10 flex items-center gap-3 rounded -mx-1 px-1 hover:bg-white/5" title="Ver a lista">
+      {conteudo}
+    </Link>
+  ) : (
+    <div className="flex items-center gap-3">{conteudo}</div>
   )
 }
 
@@ -113,7 +128,7 @@ export function Sparkline({
 export function StatusChips({
   chips,
 }: {
-  chips: { label: string; valor: number; cor: 'sol' | 'verde' | 'coral' | 'azul' | 'branco' }[]
+  chips: { label: string; valor: number; cor: 'sol' | 'verde' | 'coral' | 'azul' | 'branco'; href?: string }[]
 }) {
   const cores = {
     sol: 'bg-sol/10 border-sol/30 text-sol',
@@ -124,14 +139,16 @@ export function StatusChips({
   }
   return (
     <div className="flex flex-wrap gap-1 mt-2">
-      {chips.filter(c => c.valor > 0).map((c, i) => (
-        <span
-          key={i}
-          className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border ${cores[c.cor]}`}
-        >
-          {c.valor} {c.label}
-        </span>
-      ))}
+      {chips.filter(c => c.valor > 0).map((c, i) => {
+        const cls = `text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border ${cores[c.cor]}`
+        return c.href ? (
+          <Link key={i} href={c.href} className={`${cls} relative z-10 hover:brightness-125`} title="Ver a lista">
+            {c.valor} {c.label}
+          </Link>
+        ) : (
+          <span key={i} className={cls}>{c.valor} {c.label}</span>
+        )
+      })}
     </div>
   )
 }

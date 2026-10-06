@@ -11,7 +11,7 @@ export async function StatsOperacoes() {
     try { const r = await fn(); return r.count || 0 } catch { return 0 }
   }
 
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
 
   const [total, agendadas, emExecucao, entregues, atrasadas] = await Promise.all([
     safeCount(() => supabase.from('execucoes_servicos').select('id', { count: 'exact', head: true }).neq('status', 'cancelado')),
@@ -29,15 +29,15 @@ export async function StatsOperacoes() {
   return (
     <div className="mt-4 pt-3 border-t border-white/10">
       <KpiRow>
-        <Kpi valor={total} label="total" />
-        <Kpi valor={emExecucao} label="em execução" cor="coral" />
-        <Kpi valor={entregues} label="entregues" cor="verde" />
+        <Kpi valor={total} label="total" href="/dashboard/lista?m=op_todas" />
+        <Kpi valor={emExecucao} label="em execução" cor="coral" href="/dashboard/lista?m=op_execucao" />
+        <Kpi valor={entregues} label="entregues" cor="verde" href="/dashboard/lista?m=op_entregues" />
       </KpiRow>
       {(agendadas > 0 || atrasadas > 0) && (
         <StatusChips
           chips={[
-            agendadas > 0 ? { label: 'agendadas', valor: agendadas, cor: 'sol' as const } : null,
-            atrasadas > 0 ? { label: 'atrasadas', valor: atrasadas, cor: 'coral' as const } : null,
+            agendadas > 0 ? { label: 'agendadas', valor: agendadas, cor: 'sol' as const, href: '/dashboard/lista?m=op_agendadas' } : null,
+            atrasadas > 0 ? { label: 'atrasadas', valor: atrasadas, cor: 'coral' as const, href: '/dashboard/lista?m=op_atrasadas' } : null,
           ].filter(Boolean) as any}
         />
       )}

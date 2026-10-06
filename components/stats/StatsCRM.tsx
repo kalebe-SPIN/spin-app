@@ -14,8 +14,8 @@ export async function StatsCRM() {
   const [totalClientes, totalLeads, propostas, negociando] = await Promise.all([
     safeCount(() => supabase.from('clientes').select('id', { count: 'exact', head: true })),
     safeCount(() => supabase.from('leads').select('id', { count: 'exact', head: true })),
-    safeCount(() => supabase.from('projetos').select('id', { count: 'exact', head: true }).eq('status', 'proposta_enviada')),
-    safeCount(() => supabase.from('projetos').select('id', { count: 'exact', head: true }).eq('status', 'negociando')),
+    safeCount(() => supabase.from('projetos').select('id', { count: 'exact', head: true }).is('excluida_em', null).eq('status', 'proposta_enviada')),
+    safeCount(() => supabase.from('projetos').select('id', { count: 'exact', head: true }).is('excluida_em', null).in('status', ['negociando', 'em_fechamento'])),
   ])
 
   return (
@@ -23,13 +23,13 @@ export async function StatsCRM() {
       <KpiRow>
         <Kpi valor={totalClientes} label="clientes" />
         <Kpi valor={totalLeads} label="leads" cor="azul" />
-        <Kpi valor={propostas + negociando} label="em negociação" cor="sol" />
+        <Kpi valor={propostas + negociando} label="em negociação" cor="sol" href="/dashboard/lista?m=negociacao" />
       </KpiRow>
       {(propostas > 0 || negociando > 0) && (
         <StatusChips
           chips={[
-            propostas > 0 ? { label: 'proposta enviada', valor: propostas, cor: 'sol' as const } : null,
-            negociando > 0 ? { label: 'negociando', valor: negociando, cor: 'sol' as const } : null,
+            propostas > 0 ? { label: 'proposta enviada', valor: propostas, cor: 'sol' as const, href: '/dashboard/lista?m=negociacao' } : null,
+            negociando > 0 ? { label: 'negociando', valor: negociando, cor: 'sol' as const, href: '/dashboard/lista?m=negociacao' } : null,
           ].filter(Boolean) as any}
         />
       )}

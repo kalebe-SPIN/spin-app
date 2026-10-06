@@ -16,6 +16,11 @@ import {
   type DemaisServicosMes,
 } from '@/app/admin/equipe/actions'
 import { GraficoPizza } from '@/components/GraficoPizza'
+import Link from 'next/link'
+
+// Kalebe 2026-10-06: cada número do painel abre a lista do que ele conta
+const lista = (m: string, pessoa?: string) => `/dashboard/lista?m=${m}${pessoa ? `&pessoa=${pessoa}` : ''}`
+const clsLink = 'block rounded-lg -m-1 p-1 hover:bg-white/5 transition'
 
 /**
  * Painel de desempenho da equipe comercial em tempo real.
@@ -474,9 +479,9 @@ function RankVendedores({ rank }: { rank: LinhaRank[] }) {
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline justify-between">
                 <p className="text-xs text-white font-semibold truncate">{v.nome}</p>
-                <p className="text-xs text-verde tabular-nums font-bold flex-shrink-0 ml-2">
-                  {fmtBRL(v.vendido)}
-                </p>
+                <Link href={lista('vendas_mes', v.id)} className="text-xs text-verde tabular-nums font-bold flex-shrink-0 ml-2 hover:underline" title="Ver as vendas do mês">
+                  {fmtBRL(v.vendido)} ›
+                </Link>
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <span className={`text-[10px] uppercase tracking-wider font-bold ${roleCor}`}>{rotuloReal}</span>
@@ -486,9 +491,9 @@ function RankVendedores({ rank }: { rank: LinhaRank[] }) {
                     style={{ width: `${Math.max(pct, 3)}%` }}
                   />
                 </div>
-                <span className="text-[10px] text-white/40 tabular-nums flex-shrink-0">
-                  {v.em_proposta} em proposta
-                </span>
+                <Link href={lista('negociacao', v.id)} className="text-[10px] text-white/40 tabular-nums flex-shrink-0 hover:text-white hover:underline">
+                  {v.em_proposta} em proposta ›
+                </Link>
               </div>
             </div>
           </div>
@@ -548,14 +553,14 @@ function CardProjetosDoMes({ card }: {
 
       {/* Topo: valor total (grande) + qtd abertos (grande) */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div>
+        <Link href={lista('propostas_mes')} className={clsLink} title="Ver as propostas do mês">
           <p className={`${valorFonte} font-black text-sol leading-none whitespace-nowrap`}>{valorStr}</p>
-          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Valor total</p>
-        </div>
-        <div className="text-right">
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Valor total ›</p>
+        </Link>
+        <Link href={lista('projetos_mes')} className={`text-right ${clsLink}`} title="Ver os projetos abertos no mês">
           <p className="text-4xl font-black text-white leading-none">{abertos_mes}</p>
-          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Abertos</p>
-        </div>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Abertos ›</p>
+        </Link>
       </div>
 
       {/* Barra empilhada — proporção por origem */}
@@ -598,7 +603,7 @@ function CardProjetosDoMes({ card }: {
 
       {/* Rodapé — propostas por tipo */}
       <div className="pt-3 mt-3 border-t border-white/5 text-[11px]">
-        <MiniLinha label="Com proposta" valor={String(com_proposta)} destaque="sol" />
+        <Link href={lista('propostas_mes')} className={clsLink}><MiniLinha label="Com proposta ›" valor={String(com_proposta)} destaque="sol" /></Link>
         {por_tipo && Object.keys(por_tipo).length > 0 && (
           <div className="mt-2 space-y-1">
             {Object.entries(por_tipo)
@@ -677,10 +682,10 @@ function CardPerfilDasPropostas({ card }: {
 
       {/* Topo: propostas + conversão */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div>
+        <Link href={lista('propostas_mes')} className={clsLink} title="Ver as propostas do mês">
           <p className="text-4xl font-black text-weg-azul leading-none">{total_propostas}</p>
-          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Propostas</p>
-        </div>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Propostas ›</p>
+        </Link>
         <div className="text-right">
           <p className={`text-4xl font-black leading-none ${card.efetividade_pct >= 50 ? 'text-verde' : card.efetividade_pct >= 25 ? 'text-sol' : 'text-coral'}`}>
             {card.efetividade_pct}%
@@ -837,14 +842,14 @@ function CardNegociosDoMes({ card }: {
 
       {/* Topo: qtd fechados + valor acumulado */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div>
+        <Link href={lista('vendas_mes')} className={clsLink} title="Ver as vendas do mês">
           <p className="text-4xl font-black text-verde leading-none">{totalQtd}</p>
-          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Fechados</p>
-        </div>
-        <div className="text-right">
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Fechados ›</p>
+        </Link>
+        <Link href={lista('vendas_mes')} className={`text-right ${clsLink}`} title="Ver as vendas do mês">
           <p className={`${valorFonte} font-black text-verde leading-none whitespace-nowrap`}>{valorStr}</p>
-          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Valor acumulado</p>
-        </div>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Valor acumulado ›</p>
+        </Link>
       </div>
 
       {/* Barra empilhada por VALOR + legenda */}
@@ -890,9 +895,9 @@ function CardNegociosDoMes({ card }: {
 
       {/* Rodapé — situação do pipeline */}
       <div className="pt-3 mt-3 border-t border-white/5 grid grid-cols-3 gap-2 text-[10px]">
-        <MiniLinha label="Em nego." valor={String(card.em_negociacao)} destaque="sol" />
-        <MiniLinha label="Perdidos" valor={String(card.perdidos)} destaque="coral" />
-        <MiniLinha label="Parados" valor={String(card.parados)} destaque="coral" />
+        <Link href={lista('negociacao')} className={clsLink}><MiniLinha label="Em nego. ›" valor={String(card.em_negociacao)} destaque="sol" /></Link>
+        <Link href={lista('perdidos_mes')} className={clsLink}><MiniLinha label="Perdidos ›" valor={String(card.perdidos)} destaque="coral" /></Link>
+        <Link href={lista('parados')} className={clsLink}><MiniLinha label="Parados ›" valor={String(card.parados)} destaque="coral" /></Link>
       </div>
 
       {/* Kalebe 2026-09-17: breakdown por condição de pagamento acordada. */}
@@ -963,10 +968,10 @@ function CardLeadsDoMes({ card }: {
 
       {/* Topo: total + PF/PJ em números */}
       <div className="grid grid-cols-2 gap-3 mb-4 items-center">
-        <div>
+        <Link href={lista('leads_mes')} className={clsLink} title="Ver os leads do mês">
           <p className="text-4xl font-black text-sol leading-none">{total_mes}</p>
-          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Até hoje</p>
-        </div>
+          <p className="text-[10px] text-white/50 uppercase tracking-wider mt-2 font-semibold">Até hoje ›</p>
+        </Link>
         <div className="text-right space-y-1">
           <p className="text-base leading-tight">
             <span className="text-weg-azul font-bold">PF</span>
@@ -997,14 +1002,15 @@ function CardLeadsDoMes({ card }: {
         ) : (
           <div className="space-y-1.5">
             {topN.map((r) => (
+              <Link key={r.id} href={lista('leads_mes', r.id)} className={clsLink} title={`Leads do mês de ${r.nome}`}>
               <RepresentanteLinha
-                key={r.id}
                 nome={r.nome}
                 qtd={r.qtd}
                 pj={r.pj}
                 pf={r.pf}
                 pctBarra={(r.qtd / maiorQtd) * 100}
               />
+              </Link>
             ))}
             {por_representante.length > 5 && (
               <p className="text-[10px] text-white/30 pt-1">

@@ -1,6 +1,12 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+// Kalebe 2026-10-06: regras únicas do Dashboard (o número e a lista batem)
+import {
+  STATUS_FECHADOS, STATUS_PROPOSTA, STATUS_PROPOSTA_EMITIDA, STATUS_PERDIDOS,
+  fechadoNoMes, janelaMes, valorDaProposta, valorDaVenda,
+} from '@/lib/dashboard/regras'
+import { mapaPrimeiroFechamento } from '@/lib/financeiro/vendas-sistema'
 
 async function verificarAdmin(): Promise<{ erro: string } | { ok: true }> {
   const supabase = createClient()
@@ -184,11 +190,7 @@ export type PainelEquipe = {
   comparativo: ComparativoMes
 }
 
-/** Status que contam como "venda fechada" no pipeline atual. */
-const STATUS_FECHADOS = ['vendido', 'aceito', 'em_homologacao', 'em_execucao', 'instalado', 'ativo_pos_venda']
-
-/** Status que contam como "em negociação (proposta viva)". */
-const STATUS_PROPOSTA = ['proposta_enviada', 'negociando', 'em_fechamento']
+// Status (fechado, proposta viva, emitida, perdido): lib/dashboard/regras.ts
 
 /** Status "projeto em andamento" pra funil (antes da proposta). */
 const STATUS_PROJETO_PROSPECCAO = ['rascunho', 'fatura_analisada', 'telhado_preenchido']
@@ -277,7 +279,9 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // por quem realmente é o vendedor_id do registro.
   const telhadosPromise = supabase
     .from('telhados')
-    .select('vendedor_id, fase, proposta_valor, created_at, updated_at')
+    // Kalebe 2026-10-06: a tabela usa criado_em/atualizado_em — apelidados pros
+    // nomes que o resto do cálculo espera (antes a consulta falhava → tudo 0)
+    .select('vendedor_id, fase, proposta_valor, created_at:criado_em, updated_at:atualizado_em')
     .limit(10000)
 
   // Kalebe 2026-09-09: painel consolidado — pega TODAS as OS concluídas
@@ -288,7 +292,9 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // contra projeto_itens.
   const execPromise = supabase
     .from('execucoes_servicos')
-    .select('responsavel_id, projeto_id, valor_final, valor_contratado, tipo_servico, data_conclusao')
+    // Kalebe 2026-10-06: colunas reais são responsavel_tecnico/valor_contratado
+    // (apelidos pros nomes antigos — antes a consulta falhava → OS sempre 0)
+    .select('responsavel_id:responsavel_tecnico, projeto_id, valor_final:valor_contratado, valor_contratado, tipo_servico, data_conclusao')
     .not('data_conclusao', 'is', null)
     .gte('data_conclusao', inicioMesPassadoIso)
     .limit(10000)
@@ -303,14 +309,24 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
     .gte('data_venda', inicioMesIso.slice(0, 10))
     .limit(10000)
 
+  // Kalebe 2026-10-06: data da venda = 1ª entrada em etapa de fechado (não a
+  // última troca de etapa) — mesma regra do fluxo e de /dashboard/lista
+  const historicoPromise = supabase
+    .from('projeto_status_historico')
+    .select('projeto_id, created_at')
+    .in('status_novo', STATUS_FECHADOS)
+    .limit(20000)
+
   const [
     { data: projetosData },
     { data: telhadosData },
     { data: execData },
     vendasManuaisResult,
+    { data: historicoFechados },
   ] = await Promise.all([
-    projetosPromise, telhadosPromise, execPromise, vendasManuaisPromise,
+    projetosPromise, telhadosPromise, execPromise, vendasManuaisPromise, historicoPromise,
   ])
+  const primeiroFechamento = mapaPrimeiroFechamento((historicoFechados || []) as any[])
   // Se tabela vendas_manuais ainda não foi migrada, ignora sem falhar.
   const vendasManuaisData = (vendasManuaisResult as any)?.error
     ? []
@@ -340,27 +356,28 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   }
   const vendedoresSolar = [...vendedoresSolar_base, ...vendedoresExtras]
 
-  // Helper: um projeto "fechou no mês X" se hoje está em status fechado E
-  // a última mudança de status caiu na janela. Se status_atualizado_em não
-  // existir (projetos antigos), cai pra updated_at.
+  // Última troca de etapa (perdidos, proposta viva). NÃO serve pra data da
+  // venda: muda a cada etapa (vendido → homologação → execução).
   const dataFechamento = (p: any) => p.status_atualizado_em || p.updated_at
-  const isFechadoNoMes = (p: any, deIso: string, ateIso?: string) => {
-    if (!STATUS_FECHADOS.includes(p.status)) return false
-    const d = dataFechamento(p)
-    if (!d) return false
-    if (d < deIso) return false
-    if (ateIso && d >= ateIso) return false
-    return true
-  }
+
+  // Kalebe 2026-10-06 (bug "vendas do mês"): venda fechada no mês pela DATA
+  // DA VENDA (informada no fechamento ou 1ª entrada em vendido), em BRT.
+  // Antes contava a última troca de etapa — venda de agosto que ia pra
+  // homologação em outubro entrava de novo como venda de outubro.
+  const janelaAtual = janelaMes()
+  const [anoAtual, mesAtual] = janelaAtual.mes.split('-').map(Number)
+  const janelaPassada = janelaMes(mesAtual === 1 ? `${anoAtual - 1}-12` : `${anoAtual}-${String(mesAtual - 1).padStart(2, '0')}`)
+  const isFechadoNoMes = (p: any, deIso: string, _ateIso?: string) =>
+    fechadoNoMes(p, deIso === inicioMesPassadoIso ? janelaPassada : janelaAtual, primeiroFechamento)
 
   // Kalebe 2026-09-11: extraído pra usar em faturamentoPorLinha,
   // composicaoFvMes e cardNegocios (antes redeclarava em cada bloco).
   const projetosFechadosMes = todosProjetos.filter((p: any) => isFechadoNoMes(p, inicioMesIso))
   // Kalebe 2026-09-16: em modo multi-UC (migration 092), pv_total pode não ter
   // sido preenchido — o valor real vive em orcamento_consolidado.pv_total.
-  // Prioriza a coluna direta e cai no jsonb depois.
+  // Kalebe 2026-10-06: venda fechada vale o preço ACORDADO no fechamento.
   const pvDoProjeto = (p: any): number =>
-    Number(p.pv_total || p.orcamento_consolidado?.pv_total || p.orcamento_final?.pv_total) || 0
+    STATUS_FECHADOS.includes(p.status) ? valorDaVenda(p) : valorDaProposta(p)
   const valorFechadoMes = projetosFechadosMes.reduce(
     (s: number, p: any) => s + pvDoProjeto(p),
     0,
@@ -381,7 +398,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
       ).length,
       propostas_enviadas: propostaViva.length,
       contratos_assinados: fechadosMes.length,
-      vendas_valor: fechadosMes.reduce((s: number, p: any) => s + (Number(p.pv_total) || 0), 0),
+      vendas_valor: fechadosMes.reduce((s: number, p: any) => s + pvDoProjeto(p), 0),
     }
   })
 
@@ -789,13 +806,8 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   // Kalebe 2026-09-16: 'orcamento_gerado' agora conta como "com proposta"
   // do card PROJETOS DO MÊS. Regra dele: PDF gerado = orçamento fechado,
   // independente de ter clicado "marcar como enviada" ao cliente.
-  const STATUS_PROPOSTA_EMITIDA = new Set([
-    'orcamento_gerado',
-    'proposta_enviada', 'negociando', 'em_fechamento',
-    'vendido', 'aceito', 'em_homologacao', 'em_execucao',
-    'instalado', 'ativo_pos_venda', 'perdido',
-  ])
-  const STATUS_PERDIDOS = new Set(['perdido', 'perdida', 'cancelado', 'cancelada', 'desistiu'])
+  // STATUS_PROPOSTA_EMITIDA e STATUS_PERDIDOS: lib/dashboard/regras.ts
+  // (Kalebe 2026-10-06: perdidos = recusado/cancelado/expirado, igual ao pipeline)
   const seteDiasAtras = Date.now() - 7 * 24 * 3600 * 1000
 
   // ═══════════════════════════════════════════════════════════
@@ -996,7 +1008,7 @@ export async function buscarPainelEquipeAction(): Promise<PainelEquipe | { erro:
   let fechadosAntigosQtd = 0
   let fechadosAntigosValor = 0
   for (const p of projetosFechadosMes) {
-    const valor = Number(p.pv_total) || 0
+    const valor = pvDoProjeto(p)
     if (p.created_at >= inicioMesIso) {
       fechadosNovosQtd += 1
       fechadosNovosValor += valor
