@@ -15,11 +15,12 @@ import { LancamentoRapido } from '@/components/financeiro/LancamentoRapido'
  * Largura: menu completo a partir de 1024px; abaixo, ☰. Logo nunca encolhe.
  */
 export function PortalHeaderView({
-  linksNav, logoUrl, sugestoesPendentes, ehAdminReal, modoAtivo, nome, avatarUrl,
+  linksNav, logoUrl, atendimentosPendentes, recadosPendentes, ehAdminReal, modoAtivo, nome, avatarUrl,
 }: {
   linksNav: LinkNav[]
   logoUrl: string | null
-  sugestoesPendentes: number
+  atendimentosPendentes: number
+  recadosPendentes: number
   ehAdminReal: boolean
   modoAtivo: ModoVisualizacao
   nome: string
@@ -55,7 +56,7 @@ export function PortalHeaderView({
 
         {/* Direita: sino + modo + usuário */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <SinoBianca contadorInicial={sugestoesPendentes} />
+          <SinoBianca contadorInicial={atendimentosPendentes} recados={recadosPendentes} />
           {ehAdminReal && <AlternarModoButton modoAtual={modoAtivo} />}
           {/* Kalebe 2026-10-01: modo noturno ou claro, escolha de cada usuário */}
           <AlternarTema />

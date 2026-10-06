@@ -7,6 +7,7 @@ import { FichaClienteCard } from '@/components/FichaClienteCard'
 import { FichaComercialCliente } from '@/components/FichaComercialCliente'
 import { TelhadoClienteCard } from '@/components/TelhadoClienteCard'
 import { TelhadoRegistrosCard } from '@/components/TelhadoRegistrosCard'
+import { AvisosDoCliente } from '@/components/bianca/AvisosDoCliente'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -120,6 +121,9 @@ export default async function ClienteDetalhePage({ params }: { params: { id: str
             </div>
           </div>
         </header>
+
+        {/* Kalebe 2026-10-06: recados da Bianca deste cliente (saíram do sino) */}
+        <AvisosDoCliente clienteId={cliente.id} />
 
         {/* Ficha em modo visualização — sempre em cima (mobile + desktop),
             enxuta e com superlinks pra email/whatsapp/telefone. */}

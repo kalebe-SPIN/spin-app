@@ -1,37 +1,42 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { SugestoesBiancaClient } from '@/components/SugestoesBiancaClient'
+import { CentralBiancaClient } from '@/components/bianca/CentralBiancaClient'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const GATILHO_LABEL: Record<string, { emoji: string; label: string; cor: string }> = {
-  proposta_aceita:              { emoji: '🎉', label: 'Cliente aceitou proposta',      cor: 'verde' },
-  proposta_followup_3d:         { emoji: '⏰', label: 'Follow-up 3 dias sem resposta', cor: 'sol' },
-  homologacao_aprovada:         { emoji: '✅', label: 'Homologação CELESC aprovada',   cor: 'verde' },
-  cliente_respondeu_whatsapp:   { emoji: '💬', label: 'Cliente respondeu WhatsApp',    cor: 'weg-azul' },
-  modulo_pendente_7d:           { emoji: '📦', label: 'Módulo pendente há 7 dias',     cor: 'sol' },
-  instalacao_amanha:            { emoji: '🔧', label: 'Instalação amanhã',             cor: 'coral' },
-}
-
-export default async function SugestoesBiancaPage() {
+/**
+ * Central da Bianca (Kalebe 2026-10-06). Antes só listava as sugestões de
+ * mensagem — por isso "Ver página completa" aparecia vazia mesmo com o sino
+ * cheio de avisos. Agora: avisos dos agentes + sugestões, com ações em lote.
+ * O sino ficou só com os atendimentos (cliente esperando resposta / standby).
+ */
+export default async function CentralBiancaPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Sugestoes de comunicação (whatsapp/chat) do usuário logado
-  const { data: sugestoes } = await supabase
-    .from('bianca_comunicacoes')
-    .select(`
-      id, canal, mensagem, destinatario_nome, destinatario_telefone, link_wa,
-      status, gatilho_chave, projeto_id, criado_em,
-      projeto:projeto_id(codigo, cliente_razao_social)
-    `)
-    .eq('usuario_id', user.id)
-    .eq('status', 'sugerida')
-    .order('criado_em', { ascending: false })
-    .limit(50)
+  const [{ data: avisos }, { data: sugestoes }] = await Promise.all([
+    supabase
+      .from('avisos_internos')
+      .select('id, remetente_agente, titulo, mensagem, urgente, projeto_id, conversa_id, criado_em, projeto:projeto_id(codigo, cliente_razao_social)')
+      .eq('destinatario_id', user.id)
+      .is('lido_em', null)
+      .order('criado_em', { ascending: false })
+      .limit(200),
+    supabase
+      .from('bianca_comunicacoes')
+      .select(`
+        id, canal, mensagem, destinatario_nome, destinatario_telefone, link_wa,
+        status, gatilho_chave, projeto_id, criado_em,
+        projeto:projeto_id(codigo, cliente_razao_social)
+      `)
+      .eq('usuario_id', user.id)
+      .eq('status', 'sugerida')
+      .order('criado_em', { ascending: false })
+      .limit(100),
+  ])
 
   return (
     <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -40,34 +45,13 @@ export default async function SugestoesBiancaPage() {
           <Link href="/dashboard" className="text-xs text-white/40 hover:text-white/60 mb-2 inline-block">
             ← Dashboard
           </Link>
-          <h1 className="text-3xl md:text-4xl font-black text-white">
-            💡 Sugestões da Bianca
-          </h1>
+          <h1 className="text-3xl md:text-4xl font-black text-white">🔔 Central da Bianca</h1>
           <p className="text-white/60 mt-1 text-sm">
-            Mensagens e ações que a Bianca preparou automaticamente pra você aprovar antes de enviar.
+            Recados dos agentes e mensagens que a Bianca preparou. Cada recado também aparece no card do cliente
+            quando você abre. Clientes esperando resposta ficam no sino.
           </p>
         </header>
-
-        {(!sugestoes || sugestoes.length === 0) ? (
-          <div className="p-12 bg-white/[0.02] border border-dashed border-white/10 rounded-xl text-center">
-            <div className="text-5xl mb-3">🎯</div>
-            <p className="text-lg font-bold text-white mb-1">Nada pendente!</p>
-            <p className="text-sm text-white/50">
-              Quando um evento acontecer (proposta aceita, cliente responder, etc), a Bianca vai preparar
-              a mensagem aqui pra você revisar.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {sugestoes.map((s: any) => (
-              <SugestoesBiancaClient
-                key={s.id}
-                sugestao={s}
-                gatilhoInfo={GATILHO_LABEL[s.gatilho_chave] || { emoji: '💬', label: s.gatilho_chave || 'Bianca', cor: 'sol' }}
-              />
-            ))}
-          </div>
-        )}
+        <CentralBiancaClient avisos={avisos || []} sugestoes={sugestoes || []} />
       </div>
     </main>
   )

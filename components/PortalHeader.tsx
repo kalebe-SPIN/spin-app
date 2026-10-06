@@ -1,6 +1,7 @@
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
 import { createClient } from '@/lib/supabase/server'
 import { PortalHeaderView } from '@/components/PortalHeaderView'
+import { HORAS_STANDBY } from '@/lib/bianca/atendimentos'
 
 /**
  * Header global do portal.
@@ -19,25 +20,25 @@ export async function PortalHeader() {
 
   const modoAtivo = modo
 
-  // Contador de sugestoes pendentes da Bianca + logo da empresa (silencioso em falha)
-  let sugestoesPendentes = 0
+  // Kalebe 2026-10-06: o sino conta SÓ atendimentos (cliente esperando
+  // resposta / conversa em standby — migration 139). Avisos e sugestões
+  // viram "recados": ficam no card do cliente e na Central da Bianca.
+  let atendimentosPendentes = 0
+  let recadosPendentes = 0
   let logoUrl: string | null = null
   try {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-      const { count } = await supabase
-        .from('bianca_comunicacoes')
-        .select('id', { count: 'exact', head: true })
-        .eq('usuario_id', user.id)
-        .eq('status', 'sugerida')
-      // Kalebe 2026-09-23: avisos internos dos agentes também contam no sino
-      const { count: avisosNaoLidos } = await supabase
-        .from('avisos_internos')
-        .select('id', { count: 'exact', head: true })
-        .eq('destinatario_id', user.id)
-        .is('lido_em', null)
-      sugestoesPendentes = (count || 0) + (avisosNaoLidos || 0)
+      const [{ data: atend }, { count: sugestoes }, { count: avisosNaoLidos }] = await Promise.all([
+        supabase.rpc('wa_atendimentos_pendentes', { p_standby_horas: HORAS_STANDBY }),
+        supabase.from('bianca_comunicacoes').select('id', { count: 'exact', head: true })
+          .eq('usuario_id', user.id).eq('status', 'sugerida'),
+        supabase.from('avisos_internos').select('id', { count: 'exact', head: true })
+          .eq('destinatario_id', user.id).is('lido_em', null),
+      ])
+      atendimentosPendentes = Array.isArray(atend) ? atend.length : 0
+      recadosPendentes = (sugestoes || 0) + (avisosNaoLidos || 0)
     }
     const { data: emp } = await supabase
       .from('configuracoes_empresa')
@@ -79,7 +80,8 @@ export async function PortalHeader() {
     <PortalHeaderView
       linksNav={linksNav}
       logoUrl={logoUrl}
-      sugestoesPendentes={sugestoesPendentes}
+      atendimentosPendentes={atendimentosPendentes}
+      recadosPendentes={recadosPendentes}
       ehAdminReal={ehAdminReal}
       modoAtivo={modoAtivo}
       nome={(perfil as { nome_completo?: string }).nome_completo || ''}

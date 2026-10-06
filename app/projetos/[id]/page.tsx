@@ -15,6 +15,7 @@ import { ContatosProjetoCard } from '@/components/ContatosProjetoCard'
 import { ValorItemManual } from '@/components/ValorItemManual'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
+import { AvisosDoCliente } from '@/components/bianca/AvisosDoCliente'
 import { montarPropsDocsHomologacao } from '@/lib/homologacao/utils'
 import { getPassosRelevantes, INFO_PASSO, apenasServicos, type TipoItem } from '@/lib/tipos-projeto'
 
@@ -129,6 +130,9 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
             <TimelineProjeto status={projeto.status} soServicos={soServicos} projetoId={projeto.id} />
           </div>
         </header>
+
+        {/* Kalebe 2026-10-06: recados da Bianca deste cliente (saíram do sino) */}
+        <AvisosDoCliente projetoId={projeto.id} />
 
         {/* Dados CELESC — Kalebe pediu 2026-08-27: protocolo e ART/TRT
             visíveis no card do projeto assim que a homologação é aberta.

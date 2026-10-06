@@ -5,6 +5,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { ModalProjetoConversa } from './ModalProjetoConversa'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 import { AvatarContato } from '@/components/AvatarContato'
+import { AvisosDoCliente } from '@/components/bianca/AvisosDoCliente'
 import { rotuloNaTela } from '@/lib/equipe/rotulo'
 import { cartoesDoTexto, telefonesNoTexto, formatarTelefoneExibicao } from '@/lib/whatsapp/contatos-projeto'
 import { contatosDoProjetoDaConversaAction, salvarContatoDaConversaAction } from '@/app/inbox/contatos-actions'
@@ -485,6 +486,9 @@ export function InboxClient({
                 )}
               </div>
             </div>
+
+            {/* Kalebe 2026-10-06: recados da Bianca deste cliente (saíram do sino) */}
+            <AvisosDoCliente key={`avisos-${selecionada.id}`} conversaId={selecionada.id} compacto />
 
             {/* Kalebe 2026-09-29: janela de 24h fechada — o que sai do sistema não
                 chega (Meta devolve "Re-engagement message"). Explica o caminho. */}

@@ -7,6 +7,7 @@ import {
   descartarSugestaoAction,
   marcarSugestaoEnviadaAction,
 } from '@/app/bianca/sugestoes/actions'
+import { HORAS_STANDBY, type Atendimento } from '@/lib/bianca/atendimentos'
 
 const GATILHO_LABEL: Record<string, { emoji: string; label: string; cor: string }> = {
   proposta_aceita:              { emoji: '🎉', label: 'Proposta aceita',            cor: 'verde' },
@@ -26,20 +27,22 @@ const corBadge: Record<string, string> = {
 
 /**
  * Sino da Bianca no header — abre popover em vez de trocar de pagina.
- * Kalebe: 'nao tem necessidade de mudar de pagina para ver e responder'.
+ * Kalebe 2026-10-06: o sino é SÓ de atendimento — cliente esperando
+ * resposta ou conversa em standby (sem resposta do cliente há +48h). Os
+ * demais recados aparecem no card do cliente e na Central da Bianca.
  */
-export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }) {
+export function SinoBianca({ contadorInicial = 0, recados = 0 }: { contadorInicial?: number; recados?: number }) {
   const router = useRouter()
   const [aberto, setAberto] = useState(false)
-  const [sugestoes, setSugestoes] = useState<any[]>([])
-  const [avisos, setAvisos] = useState<any[]>([])
+  const [lista, setLista] = useState<Atendimento[]>([])
+  const [aviso, setAviso] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [contador, setContador] = useState(contadorInicial)
+  const [ocupado, setOcupado] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
   const botaoRef = useRef<HTMLButtonElement>(null)
 
-  // AutoRefresh (60s) re-renderiza o header com contagem nova — acompanha
-  // pra aviso novo aparecer no sino sem recarregar a página.
+  // AutoRefresh (60s) re-renderiza o header com contagem nova
   useEffect(() => {
     if (!aberto) setContador(contadorInicial)
   }, [contadorInicial, aberto])
@@ -64,47 +67,38 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
     }
   }, [aberto])
 
-  async function carregarSugestoes() {
+  async function carregar() {
     setCarregando(true)
     try {
-      // no-store: evita cache do browser/proxy, sempre pega estado atual.
-      // Kalebe 2026-09-23: carrega também os avisos internos dos agentes.
-      const [resS, resA] = await Promise.all([
-        fetch('/api/bianca/sugestoes', { cache: 'no-store' }),
-        fetch('/api/avisos', { cache: 'no-store' }),
-      ])
-      const jsonS = await resS.json().catch(() => ({}))
-      const jsonA = await resA.json().catch(() => ({}))
-      const lista = resS.ok ? (jsonS.sugestoes || []) : []
-      const listaAvisos = resA.ok ? (jsonA.avisos || []) : []
-      setSugestoes(lista)
-      setAvisos(listaAvisos)
-      const total = lista.length + listaAvisos.length
-      setContador(total)
-      // Se contador do SSR estava desatualizado (ex: cache do Next), atualiza router
-      if (total !== contadorInicial) {
-        router.refresh()
-      }
+      const res = await fetch('/api/atendimentos', { cache: 'no-store' })
+      const json = await res.json().catch(() => ({}))
+      const itens: Atendimento[] = res.ok ? (json.atendimentos || []) : []
+      setLista(itens)
+      setAviso(json.aviso || null)
+      setContador(itens.length)
+      if (itens.length !== contadorInicial) router.refresh()
     } catch {}
     finally { setCarregando(false) }
   }
 
+  async function dispensar(ids: string[]) {
+    if (!ids.length) return
+    setOcupado(true)
+    try {
+      await fetch('/api/atendimentos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+      })
+      await carregar()
+    } finally { setOcupado(false) }
+  }
+
   function toggle() {
-    if (!aberto) carregarSugestoes()
+    if (!aberto) carregar()
     setAberto(!aberto)
   }
 
-  // Se o popover fica sem sugestoes, fecha automaticamente ao reabrir vazio
-  useEffect(() => {
-    if (aberto && !carregando && sugestoes.length + avisos.length === 0 && contadorInicial > 0) {
-      // Contador SSR estava mentindo — nao ha nada. Fecha o popover apos breve delay pra usuario ver
-      const t = setTimeout(() => setAberto(false), 1500)
-      return () => clearTimeout(t)
-    }
-  }, [aberto, carregando, sugestoes.length, avisos.length, contadorInicial])
-
-  // Nao renderiza nada se nao tem sugestoes (evita sino vazio)
-  if (contador === 0 && !aberto) return null
+  const esperando = lista.filter((a) => a.situacao !== 'standby')
+  const standby = lista.filter((a) => a.situacao === 'standby')
 
   return (
     <div className="relative">
@@ -114,9 +108,9 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
         className={`relative flex items-center gap-1.5 px-2 xl:px-3 py-1.5 border rounded-lg text-xs font-bold transition shrink-0 ${
           aberto
             ? 'bg-sol/25 border-sol/50 text-sol'
-            : 'bg-sol/10 border-sol/30 text-sol hover:bg-sol/20'
+            : contador > 0 ? 'bg-sol/10 border-sol/30 text-sol hover:bg-sol/20' : 'bg-white/[0.03] border-white/10 text-white/50 hover:text-white'
         }`}
-        title={`${contador} aviso(s)/sugestão(ões) aguardando`}
+        title={contador > 0 ? `${contador} atendimento(s) pedindo atenção` : 'Nenhum cliente esperando'}
       >
         <span className="text-base">🔔</span>
         {/* Kalebe 2026-09-30: nome só em tela larga — header não pode estourar */}
@@ -133,53 +127,45 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
           ref={popoverRef}
           className="absolute right-0 top-full mt-2 w-[420px] max-w-[95vw] bg-noite border border-white/15 rounded-xl shadow-2xl z-50 max-h-[75vh] overflow-hidden flex flex-col"
         >
-          <div className="p-3 border-b border-white/10 flex items-center justify-between">
+          <div className="p-3 border-b border-white/10 flex items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-bold text-white">🔔 Avisos e sugestões</p>
-              <p className="text-[10px] text-white/50">{contador} pendente(s)</p>
+              <p className="text-sm font-bold text-white">🔔 Atendimentos</p>
+              <p className="text-[10px] text-white/50">{contador} conversa(s) pedindo atenção</p>
             </div>
-            <button
-              onClick={() => setAberto(false)}
-              className="text-white/40 hover:text-white text-lg leading-none px-2"
-              title="Fechar"
-            >
-              ✕
-            </button>
+            <div className="flex items-center gap-1">
+              {lista.length > 0 && (
+                <button
+                  onClick={() => dispensar(lista.map((a) => a.conversa_id))}
+                  disabled={ocupado}
+                  className="px-2 py-1 text-[10px] font-bold rounded border border-white/15 text-white/70 hover:text-white disabled:opacity-40"
+                  title="Tira todas do sino até o cliente escrever de novo"
+                >
+                  ✓ Marcar todas como vistas
+                </button>
+              )}
+              <button onClick={() => setAberto(false)} className="text-white/40 hover:text-white text-lg leading-none px-2" title="Fechar">✕</button>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {carregando ? (
+          <div className="flex-1 overflow-y-auto p-2 space-y-3">
+            {carregando && !lista.length ? (
               <p className="text-xs text-white/50 text-center py-4">⏳ Carregando...</p>
-            ) : sugestoes.length + avisos.length === 0 ? (
+            ) : aviso ? (
+              <p className="text-xs text-sol text-center py-4">{aviso}</p>
+            ) : lista.length === 0 ? (
               <div className="text-center py-6">
                 <div className="text-3xl mb-2">✅</div>
-                <p className="text-xs text-white/70 font-bold mb-1">Tudo em ordem!</p>
-                <p className="text-[10px] text-white/40">
-                  Sem avisos nem sugestões pendentes. Fechando...
-                </p>
+                <p className="text-xs text-white/70 font-bold mb-1">Nenhum cliente esperando</p>
+                <p className="text-[10px] text-white/40">Conversas respondidas e sem pendência de retorno.</p>
               </div>
             ) : (
               <>
-                {avisos.map((a) => (
-                  <AvisoCard
-                    key={a.id}
-                    aviso={a}
-                    onAcao={async () => {
-                      await carregarSugestoes()
-                      router.refresh()
-                    }}
-                  />
-                ))}
-                {sugestoes.map((s) => (
-                  <MiniCard
-                    key={s.id}
-                    sugestao={s}
-                    onAcao={async () => {
-                      await carregarSugestoes()
-                      router.refresh()
-                    }}
-                  />
-                ))}
+                {esperando.length > 0 && (
+                  <GrupoAtendimentos titulo="💬 Esperando resposta" lista={esperando} ocupado={ocupado} onDispensar={dispensar} onAbrir={() => setAberto(false)} />
+                )}
+                {standby.length > 0 && (
+                  <GrupoAtendimentos titulo={`⏸ Em standby — cliente sem responder há +${HORAS_STANDBY}h`} lista={standby} ocupado={ocupado} onDispensar={dispensar} onAbrir={() => setAberto(false)} />
+                )}
               </>
             )}
           </div>
@@ -190,7 +176,7 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
               onClick={() => setAberto(false)}
               className="block text-center text-[11px] text-sol hover:text-sol/80 font-bold py-1"
             >
-              Ver página completa →
+              Central da Bianca — recados e sugestões{recados > 0 ? ` (${recados})` : ''} →
             </Link>
           </div>
         </div>
@@ -199,7 +185,58 @@ export function SinoBianca({ contadorInicial = 0 }: { contadorInicial?: number }
   )
 }
 
-function MiniCard({ sugestao, onAcao }: { sugestao: any; onAcao: () => Promise<void> }) {
+function GrupoAtendimentos({ titulo, lista, ocupado, onDispensar, onAbrir }: {
+  titulo: string; lista: Atendimento[]; ocupado: boolean
+  onDispensar: (ids: string[]) => void; onAbrir: () => void
+}) {
+  return (
+    <section className="space-y-1.5">
+      <p className="text-[10px] uppercase tracking-wider font-bold text-white/45 px-1">{titulo} ({lista.length})</p>
+      {lista.map((a) => (
+        <div key={a.conversa_id} className={`border rounded-lg p-2.5 ${a.situacao === 'standby' ? 'bg-white/[0.03] border-white/10' : 'bg-weg-azul/10 border-weg-azul/30'}`}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <p className="text-xs font-bold text-white truncate">{a.contato_nome || a.telefone || 'Contato'}</p>
+            {a.situacao === 'sem_responsavel' && (
+              <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border text-coral bg-coral/10 border-coral/30">sem responsável</span>
+            )}
+            <span className="text-[9px] text-white/40 ml-auto shrink-0">{a.situacao === 'standby' ? 'parada há ' : 'há '}{tempoRel(a.desde)}</span>
+          </div>
+          {a.previa && (
+            <p className="text-[11px] text-white/65 line-clamp-2 mb-2">
+              {a.situacao === 'standby' ? 'Última nossa: ' : ''}{a.previa}
+            </p>
+          )}
+          <div className="flex items-center gap-1">
+            <Link
+              href={`/inbox?c=${a.conversa_id}`}
+              onClick={onAbrir}
+              className="flex-1 text-center px-2 py-1 bg-verde text-noite text-[10px] font-bold rounded hover:bg-verde/90"
+            >
+              💬 {a.situacao === 'standby' ? 'Retomar conversa' : 'Responder'}
+            </Link>
+            {a.projeto_id && (
+              <Link href={`/projetos/${a.projeto_id}`} onClick={onAbrir}
+                className="px-2 py-1 bg-white/10 border border-white/20 text-white text-[10px] font-bold rounded hover:bg-white/15">
+                📁 Projeto
+              </Link>
+            )}
+            <button
+              onClick={() => onDispensar([a.conversa_id])}
+              disabled={ocupado}
+              className="px-2 py-1 bg-white/5 border border-white/15 text-white/60 text-[10px] rounded hover:text-white disabled:opacity-40"
+              title="Tira do sino até o cliente escrever de novo"
+            >
+              Dispensar
+            </button>
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+/** Sugestão de mensagem preparada pela Bianca (bianca_comunicacoes). */
+export function MiniCard({ sugestao, onAcao }: { sugestao: any; onAcao: () => Promise<void> }) {
   const [pending, startTransition] = useTransition()
   const [status, setStatus] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [erro, setErro] = useState<string | null>(null)
@@ -337,20 +374,23 @@ const NOME_AGENTE_AVISO: Record<string, string> = {
 }
 
 /** Aviso interno enviado por um agente (avisos_internos). */
-function AvisoCard({ aviso, onAcao }: { aviso: any; onAcao: () => Promise<void> }) {
+export function AvisoCard({ aviso, onAcao, mostrarProjeto = true, mostrarConversa = true }: {
+  aviso: any; onAcao: () => Promise<void>; mostrarProjeto?: boolean; mostrarConversa?: boolean
+}) {
   const [pending, setPending] = useState(false)
   const projeto = Array.isArray(aviso.projeto) ? aviso.projeto[0] : aviso.projeto
 
-  async function marcarLido() {
+  async function acao(metodo: 'POST' | 'DELETE') {
     setPending(true)
     try {
       await fetch('/api/avisos', {
-        method: 'POST',
+        method: metodo,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: aviso.id }),
       })
     } finally {
       await onAcao()
+      setPending(false)
     }
   }
 
@@ -371,7 +411,7 @@ function AvisoCard({ aviso, onAcao }: { aviso: any; onAcao: () => Promise<void> 
         <span className="text-[9px] text-white/40 ml-auto">{tempoRel(aviso.criado_em)}</span>
       </div>
       {aviso.titulo && <p className="text-xs font-bold text-white mb-1">{aviso.titulo}</p>}
-      {projeto && (
+      {mostrarProjeto && projeto && (
         <Link
           href={`/projetos/${aviso.projeto_id}`}
           className="text-[10px] text-sol hover:underline block mb-1 truncate"
@@ -381,27 +421,35 @@ function AvisoCard({ aviso, onAcao }: { aviso: any; onAcao: () => Promise<void> 
       )}
       <p className="text-xs text-white/85 whitespace-pre-wrap mb-2">{aviso.mensagem}</p>
       <div className="flex items-center gap-1">
-        {aviso.conversa_id && (
+        {mostrarConversa && aviso.conversa_id && (
           <Link
-            href="/inbox"
+            href={`/inbox?c=${aviso.conversa_id}`}
             className="px-2 py-1 bg-white/10 border border-white/20 text-white text-[10px] font-bold rounded hover:bg-white/15"
           >
-            💬 Abrir inbox
+            💬 Abrir conversa
           </Link>
         )}
         <button
-          onClick={marcarLido}
+          onClick={() => acao('POST')}
           disabled={pending}
           className="flex-1 px-2 py-1 bg-verde text-noite text-[10px] font-bold rounded hover:bg-verde/90 disabled:opacity-40"
         >
-          {pending ? '⏳' : '✓ Lido'}
+          {pending ? '⏳' : '✓ Ciente'}
+        </button>
+        <button
+          onClick={() => acao('DELETE')}
+          disabled={pending}
+          className="px-2 py-1 bg-coral/10 border border-coral/30 text-coral text-[10px] rounded hover:bg-coral/20 disabled:opacity-40"
+          title="Excluir"
+        >
+          🗑
         </button>
       </div>
     </div>
   )
 }
 
-function tempoRel(iso: string): string {
+export function tempoRel(iso: string): string {
   const agora = Date.now()
   const t = new Date(iso).getTime()
   const min = Math.floor((agora - t) / 60000)
