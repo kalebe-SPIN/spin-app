@@ -277,6 +277,38 @@ export async function recusarAgendaAction(e: { profissional_id: string; data: st
 }
 
 /**
+ * Admin dá baixa numa demanda que não vai pra agenda: serviço já executado
+ * antes do painel do campo existir, ou cancelado. Kalebe 2026-10-07 (demandas
+ * geradas dos projetos que já tinham sido vendidos).
+ */
+export async function baixarDemandaAction(id: string, modo: 'executada' | 'cancelada'): Promise<R> {
+  const c = await exigirCampo()
+  if (c.erro || !c.user) return { erro: c.erro || 'Não autenticado' }
+  if (c.papel !== 'admin') return { erro: 'Só o admin dá baixa em demanda' }
+  const admin = createAdminClient()
+  const { data: os } = await admin.from('execucoes_servicos').select('id, status, observacoes').eq('id', id).maybeSingle()
+  if (!os) return { erro: 'Demanda não encontrada' }
+  if (!['aguardando_pre_requisitos', 'agendando'].includes(os.status)) return { erro: 'Só dá baixa em demanda em aberto (fora da agenda)' }
+  const quando = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+  const nota = modo === 'executada'
+    ? `Executado antes do painel do campo — baixa do admin em ${quando}`
+    : `Cancelada pelo admin em ${quando}`
+  const novo = modo === 'executada' ? 'entregue' : 'cancelado'
+  const { error } = await admin.from('execucoes_servicos').update({
+    status: novo,
+    observacoes: [os.observacoes, nota].filter(Boolean).join('\n'),
+    ...(modo === 'executada' ? { aceite_texto: nota } : {}),
+    updated_at: new Date().toISOString(),
+  }).eq('id', id)
+  if (error) return { erro: error.message }
+  await admin.from('execucoes_status_historico').insert({
+    execucao_id: id, status_anterior: os.status, status_novo: novo, observacoes: nota, usuario_id: c.user.id,
+  })
+  revalidar(id)
+  return { sucesso: true }
+}
+
+/**
  * Liberar = a demanda que nasceu da venda (pré-requisitos ok) pode ser
  * agendada. Kalebe 2026-10-05: SÓ O ADMIN libera serviço de campo.
  */

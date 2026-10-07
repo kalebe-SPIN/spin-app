@@ -11,7 +11,7 @@ import {
 } from '@/lib/campo/comum'
 import { DIARIA_INTEGRAL, DIARIA_PARCIAL } from '@/lib/campo/diarias'
 import {
-  agendarDemandasAction, aprovarAgendaAction, criarDemandaAction, desmarcarAction, liberarDemandasAction, recusarAgendaAction,
+  agendarDemandasAction, aprovarAgendaAction, baixarDemandaAction, criarDemandaAction, desmarcarAction, liberarDemandasAction, recusarAgendaAction,
 } from '@/app/campo/actions'
 
 /**
@@ -74,6 +74,19 @@ export function CampoClient({ demandas, agenda, feitos, dias, mes, equipe, ehAdm
       const n = new Set(s)
       for (const id of prontas) { if (todas) n.delete(id); else n.add(id) }
       return n
+    })
+  }
+
+  function baixar(d: Demanda, modo: 'executada' | 'cancelada') {
+    const pergunta = modo === 'executada'
+      ? `${rotuloOs(d.os_numero)} (${d.cliente_nome || d.titulo}) já foi executada? Sai das demandas e fica como entregue.`
+      : `Cancelar ${rotuloOs(d.os_numero)} (${d.cliente_nome || d.titulo})? Sai das demandas.`
+    if (!confirm(pergunta)) return
+    startTransition(async () => {
+      const r = await baixarDemandaAction(d.id, modo)
+      setMsg('erro' in r ? { ok: false, texto: r.erro }
+        : { ok: true, texto: `${rotuloOs(d.os_numero)} ${modo === 'executada' ? 'baixada como já executada' : 'cancelada'}.` })
+      router.refresh()
     })
   }
 
@@ -221,11 +234,24 @@ export function CampoClient({ demandas, agenda, feitos, dias, mes, equipe, ehAdm
                       <input type="checkbox" checked={marcado} disabled={bloqueada} onChange={() => alternar(d.id)}
                         className="mt-1 w-5 h-5 shrink-0 accent-[#F5B400] disabled:opacity-30" aria-label="Selecionar pra agendar" />
                       <CartaoServico d={d} />
-                      {bloqueada && ehAdmin && (
-                        <button onClick={() => liberar([d])} disabled={pending}
-                          className="self-start shrink-0 px-3 py-2 bg-white/5 border border-sol/40 text-sol text-xs font-bold rounded-lg">
-                          Liberar
-                        </button>
+                      {ehAdmin && (
+                        <div className="self-start shrink-0 flex flex-col gap-1">
+                          {bloqueada && (
+                            <button onClick={() => liberar([d])} disabled={pending}
+                              className="px-3 py-2 bg-white/5 border border-sol/40 text-sol text-xs font-bold rounded-lg">
+                              Liberar
+                            </button>
+                          )}
+                          <button onClick={() => baixar(d, 'executada')} disabled={pending}
+                            className="px-3 py-1.5 bg-white/5 border border-verde/30 text-verde text-[11px] rounded-lg"
+                            title="Serviço já feito antes do painel do campo — sai das demandas">
+                            Já foi feito
+                          </button>
+                          <button onClick={() => baixar(d, 'cancelada')} disabled={pending}
+                            className="px-3 py-1.5 bg-white/5 border border-white/15 text-white/50 text-[11px] rounded-lg">
+                            Cancelar
+                          </button>
+                        </div>
                       )}
                     </div>
                   )
