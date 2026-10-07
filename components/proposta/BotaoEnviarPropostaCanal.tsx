@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { enviarPropostaPeloCanalAction } from '@/app/inbox/actions'
+import { usePathname, useRouter } from 'next/navigation'
+import { enviarPropostaPeloCanalAction, registrarPropostaEnviadaPeloAppAction } from '@/app/inbox/actions'
 
 /**
  * Botão "Enviar por WhatsApp" das propostas (Kalebe 2026-09-29): envia o PDF
@@ -32,6 +33,17 @@ export function BotaoEnviarPropostaCanal({
   const [abriuApp, setAbriuApp] = useState(false)
   const [enviado, setEnviado] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  const router = useRouter()
+  const pathname = usePathname()
+
+  // Kalebe 2026-10-07: proposta enviada → volta pro projeto do cliente (o card
+  // já foi pra "negociando" e o follow-up de 1 dia foi criado no servidor)
+  function voltarAoProjeto(atraso = 1500) {
+    setTimeout(() => {
+      if (pathname === `/projetos/${projetoId}`) router.refresh()
+      else router.push(`/projetos/${projetoId}`)
+    }, atraso)
+  }
 
   async function enviar() {
     if (!urlPdf) { setErro('Gere o PDF primeiro'); return }
@@ -48,6 +60,7 @@ export function BotaoEnviarPropostaCanal({
       setEnviado(true)
       setConversaId(r.conversa_id)
       onEnviado?.()
+      voltarAoProjeto()
     } finally {
       setEnviando(false)
     }
@@ -64,7 +77,7 @@ export function BotaoEnviarPropostaCanal({
    * e o link do PDF. O envio aparece no inbox pelo eco do app; quando o cliente
    * responder, o sistema volta a mandar sozinho.
    */
-  function enviarPeloApp() {
+  async function enviarPeloApp() {
     if (!telefone || !urlPdf) return
     let tel = telefone.replace(/\D/g, '')
     if (tel.length === 10 || tel.length === 11) tel = '55' + tel
@@ -73,8 +86,11 @@ export function BotaoEnviarPropostaCanal({
     const url = celular
       ? `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
       : `whatsapp://send?phone=${tel}&text=${encodeURIComponent(texto)}`   // app do computador direto, sem página
+    // Mesmo efeito do envio pelo sistema: negociação + follow-up de 1 dia
+    await registrarPropostaEnviadaPeloAppAction(projetoId).catch(() => {})
     window.location.href = url
     setAbriuApp(true)
+    if (!celular) voltarAoProjeto(4000)
   }
 
   return (
@@ -89,7 +105,7 @@ export function BotaoEnviarPropostaCanal({
       </button>
       {enviado && (
         <p className="text-xs text-verde">
-          ✓ Proposta enviada pelo canal Spin.{' '}
+          ✓ Proposta enviada pelo canal Spin — card em negociação e follow-up pra amanhã criado. Voltando ao projeto…{' '}
           {conversaId && <Link href={`/inbox?c=${conversaId}`} className="underline">Ver no inbox</Link>}
         </p>
       )}

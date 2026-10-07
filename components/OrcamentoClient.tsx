@@ -322,11 +322,10 @@ export function OrcamentoClient({
     potenciaCaKw: potenciaCaWa,
   })
 
+  // Kalebe 2026-10-07: o envio pelo WhatsApp já põe o card em "negociando" e
+  // cria o follow-up no servidor (marcar como "enviada" aqui voltaria a etapa)
   function aposEnviarWhatsApp() {
-    startTransition(async () => {
-      await marcarPropostaEnviadaAction(projeto.id)
-      router.refresh()
-    })
+    router.refresh()
   }
 
   return (

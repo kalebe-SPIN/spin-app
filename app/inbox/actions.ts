@@ -813,6 +813,50 @@ export async function abrirCanalDoProjetoAction(
 }
 
 /**
+ * Kalebe 2026-10-07: proposta enviada ao cliente pelo WhatsApp → o card do
+ * CRM vai pra "negociando" (se ainda estava antes disso) e nasce a tarefa de
+ * follow-up com prazo de 1 dia, que a Bianca lembra pelo WhatsApp.
+ */
+const ANTES_DA_NEGOCIACAO = [
+  'rascunho', 'fatura_analisada', 'telhado_preenchido', 'dimensionado', 'kit_selecionado',
+  'lista_ca_confirmada', 'orcamento_gerado', 'proposta_enviada',
+]
+async function depoisDeEnviarProposta(projetoId: string, userId: string, conversaId: string | null, como: string) {
+  try {
+    const admin = createAdminClient()
+    const { data: p } = await admin.from('projetos')
+      .select('id, codigo, status, cliente_razao_social, cliente_telefone, consultor_id').eq('id', projetoId).maybeSingle()
+    if (!p) return
+    if (ANTES_DA_NEGOCIACAO.includes(String(p.status))) {
+      // mudarEtapa registra o histórico e já cria o follow-up (automação de 'negociando')
+      const { mudarEtapaProjetoAction } = await import('@/app/projetos/[id]/etapa/actions')
+      await mudarEtapaProjetoAction(projetoId, 'negociando', `Proposta enviada ao cliente ${como}`)
+    }
+    // Reenvio (já em negociação) ou etapa que não mudou: follow-up mesmo assim (sem duplicar)
+    const { criarFollowupProposta } = await import('@/lib/bianca/followup-proposta')
+    await criarFollowupProposta({ projeto: p, usuarioId: userId, conversaId, como })
+    revalidatePath(`/projetos/${projetoId}`)
+    revalidatePath('/crm/pipeline')
+  } catch (e) {
+    console.error('[depoisDeEnviarProposta]', e)
+  }
+}
+
+/**
+ * Janela fechada e o usuário mandou a proposta pelo app WhatsApp Business:
+ * mesmo efeito do envio pelo sistema (negociação + follow-up).
+ */
+export async function registrarPropostaEnviadaPeloAppAction(projeto_id: string): Promise<{ sucesso: true } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  // RLS: só quem enxerga o projeto
+  const { data: pv } = await createClient().from('projetos').select('id').eq('id', projeto_id).maybeSingle()
+  if (!pv) return { erro: 'Projeto não encontrado' }
+  await depoisDeEnviarProposta(projeto_id, check.user.id, null, 'pelo WhatsApp Business')
+  return { sucesso: true }
+}
+
+/**
  * Kalebe 2026-09-29: "Enviar por WhatsApp" das propostas sai pelo canal
  * Spin (fica no inbox) em vez de abrir o wa.me. Manda o PDF como documento
  * (a Meta busca pelo link público) com a mensagem na legenda.
@@ -866,6 +910,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
           origem_agente_nome: (await rotuloRemetente(check.user!.id, check.perfil?.nome_completo)) || 'Spin',
         })
         if ('sucesso' in r) {
+          await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp')
           revalidatePath('/inbox')
           return { sucesso: true, conversa_id: canal.conversa_id }
         }
@@ -924,6 +969,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
     .eq('id', canal.conversa_id)
     .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
 
+  await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp')
   revalidatePath('/inbox')
   return { sucesso: true, conversa_id: canal.conversa_id }
 }

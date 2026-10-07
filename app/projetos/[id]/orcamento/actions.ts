@@ -334,6 +334,11 @@ export async function excluirVersaoPropostaAction(
  * Também dispara Bianca criando follow-up em 3 dias.
  */
 export async function marcarPropostaEnviadaAction(projetoId: string, observacoes?: string) {
+  // Kalebe 2026-10-07: só AVANÇA — projeto já em negociação (envio pelo
+  // WhatsApp põe em "negociando") ou vendido não volta pra "proposta enviada"
+  const { data: atual } = await createClient().from('projetos').select('status').eq('id', projetoId).maybeSingle()
+  const antes = ['rascunho', 'fatura_analisada', 'telhado_preenchido', 'dimensionado', 'kit_selecionado', 'lista_ca_confirmada', 'orcamento_gerado']
+  if (atual && !antes.includes(String(atual.status))) return { sucesso: true }
   const res = await mudarEtapaProjetoAction(
     projetoId,
     'proposta_enviada',

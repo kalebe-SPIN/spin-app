@@ -81,18 +81,11 @@ async function disparoAutomacoes(
   const cliente = projeto.cliente_razao_social || 'cliente'
 
   // Follow-up quando envia proposta
+  // Kalebe 2026-10-07: follow-up com prazo de 1 dia e lembrete da Bianca pelo
+  // WhatsApp (antes: 3 dias, sem lembrete). Uma tarefa aberta por projeto.
   if (novoStatus === 'proposta_enviada' || novoStatus === 'negociando') {
-    const daqui3Dias = new Date()
-    daqui3Dias.setDate(daqui3Dias.getDate() + 3)
-    await supabase.from('agenda_tarefas').insert({
-      usuario_id: projeto.consultor_id || userId,
-      titulo: `Follow-up ${cliente}`,
-      descricao: `Ligar/mandar mensagem pro ${cliente} sobre a proposta enviada.`,
-      data_prazo: daqui3Dias.toISOString().slice(0, 10),
-      prioridade: 'alta',
-      projeto_id: projeto.id,
-      criada_por_bianca: true,
-    })
+    const { criarFollowupProposta } = await import('@/lib/bianca/followup-proposta')
+    await criarFollowupProposta({ projeto, usuarioId: userId }).catch((e) => console.error('[follow-up proposta]', e))
   }
 
   // Vendido → cria contrato + HOMOLOGAÇÃO REAL (não só tarefa)

@@ -21,7 +21,10 @@ export async function GET(req: NextRequest) {
   try {
     const r = await executarFollowupsVencidos()
     if (r.vencidos > 0) console.log('[cron/followups]', JSON.stringify(r))
-    return NextResponse.json({ sucesso: true, ...r })
+    // Kalebe 2026-10-07: lembretes das tarefas (ex.: follow-up de proposta)
+    const { enviarLembretesDeTarefas } = await import('@/lib/bianca/followup-proposta')
+    const lembretes = await enviarLembretesDeTarefas().catch(() => ({ enviados: 0 }))
+    return NextResponse.json({ sucesso: true, ...r, lembretes: lembretes.enviados })
   } catch (e: any) {
     console.error('[cron/followups]', e)
     return NextResponse.json({ erro: e?.message }, { status: 500 })
