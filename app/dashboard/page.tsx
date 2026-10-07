@@ -11,6 +11,7 @@ import { StatsPosVenda } from '@/components/stats/StatsPosVenda'
 import { PainelEquipeAdmin } from '@/components/admin/PainelEquipeAdmin'
 import { buscarPainelEquipeAction } from '@/app/admin/equipe/actions'
 import { CardBuscaCatalogo } from '@/components/dashboard/CardBuscaCatalogo'
+import { BotaoNovaDemanda } from '@/components/campo/NovaDemandaModal'
 
 /**
  * Dashboard — OPERAÇÃO em tempo real.
@@ -218,6 +219,8 @@ export default async function DashboardPage() {
             >
               <StatsAgenda />
             </DashboardCard>
+            {/* Kalebe 2026-10-07: qualquer usuário pede serviço pro time de campo */}
+            <BotaoNovaDemanda variante="card" />
           </div>
         </section>
 

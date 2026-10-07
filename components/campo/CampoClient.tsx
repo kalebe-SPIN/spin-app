@@ -6,12 +6,13 @@ import { useRouter } from 'next/navigation'
 import { getTituloTipo } from '@/lib/execucoes'
 import { formatarMoedaBRL } from '@/lib/formatters'
 import {
-  TIPOS_SERVICO_CAMPO, chaveRegiao, dataCurtaBR as dataBR, hojeBRT as hojeBR, linhaEndereco, linkMapa, linkWhatsApp, rotuloOs,
-  type DiaCampo, type Demanda, type EnderecoCampo,
+  chaveRegiao, dataCurtaBR as dataBR, hojeBRT as hojeBR, linhaEndereco, linkMapa, linkWhatsApp, rotuloOs,
+  type DiaCampo, type Demanda,
 } from '@/lib/campo/comum'
 import { DIARIA_INTEGRAL, DIARIA_PARCIAL } from '@/lib/campo/diarias'
+import { NovaDemandaModal } from './NovaDemandaModal'
 import {
-  agendarDemandasAction, aprovarAgendaAction, baixarDemandaAction, criarDemandaAction, desmarcarAction, liberarDemandasAction, recusarAgendaAction,
+  agendarDemandasAction, aprovarAgendaAction, baixarDemandaAction, desmarcarAction, liberarDemandasAction, recusarAgendaAction,
 } from '@/app/campo/actions'
 
 /**
@@ -367,9 +368,9 @@ export function CampoClient({ demandas, agenda, feitos, dias, mes, equipe, ehAdm
         />
       )}
       {modal === 'nova' && (
-        <ModalNovaDemanda
+        <NovaDemandaModal
           onFechar={() => setModal(null)}
-          onSalva={() => { setModal(null); setMsg({ ok: true, texto: 'Demanda cadastrada — já está no quadro.' }); router.refresh() }}
+          onSalva={(m) => { setModal(null); setMsg({ ok: true, texto: m }); router.refresh() }}
         />
       )}
     </div>
@@ -448,81 +449,6 @@ function ModalAgendar({ qtd, equipe, ehAdmin, usuarioId, onFechar, onConfirmar }
             setSalvando(false)
           }} className="px-4 py-2 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-50">
             {salvando ? 'Agendando…' : ehAdmin ? 'Agendar' : 'Pedir aprovação'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ModalNovaDemanda({ onFechar, onSalva }: { onFechar: () => void; onSalva: () => void }) {
-  const [tipo, setTipo] = useState('')
-  const [cliente, setCliente] = useState('')
-  const [contatoNome, setContatoNome] = useState('')
-  const [telefone, setTelefone] = useState('')
-  const [end, setEnd] = useState<EnderecoCampo>({ cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: 'SC' })
-  const [descricao, setDescricao] = useState('')
-  const [erro, setErro] = useState<string | null>(null)
-  const [salvando, setSalvando] = useState(false)
-  const campo = (k: keyof EnderecoCampo) => (e: React.ChangeEvent<HTMLInputElement>) => setEnd((x) => ({ ...x, [k]: e.target.value }))
-
-  async function buscarCep(cep: string) {
-    const d = cep.replace(/\D/g, '')
-    if (d.length !== 8) return
-    try {
-      const r = await fetch(`https://viacep.com.br/ws/${d}/json/`)
-      const j = await r.json()
-      if (j?.erro) return
-      setEnd((x) => ({ ...x, logradouro: x.logradouro || j.logradouro || '', bairro: x.bairro || j.bairro || '', cidade: j.localidade || x.cidade, uf: j.uf || x.uf }))
-    } catch {}
-  }
-
-  async function salvar() {
-    setSalvando(true); setErro(null)
-    try {
-      const r = await criarDemandaAction({ tipo_servico: tipo, cliente_nome: cliente, contato_nome: contatoNome, contato_telefone: telefone, endereco: end, descricao })
-      if ('erro' in r) { setErro(r.erro); return }
-      onSalva()
-    } finally { setSalvando(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-start sm:items-center justify-center p-3 overflow-y-auto" onClick={onFechar}>
-      <div className="w-full max-w-lg bg-noite border border-white/15 rounded-xl p-5 space-y-3 my-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-base font-bold text-white">➕ Nova demanda de serviço</h2>
-        <p className="text-xs text-white/55">Entra no quadro de demandas com o checklist do tipo de serviço. Pra executar, agende — a agenda do dia passa pela aprovação do admin.</p>
-        <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Tipo de serviço *</span>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={inputCls}>
-            <option value="" className="bg-noite">Escolha…</option>
-            {TIPOS_SERVICO_CAMPO.map((t) => <option key={t.valor} value={t.valor} className="bg-noite">{t.rotulo}</option>)}
-          </select></label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <label className="block sm:col-span-2"><span className="block text-[11px] font-bold text-white/60 mb-1">Cliente *</span>
-            <input value={cliente} onChange={(e) => setCliente(e.target.value)} className={inputCls} placeholder="Nome do cliente" /></label>
-          <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Contato no local</span>
-            <input value={contatoNome} onChange={(e) => setContatoNome(e.target.value)} className={inputCls} placeholder="Quem recebe" /></label>
-          <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Telefone *</span>
-            <input value={telefone} onChange={(e) => setTelefone(e.target.value)} className={inputCls} placeholder="(48) 99999-9999" inputMode="tel" /></label>
-          <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">CEP</span>
-            <input value={end.cep || ''} onChange={campo('cep')} onBlur={(e) => buscarCep(e.target.value)} className={inputCls} placeholder="88200-000" inputMode="numeric" /></label>
-          <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Cidade *</span>
-            <input value={end.cidade || ''} onChange={campo('cidade')} className={inputCls} /></label>
-          <label className="block sm:col-span-2"><span className="block text-[11px] font-bold text-white/60 mb-1">Rua</span>
-            <input value={end.logradouro || ''} onChange={campo('logradouro')} className={inputCls} /></label>
-          <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Número</span>
-            <input value={end.numero || ''} onChange={campo('numero')} className={inputCls} /></label>
-          <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Bairro</span>
-            <input value={end.bairro || ''} onChange={campo('bairro')} className={inputCls} /></label>
-          <label className="block sm:col-span-2"><span className="block text-[11px] font-bold text-white/60 mb-1">Complemento / referência</span>
-            <input value={end.complemento || ''} onChange={campo('complemento')} className={inputCls} /></label>
-          <label className="block sm:col-span-2"><span className="block text-[11px] font-bold text-white/60 mb-1">O que precisa ser feito</span>
-            <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3} className={`${inputCls} resize-none`} /></label>
-        </div>
-        {erro && <p className="text-xs text-coral">⚠ {erro}</p>}
-        <div className="flex justify-end gap-2">
-          <button onClick={onFechar} className="px-4 py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg">Cancelar</button>
-          <button onClick={salvar} disabled={salvando} className="px-4 py-2 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-50">
-            {salvando ? 'Salvando…' : 'Cadastrar demanda'}
           </button>
         </div>
       </div>

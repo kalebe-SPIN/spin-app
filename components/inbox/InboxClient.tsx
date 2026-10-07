@@ -6,6 +6,7 @@ import { ModalProjetoConversa } from './ModalProjetoConversa'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 import { AvatarContato } from '@/components/AvatarContato'
 import { AvisosDoCliente } from '@/components/bianca/AvisosDoCliente'
+import { BotaoNovaDemanda } from '@/components/campo/NovaDemandaModal'
 import { rotuloNaTela } from '@/lib/equipe/rotulo'
 import { cartoesDoTexto, telefonesNoTexto, formatarTelefoneExibicao } from '@/lib/whatsapp/contatos-projeto'
 import { contatosDoProjetoDaConversaAction, salvarContatoDaConversaAction } from '@/app/inbox/contatos-actions'
@@ -445,6 +446,10 @@ export function InboxClient({
                   >
                     📁 Abrir projeto
                   </a>
+                )}
+                {/* Kalebe 2026-10-07: abrir demanda pro time de campo daqui da conversa */}
+                {selecionada.contato && usuarioRole !== 'profissional_campo' && (
+                  <BotaoNovaDemanda key={`demanda-${selecionada.id}`} conversaId={selecionada.id} variante="compacto" />
                 )}
                 {(selecionada.responsavel_id === usuarioId || usuarioRole === 'admin') && (
                   <button

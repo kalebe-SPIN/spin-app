@@ -5,7 +5,10 @@ import { randomUUID } from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checklistPadrao } from '@/lib/campo/checklists'
-import { dataCurtaBR, hojeBRT, linhaEndereco, rotuloOs, type EnderecoCampo, type ItemChecklist } from '@/lib/campo/comum'
+import {
+  RESPONSAVEL_CAMPO_PADRAO_ID, dataCurtaBR, hojeBRT, linhaEndereco, rotuloOs,
+  type ContatoDemanda, type EnderecoCampo, type ItemChecklist,
+} from '@/lib/campo/comum'
 import { DIARIA_INTEGRAL } from '@/lib/campo/diarias'
 import { getTituloTipo } from '@/lib/execucoes'
 import { formatarMoedaBRL } from '@/lib/formatters'
@@ -50,6 +53,104 @@ function revalidar(id?: string) {
 
 // ─── Demandas ───────────────────────────────────────────────────────────────
 
+/**
+ * Kalebe 2026-10-07: abrir demanda pro campo é de QUALQUER usuário do sistema
+ * (não candidato) — sem ver a lista, que segue só no /campo.
+ */
+async function exigirInterno() {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' as string, user: null, papel: null, nome: '' }
+  const { data: p } = await supabase.from('profiles').select('role, ativo, nome_completo').eq('id', user.id).maybeSingle()
+  if (!p?.ativo || String(p.role) === 'candidato') return { erro: 'Sem acesso', user: null, papel: null, nome: '' }
+  return { erro: null, user, papel: String(p.role), nome: (p.nome_completo as string) || '' }
+}
+
+/** Responsável do time de campo (Felipe); inativo → 1º profissional de campo ativo. */
+async function responsavelPadraoCampo(admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
+  const { data: padrao } = await admin.from('profiles').select('id, ativo, role').eq('id', RESPONSAVEL_CAMPO_PADRAO_ID).maybeSingle()
+  if (padrao?.ativo && padrao.role === 'profissional_campo') return padrao.id
+  const { data: outro } = await admin.from('profiles').select('id').eq('role', 'profissional_campo').eq('ativo', true)
+    .order('created_at').limit(1).maybeSingle()
+  return outro?.id || null
+}
+
+/**
+ * Projeto da demanda — só se quem pede enxerga a conversa ou o projeto (RLS).
+ * Pela conversa vale o projeto do contato do WhatsApp.
+ */
+async function projetoDoContexto(ctx: { projetoId?: string | null; conversaId?: string | null }) {
+  const supabase = createClient()
+  let contatoWa: { nome: string | null; telefone: string | null } | null = null
+  let projetoId: string | null = null
+  if (ctx.conversaId) {
+    const { data: conv } = await supabase.from('wa_conversas')
+      .select('id, contato:contato_id(nome_exibicao, telefone, projeto_id)').eq('id', ctx.conversaId).maybeSingle()
+    if (!conv) return { erro: 'Conversa não encontrada' as string }
+    const ct: any = (conv as any).contato
+    contatoWa = { nome: ct?.nome_exibicao || null, telefone: ct?.telefone || null }
+    projetoId = ct?.projeto_id || null
+  } else if (ctx.projetoId) {
+    const { data: pv } = await supabase.from('projetos').select('id').eq('id', ctx.projetoId).maybeSingle()
+    if (!pv) return { erro: 'Projeto não encontrado' as string }
+    projetoId = pv.id
+  }
+  return { erro: null, projetoId, contatoWa }
+}
+
+const digitos = (t: string | null | undefined) => String(t || '').replace(/\D/g, '')
+
+/** Dados pra abrir a demanda a partir de um projeto ou conversa: cliente, endereço e contatos. */
+export async function dadosNovaDemandaAction(ctx: { projetoId?: string | null; conversaId?: string | null }): Promise<R<{
+  projeto_id: string | null
+  projeto_codigo: string | null
+  cliente_nome: string
+  endereco: EnderecoCampo | null
+  contatos: ContatoDemanda[]
+  tipo_sugerido: string | null
+}>> {
+  const c = await exigirInterno()
+  if (c.erro || !c.user) return { erro: c.erro || 'Não autenticado' }
+  const ctxR = await projetoDoContexto(ctx)
+  if (ctxR.erro) return { erro: ctxR.erro }
+  const admin = createAdminClient()
+  const contatos: ContatoDemanda[] = []
+  const vistos = new Set<string>()
+  const add = (nome: string | null | undefined, telefone: string | null | undefined, papel: string) => {
+    const d = digitos(telefone)
+    if (d.length < 10 || vistos.has(d.slice(-10))) return
+    vistos.add(d.slice(-10))
+    contatos.push({ nome: (nome || '').trim() || 'Contato', telefone: String(telefone), papel })
+  }
+
+  let projeto: any = null
+  let tipoSugerido: string | null = null
+  if (ctxR.projetoId) {
+    const [{ data: p }, { data: pcs }, { data: itens }] = await Promise.all([
+      admin.from('projetos').select('id, codigo, cliente_razao_social, cliente_telefone, endereco_instalacao, cliente_endereco').eq('id', ctxR.projetoId).maybeSingle(),
+      admin.from('projeto_contatos').select('nome, telefone, papel').eq('projeto_id', ctxR.projetoId).order('criado_em'),
+      admin.from('projeto_itens').select('tipo, status').eq('projeto_id', ctxR.projetoId),
+    ])
+    projeto = p
+    add(p?.cliente_razao_social, p?.cliente_telefone, 'cliente')
+    for (const x of (pcs || []) as any[]) add(x.nome, x.telefone, x.papel || 'outro')
+    const tipos = Array.from(new Set(((itens || []) as any[]).filter((i) => i.status !== 'removido' && i.tipo !== 'venda_equipamentos').map((i) => i.tipo)))
+    if (tipos.length === 1) tipoSugerido = tipos[0]
+  }
+  if (ctxR.contatoWa) add(ctxR.contatoWa.nome, ctxR.contatoWa.telefone, 'whatsapp')
+
+  const end = projeto?.endereco_instalacao && Object.keys(projeto.endereco_instalacao).length ? projeto.endereco_instalacao : projeto?.cliente_endereco || null
+  return {
+    sucesso: true,
+    projeto_id: ctxR.projetoId ?? null,
+    projeto_codigo: projeto?.codigo || null,
+    cliente_nome: projeto?.cliente_razao_social || ctxR.contatoWa?.nome || '',
+    endereco: end,
+    contatos,
+    tipo_sugerido: tipoSugerido,
+  }
+}
+
 export async function criarDemandaAction(d: {
   tipo_servico: string
   cliente_nome: string
@@ -57,17 +158,26 @@ export async function criarDemandaAction(d: {
   contato_telefone: string
   endereco: EnderecoCampo
   descricao?: string
-}): Promise<R<{ id: string }>> {
-  const c = await exigirCampo()
+  /** Kalebe 2026-10-07: aberta de dentro do projeto ou da conversa do Inbox */
+  projeto_id?: string | null
+  conversa_id?: string | null
+}): Promise<R<{ id: string; responsavel: string | null }>> {
+  const c = await exigirInterno()
   if (c.erro || !c.user) return { erro: c.erro || 'Não autenticado' }
   if (!d.tipo_servico) return { erro: 'Escolha o tipo de serviço' }
   if (!d.cliente_nome?.trim()) return { erro: 'Informe o cliente' }
-  if (String(d.contato_telefone || '').replace(/\D/g, '').length < 10) return { erro: 'Telefone de contato com DDD' }
+  if (digitos(d.contato_telefone).length < 10) return { erro: 'Telefone de contato com DDD' }
   if (!d.endereco?.cidade?.trim()) return { erro: 'Informe ao menos a cidade (é o filtro de região)' }
+  const ctxR = await projetoDoContexto({ projetoId: d.projeto_id, conversaId: d.conversa_id })
+  if (ctxR.erro) return { erro: ctxR.erro }
 
-  // Vai direto pro quadro; o controle do admin é na aprovação da agenda do dia
-  const { data, error } = await createAdminClient().from('execucoes_servicos').insert({
-    origem: 'manual',
+  const admin = createAdminClient()
+  const responsavel = await responsavelPadraoCampo(admin)
+  // Vai direto pro quadro, já com o responsável do campo; o controle do admin
+  // é na aprovação da agenda do dia
+  const { data, error } = await admin.from('execucoes_servicos').insert({
+    origem: ctxR.projetoId ? 'projeto' : 'manual',
+    projeto_id: ctxR.projetoId ?? null,
     tipo_servico: d.tipo_servico,
     titulo: `${getTituloTipo(d.tipo_servico)} — ${d.cliente_nome.trim()}`,
     descricao: d.descricao?.trim() || null,
@@ -79,12 +189,31 @@ export async function criarDemandaAction(d: {
     bairro: d.endereco.bairro?.trim() || null,
     endereco_execucao: linhaEndereco(d.endereco) || null,
     status: 'agendando',
+    responsavel_tecnico: responsavel,
     checklist: checklistPadrao(d.tipo_servico),
     criada_por: c.user.id,
-  }).select('id').single()
+  }).select('id, os_numero').single()
   if (error || !data) return { erro: erroMig(error?.message || 'Falha ao cadastrar') }
+
+  // Bianca avisa o responsável do campo (sino + WhatsApp)
+  if (responsavel && responsavel !== c.user.id) {
+    const { avisarUsuario } = await import('@/lib/agentes/diretorio')
+    const onde = [d.endereco.bairro, d.endereco.cidade].filter(Boolean).join(', ')
+    await avisarUsuario({
+      destinatario_id: responsavel,
+      agente: 'bianca',
+      titulo: 'Nova demanda de campo',
+      projeto_id: ctxR.projetoId ?? null,
+      mensagem: [
+        `🔧 ${rotuloOs(data.os_numero)} · ${getTituloTipo(d.tipo_servico)} — ${d.cliente_nome.trim()}${onde ? ` (${onde})` : ''}.`,
+        `Contato: ${[d.contato_nome?.trim(), d.contato_telefone].filter(Boolean).join(' · ')}.`,
+        d.descricao?.trim() ? `O que fazer: ${d.descricao.trim()}` : null,
+        `Pedido por ${c.nome.split(' ')[0] || 'equipe'}. Agende em /campo.`,
+      ].filter(Boolean).join('\n'),
+    }).catch(() => {})
+  }
   revalidar()
-  return { sucesso: true, id: data.id }
+  return { sucesso: true, id: data.id, responsavel }
 }
 
 /**
@@ -321,14 +450,29 @@ export async function liberarDemandasAction(ids: string[]): Promise<R<{ liberada
   const { data, error } = await admin.from('execucoes_servicos')
     .update({ status: 'agendando', updated_at: new Date().toISOString() })
     .in('id', ids).eq('status', 'aguardando_pre_requisitos')
-    .select('id')
+    .select('id, os_numero, tipo_servico, cliente_nome, titulo, cidade, bairro, responsavel_tecnico')
   if (error) return { erro: error.message }
-  const liberadas = (data || []) as Array<{ id: string }>
+  const liberadas = (data || []) as any[]
   if (liberadas.length) {
     await admin.from('execucoes_status_historico').insert(liberadas.map((x) => ({
       execucao_id: x.id, status_anterior: 'aguardando_pre_requisitos', status_novo: 'agendando',
       observacoes: 'Liberada pelo admin no painel do campo', usuario_id: c.user!.id,
     })))
+    // Kalebe 2026-10-07: liberada vai pro responsável do campo (Felipe) e a Bianca avisa
+    const responsavel = await responsavelPadraoCampo(admin)
+    if (responsavel) {
+      const semDono = liberadas.filter((x) => !x.responsavel_tecnico).map((x) => x.id)
+      if (semDono.length) await admin.from('execucoes_servicos').update({ responsavel_tecnico: responsavel }).in('id', semDono)
+      const { avisarUsuario } = await import('@/lib/agentes/diretorio')
+      const linhas = liberadas.slice(0, 10).map((x) =>
+        `• ${rotuloOs(x.os_numero)} ${getTituloTipo(x.tipo_servico)} — ${x.cliente_nome || x.titulo}${x.bairro || x.cidade ? ` (${[x.bairro, x.cidade].filter(Boolean).join(', ')})` : ''}`)
+      await avisarUsuario({
+        destinatario_id: responsavel,
+        agente: 'bianca',
+        titulo: 'Serviços liberados pro campo',
+        mensagem: `${liberadas.length} serviço(s) liberado(s) pra agendar:\n${linhas.join('\n')}${liberadas.length > 10 ? `\n… e mais ${liberadas.length - 10}` : ''}\nAgende em /campo.`,
+      }).catch(() => {})
+    }
   }
   revalidar()
   return { sucesso: true, liberadas: liberadas.length }

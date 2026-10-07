@@ -70,6 +70,15 @@ export type DiaCampo = {
 export const hojeBRT = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
 export const dataCurtaBR = (d: string | null | undefined) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—')
 
+/**
+ * Kalebe 2026-10-07: o responsável do time de campo é o Felipe — toda demanda
+ * aberta (por qualquer usuário) já nasce com ele e a Bianca avisa. Se ele
+ * ficar inativo, cai no 1º profissional de campo ativo.
+ */
+export const RESPONSAVEL_CAMPO_PADRAO_ID = '9d658b0d-d6c0-4914-bffd-d3bf1e220d16'
+
+export type ContatoDemanda = { nome: string; telefone: string; papel: string }
+
 export const STATUS_DEMANDA = ['agendando', 'aguardando_pre_requisitos']
 export const STATUS_AGENDA = ['agendado', 'preparando_material', 'em_execucao']
 export const STATUS_FEITO = ['concluido', 'entregue', 'pos_venda']
