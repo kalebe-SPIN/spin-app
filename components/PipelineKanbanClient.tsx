@@ -7,6 +7,15 @@ import {
   type StatusProjeto, type FasePipeline,
 } from '@/lib/projeto-pipeline'
 import { PipelineCardActions } from '@/components/PipelineCardActions'
+import { etiquetasDoProjeto, type CorEtiqueta } from '@/lib/projetos/negocio'
+
+const COR_ETIQUETA_PIPE: Record<CorEtiqueta, string> = {
+  sol: 'bg-sol/10 border-sol/30 text-sol',
+  azul: 'bg-weg-azul/10 border-weg-azul/30 text-weg-azul',
+  verde: 'bg-verde/10 border-verde/30 text-verde',
+  coral: 'bg-coral/10 border-coral/30 text-coral',
+  branco: 'bg-white/5 border-white/20 text-white/70',
+}
 
 type Projeto = {
   id: string
@@ -14,6 +23,7 @@ type Projeto = {
   status: string
   cliente_razao_social: string | null
   tipo_projeto?: string | null
+  projeto_itens?: Array<{ tipo: string; status?: string | null }> | null
   updated_at?: string
   status_atualizado_em?: string
 }
@@ -131,12 +141,10 @@ export function PipelineKanbanClient({
                           </div>
                           <div className="flex items-center gap-1.5 text-[9px]">
                             <span className="text-white/40">{p.codigo}</span>
-                            {p.tipo_projeto && (
-                              <>
-                                <span className="text-white/20">·</span>
-                                <span className="text-white/40 truncate">{p.tipo_projeto}</span>
-                              </>
-                            )}
+                            {/* Kalebe 2026-10-07: etiqueta do tipo de negócio */}
+                            {etiquetasDoProjeto(p).slice(0, 2).map((e) => (
+                              <span key={e.rotulo} className={`uppercase tracking-wider font-bold px-1 py-0.5 rounded border truncate ${COR_ETIQUETA_PIPE[e.cor]}`}>{e.rotulo}</span>
+                            ))}
                           </div>
                           <div className="flex items-center justify-between mt-1.5">
                             <span className={`text-[9px] uppercase font-bold ${statusInfo.cor}`}>{statusInfo.label}</span>

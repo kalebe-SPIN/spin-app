@@ -31,14 +31,23 @@ export default async function PipelinePage() {
   }
 
   // Admin vê todos os projetos; consultor vê só os dele.
-  let query = supabase
-    .from('projetos')
-    .select('id, codigo, status, cliente_razao_social, tipo_projeto, updated_at, status_atualizado_em')
-    .order('status_atualizado_em', { ascending: false, nullsFirst: false })
-    .limit(500)
-  if (isConsultor) query = query.eq('consultor_id', user.id)
-
-  const { data: projetos } = await query
+  // Kalebe 2026-10-07: sem excluídos e sem "não elegível" (saem da base; o
+  // perdido segue na coluna Perdido). Etiqueta do negócio vem dos itens.
+  // Tolerante: sem a migration 144 cai pra consulta antiga.
+  const consulta = (completa: boolean) => {
+    let q = supabase
+      .from('projetos')
+      .select(completa
+        ? 'id, codigo, status, cliente_razao_social, tipo_projeto, updated_at, status_atualizado_em, projeto_itens(tipo, status)'
+        : 'id, codigo, status, cliente_razao_social, tipo_projeto, updated_at, status_atualizado_em')
+      .order('status_atualizado_em', { ascending: false, nullsFirst: false })
+      .limit(500)
+    if (completa) q = q.is('excluida_em', null).or('encerrado_tipo.is.null,encerrado_tipo.neq.nao_elegivel')
+    if (isConsultor) q = q.eq('consultor_id', user.id)
+    return q
+  }
+  let { data: projetos, error: erroConsulta } = await consulta(true)
+  if (erroConsulta) ({ data: projetos } = await consulta(false))
 
   return (
     <main className="min-h-screen p-4 md:p-6">

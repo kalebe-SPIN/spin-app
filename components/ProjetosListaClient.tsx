@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { TimelineProjeto } from '@/components/TimelineProjeto'
 import { BotaoAbrirCanalCliente } from '@/components/BotaoAbrirCanalCliente'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
-import { criarNovaPropostaMesmoClienteAction } from '@/app/projetos/actions'
+import { criarNovaPropostaMesmoClienteAction, encerrarProjetoAction, reabrirProjetoAction } from '@/app/projetos/actions'
+import { MOTIVOS, ROTULO_ENCERRAMENTO, etiquetasDoProjeto, type CorEtiqueta, type TipoEncerramento } from '@/lib/projetos/negocio'
+import { useRouter } from 'next/navigation'
 
 type Projeto = {
   id: string
@@ -21,6 +23,11 @@ type Projeto = {
   created_at: string
   updated_at?: string
   status_atualizado_em?: string
+  projeto_itens?: Array<{ tipo: string; status?: string | null }> | null
+  encerrado_tipo?: TipoEncerramento | null
+  encerrado_motivo?: string | null
+  encerrado_detalhe?: string | null
+  encerrado_em?: string | null
 }
 
 type Grupo = {
@@ -80,7 +87,9 @@ function docLimpo(s: string | null | undefined): string {
   return String(s).replace(/\D/g, '')
 }
 
-export function ProjetosListaClient({ grupos }: { grupos: Grupo[] }) {
+type Aba = 'andamento' | 'crm' | 'encerrados'
+
+export function ProjetosListaClient({ grupos, aba = 'andamento' }: { grupos: Grupo[]; aba?: Aba }) {
   const [busca, setBusca] = useState('')
 
   const gruposFiltrados = useMemo(() => {
@@ -157,7 +166,7 @@ export function ProjetosListaClient({ grupos }: { grupos: Grupo[] }) {
       {gruposFiltrados.length > 0 ? (
         <div className="space-y-4">
           {gruposFiltrados.map((g, i) => (
-            <ClienteBloco key={g.cliente_id || `sn-${i}`} grupo={g} />
+            <ClienteBloco key={g.cliente_id || `sn-${i}`} grupo={g} aba={aba} />
           ))}
         </div>
       ) : filtrando ? (
@@ -165,14 +174,16 @@ export function ProjetosListaClient({ grupos }: { grupos: Grupo[] }) {
           <p className="text-sm text-white/60">Nenhum projeto bate com &ldquo;{busca}&rdquo;.</p>
           <button type="button" onClick={() => setBusca('')} className="mt-2 text-xs text-sol hover:underline">Limpar busca</button>
         </div>
-      ) : (
+      ) : aba === 'andamento' ? (
         <EmptyState />
+      ) : (
+        <p className="text-sm text-white/40 py-12 text-center">{aba === 'crm' ? 'Nenhum projeto com proposta enviada.' : 'Nenhum projeto perdido ou não elegível.'}</p>
       )}
     </>
   )
 }
 
-function ClienteBloco({ grupo }: { grupo: Grupo }) {
+function ClienteBloco({ grupo, aba }: { grupo: Grupo; aba: Aba }) {
   const qtd = grupo.projetos.length
   const dataMaisRecente = grupo.projetos[0]?.created_at
     ? new Date(grupo.projetos[0].created_at).toLocaleDateString('pt-BR')
@@ -238,7 +249,7 @@ function ClienteBloco({ grupo }: { grupo: Grupo }) {
         </div>
         <div className="divide-y divide-white/5">
           {grupo.projetos.map((p) => (
-            <ProjetoLinha key={p.id} projeto={p} />
+            <ProjetoLinha key={p.id} projeto={p} aba={aba} />
           ))}
         </div>
       </div>
@@ -246,7 +257,7 @@ function ClienteBloco({ grupo }: { grupo: Grupo }) {
   )
 }
 
-function ProjetoLinha({ projeto }: { projeto: Projeto }) {
+function ProjetoLinha({ projeto, aba }: { projeto: Projeto; aba: Aba }) {
   const dataFmt = new Date(projeto.created_at).toLocaleDateString('pt-BR')
   const kit = projeto.kit_selecionado || {}
   const potCc = kit.potencia_cc_kwp
@@ -264,6 +275,10 @@ function ProjetoLinha({ projeto }: { projeto: Projeto }) {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="text-xs font-mono text-white/40">{projeto.codigo}</span>
+            {/* Kalebe 2026-10-07: etiqueta do tipo de negócio */}
+            {etiquetasDoProjeto(projeto).map((e) => (
+              <span key={e.rotulo} className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border ${COR_ETIQUETA[e.cor]}`}>{e.rotulo}</span>
+            ))}
             {potCc && (
               <>
                 <span className="text-white/20">·</span>
@@ -298,11 +313,29 @@ function ProjetoLinha({ projeto }: { projeto: Projeto }) {
           </div>
         </div>
         <TimelineProjeto status={projeto.status} />
+        {aba === 'encerrados' && (
+          <p className="mt-2 text-[11px] text-white/60">
+            <span className={projeto.encerrado_tipo === 'nao_elegivel' ? 'text-white/70 font-bold' : 'text-coral font-bold'}>
+              {projeto.encerrado_tipo ? ROTULO_ENCERRAMENTO[projeto.encerrado_tipo] : 'Encerrado'}
+            </span>
+            {projeto.encerrado_motivo ? ` · ${projeto.encerrado_motivo}` : ''}
+            {projeto.encerrado_detalhe ? ` — ${projeto.encerrado_detalhe}` : ''}
+            {projeto.encerrado_em ? ` · ${new Date(projeto.encerrado_em).toLocaleDateString('pt-BR')}` : ''}
+          </p>
+        )}
       </Link>
       {/* Ações rápidas — canto sup direito. Kalebe 2026-09-14: botão canal WhatsApp */}
-      <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        <BotaoAbrirCanalCliente projetoId={projeto.id} variante="icone" />
-        <BotaoExcluirProposta projetoId={projeto.id} codigo={projeto.codigo} />
+      <div className="absolute top-2 right-2 flex items-center gap-1.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+        {aba === 'encerrados' ? (
+          <BotaoReabrir projetoId={projeto.id} />
+        ) : (
+          <>
+            <BotaoAbrirCanalCliente projetoId={projeto.id} variante="icone" />
+            <BotaoEncerrar projeto={projeto} tipo="nao_elegivel" />
+            <BotaoEncerrar projeto={projeto} tipo="perdido" />
+            <BotaoExcluirProposta projetoId={projeto.id} codigo={projeto.codigo} />
+          </>
+        )}
       </div>
     </div>
   )
@@ -359,5 +392,114 @@ function EmptyState() {
         + Criar primeiro projeto
       </Link>
     </div>
+  )
+}
+
+const COR_ETIQUETA: Record<CorEtiqueta, string> = {
+  sol: 'bg-sol/10 border-sol/30 text-sol',
+  azul: 'bg-weg-azul/10 border-weg-azul/30 text-weg-azul',
+  verde: 'bg-verde/10 border-verde/30 text-verde',
+  coral: 'bg-coral/10 border-coral/30 text-coral',
+  branco: 'bg-white/5 border-white/20 text-white/70',
+}
+
+/**
+ * Kalebe 2026-10-07: "excluir como perdido e os motivos, assim como
+ * classificar como não elegível e os motivos" — o card sai da base (aba
+ * "Perdidos e não elegíveis", dá pra reabrir).
+ */
+function BotaoEncerrar({ projeto, tipo }: { projeto: Projeto; tipo: TipoEncerramento }) {
+  const router = useRouter()
+  const [aberto, setAberto] = useState(false)
+  const [motivo, setMotivo] = useState('')
+  const [detalhe, setDetalhe] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+  const perdido = tipo === 'perdido'
+
+  function confirmar() {
+    setErro(null)
+    startTransition(async () => {
+      const r = await encerrarProjetoAction({ projeto_id: projeto.id, tipo, motivo, detalhe })
+      if ('erro' in r) { setErro(r.erro); return }
+      setAberto(false)
+      router.refresh()
+    })
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMotivo(''); setDetalhe(''); setErro(null); setAberto(true) }}
+        title={perdido ? 'Marcar como perdido (sai da base)' : 'Classificar como não elegível (sai da base)'}
+        className={`text-[10px] font-bold px-1.5 py-1 rounded border ${perdido ? 'text-coral border-coral/30 hover:bg-coral/10' : 'text-white/60 border-white/20 hover:bg-white/10'}`}
+      >
+        {perdido ? '✕ Perdido' : '⊘ Não elegível'}
+      </button>
+      {aberto && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setAberto(false)}>
+          <div className="w-full max-w-md bg-noite border border-white/15 rounded-xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-base font-bold text-white">
+              {perdido ? '✕ Marcar como perdido' : '⊘ Classificar como não elegível'} · <span className="font-mono text-white/60">{projeto.codigo}</span>
+            </h2>
+            <p className="text-xs text-white/55">
+              {perdido
+                ? 'O card sai da base de projetos e vai pra coluna "Perdido" do CRM. Conta nos perdidos do mês.'
+                : 'O card sai da base de projetos e do CRM. Lead fora do perfil — não conta como perdido.'}{' '}
+              Dá pra reabrir na aba "Perdidos e não elegíveis".
+            </p>
+            <label className="block">
+              <span className="block text-[11px] font-bold text-white/60 mb-1">Motivo *</span>
+              <select value={motivo} onChange={(e) => setMotivo(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sol/50">
+                <option value="" className="bg-noite">Escolha…</option>
+                {MOTIVOS[tipo].map((m) => <option key={m} value={m} className="bg-noite">{m}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-[11px] font-bold text-white/60 mb-1">Detalhe {motivo === 'Outro' ? '*' : '(opcional)'}</span>
+              <textarea value={detalhe} onChange={(e) => setDetalhe(e.target.value)} rows={2}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-sol/50 resize-none" />
+            </label>
+            {erro && <p className="text-xs text-coral">⚠ {erro}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setAberto(false)} className="px-4 py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg">Cancelar</button>
+              <button onClick={confirmar} disabled={isPending || !motivo}
+                className={`px-4 py-2 font-bold text-sm rounded-lg disabled:opacity-40 ${perdido ? 'bg-coral text-white' : 'bg-white/80 text-noite'}`}>
+                {isPending ? 'Salvando…' : perdido ? 'Marcar como perdido' : 'Classificar como não elegível'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function BotaoReabrir({ projetoId }: { projetoId: string }) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [erro, setErro] = useState<string | null>(null)
+  return (
+    <>
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={(e) => {
+          e.preventDefault(); e.stopPropagation(); setErro(null)
+          startTransition(async () => {
+            const r = await reabrirProjetoAction(projetoId)
+            if ('erro' in r) setErro(r.erro)
+            else router.refresh()
+          })
+        }}
+        className="text-[10px] font-bold px-2 py-1 rounded border border-verde/40 text-verde hover:bg-verde/10 disabled:opacity-40"
+        title="Volta pra base, na etapa em que estava"
+      >
+        {isPending ? '⏳' : '↩ Reabrir'}
+      </button>
+      {erro && <span className="text-[10px] text-coral">⚠ {erro}</span>}
+    </>
   )
 }

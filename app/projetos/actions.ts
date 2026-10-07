@@ -512,3 +512,75 @@ export async function excluirOutrasPropostasDoClienteAction(
   revalidatePath(`/crm/clientes/${aceito.cliente_id}`)
   return { sucesso: true, excluidas: ids.length }
 }
+
+// ─── Encerrar como perdido / não elegível (Kalebe 2026-10-07) ────────────────
+
+/**
+ * O card sai da base de projetos (oculto; dá pra reabrir). Perdido também
+ * vira 'recusado' — coluna "Perdido" do CRM e perdidos do mês no Dashboard.
+ * Não elegível só sai da base. RLS: só quem enxerga o projeto.
+ */
+export async function encerrarProjetoAction(entrada: {
+  projeto_id: string
+  tipo: 'perdido' | 'nao_elegivel'
+  motivo: string
+  detalhe?: string | null
+}): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  if (entrada.tipo !== 'perdido' && entrada.tipo !== 'nao_elegivel') return { erro: 'Escolha perdido ou não elegível' }
+  if (!entrada.motivo?.trim()) return { erro: 'Escolha o motivo' }
+  if (entrada.motivo === 'Outro' && !entrada.detalhe?.trim()) return { erro: 'Conte o motivo no detalhe' }
+
+  const { data: p } = await supabase.from('projetos').select('id, status, codigo').eq('id', entrada.projeto_id).maybeSingle()
+  if (!p) return { erro: 'Projeto não encontrado' }
+  const FECHADOS = ['vendido', 'aceito', 'em_homologacao', 'em_execucao', 'instalado', 'ativo_pos_venda']
+  if (FECHADOS.includes(String(p.status))) return { erro: 'Projeto já vendido — use "Atualizar dados da venda" ou fale com o admin' }
+
+  const { error } = await supabase.from('projetos').update({
+    encerrado_tipo: entrada.tipo,
+    encerrado_motivo: entrada.motivo.trim(),
+    encerrado_detalhe: entrada.detalhe?.trim() || null,
+    encerrado_em: new Date().toISOString(),
+    encerrado_por: user.id,
+    encerrado_status_anterior: p.status,
+  }).eq('id', entrada.projeto_id)
+  if (error) return { erro: /encerrado_/.test(error.message) ? 'Falta rodar a migration 144 (perdido / não elegível) no Supabase.' : error.message }
+
+  const nota = `${entrada.tipo === 'perdido' ? 'Perdido' : 'Não elegível'}: ${entrada.motivo.trim()}${entrada.detalhe?.trim() ? ` — ${entrada.detalhe.trim()}` : ''}`
+  if (entrada.tipo === 'perdido' && p.status !== 'recusado') {
+    const { mudarEtapaProjetoAction } = await import('@/app/projetos/[id]/etapa/actions')
+    await mudarEtapaProjetoAction(entrada.projeto_id, 'recusado', nota)
+  }
+  // Tarefas de follow-up abertas desse projeto não fazem mais sentido
+  await supabase.from('agenda_tarefas').update({ status: 'cancelada' })
+    .eq('projeto_id', entrada.projeto_id).in('status', ['pendente', 'em_andamento']).ilike('titulo', '%Follow-up%')
+
+  revalidatePath('/projetos')
+  revalidatePath('/crm/pipeline')
+  revalidatePath(`/projetos/${entrada.projeto_id}`)
+  return { sucesso: true }
+}
+
+/** Volta o projeto pra base, na etapa em que estava. */
+export async function reabrirProjetoAction(projeto_id: string): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  const { data: p } = await supabase.from('projetos')
+    .select('id, status, encerrado_tipo, encerrado_status_anterior').eq('id', projeto_id).maybeSingle()
+  if (!p) return { erro: 'Projeto não encontrado' }
+  const { error } = await supabase.from('projetos').update({
+    encerrado_tipo: null, encerrado_motivo: null, encerrado_detalhe: null,
+    encerrado_em: null, encerrado_por: null, encerrado_status_anterior: null,
+  }).eq('id', projeto_id)
+  if (error) return { erro: error.message }
+  if (p.encerrado_tipo === 'perdido' && p.encerrado_status_anterior && p.status === 'recusado') {
+    const { mudarEtapaProjetoAction } = await import('@/app/projetos/[id]/etapa/actions')
+    await mudarEtapaProjetoAction(projeto_id, p.encerrado_status_anterior, 'Projeto reaberto')
+  }
+  revalidatePath('/projetos')
+  revalidatePath('/crm/pipeline')
+  return { sucesso: true }
+}
