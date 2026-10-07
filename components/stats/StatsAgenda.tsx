@@ -6,13 +6,12 @@ export async function StatsAgenda() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const inicioHoje = new Date()
-  inicioHoje.setHours(0, 0, 0, 0)
-  const fimHoje = new Date(inicioHoje)
-  fimHoje.setDate(fimHoje.getDate() + 1)
-  const fimSemana = new Date(inicioHoje)
-  fimSemana.setDate(fimSemana.getDate() + 7)
-  const hojeYMD = inicioHoje.toISOString().slice(0, 10)
+  // Kalebe 2026-10-07: "hoje" no horário de Brasília (o servidor roda em UTC —
+  // depois das 21h o card já contava o dia seguinte)
+  const hojeYMD = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+  const inicioHoje = new Date(`${hojeYMD}T00:00:00-03:00`)
+  const fimHoje = new Date(inicioHoje.getTime() + 86400_000)
+  const fimSemana = new Date(inicioHoje.getTime() + 7 * 86400_000)
 
   const [
     { count: eventosHoje },
