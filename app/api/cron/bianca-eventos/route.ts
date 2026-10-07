@@ -164,29 +164,38 @@ async function processarModuloPendente7d(supabase: any) {
 // ============================================================================
 // 3. instalacao_amanha
 // ============================================================================
-async function processarInstalacaoAmanha(supabase: any) {
-  const amanha = new Date()
-  amanha.setDate(amanha.getDate() + 1)
-  const amanhaStr = amanha.toISOString().slice(0, 10)  // YYYY-MM-DD
+// Kalebe 2026-10-06: a data da instalação vive na agenda do campo
+// (execucoes_servicos aprovada pelo admin). Antes lia homologacoes.data_instalacao,
+// coluna que não existe — a consulta falhava e o aviso nunca saía.
+const TIPOS_INSTALACAO = ['fv_ongrid', 'fv_hibrido', 'srv_instalacao_placas', 've_recarga', 'bess']
 
-  // Homologacoes com instalacao marcada pra amanha
-  const { data: homologacoes } = await supabase
-    .from('homologacoes')
+async function processarInstalacaoAmanha(supabase: any) {
+  const amanha = new Date(Date.now() + 86400_000)
+  const amanhaStr = amanha.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })  // YYYY-MM-DD
+
+  const { data: execucoes, error } = await supabase
+    .from('execucoes_servicos')
     .select(`
-      id, projeto_id, data_instalacao, hora_instalacao,
-      projeto:projeto_id(id, codigo, cliente_razao_social, cliente_telefone, consultor_id, cliente_endereco)
+      id, projeto_id, tipo_servico, data_agendada, hora_agendada, cliente_nome, contato_telefone,
+      endereco, endereco_execucao,
+      projeto:projeto_id(id, codigo, cliente_razao_social, cliente_telefone, consultor_id)
     `)
-    .eq('data_instalacao', amanhaStr)
+    .eq('data_agendada', amanhaStr)
+    .eq('aprovacao', 'aprovada')
+    .in('status', ['agendado', 'preparando_material'])
+    .in('tipo_servico', TIPOS_INSTALACAO)
+    .not('projeto_id', 'is', null)
+  if (error) return { gatilho: 'instalacao_amanha', erro: error.message }
 
   let disparados = 0
   let ja_disparados = 0
 
-  for (const h of homologacoes || []) {
+  for (const e of execucoes || []) {
     const { data: jaExiste } = await supabase
       .from('bianca_eventos_disparados')
       .select('id')
       .eq('gatilho_chave', 'instalacao_amanha')
-      .eq('entidade_id', h.id)
+      .eq('entidade_id', e.id)
       .maybeSingle()
 
     if (jaExiste) {
@@ -194,28 +203,27 @@ async function processarInstalacaoAmanha(supabase: any) {
       continue
     }
 
-    const projeto = Array.isArray(h.projeto) ? h.projeto[0] : h.projeto
-    const endereco = projeto?.cliente_endereco
-    const enderecoStr = endereco
-      ? [endereco.logradouro, endereco.numero, endereco.bairro, endereco.cidade].filter(Boolean).join(', ')
-      : 'no local combinado'
+    const projeto = Array.isArray(e.projeto) ? e.projeto[0] : e.projeto
+    const end = e.endereco || {}
+    const enderecoStr = [end.logradouro || end.rua, end.numero, end.bairro, end.cidade].filter(Boolean).join(', ')
+      || e.endereco_execucao || 'no local combinado'
 
     const res = await dispararGatilho('instalacao_amanha', {
-      projeto_id: h.projeto_id,
+      projeto_id: e.projeto_id,
       usuario_id: projeto?.consultor_id,
-      entidade_tipo: 'homologacao',
-      entidade_id: h.id,
+      entidade_tipo: 'execucao',
+      entidade_id: e.id,
       variaveis: {
-        cliente_nome: projeto?.cliente_razao_social || '?',
+        cliente_nome: e.cliente_nome || projeto?.cliente_razao_social || '?',
         codigo_projeto: projeto?.codigo || '?',
-        cliente_telefone: projeto?.cliente_telefone || '',
-        data_instalacao: h.data_instalacao,
-        hora_instalacao: h.hora_instalacao || 'combinar',
+        cliente_telefone: e.contato_telefone || projeto?.cliente_telefone || '',
+        data_instalacao: String(e.data_agendada).split('-').reverse().join('/'),
+        hora_instalacao: e.hora_agendada ? String(e.hora_agendada).slice(0, 5) : 'combinar',
         endereco: enderecoStr,
       },
     })
     if (res.sucesso) disparados++
   }
 
-  return { gatilho: 'instalacao_amanha', encontrados: (homologacoes || []).length, disparados, ja_disparados }
+  return { gatilho: 'instalacao_amanha', encontrados: (execucoes || []).length, disparados, ja_disparados }
 }

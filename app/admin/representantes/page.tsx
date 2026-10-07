@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { CONFIG as CRED, acelerador as calcularAcelerador } from '@/lib/proposta-credenciamento'
 import { TAXA_BASE_POR_LINHA, ORIGEM_MULT, type Linha, type OrigemLead } from '@/lib/precificacao/calcular-v2'
+import { STATUS_FECHADOS, fechadoNoMes, janelaMes, valorDaVenda } from '@/lib/dashboard/regras'
+import { mapaPrimeiroFechamento } from '@/lib/financeiro/vendas-sistema'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -46,23 +48,30 @@ export default async function AdminRepresentantesPage() {
     .order('nome_completo')
 
   // 2) Vendas do mês corrente por representante
-  const inicioMes = new Date()
-  inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0)
-  const { data: vendasMes } = await supabase
-    .from('projetos')
-    .select('id, consultor_id, orcamento_final, kit_selecionado, origem_lead, tipos_projeto, ve_recarga_selecionada')
-    .eq('status', 'vendido')
-    .gte('created_at', inicioMes.toISOString())
+  // Kalebe 2026-10-06: mesma regra do Dashboard e do fluxo — etapa de venda
+  // fechada + DATA DA VENDA no mês + preço acordado. Antes: só 'vendido'
+  // criado no mês, e pedia a coluna tipos_projeto (não existe → vinha vazio).
+  const janela = janelaMes()
+  const [{ data: candidatos }, { data: hist }] = await Promise.all([
+    supabase
+      .from('projetos')
+      .select('id, consultor_id, status, pv_total, orcamento_consolidado, orcamento_final, kit_selecionado, origem_lead, tipo_projeto, ve_recarga_selecionada, status_atualizado_em, updated_at')
+      .in('status', STATUS_FECHADOS)
+      .is('excluida_em', null)
+      .limit(10000),
+    supabase.from('projeto_status_historico').select('projeto_id, created_at').in('status_novo', STATUS_FECHADOS).limit(20000),
+  ])
+  const primeiro = mapaPrimeiroFechamento((hist || []) as any[])
+  const vendasMes = ((candidatos || []) as any[]).filter((p) => fechadoNoMes(p, janela, primeiro))
 
   // 3) Agrega por representante
   const porRep = new Map<string, { volume: number; qtd: number; comissao: number }>()
-  for (const p of (vendasMes || []) as any[]) {
+  for (const p of vendasMes) {
     const uid = p.consultor_id
     if (!uid) continue
-    const valor = Number(p.orcamento_final?.pv_total) || 0
+    const valor = valorDaVenda(p)
     const potencia = Number(p.kit_selecionado?.potencia_cc_kwp) || 0
-    const tipos: string[] = Array.isArray(p.tipos_projeto) ? p.tipos_projeto : []
-    const linha: Linha = tipos.includes('ve_recarga') || p.ve_recarga_selecionada
+    const linha: Linha = p.tipo_projeto === 've_recarga' || p.ve_recarga_selecionada
       ? 'carregador'
       : inferirLinha(potencia)
     const taxa = TAXA_BASE_POR_LINHA[linha]?.sem ?? 0.05
@@ -227,7 +236,9 @@ export default async function AdminRepresentantesPage() {
                         {l.nivel_representante || 'Credenciado'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right text-white/80 font-mono">{l.qtd_vendas_mes}</td>
+                    <td className="px-4 py-3 text-right text-white/80 font-mono">
+                      <Link href={`/dashboard/lista?m=vendas_mes&pessoa=${l.id}`} className="hover:text-sol underline decoration-dotted">{l.qtd_vendas_mes}</Link>
+                    </td>
                     <td className="px-4 py-3 text-right text-white font-mono">R$ {fmtInt(l.volume_mes)}</td>
                     <td className="px-4 py-3 text-right text-white/80 font-mono">{l.acelerador_mult.toFixed(2)}×</td>
                     <td className="px-4 py-3 text-right text-sol font-mono font-bold">R$ {fmtInt(l.comissao_estimada_mes)}</td>

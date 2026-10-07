@@ -6,7 +6,7 @@ export type ContextoEvento = {
   projeto_id?: string | null
   cliente_id?: string | null
   usuario_id?: string | null
-  entidade_tipo?: 'projeto' | 'homologacao' | 'proposta' | 'comunicacao_wa' | 'item_projeto' | null
+  entidade_tipo?: 'projeto' | 'homologacao' | 'proposta' | 'comunicacao_wa' | 'item_projeto' | 'execucao' | null
   entidade_id?: string | null
   // Variaveis do template
   variaveis: Record<string, string | number | null | undefined>

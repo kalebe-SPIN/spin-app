@@ -477,10 +477,13 @@ export async function excluirOutrasPropostasDoClienteAction(
   // Status que representam "proposta em andamento" (não fechada). Só essas
   // podem ser excluídas automaticamente. Vendido/aceito/homologação/etc
   // ficam intocáveis pra proteger histórico.
+  // Kalebe 2026-10-06: os nomes antigos ('telhado', 'lista_ca', 'orcamento',
+  // 'em_negociacao') não existem no enum projeto_status — a consulta dava
+  // erro e nada era excluído. Estes são os valores reais.
   const STATUS_EM_ANDAMENTO = [
-    'rascunho', 'fatura_analisada', 'telhado', 'dimensionado',
-    'kit_selecionado', 'lista_ca', 'orcamento', 'proposta_enviada',
-    'em_negociacao',
+    'rascunho', 'fatura_analisada', 'telhado_preenchido', 'dimensionado',
+    'kit_selecionado', 'lista_ca_confirmada', 'orcamento_gerado', 'proposta_enviada',
+    'negociando', 'em_fechamento',
   ]
 
   const { data: outras, error: errBusca } = await supabase

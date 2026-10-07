@@ -100,8 +100,16 @@ async function disparoAutomacoes(
     const amanha = new Date()
     amanha.setDate(amanha.getDate() + 1)
 
+    // Kalebe 2026-10-06: refechamento (projeto que voltou de etapa e fechou de
+    // novo) não repete a tarefa de contrato nem a mensagem pro cliente
+    const jaDisparou = async (chave: string) => {
+      const { data } = await createAdminClient().from('bianca_eventos_disparados')
+        .select('id').eq('gatilho_chave', chave).eq('projeto_id', projeto.id).limit(1)
+      return (data || []).length > 0
+    }
+
     // 1. Tarefa de contrato (pro consultor) — via gatilho reativo Bianca
-    await dispararGatilho('proposta_aceita_tarefa_contrato', {
+    if (!(await jaDisparou('proposta_aceita_tarefa_contrato'))) await dispararGatilho('proposta_aceita_tarefa_contrato', {
       projeto_id: projeto.id,
       usuario_id: projeto.consultor_id || userId,
       entidade_tipo: 'projeto',
@@ -113,7 +121,7 @@ async function disparoAutomacoes(
     }).catch((e) => console.error('[gatilho tarefa_contrato]', e))
 
     // 1.1 Mensagem WhatsApp pro cliente (SUGERIDA — consultor confirma antes)
-    await dispararGatilho('proposta_aceita', {
+    if (!(await jaDisparou('proposta_aceita'))) await dispararGatilho('proposta_aceita', {
       projeto_id: projeto.id,
       usuario_id: projeto.consultor_id || userId,
       entidade_tipo: 'projeto',
