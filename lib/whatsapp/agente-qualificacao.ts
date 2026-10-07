@@ -284,6 +284,9 @@ Retorne apenas o JSON.`
     }
   } catch (e: any) {
     console.error('[agente-qualificacao]', e)
+    // Kalebe 2026-10-07: sem crédito/chave → a Laís para; o admin é avisado na hora
+    const { avisarFalhaIA } = await import('@/lib/ia/erros')
+    await avisarFalhaIA(e, 'Laís (atendimento no WhatsApp)')
     return { erro: `IA falhou: ${e?.message || 'parse error'}` }
   }
 

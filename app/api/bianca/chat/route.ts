@@ -283,6 +283,8 @@ INTERAÇÕES CASUAIS:
     console.error('[Bianca] Erro:', e)
     const { traduzirErroAnthropic } = await import('@/lib/bianca/erros')
     const traduzido = traduzirErroAnthropic(e)
+    const { avisarFalhaIA } = await import('@/lib/ia/erros')
+    await avisarFalhaIA(e, 'chat da Bianca')
     // Status apropriado: 402 pra sem crédito, 429 rate limit, 401 chave, 503 servidor, 500 restante
     const httpStatus =
       traduzido.codigo === 'sem_creditos' ? 402 :

@@ -178,6 +178,11 @@ export async function POST(req: NextRequest) {
     })
   } catch (e: any) {
     console.error('[financeiro/interpretar]', e)
-    return NextResponse.json({ erro: 'Não consegui interpretar agora — tente de novo ou preencha à mão.', comprovante }, { status: 502 })
+    const { mensagemErroIA, avisarFalhaIA, erroConhecidoIA } = await import('@/lib/ia/erros')
+    await avisarFalhaIA(e, 'registro financeiro por voz/foto')
+    const erro = !erroConhecidoIA(e)
+      ? 'Não consegui interpretar agora — tente de novo ou preencha à mão.'
+      : `${mensagemErroIA(e)} Dá pra preencher à mão.`
+    return NextResponse.json({ erro, comprovante }, { status: 502 })
   }
 }

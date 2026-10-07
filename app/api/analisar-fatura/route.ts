@@ -191,9 +191,13 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('[analisar-fatura] Erro:', error)
+    // Kalebe 2026-10-07: erro da IA em português + aviso ao admin se for crédito/chave
+    const { mensagemErroIA, avisarFalhaIA, erroConhecidoIA } = await import('@/lib/ia/erros')
+    await avisarFalhaIA(error, 'leitura de fatura')
     return NextResponse.json({
-      error: `Erro ao processar arquivo: ${error?.message || 'desconhecido'}`,
-      stack: error?.stack?.split('\n').slice(0, 3).join('\n'),
+      error: erroConhecidoIA(error)
+        ? `${mensagemErroIA(error)} Enquanto isso, use "Cadastrar dados manualmente".`
+        : `Erro ao processar arquivo: ${error?.message || 'desconhecido'}`,
     }, { status: 500 })
   }
 }

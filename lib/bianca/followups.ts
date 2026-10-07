@@ -50,6 +50,9 @@ export async function executarFollowupsVencidos() {
       await admin.from('wa_followups')
         .update({ status: 'falhou', motivo: String(e?.message || e).slice(0, 300), executado_em: new Date().toISOString() })
         .eq('id', f.id)
+      // Kalebe 2026-10-07: sem crédito/chave da IA → avisa o admin
+      const { avisarFalhaIA } = await import('@/lib/ia/erros')
+      await avisarFalhaIA(e, 'follow-up da Bianca')
     }
   }
 

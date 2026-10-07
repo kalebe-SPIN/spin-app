@@ -150,6 +150,9 @@ INTERAÇÕES CASUAIS:
     return NextResponse.json({ resposta: textoResposta, iteracoes })
   } catch (e: any) {
     console.error('[Davi] Erro:', e)
-    return NextResponse.json({ error: e?.message || 'Erro' }, { status: 500 })
+    // Kalebe 2026-10-07: erro da IA em português + aviso ao admin se for crédito/chave
+    const { mensagemErroIA, avisarFalhaIA, erroConhecidoIA } = await import('@/lib/ia/erros')
+    await avisarFalhaIA(e, 'chat do Davi')
+    return NextResponse.json({ error: erroConhecidoIA(e) ? mensagemErroIA(e) : e?.message || 'Erro' }, { status: 500 })
   }
 }
