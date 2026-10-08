@@ -24,7 +24,10 @@ export async function GET(req: NextRequest) {
     // Kalebe 2026-10-07: lembretes das tarefas (ex.: follow-up de proposta)
     const { enviarLembretesDeTarefas } = await import('@/lib/bianca/followup-proposta')
     const lembretes = await enviarLembretesDeTarefas().catch(() => ({ enviados: 0 }))
-    return NextResponse.json({ sucesso: true, ...r, lembretes: lembretes.enviados })
+    // Kalebe 2026-10-08: avisos internos que esperavam a janela do WhatsApp abrir
+    const { entregarAvisosPendentes } = await import('@/lib/agentes/avisos-fila')
+    const fila = await entregarAvisosPendentes().catch(() => ({ resumos: 0, modelos: 0 }))
+    return NextResponse.json({ sucesso: true, ...r, lembretes: lembretes.enviados, avisos: fila })
   } catch (e: any) {
     console.error('[cron/followups]', e)
     return NextResponse.json({ erro: e?.message }, { status: 500 })

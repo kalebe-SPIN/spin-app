@@ -348,21 +348,38 @@ export async function avisarUsuario(entrada: {
         .from('wa_conversas').select('janela_24h_expira_em').eq('id', conv.id).maybeSingle()
       const janelaAberta = !!janela?.janela_24h_expira_em && new Date(janela.janela_24h_expira_em) > new Date()
       if (!janelaAberta) {
-        // Kalebe 2026-09-30: janela fechada → modelo aprovado spin_aviso_interno
-        const { enviarTemplatePeloCanal, primeiroNome } = await import('@/lib/whatsapp/templates')
-        const corpo = `${entrada.urgente ? 'URGENTE — ' : ''}${entrada.titulo ? `${entrada.titulo}: ` : ''}${mensagem}`
-        const r: any = await enviarTemplatePeloCanal({
-          conversa_id: conv.id,
-          telefone: tel,
-          template: 'aviso_interno',
-          parametros: [primeiroNome(perfil.nome_completo) || 'equipe', NOME_AGENTE[entrada.agente], corpo],
-          remetente_agente: entrada.agente,
-          origem_agente_nome: NOME_AGENTE[entrada.agente],
-        })
-        if (r?.sucesso) whatsapp_status = 'enviado_modelo'
-        else {
-          whatsapp_status = 'janela_fechada'
-          whatsapp_erro = `Janela de 24h fechada — ${r?.erro || 'modelo indisponível'}`
+        // Kalebe 2026-09-30: janela fechada → modelo aprovado spin_aviso_interno.
+        // 2026-10-08: a Meta classificou esse modelo como MARKETING (limite por
+        // pessoa) e barrou 140 avisos em 3 dias. Agora: no máximo 1 modelo a
+        // cada 3h por pessoa (1h se urgente); o resto espera a janela abrir —
+        // o sino já tem tudo — e sai num resumo (lib/agentes/avisos-fila.ts).
+        const horas = entrada.urgente ? 1 : 3
+        const { count: recentes } = await admin.from('wa_mensagens').select('id', { count: 'exact', head: true })
+          .eq('conversa_id', conv.id).eq('tipo', 'template').eq('direcao', 'outbound')
+          .gte('criada_em', new Date(Date.now() - horas * 3600_000).toISOString())
+        if (recentes) {
+          whatsapp_status = 'aguardando_janela'
+        } else {
+          const { count: pendentes } = await admin.from('avisos_internos').select('id', { count: 'exact', head: true })
+            .eq('destinatario_id', perfil.id).eq('whatsapp_status', 'aguardando_janela')
+            .gte('criado_em', new Date(Date.now() - 24 * 3600_000).toISOString())
+          const { enviarTemplatePeloCanal, primeiroNome } = await import('@/lib/whatsapp/templates')
+          const corpo = `${entrada.urgente ? 'URGENTE — ' : ''}${entrada.titulo ? `${entrada.titulo}: ` : ''}${mensagem}`.slice(0, 650)
+            + (pendentes ? ` (+${pendentes} aviso(s) esperando no portal)` : '')
+            + ' — Responda esta mensagem pra receber os próximos avisos aqui direto.'
+          const r: any = await enviarTemplatePeloCanal({
+            conversa_id: conv.id,
+            telefone: tel,
+            template: 'aviso_interno',
+            parametros: [primeiroNome(perfil.nome_completo) || 'equipe', NOME_AGENTE[entrada.agente], corpo],
+            remetente_agente: entrada.agente,
+            origem_agente_nome: NOME_AGENTE[entrada.agente],
+          })
+          if (r?.sucesso) whatsapp_status = 'enviado_modelo'
+          else {
+            whatsapp_status = 'janela_fechada'
+            whatsapp_erro = `Janela de 24h fechada — ${r?.erro || 'modelo indisponível'}`
+          }
         }
       } else {
         const texto = `🔔 *Aviso interno${entrada.urgente ? ' — URGENTE' : ''}*${entrada.titulo ? `\n*${entrada.titulo}*` : ''}\n${mensagem}`
