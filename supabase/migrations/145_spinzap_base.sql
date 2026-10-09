@@ -113,7 +113,7 @@ UPDATE public.wa_conversas c SET produto = CASE c.contexto_qualificacao->>'tipo_
     WHEN 'on_grid' THEN 'fv_ongrid' WHEN 'hibrido' THEN 'fv_hibrido' WHEN 'bess' THEN 'bess'
     WHEN 'limpeza' THEN 'srv_limpeza' WHEN 'revisao' THEN 'srv_manutencao' WHEN 've_recarga' THEN 've_recarga'
     ELSE NULL END
-WHERE c.produto IS NULL AND c.contexto_qualificacao ? 'tipo_sistema';
+WHERE c.produto IS NULL AND c.contexto_qualificacao->>'tipo_sistema' IS NOT NULL;
 
 -- Etapa pela etapa do projeto do contato
 UPDATE public.wa_conversas c SET etapa = CASE
