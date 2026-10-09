@@ -44,6 +44,20 @@ export const PERFIS = Array.from(new Set(PRODUTOS.map((p) => p.grupo)))
   .map((g) => ({ valor: g, rotulo: GRUPOS_INFO[g].label }))
   .sort((a, b) => a.rotulo.replace(/^\W+/, '').localeCompare(b.rotulo.replace(/^\W+/, ''), 'pt-BR'))
 
+/**
+ * Kalebe 2026-10-09: o contato pode ser cadastrado também como fornecedor —
+ * de equipamento, de produtos e/ou de serviço (mig 146, fornecedores.tipos).
+ */
+export type TipoFornecedor = 'equipamento' | 'produtos' | 'servico'
+export const TIPOS_FORNECEDOR: Array<{ chave: TipoFornecedor; rotulo: string; emoji: string }> = [
+  { chave: 'equipamento', rotulo: 'Equipamento', emoji: '⚙️' },
+  { chave: 'produtos', rotulo: 'Produtos', emoji: '📦' },
+  { chave: 'servico', rotulo: 'Serviço', emoji: '🛠️' },
+]
+export function rotuloTiposFornecedor(tipos: string[] | null | undefined): string {
+  return TIPOS_FORNECEDOR.filter((t) => (tipos || []).includes(t.chave)).map((t) => t.rotulo).join(', ')
+}
+
 /** Setor da conversa: Laís (IA no comando), sem responsável, ou o setor de quem atende. */
 export const SETOR_LAIS = 'lais'
 export const SETOR_SEM_RESPONSAVEL = 'sem_responsavel'

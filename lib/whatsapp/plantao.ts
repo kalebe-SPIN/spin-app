@@ -82,11 +82,18 @@ export async function rodarPlantaoLais(): Promise<{ acolhidos: number; so_aviso:
     .order('ultima_mensagem_em', { ascending: true })
     .limit(30)
 
+  // Kalebe 2026-10-09 (Spinzap): fornecedor não é lead — plantão da Laís não
+  // fala com ele (mig 146; sem ela, a lista vem vazia)
+  const { data: fornecedores } = await admin.from('wa_contatos')
+    .select('telefone').not('fornecedor_id', 'is', null).is('cliente_id', null).is('projeto_id', null)
+  const telFornecedor = new Set(((fornecedores || []) as Array<{ telefone: string }>).map((f) => f.telefone))
+
   let tratados = 0
   for (const c of (convs || []) as any[]) {
     if (tratados >= POR_RODADA) break
     const ct = c.contato
     if (!ct?.telefone || ct.tipo === 'colaborador' || ct.tipo === 'representante') continue
+    if (telFornecedor.has(ct.telefone)) continue
 
     const { data: ultima } = await admin
       .from('wa_mensagens')

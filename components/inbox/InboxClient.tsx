@@ -26,7 +26,8 @@ import {
   salvarEtiquetasConversaAction,
   concluirAtendimentoAction,
 } from '@/app/inbox/actions'
-import { ETAPAS, INFO_ETAPA, PERFIS, PRODUTOS, infoProduto, type Etapa } from '@/lib/spinzap/comum'
+import { ETAPAS, INFO_ETAPA, PERFIS, PRODUTOS, TIPOS_FORNECEDOR, infoProduto, rotuloTiposFornecedor, type Etapa } from '@/lib/spinzap/comum'
+import { cadastrarFornecedorDaConversaAction, desvincularFornecedorDaConversaAction, listarFornecedoresAction } from '@/app/inbox/fornecedor-actions'
 
 type Conversa = {
   id: string
@@ -48,6 +49,9 @@ type Conversa = {
     projeto_id: string | null
     foto_url?: string | null                       // mig 131 (foto enviada à mão)
     criado_em?: string | null                      // entrada do lead no sistema
+    // Kalebe 2026-10-09: contato também cadastrado como fornecedor (mig 146)
+    fornecedor_id?: string | null
+    fornecedor?: { id: string; razao_social: string; nome_fantasia: string | null; tipos: string[] | null } | null
     cliente?: { foto_url: string | null } | null
   } | null
   responsavel: { nome_completo: string | null } | null
@@ -110,6 +114,8 @@ export function InboxClient({
   const [fCidade, setFCidade] = useState('')
   const [fPerfil, setFPerfil] = useState('')
   const [fProduto, setFProduto] = useState('')
+  const [fContato, setFContato] = useState<'' | 'clientes' | 'equipe' | 'fornecedores' | 'forn_equipamento' | 'forn_produtos' | 'forn_servico'>('')
+  const [modalFornecedor, setModalFornecedor] = useState(false)
   const [verEncerradas, setVerEncerradas] = useState(false)
   const [fechadas, setFechadas] = useState<Set<string>>(new Set(['perdido']))   // grupos recolhidos
   const [modalConcluir, setModalConcluir] = useState(false)
@@ -298,6 +304,10 @@ export function InboxClient({
   const entradaDe = (c: Conversa) => c.contato?.criado_em || c.criada_em
   const selCls = 'w-full px-2 py-1.5 bg-white/[0.05] border border-white/10 focus:border-white/25 rounded text-[11px] text-white focus:outline-none'
   const ehEquipe = (c: Conversa) => c.contato?.tipo === 'colaborador' || c.contato?.tipo === 'representante'
+  // Fornecedor "puro" (sem cliente/projeto) sai do funil e vai pro grupo próprio;
+  // quem é cliente E fornecedor segue no funil com a etiqueta 🏭
+  const ehFornecedor = (c: Conversa) => !!c.contato?.fornecedor_id
+  const ehFornecedorPuro = (c: Conversa) => ehFornecedor(c) && !c.contato?.cliente_id && !c.contato?.projeto_id
   // Tudo menos o setor (as contagens dos chips de setor respeitam os demais filtros)
   const passaFiltros = (c: Conversa) => {
     if (termo) {
@@ -311,6 +321,10 @@ export function InboxClient({
       if (desdeAte[0] && t < desdeAte[0].getTime()) return false
       if (desdeAte[1] && t >= desdeAte[1].getTime()) return false
     }
+    if (fContato === 'clientes' && (ehEquipe(c) || ehFornecedorPuro(c))) return false
+    if (fContato === 'equipe' && !ehEquipe(c)) return false
+    if (fContato === 'fornecedores' && !ehFornecedor(c)) return false
+    if (fContato.startsWith('forn_') && !(c.contato?.fornecedor?.tipos || []).includes(fContato.slice(5))) return false
     if (fCidade && semAcento(c.cidade || '') !== semAcento(fCidade)) return false
     if (fProduto && c.produto !== fProduto) return false
     if (fPerfil && infoProduto(c.produto)?.grupo !== fPerfil) return false
@@ -330,14 +344,15 @@ export function InboxClient({
   const grupos = [
     ...ETAPAS.map((e) => ({
       chave: e.chave as string, rotulo: `${e.emoji} ${e.rotulo}`, cls: e.cls,
-      itens: conversasFiltradas.filter((c) => !ehEquipe(c) && (c.etapa || 'atendimento_lais') === e.chave),
+      itens: conversasFiltradas.filter((c) => !ehEquipe(c) && !ehFornecedorPuro(c) && (c.etapa || 'atendimento_lais') === e.chave),
     })),
+    { chave: 'fornecedores', rotulo: '🏭 Fornecedores', cls: 'bg-[#f59e0b]/10 border-[#f59e0b]/40 text-[#f59e0b]', itens: conversasFiltradas.filter((c) => !ehEquipe(c) && ehFornecedorPuro(c)) },
     { chave: 'equipe', rotulo: '👥 Equipe', cls: 'bg-white/5 border-white/15 text-white/60', itens: conversasFiltradas.filter(ehEquipe) },
   ].filter((g) => g.itens.length > 0)
   const cidadesDaLista = Array.from(new Set(conversas.map((c) => (c.cidade || '').trim()).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, 'pt-BR'))
   const produtosDoPerfil = fPerfil ? PRODUTOS.filter((p) => p.grupo === fPerfil) : PRODUTOS
-  const filtrosAtivos = [fPeriodo !== 'todos', !!fCidade, !!fPerfil, !!fProduto].filter(Boolean).length
+  const filtrosAtivos = [fPeriodo !== 'todos', !!fCidade, !!fPerfil, !!fProduto, !!fContato].filter(Boolean).length
   const chipsSetor = [
     { chave: 'todos', rotulo: 'Todos', qtd: abertas.length },
     { chave: 'lais', rotulo: '🤖 Laís', qtd: qtdSetor('lais') },
@@ -492,9 +507,21 @@ export function InboxClient({
                   {produtosDoPerfil.map((p) => <option key={p.valor} value={p.valor} className="bg-noite">{p.rotulo}</option>)}
                 </select>
               </label>
+              <label className="block col-span-2">
+                <span className="block text-[10px] font-bold text-white/50 mb-0.5">Contato</span>
+                <select value={fContato} onChange={(e) => setFContato(e.target.value as typeof fContato)} className={selCls}>
+                  <option value="" className="bg-noite">Todos</option>
+                  <option value="clientes" className="bg-noite">Clientes e leads</option>
+                  <option value="equipe" className="bg-noite">Equipe</option>
+                  <option value="fornecedores" className="bg-noite">Fornecedores (todos)</option>
+                  {TIPOS_FORNECEDOR.map((t) => (
+                    <option key={t.chave} value={`forn_${t.chave}`} className="bg-noite">Fornecedores de {t.rotulo.toLowerCase()}</option>
+                  ))}
+                </select>
+              </label>
               {filtrosAtivos > 0 && (
                 <button
-                  onClick={() => { setFPeriodo('todos'); setFCidade(''); setFPerfil(''); setFProduto('') }}
+                  onClick={() => { setFPeriodo('todos'); setFCidade(''); setFPerfil(''); setFProduto(''); setFContato('') }}
                   className="col-span-2 text-[11px] text-coral/80 hover:text-coral font-bold py-1"
                 >
                   ✕ Limpar filtros
@@ -691,8 +718,10 @@ export function InboxClient({
               c={selecionada}
               pendente={isPending}
               ehEquipe={ehEquipe(selecionada)}
+              fornecedorPuro={ehFornecedorPuro(selecionada)}
               onEtapa={mudarEtapa}
               onEtiquetas={salvarEtiquetas}
+              onFornecedor={() => { setErro(null); setModalFornecedor(true) }}
             />
 
             {/* Transferência temporária: aviso + devolução ao concluir */}
@@ -816,6 +845,18 @@ export function InboxClient({
           responsavelAtualId={selecionada.responsavel_id}
           onFechar={() => setModalTransferir(false)}
           onTransferido={(texto) => { setModalTransferir(false); setOkMsg(texto); refreshConversas() }}
+        />
+      )}
+
+      {modalFornecedor && selecionada && (
+        <ModalFornecedor
+          conversaId={selecionada.id}
+          nomeContato={selecionada.contato?.nome_exibicao || ''}
+          cidade={selecionada.cidade || ''}
+          uf={selecionada.uf || ''}
+          atual={selecionada.contato?.fornecedor || null}
+          onFechar={() => setModalFornecedor(false)}
+          onSalvo={(texto) => { setModalFornecedor(false); setOkMsg(texto); refreshConversas(); refreshMensagens(selecionada.id) }}
         />
       )}
 
@@ -1090,12 +1131,15 @@ function ModalTransferir({ conversaId, nomeCliente, responsavelAtualId, onFechar
  * etapa do atendimento (cor da barra lateral), produto/serviço, perfil de
  * compra, cidade/UF e data de entrada do lead. A Laís preenche; aqui corrige.
  */
-function EtiquetasConversa({ c, pendente, ehEquipe, onEtapa, onEtiquetas }: {
+function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onEtiquetas, onFornecedor }: {
   c: Conversa
   pendente: boolean
   ehEquipe: boolean
+  /** Só fornecedor (sem cliente/projeto): fora do funil — sem etapa e produto */
+  fornecedorPuro: boolean
   onEtapa: (etapa: string) => void
   onEtiquetas: (e: { cidade?: string | null; uf?: string | null; produto?: string | null }) => void
+  onFornecedor: () => void
 }) {
   const [editando, setEditando] = useState<null | 'produto' | 'cidade'>(null)
   const [cidade, setCidade] = useState(c.cidade || '')
@@ -1104,11 +1148,21 @@ function EtiquetasConversa({ c, pendente, ehEquipe, onEtapa, onEtiquetas }: {
   const info = INFO_ETAPA[etapa] || ETAPAS[0]
   const produto = infoProduto(c.produto)
   const entrada = c.contato?.criado_em || c.criada_em
+  const fornec = c.contato?.fornecedor || null
   const chip = 'px-2 py-0.5 rounded-full border text-[11px] font-bold'
 
   if (ehEquipe) return null
   return (
     <div className="shrink-0 px-2 lg:px-4 py-1.5 border-b border-white/10 flex flex-wrap items-center gap-1.5">
+      {/* Kalebe 2026-10-09: contato também pode ser fornecedor (equipamento, produtos, serviço) */}
+      {fornec ? (
+        <button onClick={onFornecedor} title={`Fornecedor: ${fornec.nome_fantasia || fornec.razao_social} — clique pra ver ou ajustar`}
+          className={`${chip} bg-[#f59e0b]/10 border-[#f59e0b]/40 text-[#f59e0b] hover:brightness-125`}>
+          🏭 Fornecedor{fornec.tipos?.length ? ` · ${rotuloTiposFornecedor(fornec.tipos)}` : ''}
+        </button>
+      ) : null}
+
+      {!fornecedorPuro && (<>
       {/* Etapa: a ordem segue o funil (exceção ao A→Z) */}
       <select
         value={etapa}
@@ -1140,6 +1194,7 @@ function EtiquetasConversa({ c, pendente, ehEquipe, onEtapa, onEtiquetas }: {
       {produto?.perfil && (
         <span className={`${chip} bg-white/[0.04] border-white/15 text-white/60`} title="Perfil de compra">{produto.perfil}</span>
       )}
+      </>)}
 
       {editando === 'cidade' ? (
         <form
@@ -1164,6 +1219,171 @@ function EtiquetasConversa({ c, pendente, ehEquipe, onEtapa, onEtiquetas }: {
       <span className={`${chip} bg-white/[0.03] border-white/10 text-white/50 font-mono`} title="Entrada do lead no sistema">
         📥 {new Date(entrada).toLocaleDateString('pt-BR')}
       </span>
+
+      {!fornec && (
+        <button onClick={onFornecedor} title="Cadastrar este contato também como fornecedor (equipamento, produtos ou serviço)"
+          className={`${chip} bg-white/[0.03] border-dashed border-white/20 text-white/45 hover:text-[#f59e0b] hover:border-[#f59e0b]/40`}>
+          ＋ Fornecedor
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Kalebe 2026-10-09 (Spinzap): "o lead pode ser também cadastrado como
+ * fornecedor de equipamento, de produtos e de serviço". Cria no cadastro de
+ * fornecedores (o mesmo do Financeiro) ou liga a um que já existe.
+ */
+function ModalFornecedor({ conversaId, nomeContato, cidade: cidadeIni, uf: ufIni, atual, onFechar, onSalvo }: {
+  conversaId: string
+  nomeContato: string
+  cidade: string
+  uf: string
+  atual: { id: string; razao_social: string; nome_fantasia: string | null; tipos: string[] | null } | null
+  onFechar: () => void
+  onSalvo: (texto: string) => void
+}) {
+  const [existentes, setExistentes] = useState<Array<{ id: string; nome: string; cnpj: string | null; tipos: string[] }> | null>(null)
+  const [vincularId, setVincularId] = useState('')
+  const [tipos, setTipos] = useState<string[]>(atual?.tipos || [])
+  const [razao, setRazao] = useState(nomeContato)
+  const [fantasia, setFantasia] = useState('')
+  const [cnpj, setCnpj] = useState('')
+  const [cidade, setCidade] = useState(cidadeIni)
+  const [uf, setUf] = useState(ufIni)
+  const [obs, setObs] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (atual) return
+    listarFornecedoresAction().then((r) => { if ('fornecedores' in r) setExistentes(r.fornecedores); else setExistentes([]) })
+  }, [atual])
+
+  function alternar(t: string) {
+    setTipos((ts) => (ts.includes(t) ? ts.filter((x) => x !== t) : [...ts, t]))
+  }
+
+  async function salvar() {
+    setSalvando(true); setErro(null)
+    try {
+      const r = await cadastrarFornecedorDaConversaAction({
+        conversa_id: conversaId,
+        fornecedor_id: atual?.id || vincularId || null,
+        substituir_tipos: !!atual,
+        razao_social: razao, nome_fantasia: fantasia, cnpj, tipos, cidade, uf, observacoes: obs,
+      })
+      if ('erro' in r) { setErro(r.erro); return }
+      onSalvo(atual ? `🏭 Fornecedor atualizado: ${r.nome}.` : `🏭 Cadastrado como fornecedor: ${r.nome}. Já aparece no cadastro do Financeiro.`)
+    } finally { setSalvando(false) }
+  }
+
+  async function desvincular() {
+    if (!confirm('Tirar a marcação de fornecedor deste contato? O cadastro continua no Financeiro.')) return
+    setSalvando(true); setErro(null)
+    try {
+      const r = await desvincularFornecedorDaConversaAction(conversaId)
+      if ('erro' in r) { setErro(r.erro); return }
+      onSalvo('Marcação de fornecedor removida deste contato.')
+    } finally { setSalvando(false) }
+  }
+
+  const inputCls = 'w-full bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none'
+  const novo = !atual && !vincularId
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onFechar}>
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-noite border border-white/15 rounded-xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-base font-bold text-white">🏭 {atual ? 'Fornecedor' : 'Cadastrar como fornecedor'}</h2>
+        {atual ? (
+          <p className="text-xs text-white/60">
+            Este contato é o fornecedor <strong className="text-white">{atual.nome_fantasia || atual.razao_social}</strong>.
+            Os dados completos ficam no cadastro de fornecedores do Financeiro.
+          </p>
+        ) : (
+          <p className="text-xs text-white/60">
+            O contato continua como lead/cliente; passa a ser também fornecedor. Se não tiver cliente nem projeto,
+            sai do funil e a Laís não atende mais.
+          </p>
+        )}
+
+        <div>
+          <span className="block text-[11px] font-bold text-white/60 mb-1">Fornece</span>
+          <div className="flex flex-wrap gap-1.5">
+            {TIPOS_FORNECEDOR.map((t) => (
+              <button key={t.chave} type="button" onClick={() => alternar(t.chave)}
+                className={`px-3 py-1.5 rounded-full border text-xs font-bold ${
+                  tipos.includes(t.chave) ? 'bg-[#f59e0b]/15 border-[#f59e0b]/50 text-[#f59e0b]' : 'bg-white/[0.03] border-white/15 text-white/60 hover:bg-white/[0.06]'
+                }`}>
+                {tipos.includes(t.chave) ? '✓ ' : ''}{t.emoji} {t.rotulo}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!atual && (existentes?.length || 0) > 0 && (
+          <label className="block">
+            <span className="block text-[11px] font-bold text-white/60 mb-1">Já está no cadastro?</span>
+            <select value={vincularId} onChange={(e) => setVincularId(e.target.value)} className={inputCls}>
+              <option value="" className="bg-noite">Não — cadastrar novo</option>
+              {existentes!.map((f) => (
+                <option key={f.id} value={f.id} className="bg-noite">{f.nome}{f.cnpj ? ` · ${f.cnpj}` : ''}</option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {novo && (
+          <>
+            <label className="block">
+              <span className="block text-[11px] font-bold text-white/60 mb-1">Nome / razão social</span>
+              <input value={razao} onChange={(e) => setRazao(e.target.value)} className={inputCls} />
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="block">
+                <span className="block text-[11px] font-bold text-white/60 mb-1">Nome fantasia (opcional)</span>
+                <input value={fantasia} onChange={(e) => setFantasia(e.target.value)} className={inputCls} />
+              </label>
+              <label className="block">
+                <span className="block text-[11px] font-bold text-white/60 mb-1">CNPJ/CPF (opcional)</span>
+                <input value={cnpj} onChange={(e) => setCnpj(e.target.value)} inputMode="numeric" className={inputCls} />
+              </label>
+            </div>
+            <div className="grid grid-cols-[1fr_70px] gap-2">
+              <label className="block">
+                <span className="block text-[11px] font-bold text-white/60 mb-1">Cidade</span>
+                <input value={cidade} onChange={(e) => setCidade(e.target.value)} className={inputCls} />
+              </label>
+              <label className="block">
+                <span className="block text-[11px] font-bold text-white/60 mb-1">UF</span>
+                <input value={uf} onChange={(e) => setUf(e.target.value.toUpperCase().slice(0, 2))} className={`${inputCls} uppercase`} />
+              </label>
+            </div>
+            <label className="block">
+              <span className="block text-[11px] font-bold text-white/60 mb-1">O que fornece (opcional)</span>
+              <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} maxLength={500}
+                placeholder="Ex.: distribuidor de cabos e proteção CA; instalação de estrutura em solo."
+                className={`${inputCls} resize-none`} />
+            </label>
+          </>
+        )}
+
+        {erro && <p className="text-xs text-coral">⚠ {erro}</p>}
+        <div className="flex flex-wrap justify-between gap-2 pt-1">
+          {atual ? (
+            <button onClick={desvincular} disabled={salvando} className="px-3 py-2 text-xs text-coral/80 hover:text-coral font-bold disabled:opacity-40">
+              Tirar marcação
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button onClick={onFechar} className="px-4 py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg">Cancelar</button>
+            <button onClick={salvar} disabled={salvando || tipos.length === 0 || (novo && razao.trim().length < 2)}
+              className="px-4 py-2 bg-[#f59e0b] text-noite font-bold text-sm rounded-lg disabled:opacity-50">
+              {salvando ? 'Salvando…' : atual ? 'Salvar' : 'Cadastrar fornecedor'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1285,6 +1505,12 @@ function ItemConversa({ c, selecionada, onClick }: {
         {(c.contato?.tipo === 'colaborador' || c.contato?.tipo === 'representante') && (
           <span className="text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded bg-weg-azul/15 text-weg-azul">
             👥 Equipe
+          </span>
+        )}
+        {c.contato?.fornecedor && (
+          <span className="text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded bg-[#f59e0b]/15 text-[#f59e0b] shrink-0"
+            title={`Fornecedor: ${rotuloTiposFornecedor(c.contato.fornecedor.tipos) || '—'}`}>
+            🏭 Fornec.
           </span>
         )}
         {c.responsavel && (

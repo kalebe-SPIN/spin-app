@@ -176,6 +176,23 @@ export async function processarMensagemQualificacao(
     return { acao: 'ignorada', motivo: 'contato interno, não é lead' }
   }
 
+  // Kalebe 2026-10-09 (Spinzap): fornecedor cadastrado (sem cliente/projeto)
+  // não é lead — a Laís não atende; a conversa vai pra quem cadastrou. Sem a
+  // migration 146 a consulta falha e segue o fluxo normal.
+  if (!contato.cliente_id && !contato.projeto_id) {
+    const { data: fz } = await admin.from('wa_contatos')
+      .select('fornecedor:fornecedor_id(id, criado_por)').eq('id', contato.id).maybeSingle()
+    const forn = (fz as any)?.fornecedor as { id: string; criado_por: string | null } | null
+    if (forn) {
+      const resp = (conv as any).responsavel_id || forn.criado_por
+      await admin.from('wa_conversas').update({
+        status: 'em_atendimento', agente_ativo: null, ...(resp ? { responsavel_id: resp } : {}),
+      }).eq('id', conversa_id)
+      if (resp) await admin.from('wa_conversas').update({ dono_id: resp }).eq('id', conversa_id).is('dono_id', null)
+      return { acao: 'ignorada', motivo: 'fornecedor, não é lead' }
+    }
+  }
+
   const contextoAtual: ContextoQualificacao = (conv as any).contexto_qualificacao || {}
 
   // Últimas 40 msgs pra prompt (busca da mais nova pra trás e inverte —

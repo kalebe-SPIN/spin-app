@@ -46,11 +46,12 @@ export async function listarConversasAction(): Promise<
   const papel = check.perfil?.role || ''
   const ehAdmin = papel === 'admin'
   const uid = check.user!.id
-  // Colunas novas do Spinzap (mig 145) e foto (mig 131): sem elas, cai pra
-  // consulta mais simples em vez de quebrar a tela.
-  const consulta = (nivel: 0 | 1 | 2) => {
-    const spinzap = nivel === 0 ? 'etapa, etapa_em, cidade, uf, produto, dono_id, transferida_de, transferida_em, transferencia_recado, transferidor:transferida_de(nome_completo),' : ''
-    const foto = nivel <= 1 ? ', foto_url, cliente:cliente_id(foto_url)' : ''
+  // Colunas novas do Spinzap (mig 145), fornecedor (mig 146) e foto (mig 131):
+  // sem elas, cai pra consulta mais simples em vez de quebrar a tela.
+  const consulta = (nivel: 0 | 1 | 2 | 3) => {
+    const spinzap = nivel <= 1 ? 'etapa, etapa_em, cidade, uf, produto, dono_id, transferida_de, transferida_em, transferencia_recado, transferidor:transferida_de(nome_completo),' : ''
+    const forn = nivel === 0 ? ', fornecedor_id, fornecedor:fornecedor_id(id, razao_social, nome_fantasia, tipos)' : ''
+    const foto = nivel <= 2 ? `, foto_url, cliente:cliente_id(foto_url)${forn}` : ''
     let q = supabase
       .from('wa_conversas')
       .select(`
@@ -61,7 +62,7 @@ export async function listarConversasAction(): Promise<
         responsavel:responsavel_id(nome_completo)
       `)
     if (!ehAdmin) {
-      q = nivel === 0
+      q = nivel <= 1
         ? q.or(`responsavel_id.eq.${uid},dono_id.eq.${uid},transferida_de.eq.${uid}`)
         : q.eq('responsavel_id', uid)
     }
@@ -71,7 +72,8 @@ export async function listarConversasAction(): Promise<
   }
   let r: { data: any[] | null; error: any } = await consulta(0) as any
   if (r.error) r = await consulta(1) as any
-  if (r.error && /foto_url/.test(r.error.message)) r = await consulta(2) as any
+  if (r.error) r = await consulta(2) as any
+  if (r.error && /foto_url/.test(r.error.message)) r = await consulta(3) as any
   const { data, error } = r
   if (error) return { erro: error.message }
 
