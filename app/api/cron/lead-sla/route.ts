@@ -253,7 +253,7 @@ export async function GET(req: NextRequest) {
             await admin.from('wa_conversas').update({ responsavel_id: null }).eq('id', bcExp.conversa_id)
             await avisarEquipe({
               agente: 'qualificacao',
-              mensagem: `Ninguém da fila contatou o lead dentro do prazo — a conversa ficou sem dono. ${URL_PORTAL}/inbox?c=${bcExp.conversa_id}`,
+              mensagem: `Ninguém da fila contatou o lead dentro do prazo — a conversa ficou sem dono. ${URL_PORTAL}/spinzap?c=${bcExp.conversa_id}`,
               conversa_id: bcExp.conversa_id,
             }).catch((e) => console.error('[cron lead-sla/expirado aviso]', e))
           }

@@ -59,7 +59,7 @@ async function gravarFoto(contatoIds: string[], clienteId: string | null, url: s
 }
 
 function revalidar(clienteId: string | null) {
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
   if (clienteId) revalidatePath(`/crm/clientes/${clienteId}`)
 }
 

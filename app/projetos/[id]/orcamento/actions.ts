@@ -450,6 +450,9 @@ export async function marcarPropostaAceitaAction(
   const res = await mudarEtapaProjetoAction(projetoId, 'vendido', observacoes)
   if ('erro' in res && res.erro) return { sucesso: false, erro: res.erro }
   await sincronizarFluxo()
+  // Spinzap: a conversa do cliente vai pra "Fechado"
+  const { moverEtapaPeloProjeto } = await import('@/lib/spinzap/etapas')
+  await moverEtapaPeloProjeto(projetoId, 'fechado')
 
   // Kalebe 2026-08-29: ao aceitar, exclui automaticamente as outras
   // propostas em andamento do mesmo cliente. Preserva as que já estão

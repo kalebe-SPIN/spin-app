@@ -70,7 +70,7 @@ export async function PortalHeader() {
     { href: '/agenda', label: 'Agenda' },
     ...(veCampo && !ehCampo ? [{ href: '/campo', label: 'Campo' }] : []),
     // Kalebe 2026-09-30: Grupos saiu do menu — fica dentro do Inbox
-    { href: '/inbox', label: 'Inbox' },
+    { href: '/spinzap', label: 'Spinzap' },
     // Kalebe 2026-09-30: Admin já tem botão "Administração" no dashboard → aqui vira Financeiro
     ...(modoAtivo === 'admin' && ehAdminReal
       ? [{ href: '/financeiro', label: 'Financeiro' }] : []),

@@ -17,7 +17,7 @@ import { usePathname, useRouter } from 'next/navigation'
  *       /inbox (já tem Realtime + fallback interno de 60s)
  *   - Renderizado no root layout — cobre todo o portal.
  */
-const ROTAS_IGNORADAS = ['/login', '/vaga', '/inbox', '/definir-senha', '/esqueci-senha', '/trocar-senha']
+const ROTAS_IGNORADAS = ['/login', '/vaga', '/inbox', '/spinzap', '/definir-senha', '/esqueci-senha', '/trocar-senha']
 
 export function AutoRefresh() {
   const router = useRouter()

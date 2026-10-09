@@ -22,7 +22,11 @@ import {
   marcarConversaLidaAction,
   listarAtendentesAction,
   transferirConversaAction,
+  mudarEtapaConversaAction,
+  salvarEtiquetasConversaAction,
+  concluirAtendimentoAction,
 } from '@/app/inbox/actions'
+import { ETAPAS, INFO_ETAPA, PERFIS, PRODUTOS, infoProduto, type Etapa } from '@/lib/spinzap/comum'
 
 type Conversa = {
   id: string
@@ -43,11 +47,24 @@ type Conversa = {
     cliente_id: string | null
     projeto_id: string | null
     foto_url?: string | null                       // mig 131 (foto enviada à mão)
+    criado_em?: string | null                      // entrada do lead no sistema
     cliente?: { foto_url: string | null } | null
   } | null
   responsavel: { nome_completo: string | null } | null
   /** Mensagens do cliente ainda não lidas por este usuário (migration 131) */
   nao_lidas?: number
+  // Kalebe 2026-10-09 — Spinzap (mig 145)
+  etapa?: string | null
+  etapa_em?: string | null
+  cidade?: string | null
+  uf?: string | null
+  produto?: string | null
+  dono_id?: string | null
+  transferida_de?: string | null
+  transferida_em?: string | null
+  transferencia_recado?: string | null
+  transferidor?: { nome_completo: string | null } | null
+  setor?: string
 }
 
 type Mensagem = {
@@ -84,7 +101,18 @@ export function InboxClient({
   const [mensagens, setMensagens] = useState<Mensagem[]>([])
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-  const [filtro, setFiltro] = useState<'todas' | 'minhas' | 'sem_atendente' | 'nova'>('todas')
+  // Kalebe 2026-10-09 (Spinzap): filtros rápidos por SETOR (tempo real) +
+  // filtros por data de cadastro, cidade, perfil de compra e produto/serviço
+  const [setorSel, setSetorSel] = useState<string>('todos')
+  const [setores, setSetores] = useState<Array<{ chave: string; nome: string; emoji: string | null }>>([])
+  const [verFiltros, setVerFiltros] = useState(false)
+  const [fPeriodo, setFPeriodo] = useState<'todos' | 'hoje' | '7d' | '30d' | 'mes' | 'mes_passado'>('todos')
+  const [fCidade, setFCidade] = useState('')
+  const [fPerfil, setFPerfil] = useState('')
+  const [fProduto, setFProduto] = useState('')
+  const [verEncerradas, setVerEncerradas] = useState(false)
+  const [fechadas, setFechadas] = useState<Set<string>>(new Set(['perdido']))   // grupos recolhidos
+  const [modalConcluir, setModalConcluir] = useState(false)
   // Kalebe 2026-09-30: pesquisa de contato (nome ou telefone)
   const [busca, setBusca] = useState('')
   // Celular estilo WhatsApp: conversa em tela cheia abaixo do cabeçalho do portal
@@ -132,7 +160,7 @@ export function InboxClient({
 
   async function refreshConversas() {
     const r = await listarConversasAction()
-    if ('conversas' in r) setConversas(r.conversas as any)
+    if ('conversas' in r) { setConversas(r.conversas as any); setSetores(r.setores || []) }
   }
   async function refreshMensagens(id: string) {
     const r = await listarMensagensAction(id)
@@ -174,7 +202,7 @@ export function InboxClient({
     setMenuAcoes(false)
     if (id === selecionadaId) return
     setSelecionadaId(id)
-    const url = `/inbox?c=${id}`
+    const url = `/spinzap?c=${id}`
     if (window.innerWidth < 1024 && !empurrouHistorico.current) {
       window.history.pushState(null, '', url)   // "voltar" do aparelho volta pra lista
       empurrouHistorico.current = true
@@ -187,10 +215,10 @@ export function InboxClient({
     setMenuAcoes(false)
     if (empurrouHistorico.current) { window.history.back(); return }
     setSelecionadaId(null)
-    window.history.replaceState(null, '', '/inbox')
+    window.history.replaceState(null, '', '/spinzap')
   }
 
-  // Link direto /inbox?c=<conversa_id> (caixa do projeto, envio de proposta)
+  // Link direto /spinzap?c=<conversa_id> (caixa do projeto, envio de proposta)
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
     const id = p.get('c') || p.get('conversa')
@@ -256,20 +284,96 @@ export function InboxClient({
   const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
   const termo = semAcento(busca.trim())
   const termoDigitos = busca.replace(/\D/g, '')
-  const conversasFiltradas = conversas.filter((c) => {
+  // Data de cadastro = entrada do lead no sistema (contato), senão a conversa
+  const desdeAte = (() => {
+    const agora = new Date()
+    const ini = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+    if (fPeriodo === 'hoje') return [ini(agora), null] as const
+    if (fPeriodo === '7d') return [new Date(ini(agora).getTime() - 6 * 864e5), null] as const
+    if (fPeriodo === '30d') return [new Date(ini(agora).getTime() - 29 * 864e5), null] as const
+    if (fPeriodo === 'mes') return [new Date(agora.getFullYear(), agora.getMonth(), 1), null] as const
+    if (fPeriodo === 'mes_passado') return [new Date(agora.getFullYear(), agora.getMonth() - 1, 1), new Date(agora.getFullYear(), agora.getMonth(), 1)] as const
+    return [null, null] as const
+  })()
+  const entradaDe = (c: Conversa) => c.contato?.criado_em || c.criada_em
+  const selCls = 'w-full px-2 py-1.5 bg-white/[0.05] border border-white/10 focus:border-white/25 rounded text-[11px] text-white focus:outline-none'
+  const ehEquipe = (c: Conversa) => c.contato?.tipo === 'colaborador' || c.contato?.tipo === 'representante'
+  // Tudo menos o setor (as contagens dos chips de setor respeitam os demais filtros)
+  const passaFiltros = (c: Conversa) => {
     if (termo) {
       const nome = semAcento(c.contato?.nome_exibicao || '')
       const tel = (c.contato?.telefone || '').replace(/\D/g, '')
       const achou = nome.includes(termo) || (termoDigitos.length >= 3 && tel.includes(termoDigitos))
       if (!achou) return false
     }
-    if (filtro === 'minhas') return c.responsavel_id === usuarioId && !c.encerrada_em
-    if (filtro === 'sem_atendente') return !c.responsavel_id && !c.encerrada_em
-    if (filtro === 'nova') return c.status === 'nova' && !c.encerrada_em
+    if (desdeAte[0] || desdeAte[1]) {
+      const t = new Date(entradaDe(c)).getTime()
+      if (desdeAte[0] && t < desdeAte[0].getTime()) return false
+      if (desdeAte[1] && t >= desdeAte[1].getTime()) return false
+    }
+    if (fCidade && semAcento(c.cidade || '') !== semAcento(fCidade)) return false
+    if (fProduto && c.produto !== fProduto) return false
+    if (fPerfil && infoProduto(c.produto)?.grupo !== fPerfil) return false
+    return true
+  }
+  const base = conversas.filter(passaFiltros)
+  const abertas = base.filter((c) => !c.encerrada_em)
+  const qtdSetor = (s: string) => abertas.filter((c) => c.setor === s).length
+  const conversasFiltradas = base.filter((c) => {
+    if (!verEncerradas && c.encerrada_em) return false
+    if (setorSel !== 'todos' && c.setor !== setorSel) return false
     return true
   })
+  const qtdEncerradas = base.filter((c) => c.encerrada_em && (setorSel === 'todos' || c.setor === setorSel)).length
+  // Barra lateral como um CRM: grupos por etapa (cor própria); conversas da
+  // equipe (avisos internos) num grupo à parte, no fim
+  const grupos = [
+    ...ETAPAS.map((e) => ({
+      chave: e.chave as string, rotulo: `${e.emoji} ${e.rotulo}`, cls: e.cls,
+      itens: conversasFiltradas.filter((c) => !ehEquipe(c) && (c.etapa || 'atendimento_lais') === e.chave),
+    })),
+    { chave: 'equipe', rotulo: '👥 Equipe', cls: 'bg-white/5 border-white/15 text-white/60', itens: conversasFiltradas.filter(ehEquipe) },
+  ].filter((g) => g.itens.length > 0)
+  const cidadesDaLista = Array.from(new Set(conversas.map((c) => (c.cidade || '').trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  const produtosDoPerfil = fPerfil ? PRODUTOS.filter((p) => p.grupo === fPerfil) : PRODUTOS
+  const filtrosAtivos = [fPeriodo !== 'todos', !!fCidade, !!fPerfil, !!fProduto].filter(Boolean).length
+  const chipsSetor = [
+    { chave: 'todos', rotulo: 'Todos', qtd: abertas.length },
+    { chave: 'lais', rotulo: '🤖 Laís', qtd: qtdSetor('lais') },
+    ...setores.map((s) => ({ chave: s.chave, rotulo: `${s.emoji ? s.emoji + ' ' : ''}${s.nome}`, qtd: qtdSetor(s.chave) })),
+    { chave: 'sem_setor', rotulo: 'Sem setor', qtd: qtdSetor('sem_setor') },
+    { chave: 'sem_responsavel', rotulo: 'Sem responsável', qtd: qtdSetor('sem_responsavel') },
+  ].filter((s) => s.chave === 'todos' || s.chave === 'lais' || s.qtd > 0 || s.chave === setorSel)
 
   const selecionada = conversas.find((c) => c.id === selecionadaId) || null
+  // Transferência temporária: quem recebeu devolve o cliente ao concluir
+  const podeConcluir = !!selecionada?.transferida_de && !selecionada.encerrada_em
+    && (selecionada.responsavel_id === usuarioId || usuarioRole === 'admin')
+
+  function mudarEtapa(etapa: string) {
+    if (!selecionada) return
+    const id = selecionada.id
+    setErro(null)
+    setConversas((cs) => cs.map((c) => (c.id === id ? { ...c, etapa } : c)))
+    startTransition(async () => {
+      const r = await mudarEtapaConversaAction(id, etapa)
+      if ('erro' in r) setErro(r.erro)
+      refreshConversas()
+    })
+  }
+
+  function salvarEtiquetas(e: { cidade?: string | null; uf?: string | null; produto?: string | null }) {
+    if (!selecionada) return
+    const id = selecionada.id
+    setErro(null)
+    setConversas((cs) => cs.map((c) => (c.id === id ? { ...c, ...e } : c)))
+    startTransition(async () => {
+      const r = await salvarEtiquetasConversaAction(id, e)
+      if ('erro' in r) setErro(r.erro)
+      refreshConversas()
+    })
+  }
 
   function assumir() {
     if (!selecionadaId) return
@@ -330,17 +434,74 @@ export function InboxClient({
               className="w-full pl-9 pr-3 py-2 bg-white/[0.05] border border-white/10 focus:border-white/25 rounded-full text-sm text-white placeholder-white/35 focus:outline-none"
             />
           </div>
-          <div className="grid grid-cols-4 gap-1 text-[10px] font-bold uppercase tracking-wider">
-            {(['todas','minhas','sem_atendente','nova'] as const).map((f) => (
+          {/* Kalebe 2026-10-09 (Spinzap): filtro rápido por setor, com a
+              contagem de conversas abertas em tempo real */}
+          <div className="flex flex-wrap gap-1">
+            {chipsSetor.map((s) => (
               <button
-                key={f}
-                onClick={() => setFiltro(f)}
-                className={`px-2 py-1.5 rounded ${filtro === f ? 'bg-sol/20 text-sol' : 'bg-white/[0.03] text-white/50 hover:bg-white/5'}`}
+                key={s.chave}
+                onClick={() => setSetorSel(s.chave)}
+                className={`px-2 py-1 rounded-full text-[11px] font-bold border transition ${
+                  setorSel === s.chave ? 'bg-sol/20 border-sol/50 text-sol' : 'bg-white/[0.03] border-white/10 text-white/60 hover:bg-white/[0.06]'
+                }`}
               >
-                {f === 'sem_atendente' ? 'S/ dono' : f}
+                {s.rotulo} <span className="opacity-70 font-mono">{s.qtd}</span>
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setVerFiltros((v) => !v)}
+            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-bold border ${
+              filtrosAtivos ? 'bg-weg-azul/15 border-weg-azul/40 text-weg-azul' : 'bg-white/[0.03] border-white/10 text-white/60 hover:bg-white/[0.06]'
+            }`}
+          >
+            <span>⚙ Filtros{filtrosAtivos ? ` (${filtrosAtivos})` : ''}</span>
+            <span>{verFiltros ? '▴' : '▾'}</span>
+          </button>
+          {verFiltros && (
+            <div className="grid grid-cols-2 gap-1.5">
+              <label className="block">
+                <span className="block text-[10px] font-bold text-white/50 mb-0.5">Cadastro</span>
+                <select value={fPeriodo} onChange={(e) => setFPeriodo(e.target.value as typeof fPeriodo)} className={selCls}>
+                  <option value="todos" className="bg-noite">Qualquer data</option>
+                  <option value="hoje" className="bg-noite">Hoje</option>
+                  <option value="7d" className="bg-noite">Últimos 7 dias</option>
+                  <option value="30d" className="bg-noite">Últimos 30 dias</option>
+                  <option value="mes" className="bg-noite">Este mês</option>
+                  <option value="mes_passado" className="bg-noite">Mês passado</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-[10px] font-bold text-white/50 mb-0.5">Cidade</span>
+                <select value={fCidade} onChange={(e) => setFCidade(e.target.value)} className={selCls}>
+                  <option value="" className="bg-noite">Todas</option>
+                  {cidadesDaLista.map((c) => <option key={c} value={c} className="bg-noite">{c}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-[10px] font-bold text-white/50 mb-0.5">Perfil de compra</span>
+                <select value={fPerfil} onChange={(e) => { setFPerfil(e.target.value); setFProduto('') }} className={selCls}>
+                  <option value="" className="bg-noite">Todos</option>
+                  {PERFIS.map((p) => <option key={p.valor} value={p.valor} className="bg-noite">{p.rotulo}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-[10px] font-bold text-white/50 mb-0.5">Produto/serviço</span>
+                <select value={fProduto} onChange={(e) => setFProduto(e.target.value)} className={selCls}>
+                  <option value="" className="bg-noite">Todos</option>
+                  {produtosDoPerfil.map((p) => <option key={p.valor} value={p.valor} className="bg-noite">{p.rotulo}</option>)}
+                </select>
+              </label>
+              {filtrosAtivos > 0 && (
+                <button
+                  onClick={() => { setFPeriodo('todos'); setFCidade(''); setFPerfil(''); setFProduto('') }}
+                  className="col-span-2 text-[11px] text-coral/80 hover:text-coral font-bold py-1"
+                >
+                  ✕ Limpar filtros
+                </button>
+              )}
+            </div>
+          )}
           {usuarioRole === 'admin' && (
             <button
               onClick={() => setModalAberto(true)}
@@ -356,14 +517,38 @@ export function InboxClient({
               {termo ? `Nenhum contato encontrado com “${busca.trim()}”.` : 'Nenhuma conversa nesse filtro.'}
             </p>
           ) : (
-            conversasFiltradas.map((c) => (
-              <ItemConversa
-                key={c.id}
-                c={c}
-                selecionada={c.id === selecionadaId}
-                onClick={() => abrirConversa(c.id)}
-              />
-            ))
+            grupos.map((g) => {
+              const fechado = fechadas.has(g.chave)
+              return (
+                <div key={g.chave}>
+                  <button
+                    onClick={() => setFechadas((s) => { const n = new Set(s); if (n.has(g.chave)) n.delete(g.chave); else n.add(g.chave); return n })}
+                    className="sticky top-0 z-[1] w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-noite/95 backdrop-blur border-b border-white/10"
+                  >
+                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-wider ${g.cls}`}>
+                      {g.rotulo}
+                    </span>
+                    <span className="text-[11px] text-white/45 font-mono">{g.itens.length} {fechado ? '▸' : '▾'}</span>
+                  </button>
+                  {!fechado && g.itens.map((c) => (
+                    <ItemConversa
+                      key={c.id}
+                      c={c}
+                      selecionada={c.id === selecionadaId}
+                      onClick={() => abrirConversa(c.id)}
+                    />
+                  ))}
+                </div>
+              )
+            })
+          )}
+          {qtdEncerradas > 0 && (
+            <button
+              onClick={() => setVerEncerradas((v) => !v)}
+              className="w-full px-3 py-2.5 text-[11px] text-white/45 hover:text-white/70 font-bold"
+            >
+              {verEncerradas ? 'Esconder conversas encerradas' : `Mostrar ${qtdEncerradas} conversa(s) encerrada(s)`}
+            </button>
           )}
         </div>
       </aside>
@@ -378,7 +563,14 @@ export function InboxClient({
         }`}
       >
         {!selecionada ? (
-          <div className="flex-1 flex items-center justify-center text-white/40 text-sm">
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-white/40 text-sm p-4">
+            {/* Ex.: concluiu o atendimento transferido — a conversa saiu da lista */}
+            {okMsg && (
+              <p className="max-w-md text-xs text-verde bg-verde/10 border border-verde/30 rounded p-2 flex items-start gap-2">
+                <span>{okMsg}</span>
+                <button onClick={() => setOkMsg(null)} className="text-white/50 hover:text-white shrink-0">✕</button>
+              </p>
+            )}
             Selecione uma conversa à esquerda.
           </div>
         ) : (
@@ -492,6 +684,40 @@ export function InboxClient({
               </div>
             </div>
 
+            {/* Kalebe 2026-10-09 (Spinzap): etiquetas do cliente no cabeçalho —
+                etapa, produto/serviço, perfil, cidade e data de entrada */}
+            <EtiquetasConversa
+              key={`etq-${selecionada.id}`}
+              c={selecionada}
+              pendente={isPending}
+              ehEquipe={ehEquipe(selecionada)}
+              onEtapa={mudarEtapa}
+              onEtiquetas={salvarEtiquetas}
+            />
+
+            {/* Transferência temporária: aviso + devolução ao concluir */}
+            {selecionada.transferida_de && !selecionada.encerrada_em && (
+              <div className="shrink-0 mx-2 lg:mx-4 mt-2 px-3 py-2 bg-weg-azul/10 border border-weg-azul/30 rounded-lg flex flex-wrap items-center gap-2 justify-between">
+                <p className="text-[11px] text-white/75 min-w-0">
+                  ↪ Transferido por <strong className="text-white">{selecionada.transferidor?.nome_completo?.split(' ')[0] || 'colega'}</strong>
+                  {selecionada.transferida_em && <> em {new Date(selecionada.transferida_em).toLocaleDateString('pt-BR')}</>}
+                  {selecionada.transferencia_recado && <span className="text-white/55"> — “{selecionada.transferencia_recado}”</span>}
+                  {selecionada.transferida_de === usuarioId && selecionada.responsavel_id !== usuarioId && (
+                    <span className="text-white/55"> · volta pra você quando {selecionada.responsavel?.nome_completo?.split(' ')[0] || 'o colega'} concluir</span>
+                  )}
+                </p>
+                {podeConcluir && (
+                  <button
+                    onClick={() => { setErro(null); setModalConcluir(true) }}
+                    disabled={isPending}
+                    className="px-3 py-1.5 rounded bg-verde text-noite text-xs font-black hover:bg-verde/90 disabled:opacity-40 shrink-0"
+                  >
+                    ✔ Concluir atendimento
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Kalebe 2026-10-06: recados da Bianca deste cliente (saíram do sino) */}
             <AvisosDoCliente key={`avisos-${selecionada.id}`} conversaId={selecionada.id} compacto />
 
@@ -590,6 +816,21 @@ export function InboxClient({
           responsavelAtualId={selecionada.responsavel_id}
           onFechar={() => setModalTransferir(false)}
           onTransferido={(texto) => { setModalTransferir(false); setOkMsg(texto); refreshConversas() }}
+        />
+      )}
+
+      {modalConcluir && selecionada && (
+        <ModalConcluir
+          conversaId={selecionada.id}
+          nomeCliente={selecionada.contato?.nome_exibicao || selecionada.contato?.telefone || 'cliente'}
+          devolverPara={selecionada.transferidor?.nome_completo || null}
+          onFechar={() => setModalConcluir(false)}
+          onConcluido={(nome) => {
+            setModalConcluir(false)
+            setOkMsg(`✔ Atendimento concluído. ${nome} recebeu o cliente de volta e foi avisado.`)
+            refreshConversas()
+            if (selecionada.transferida_de !== usuarioId && usuarioRole !== 'admin') voltarParaLista()
+          }}
         />
       )}
 
@@ -844,6 +1085,141 @@ function ModalTransferir({ conversaId, nomeCliente, responsavelAtualId, onFechar
   )
 }
 
+/**
+ * Kalebe 2026-10-09 (Spinzap): etiquetas do cliente no cabeçalho da conversa —
+ * etapa do atendimento (cor da barra lateral), produto/serviço, perfil de
+ * compra, cidade/UF e data de entrada do lead. A Laís preenche; aqui corrige.
+ */
+function EtiquetasConversa({ c, pendente, ehEquipe, onEtapa, onEtiquetas }: {
+  c: Conversa
+  pendente: boolean
+  ehEquipe: boolean
+  onEtapa: (etapa: string) => void
+  onEtiquetas: (e: { cidade?: string | null; uf?: string | null; produto?: string | null }) => void
+}) {
+  const [editando, setEditando] = useState<null | 'produto' | 'cidade'>(null)
+  const [cidade, setCidade] = useState(c.cidade || '')
+  const [uf, setUf] = useState(c.uf || '')
+  const etapa = (c.etapa || 'atendimento_lais') as Etapa
+  const info = INFO_ETAPA[etapa] || ETAPAS[0]
+  const produto = infoProduto(c.produto)
+  const entrada = c.contato?.criado_em || c.criada_em
+  const chip = 'px-2 py-0.5 rounded-full border text-[11px] font-bold'
+
+  if (ehEquipe) return null
+  return (
+    <div className="shrink-0 px-2 lg:px-4 py-1.5 border-b border-white/10 flex flex-wrap items-center gap-1.5">
+      {/* Etapa: a ordem segue o funil (exceção ao A→Z) */}
+      <select
+        value={etapa}
+        disabled={pendente}
+        onChange={(e) => onEtapa(e.target.value)}
+        title="Etapa do atendimento"
+        className={`${chip} ${info.cls} cursor-pointer focus:outline-none appearance-none pr-2`}
+      >
+        {ETAPAS.map((e) => <option key={e.chave} value={e.chave} className="bg-noite text-white">{e.emoji} {e.rotulo}</option>)}
+      </select>
+
+      {editando === 'produto' ? (
+        <select
+          autoFocus
+          value={c.produto || ''}
+          onChange={(e) => { onEtiquetas({ produto: e.target.value || null }); setEditando(null) }}
+          onBlur={() => setEditando(null)}
+          className={`${chip} bg-white/5 border-white/25 text-white focus:outline-none`}
+        >
+          <option value="" className="bg-noite">— sem produto —</option>
+          {PRODUTOS.map((p) => <option key={p.valor} value={p.valor} className="bg-noite">{p.rotulo}</option>)}
+        </select>
+      ) : (
+        <button onClick={() => setEditando('produto')} title="Produto/serviço — clique pra trocar"
+          className={`${chip} ${produto ? 'bg-sol/10 border-sol/35 text-sol' : 'bg-white/[0.03] border-dashed border-white/20 text-white/45'} hover:brightness-125`}>
+          {produto ? `${produto.emoji} ${produto.rotulo}` : '＋ Produto'}
+        </button>
+      )}
+      {produto?.perfil && (
+        <span className={`${chip} bg-white/[0.04] border-white/15 text-white/60`} title="Perfil de compra">{produto.perfil}</span>
+      )}
+
+      {editando === 'cidade' ? (
+        <form
+          onSubmit={(e) => { e.preventDefault(); onEtiquetas({ cidade, uf }); setEditando(null) }}
+          className="flex items-center gap-1"
+        >
+          <input autoFocus value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Cidade"
+            className="w-32 px-2 py-0.5 rounded-full bg-white/5 border border-white/25 text-[11px] text-white focus:outline-none" />
+          <input value={uf} onChange={(e) => setUf(e.target.value.toUpperCase().slice(0, 2))} placeholder="UF"
+            className="w-10 px-2 py-0.5 rounded-full bg-white/5 border border-white/25 text-[11px] text-white uppercase focus:outline-none" />
+          <button type="submit" className="px-2 py-0.5 rounded-full bg-verde/20 border border-verde/40 text-verde text-[11px] font-bold">OK</button>
+          <button type="button" onClick={() => { setCidade(c.cidade || ''); setUf(c.uf || ''); setEditando(null) }}
+            className="px-1.5 text-white/50 text-[11px]">✕</button>
+        </form>
+      ) : (
+        <button onClick={() => setEditando('cidade')} title="Cidade — clique pra trocar"
+          className={`${chip} ${c.cidade ? 'bg-white/[0.04] border-white/15 text-white/75' : 'bg-white/[0.03] border-dashed border-white/20 text-white/45'} hover:brightness-125`}>
+          📍 {c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : 'Cidade'}
+        </button>
+      )}
+
+      <span className={`${chip} bg-white/[0.03] border-white/10 text-white/50 font-mono`} title="Entrada do lead no sistema">
+        📥 {new Date(entrada).toLocaleDateString('pt-BR')}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Kalebe 2026-10-09 (Spinzap): "Concluir atendimento" — quem recebeu a
+ * transferência conta o que foi feito e devolve o cliente.
+ */
+function ModalConcluir({ conversaId, nomeCliente, devolverPara, onFechar, onConcluido }: {
+  conversaId: string
+  nomeCliente: string
+  devolverPara: string | null
+  onFechar: () => void
+  onConcluido: (nome: string) => void
+}) {
+  const [resumo, setResumo] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  async function concluir() {
+    setEnviando(true); setErro(null)
+    try {
+      const r = await concluirAtendimentoAction(conversaId, resumo)
+      if ('erro' in r) { setErro(r.erro); return }
+      onConcluido((r.devolvido_para || devolverPara || 'Quem transferiu').split(' ')[0])
+    } finally { setEnviando(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onFechar}>
+      <div className="w-full max-w-md bg-noite border border-white/15 rounded-xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-base font-bold text-white">✔ Concluir atendimento</h2>
+        <p className="text-xs text-white/60">
+          <strong className="text-white">{nomeCliente}</strong> volta pra{' '}
+          <strong className="text-white">{devolverPara?.split(' ')[0] || 'quem transferiu'}</strong>, que recebe o seu resumo
+          no WhatsApp. Depois disso a conversa sai da sua lista.
+        </p>
+        <label className="block">
+          <span className="block text-[11px] font-bold text-white/60 mb-1">O que foi feito</span>
+          <textarea value={resumo} onChange={(e) => setResumo(e.target.value)} rows={4} maxLength={1000} autoFocus
+            placeholder="Ex.: visita técnica feita, telhado ok; cliente quer a proposta com bateria."
+            className="w-full bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none resize-none" />
+        </label>
+        {erro && <p className="text-xs text-coral">⚠ {erro}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onFechar} className="px-4 py-2 bg-white/5 border border-white/10 text-white/70 text-sm rounded-lg">Cancelar</button>
+          <button onClick={concluir} disabled={enviando || resumo.trim().length < 5}
+            className="px-4 py-2 bg-verde text-noite font-bold text-sm rounded-lg disabled:opacity-50">
+            {enviando ? 'Devolvendo…' : 'Concluir e devolver'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Foto enviada à mão (contato ou cliente vinculado) — a Meta não entrega a do WhatsApp. */
 function fotoDoContato(c: Conversa): string | null {
   return c.contato?.foto_url || c.contato?.cliente?.foto_url || null
@@ -859,6 +1235,7 @@ function ItemConversa({ c, selecionada, onClick }: {
   const hora = dt ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
   // Kalebe 2026-09-30: etiqueta de não lidas, como no WhatsApp
   const naoLidas = !selecionada ? c.nao_lidas || 0 : 0
+  const produto = infoProduto(c.produto)
   return (
     <button
       onClick={onClick}
@@ -879,8 +1256,8 @@ function ItemConversa({ c, selecionada, onClick }: {
           </span>
         )}
       </div>
-      <div className="flex items-center gap-1.5 mt-0.5">
-        <span className={`text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded ${
+      <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+        <span className={`text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded shrink-0 ${
           c.status === 'aguardando_representante' ? 'bg-sol/20 text-sol'
             : c.status === 'em_atendimento' ? 'bg-verde/20 text-verde'
             : c.status === 'encerrada' ? 'bg-white/10 text-white/50'
@@ -888,6 +1265,22 @@ function ItemConversa({ c, selecionada, onClick }: {
         }`}>
           {status}
         </span>
+        {/* Spinzap: produto/serviço e cidade como etiquetas */}
+        {produto && (
+          <span className="text-[10px] text-white/70 truncate shrink-0 max-w-[45%]" title={produto.rotulo}>
+            {produto.emoji} {produto.rotulo}
+          </span>
+        )}
+        {c.cidade && (
+          <span className="text-[10px] text-white/45 truncate" title={`${c.cidade}${c.uf ? '/' + c.uf : ''}`}>
+            📍 {c.cidade}
+          </span>
+        )}
+        {c.transferida_de && !encerrada && (
+          <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-weg-azul/15 text-weg-azul shrink-0" title="Atendimento transferido — volta ao concluir">
+            ↪
+          </span>
+        )}
         {/* Kalebe 2026-09-29: conversa com alguém da equipe (avisos internos) ≠ cliente */}
         {(c.contato?.tipo === 'colaborador' || c.contato?.tipo === 'representante') && (
           <span className="text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded bg-weg-azul/15 text-weg-azul">

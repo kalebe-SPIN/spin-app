@@ -84,7 +84,7 @@ export function MenuMobileHeader({ links }: { links: LinkNav[] }) {
                       }`}
                     >
                       {l.label}
-                      {l.href === '/inbox' && naoLidas > 0 && (
+                      {l.href === '/spinzap' && naoLidas > 0 && (
                         <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-verde text-noite text-[10px] font-black flex items-center justify-center">
                           {naoLidas > 99 ? '99+' : naoLidas}
                         </span>

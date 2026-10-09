@@ -127,7 +127,7 @@ export function PainelWaClient({ dadosIniciais }: { dadosIniciais: PainelWa }) {
       <section className="bg-white/[0.03] border border-white/10 rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-bold uppercase tracking-wider text-white">💬 Conversas recentes</h2>
-          <Link href="/inbox" className="text-[10px] text-sol hover:text-sol/80 uppercase tracking-wider font-bold">
+          <Link href="/spinzap" className="text-[10px] text-sol hover:text-sol/80 uppercase tracking-wider font-bold">
             Abrir inbox →
           </Link>
         </div>
@@ -356,7 +356,7 @@ function LinhaConversa({ c }: { c: any }) {
 
   return (
     <Link
-      href={`/inbox?c=${c.id}`}
+      href={`/spinzap?c=${c.id}`}
       className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-white/[0.03] transition"
     >
       <span className="text-xs text-white/40 font-mono w-16 shrink-0">

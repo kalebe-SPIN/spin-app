@@ -66,7 +66,7 @@ function bip() {
 
 export function AlertaMensagensInbox() {
   const pathname = usePathname()
-  const noInbox = !!pathname?.startsWith('/inbox')
+  const noInbox = !!(pathname?.startsWith('/spinzap') || pathname?.startsWith('/inbox'))
   const noInboxRef = useRef(noInbox)
   noInboxRef.current = noInbox
   const qtdRef = useRef(0)
@@ -149,7 +149,7 @@ export function AlertaMensagensInbox() {
             <p className="text-[10px] uppercase tracking-wider font-bold text-verde">Nova mensagem</p>
             <p className="text-sm font-bold text-white truncate">{a.nome}</p>
             <p className="text-xs text-white/70 line-clamp-2 break-words">{a.texto}</p>
-            <Link href={`/inbox?c=${a.conversaId}`} className="inline-block mt-1.5 text-xs font-bold text-sol hover:underline"
+            <Link href={`/spinzap?c=${a.conversaId}`} className="inline-block mt-1.5 text-xs font-bold text-sol hover:underline"
               onClick={() => setAvisos((atual) => atual.filter((x) => x.id !== a.id))}>
               Abrir conversa →
             </Link>

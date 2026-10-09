@@ -106,7 +106,7 @@ export function BotaoEnviarPropostaCanal({
       {enviado && (
         <p className="text-xs text-verde">
           ✓ Proposta enviada pelo canal Spin — card em negociação e follow-up pra amanhã criado. Voltando ao projeto…{' '}
-          {conversaId && <Link href={`/inbox?c=${conversaId}`} className="underline">Ver no inbox</Link>}
+          {conversaId && <Link href={`/spinzap?c=${conversaId}`} className="underline">Ver no Spinzap</Link>}
         </p>
       )}
       {erro && !janelaFechada && (
@@ -134,7 +134,7 @@ export function BotaoEnviarPropostaCanal({
             <button type="button" onClick={copiarLink} className="underline">
               {copiado ? '✓ Link copiado' : '📋 Copiar link do PDF'}
             </button>
-            {conversaId && <Link href={`/inbox?c=${conversaId}`} className="underline">Abrir conversa no inbox</Link>}
+            {conversaId && <Link href={`/spinzap?c=${conversaId}`} className="underline">Abrir conversa no Spinzap</Link>}
           </div>
         </div>
       )}

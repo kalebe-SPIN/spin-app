@@ -11,7 +11,7 @@ import { abrirCanalDoProjetoAction } from '@/app/inbox/actions'
  * Uso: <BotaoAbrirCanalCliente projetoId={p.id} />
  *
  * Comportamento:
- *   - Clique → chama action → redireciona pra /inbox?c=<conversa_id>
+ *   - Clique → chama action → redireciona pra /spinzap?c=<conversa_id>
  *   - Se cliente sem telefone: mostra erro inline
  *   - Estados: idle, loading, erro
  */
@@ -33,7 +33,7 @@ export function BotaoAbrirCanalCliente({
     startTransition(async () => {
       const r = await abrirCanalDoProjetoAction(projetoId)
       if ('erro' in r) { setErro(r.erro); return }
-      router.push(`/inbox?c=${r.conversa_id}`)
+      router.push(`/spinzap?c=${r.conversa_id}`)
     })
   }
 

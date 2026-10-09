@@ -208,7 +208,7 @@ function GrupoAtendimentos({ titulo, lista, ocupado, onDispensar, onAbrir }: {
           )}
           <div className="flex items-center gap-1">
             <Link
-              href={`/inbox?c=${a.conversa_id}`}
+              href={`/spinzap?c=${a.conversa_id}`}
               onClick={onAbrir}
               className="flex-1 text-center px-2 py-1 bg-verde text-noite text-[10px] font-bold rounded hover:bg-verde/90"
             >
@@ -423,7 +423,7 @@ export function AvisoCard({ aviso, onAcao, mostrarProjeto = true, mostrarConvers
       <div className="flex items-center gap-1">
         {mostrarConversa && aviso.conversa_id && (
           <Link
-            href={`/inbox?c=${aviso.conversa_id}`}
+            href={`/spinzap?c=${aviso.conversa_id}`}
             className="px-2 py-1 bg-white/10 border border-white/20 text-white text-[10px] font-bold rounded hover:bg-white/15"
           >
             💬 Abrir conversa

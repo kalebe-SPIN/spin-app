@@ -36,7 +36,7 @@ export function NavPortal({ links }: { links: LinkNav[] }) {
     <nav className="hidden lg:flex items-center gap-0.5 min-w-0">
       {links.map((l) => {
         const ativo = linkAtivo(pathname, l.href)
-        const badge = l.href === '/inbox' && naoLidas > 0 && !ativo
+        const badge = l.href === '/spinzap' && naoLidas > 0 && !ativo
         // Kalebe 2026-10-01: passar o mouse em Financeiro abre o atalho do dia a dia
         if (l.href === '/financeiro') return <MenuFinanceiro key={l.href} link={l} ativo={ativo} />
         return (

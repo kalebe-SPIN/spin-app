@@ -118,7 +118,7 @@ export function ConversaClienteCard({ projetoId }: { projetoId: string }) {
         </div>
         {dados.conversa && (
           <Link
-            href={`/inbox?c=${dados.conversa.id}`}
+            href={`/spinzap?c=${dados.conversa.id}`}
             className="text-[10px] text-sol hover:text-sol/80 font-bold uppercase tracking-wider shrink-0"
           >
             Abrir Inbox →

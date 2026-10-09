@@ -84,7 +84,7 @@ export default async function AceitarLeadPage({
             {ok && <p className="text-xs text-verde">Aceite registrado.</p>}
 
             {meuAceite?.status === 'no_volante' && bc.conversa_id && (
-              <Link href={`/inbox?c=${bc.conversa_id}`}
+              <Link href={`/spinzap?c=${bc.conversa_id}`}
                 className="inline-block px-4 py-2 bg-verde text-noite font-bold text-sm rounded-lg">
                 💬 Abrir conversa com o cliente
               </Link>

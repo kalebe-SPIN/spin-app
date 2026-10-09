@@ -377,7 +377,7 @@ Retorne apenas o JSON.`
       const quem = contextoNovo.nome_cliente || contato.nome_exibicao || contato.telefone
       await avisarEquipe({
         agente: 'qualificacao',
-        mensagem: `${quem} (${contato.telefone}) parece estar conversando com alguém da equipe, então saí da conversa — mas ela está sem responsável. Alguém assume? ${URL_PORTAL}/inbox?c=${conversa_id}`,
+        mensagem: `${quem} (${contato.telefone}) parece estar conversando com alguém da equipe, então saí da conversa — mas ela está sem responsável. Alguém assume? ${URL_PORTAL}/spinzap?c=${conversa_id}`,
         conversa_id,
         projeto_id: contato.projeto_id || contextoNovo.projeto_id || null,
       }).catch((e) => console.error('[agente-qualificacao] aviso conversa_humana', e))
@@ -394,6 +394,22 @@ Retorne apenas o JSON.`
       agente_ativo: 'qualificacao',
     })
     .eq('id', conversa_id)
+
+  // Kalebe 2026-10-09 (Spinzap): etiquetas do cabeçalho — cidade/UF e
+  // produto/serviço — a partir do que a Laís coletou (só preenche o vazio;
+  // o que a equipe ajustou à mão fica). Sem a migration 145, ignora.
+  const PRODUTO_DO_TIPO: Record<string, string> = {
+    on_grid: 'fv_ongrid', hibrido: 'fv_hibrido', bess: 'bess', limpeza: 'srv_limpeza', revisao: 'srv_manutencao', ve_recarga: 've_recarga',
+  }
+  const { data: etq } = await admin.from('wa_conversas').select('cidade, uf, produto').eq('id', conversa_id).maybeSingle()
+  if (etq) {
+    const patchEtq: Record<string, any> = {}
+    if (!etq.cidade && contextoNovo.cidade) patchEtq.cidade = String(contextoNovo.cidade).trim()
+    if (!etq.uf && contextoNovo.uf) patchEtq.uf = String(contextoNovo.uf).trim().toUpperCase().slice(0, 2)
+    const prod = PRODUTO_DO_TIPO[String(contextoNovo.tipo_sistema || '')]
+    if (!etq.produto && prod) patchEtq.produto = prod
+    if (Object.keys(patchEtq).length) await admin.from('wa_conversas').update(patchEtq).eq('id', conversa_id)
+  }
 
   // Escalar
   if (status === 'escalar_humano') {
@@ -553,7 +569,7 @@ const REGRA_MIDIA = `REGRA FIXA — ÁUDIO, FOTO E ARQUIVO
   Nunca diga que não consegue abrir documento ou imagem.
 - Áudio você NÃO consegue ouvir. Não peça pro cliente repetir por escrito o que falou.
   Responda que recebeu o áudio e que um consultor vai ouvir e já retorna, e inclua
-  "aviso_equipe": "Cliente mandou áudio — alguém precisa ouvir no inbox."
+  "aviso_equipe": "Cliente mandou áudio — alguém precisa ouvir no Spinzap."
   Se ainda faltar nome ou cidade, pode pedir UMA vez, de leve, na mesma mensagem.
 - Arquivo que não veio anexado (planilha, Word, PDF grande, vídeo): agradeça e diga que já
   ficou registrado no atendimento pra equipe analisar.`

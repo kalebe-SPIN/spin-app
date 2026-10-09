@@ -35,7 +35,7 @@ export function areaDaRota(pathname: string): string {
 
 const NOMES_AREA: Record<string, string> = {
   inicio: 'Dashboard', dashboard: 'Dashboard', projetos: 'Projetos', crm: 'CRM', agenda: 'Agenda',
-  inbox: 'Inbox', grupos: 'Grupos', financeiro: 'Financeiro', admin: 'Admin', 'venda-direta': 'Venda direta',
+  spinzap: 'Spinzap', inbox: 'Spinzap', grupos: 'Grupos', financeiro: 'Financeiro', admin: 'Admin', 'venda-direta': 'Venda direta',
   erp: 'ERP', conta: 'Minha conta', homologacoes: 'Homologações', operacoes: 'Operações', 'pos-venda': 'Pós-venda',
   fiscal: 'Fiscal', cliente: 'Portal do cliente', catalogo: 'Catálogo', parceiro: 'Parceiro',
   campo: 'Campo',

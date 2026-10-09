@@ -126,7 +126,7 @@ export default async function AdminHomePage() {
             destaque
           />
           <AdminCard
-            href="/inbox"
+            href="/spinzap"
             icon="📨"
             titulo="Inbox WhatsApp"
             desc="Timeline das conversas, envio de mensagens (multi-persona), assumir/encerrar. Para atendimento humano no dia a dia."

@@ -45,7 +45,7 @@ export default async function AdminWhatsAppPage() {
             </p>
           </div>
           <div className="flex flex-col gap-2 items-end shrink-0">
-            <Link href="/inbox" className="px-4 py-2 rounded bg-sol/20 border border-sol/40 text-sol text-xs font-bold hover:bg-sol/30">
+            <Link href="/spinzap" className="px-4 py-2 rounded bg-sol/20 border border-sol/40 text-sol text-xs font-bold hover:bg-sol/30">
               Abrir Inbox →
             </Link>
             <Link href="/admin/whatsapp/setup" className="px-4 py-2 rounded bg-verde/20 border border-verde/40 text-verde text-xs font-bold hover:bg-verde/30">

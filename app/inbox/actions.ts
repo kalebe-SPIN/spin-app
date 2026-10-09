@@ -33,45 +33,118 @@ async function verificarUsuario(): Promise<CheckUsuario> {
 }
 
 export async function listarConversasAction(): Promise<
-  | { conversas: any[] }
+  | { conversas: any[]; setores: Array<{ chave: string; nome: string; emoji: string | null }> }
   | { erro: string }
 > {
   const check = await verificarUsuario()
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
   const supabase = createClient()
 
-  // RLS já filtra pra quem não é admin (responsável + fila de leads).
-  // Kalebe 2026-10-01: fora do comercial (profissional de campo, instalador,
-  // colaborador) só vê as conversas em que é o responsável — a fila de leads
-  // aguardando representante não é com eles.
+  // Kalebe 2026-10-09 (Spinzap): admin vê tudo; os demais só as suas
+  // (responsável ou dono) e as que transferiram e esperam de volta. A fila de
+  // leads sem dono saiu da lista ("ver as minhas não precisa").
   const papel = check.perfil?.role || ''
-  const veFilaDeLeads = ['admin', 'representante', 'vendedor_servicos'].includes(papel)
-  // Kalebe 2026-10-01: foto do contato/cliente (mig 131). Sem a migration as
-  // colunas não existem → lista sem foto em vez de quebrar o inbox.
-  const consulta = (comFoto: boolean) => {
+  const ehAdmin = papel === 'admin'
+  const uid = check.user!.id
+  // Colunas novas do Spinzap (mig 145) e foto (mig 131): sem elas, cai pra
+  // consulta mais simples em vez de quebrar a tela.
+  const consulta = (nivel: 0 | 1 | 2) => {
+    const spinzap = nivel === 0 ? 'etapa, etapa_em, cidade, uf, produto, dono_id, transferida_de, transferida_em, transferencia_recado, transferidor:transferida_de(nome_completo),' : ''
+    const foto = nivel <= 1 ? ', foto_url, cliente:cliente_id(foto_url)' : ''
     let q = supabase
       .from('wa_conversas')
       .select(`
-        id, status, responsavel_id, agente_ativo, origem_campanha,
+        id, status, responsavel_id, agente_ativo, origem_campanha, ${spinzap}
         ultima_mensagem_em, janela_24h_expira_em, sla_prazo_em,
         criada_em, encerrada_em,
-        contato:contato_id(id, telefone, nome_exibicao, tipo, cliente_id, projeto_id${comFoto ? ', foto_url, cliente:cliente_id(foto_url)' : ''}),
+        contato:contato_id(id, telefone, nome_exibicao, tipo, cliente_id, projeto_id, criado_em${foto}),
         responsavel:responsavel_id(nome_completo)
       `)
-    if (!veFilaDeLeads) q = q.eq('responsavel_id', check.user!.id)
+    if (!ehAdmin) {
+      q = nivel === 0
+        ? q.or(`responsavel_id.eq.${uid},dono_id.eq.${uid},transferida_de.eq.${uid}`)
+        : q.eq('responsavel_id', uid)
+    }
     return q
       .order('ultima_mensagem_em', { ascending: false, nullsFirst: false })
-      .limit(200)
+      .limit(300)
   }
-  let { data, error }: { data: any[] | null; error: any } = await consulta(true)
-  if (error && /foto_url/.test(error.message)) ({ data, error } = await consulta(false) as any)
-
+  let r: { data: any[] | null; error: any } = await consulta(0) as any
+  if (r.error) r = await consulta(1) as any
+  if (r.error && /foto_url/.test(r.error.message)) r = await consulta(2) as any
+  const { data, error } = r
   if (error) return { erro: error.message }
 
   // Kalebe 2026-09-30: não lidas por conversa (migration 131; sem ela, fica 0)
   const { data: naoLidas } = await supabase.rpc('wa_nao_lidas')
   const qtd = new Map(((naoLidas || []) as any[]).map((n) => [n.conversa_id, Number(n.qtd) || 0]))
-  return { conversas: (data || []).map((c: any) => ({ ...c, nao_lidas: qtd.get(c.id) || 0 })) }
+
+  // Setor de cada conversa: Laís (IA no comando), sem responsável, ou o setor
+  // de quem atende (profiles.setor_mensagens; senão o 1º grupo do usuário)
+  const admin = createAdminClient()
+  const responsaveis = Array.from(new Set((data || []).map((c: any) => c.responsavel_id).filter(Boolean))) as string[]
+  const setorDe = new Map<string, string>()
+  if (responsaveis.length) {
+    const [{ data: perfisSetor }, { data: membros }] = await Promise.all([
+      admin.from('profiles').select('id, setor_mensagens').in('id', responsaveis),
+      admin.from('grupos_membros').select('usuario_id, grupo:grupo_id(chave)').in('usuario_id', responsaveis).is('bloqueado_em', null),
+    ])
+    for (const m of (membros || []) as any[]) if (!setorDe.has(m.usuario_id) && m.grupo?.chave) setorDe.set(m.usuario_id, m.grupo.chave)
+    for (const p of (perfisSetor || []) as any[]) if (p.setor_mensagens) setorDe.set(p.id, p.setor_mensagens)
+  }
+  const { data: grupos } = await admin.from('grupos_internos').select('chave, nome, emoji, ordem').eq('ativo', true).order('ordem')
+
+  return {
+    conversas: (data || []).map((c: any) => ({
+      ...c,
+      nao_lidas: qtd.get(c.id) || 0,
+      setor: ['nova', 'em_qualificacao', 'em_atendimento_ia'].includes(c.status) || c.agente_ativo
+        ? 'lais'
+        : c.responsavel_id ? (setorDe.get(c.responsavel_id) || 'sem_setor') : 'sem_responsavel',
+    })),
+    setores: (grupos || []) as Array<{ chave: string; nome: string; emoji: string | null }>,
+  }
+}
+
+/**
+ * Spinzap: quem pode agir na conversa = quem a enxerga pelo RLS (admin,
+ * responsável, dono ou quem transferiu). Kalebe 2026-10-09 — antes, enviar,
+ * encerrar e ligar usavam o service role sem conferir.
+ */
+async function acessoConversa(conversa_id: string): Promise<{ ok: true } | { erro: string }> {
+  const { data } = await createClient().from('wa_conversas').select('id').eq('id', conversa_id).maybeSingle()
+  return data ? { ok: true } : { erro: 'Você não tem acesso a esta conversa' }
+}
+
+/** Etapa do atendimento (barra lateral do Spinzap), mudada à mão. */
+export async function mudarEtapaConversaAction(conversa_id: string, etapa: string): Promise<{ sucesso: true } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const { ETAPAS } = await import('@/lib/spinzap/comum')
+  if (!ETAPAS.some((e) => e.chave === etapa)) return { erro: 'Etapa inválida' }
+  const a = await acessoConversa(conversa_id)
+  if ('erro' in a) return a
+  const { error } = await createAdminClient().from('wa_conversas')
+    .update({ etapa, etapa_em: new Date().toISOString() }).eq('id', conversa_id)
+  if (error) return { erro: /etapa/.test(error.message) ? 'Falta rodar a migration 145 (Spinzap) no Supabase.' : error.message }
+  revalidatePath('/spinzap')
+  return { sucesso: true }
+}
+
+/** Etiquetas do cliente no cabeçalho: cidade/UF e produto/serviço. */
+export async function salvarEtiquetasConversaAction(conversa_id: string, e: { cidade?: string | null; uf?: string | null; produto?: string | null }): Promise<{ sucesso: true } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const a = await acessoConversa(conversa_id)
+  if ('erro' in a) return a
+  const patch: Record<string, any> = {}
+  if (e.cidade !== undefined) patch.cidade = e.cidade?.trim() || null
+  if (e.uf !== undefined) patch.uf = e.uf?.trim().toUpperCase().slice(0, 2) || null
+  if (e.produto !== undefined) patch.produto = e.produto || null
+  const { error } = await createAdminClient().from('wa_conversas').update(patch).eq('id', conversa_id)
+  if (error) return { erro: /cidade|produto/.test(error.message) ? 'Falta rodar a migration 145 (Spinzap) no Supabase.' : error.message }
+  revalidatePath('/spinzap')
+  return { sucesso: true }
 }
 
 /** Abriu a conversa = leu tudo até agora (por usuário). */
@@ -177,7 +250,9 @@ export async function assumirConversaAction(conversa_id: string): Promise<
     .eq('id', conversa_id)
 
   if (error) return { erro: error.message }
-  revalidatePath('/inbox')
+  // Spinzap (mig 145): quem assume sem dono vira o dono do cliente
+  await admin.from('wa_conversas').update({ dono_id: check.user.id }).eq('id', conversa_id).is('dono_id', null)
+  revalidatePath('/spinzap')
   return { sucesso: true }
 }
 
@@ -261,10 +336,34 @@ export async function transferirConversaAction(entrada: {
     .update({ responsavel_id: dest.id, status: 'em_atendimento', agente_ativo: null })
     .eq('id', conv.id)
   if (error) return { erro: error.message }
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
 
   // Transferiu pra si mesmo = assumiu; não precisa de aviso
-  if (dest.id === check.user.id) return { sucesso: true, nome: dest.nome_completo || '', whatsapp: false, motivo: null }
+  if (dest.id === check.user.id) {
+    await admin.from('wa_conversas').update({ dono_id: dest.id }).eq('id', conv.id).is('dono_id', null)
+    return { sucesso: true, nome: dest.nome_completo || '', whatsapp: false, motivo: null }
+  }
+
+  // Kalebe 2026-10-09 (Spinzap): transferência TEMPORÁRIA — quem recebe vê e
+  // interage só enquanto está com o cliente e devolve com "Concluir
+  // atendimento". Volta pra quem estava atendendo (ou quem transferiu).
+  // Transferência em cadeia (A → B → C): volta sempre pra quem era o dono do atendimento (A)
+  const { data: transfAtual } = await admin.from('wa_conversas').select('transferida_de').eq('id', conv.id).maybeSingle()
+  const devolverPara = (transfAtual as { transferida_de?: string | null } | null)?.transferida_de || conv.responsavel_id || check.user.id
+  const recadoTransf = (entrada.recado || '').trim().slice(0, 500) || null
+  const { error: eT } = await admin.from('wa_conversas').update({
+    transferida_de: devolverPara,
+    transferida_em: new Date().toISOString(),
+    transferencia_recado: recadoTransf,
+  }).eq('id', conv.id)
+  if (!eT) {
+    await admin.from('wa_conversas').update({ dono_id: devolverPara }).eq('id', conv.id).is('dono_id', null)
+    const { data: perfilDest } = await admin.from('profiles').select('setor_mensagens').eq('id', dest.id).maybeSingle()
+    await admin.from('wa_transferencias').insert({
+      conversa_id: conv.id, de_id: devolverPara, para_id: dest.id,
+      setor: perfilDest?.setor_mensagens || null, recado: recadoTransf,
+    })
+  }
 
   const { dadosContatoConversa, transcricaoDaConversa, resumirConversa, cortar } = await import('@/lib/whatsapp/resumo-conversa')
   const { avisarUsuario } = await import('@/lib/agentes/diretorio')
@@ -306,6 +405,8 @@ export async function encerrarConversaAction(conversa_id: string): Promise<
 > {
   const check = await verificarUsuario()
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const acesso = await acessoConversa(conversa_id)
+  if ('erro' in acesso) return acesso
   const admin = createAdminClient()
 
   const { error } = await admin
@@ -318,8 +419,63 @@ export async function encerrarConversaAction(conversa_id: string): Promise<
     .eq('id', conversa_id)
 
   if (error) return { erro: error.message }
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
   return { sucesso: true }
+}
+
+/**
+ * Kalebe 2026-10-09 (Spinzap): "quando ele finalizar o atendimento com aquele
+ * cliente, deve devolver o cliente através de um comando de conclusão do
+ * serviço/atendimento". Volta pra quem transferiu, com o resumo do que foi
+ * feito; quem devolveu perde o acesso (se não for o dono).
+ */
+export async function concluirAtendimentoAction(conversa_id: string, resumo: string): Promise<{ sucesso: true; devolvido_para: string } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const texto = String(resumo || '').trim()
+  if (texto.length < 5) return { erro: 'Conte em uma frase o que foi feito' }
+  const admin = createAdminClient()
+  const { data: conv, error } = await admin.from('wa_conversas')
+    .select('id, responsavel_id, transferida_de').eq('id', conversa_id).maybeSingle()
+  if (error) return { erro: /transferida_de/.test(error.message) ? 'Falta rodar a migration 145 (Spinzap) no Supabase.' : error.message }
+  if (!conv?.transferida_de) return { erro: 'Esta conversa não foi transferida — não há pra quem devolver' }
+  if (conv.responsavel_id !== check.user.id && check.perfil?.role !== 'admin') return { erro: 'Só quem está com o cliente conclui o atendimento' }
+
+  const agora = new Date().toISOString()
+  const { error: eUp } = await admin.from('wa_conversas').update({
+    responsavel_id: conv.transferida_de, transferida_de: null, transferida_em: null, transferencia_recado: null,
+  }).eq('id', conversa_id)
+  if (eUp) return { erro: eUp.message }
+  const { data: aberta } = await admin.from('wa_transferencias').select('id')
+    .eq('conversa_id', conversa_id).is('concluida_em', null).order('criada_em', { ascending: false }).limit(1).maybeSingle()
+  if (aberta) await admin.from('wa_transferencias').update({ concluida_em: agora, concluida_por: check.user.id, resumo_conclusao: texto.slice(0, 1000) }).eq('id', aberta.id)
+
+  // Registro na timeline (interno, não vai pro cliente) + aviso pra quem recebe de volta
+  const quem = (check.perfil?.nome_completo || 'Equipe').split(' ')[0]
+  await gravarMensagem(admin, {
+    conversa_id, direcao: 'outbound', tipo: 'system',
+    texto: `✔ ${quem} concluiu o atendimento e devolveu o cliente: ${texto.slice(0, 500)}`,
+    remetente_id: check.user.id, origem_agente_nome: 'Spinzap', status_entrega: 'enviada',
+  })
+  const { data: dest } = await admin.from('profiles').select('nome_completo').eq('id', conv.transferida_de).maybeSingle()
+  const { dadosContatoConversa } = await import('@/lib/whatsapp/resumo-conversa')
+  const { avisarUsuario } = await import('@/lib/agentes/diretorio')
+  const d = await dadosContatoConversa(admin, conversa_id)
+  await avisarUsuario({
+    destinatario_id: conv.transferida_de,
+    agente: 'qualificacao',
+    remetente_usuario_id: check.user.id,
+    titulo: 'Atendimento devolvido pra você',
+    mensagem: [
+      `↩ *${quem}* concluiu e devolveu o atendimento de *${d?.nome || 'cliente'}*.`,
+      `📝 O que foi feito: ${texto.slice(0, 600)}`,
+      d ? `🔗 Conversa: ${d.linkConversa}` : null,
+    ].filter(Boolean).join('\n'),
+    conversa_id,
+    projeto_id: d?.projetoId || null,
+  }).catch(() => {})
+  revalidatePath('/spinzap')
+  return { sucesso: true, devolvido_para: dest?.nome_completo || '' }
 }
 
 /**
@@ -337,6 +493,8 @@ export async function enviarTextoAction(entrada: {
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
   const texto = String(entrada.texto || '').trim()
   if (!texto) return { erro: 'Mensagem vazia' }
+  const acesso = await acessoConversa(entrada.conversa_id)
+  if ('erro' in acesso) return acesso
 
   const _cfg = await getWaConfig()
   const token = _cfg.access_token
@@ -459,7 +617,7 @@ export async function enviarTextoAction(entrada: {
     console.error('[enviarTextoAction/marcarContato]', e)
   }
 
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
   return { sucesso: true, meta_message_id: metaMessageId, via_modelo: viaModelo }
 }
 
@@ -554,6 +712,8 @@ export async function iniciarChamadaAction(entrada: {
 }): Promise<{ url_sala: string; texto_enviado: string } | { erro: string }> {
   const check = await verificarUsuario()
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const acesso = await acessoConversa(entrada.conversa_id)
+  if ('erro' in acesso) return acesso
 
   const admin = createAdminClient()
 
@@ -664,7 +824,7 @@ export async function iniciarChamadaAction(entrada: {
     .eq('id', entrada.conversa_id)
     .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
 
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
   return { url_sala, texto_enviado: texto }
 }
 
@@ -682,6 +842,8 @@ export async function enviarArquivoAction(formData: FormData): Promise<
   const arquivo = formData.get('arquivo') as File | null
   const legenda = String(formData.get('legenda') || '')
   if (!conversa_id || !arquivo) return { erro: 'Faltam conversa_id ou arquivo' }
+  const acesso = await acessoConversa(conversa_id)
+  if ('erro' in acesso) return acesso
 
   const _cfg = await getWaConfig()
   const token = _cfg.access_token
@@ -792,7 +954,7 @@ export async function enviarArquivoAction(formData: FormData): Promise<
     .eq('id', conversa_id)
     .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
 
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
   return { sucesso: true, meta_message_id: metaMessageId, tipo: tipoMsg }
 }
 
@@ -802,7 +964,7 @@ export async function enviarArquivoAction(formData: FormData): Promise<
  *
  * Abre (ou cria) a conversa WhatsApp de um projeto. Se o cliente
  * ainda não tem contato/conversa, cria automaticamente.
- * Retorna o conversa_id pra redirecionar pro /inbox?c=<id>.
+ * Retorna o conversa_id pra redirecionar pro /spinzap?c=<id>.
  */
 export async function abrirCanalDoProjetoAction(
   projeto_id: string,
@@ -835,6 +997,9 @@ async function depoisDeEnviarProposta(projetoId: string, userId: string, convers
     // Reenvio (já em negociação) ou etapa que não mudou: follow-up mesmo assim (sem duplicar)
     const { criarFollowupProposta } = await import('@/lib/bianca/followup-proposta')
     await criarFollowupProposta({ projeto: p, usuarioId: userId, conversaId, como })
+    // Spinzap: a conversa do cliente vai pra "Negócio em andamento"
+    const { moverEtapaPeloProjeto } = await import('@/lib/spinzap/etapas')
+    await moverEtapaPeloProjeto(projetoId, 'negocio_andamento', { soAvancar: true })
     revalidatePath(`/projetos/${projetoId}`)
     revalidatePath('/crm/pipeline')
   } catch (e) {
@@ -911,7 +1076,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
         })
         if ('sucesso' in r) {
           await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp')
-          revalidatePath('/inbox')
+          revalidatePath('/spinzap')
           return { sucesso: true, conversa_id: canal.conversa_id }
         }
       }
@@ -970,7 +1135,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
     .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
 
   await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp')
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
   return { sucesso: true, conversa_id: canal.conversa_id }
 }
 
@@ -1040,7 +1205,7 @@ export async function reabrirComModeloAction(entrada: {
     origem_agente_nome: (await rotuloRemetente(check.user.id, check.perfil?.nome_completo)) || nomeUsuario,
   })
   if ('erro' in r) return { erro: r.erro }
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
   return { sucesso: true }
 }
 
@@ -1112,6 +1277,6 @@ export async function abrirConversaManualAction(entrada: {
   const conversa = await findOrCreateConversaAtiva(admin, contato.id)
   if (!conversa) return { erro: 'Falha ao criar conversa' }
 
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
   return { conversa_id: conversa.id }
 }

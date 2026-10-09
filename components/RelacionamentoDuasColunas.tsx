@@ -113,7 +113,7 @@ function ColunaWhatsApp({ dados }: { dados: DadosRelacionamento }) {
         </h3>
         {dados.conversaId && (
           <Link
-            href={`/inbox?c=${dados.conversaId}`}
+            href={`/spinzap?c=${dados.conversaId}`}
             title="Abrir conversa completa no inbox"
             className="text-[10px] text-white/50 hover:text-white uppercase tracking-wider font-bold"
           >

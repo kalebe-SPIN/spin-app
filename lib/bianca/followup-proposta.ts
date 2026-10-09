@@ -35,7 +35,7 @@ export async function criarFollowupProposta(entrada: {
       `A proposta foi enviada ${entrada.como || 'ao cliente'}. Entre em contato pra saber o que achou e tirar dúvidas.`,
       p.cliente_telefone ? `Telefone: ${p.cliente_telefone}` : null,
       p.codigo ? `Projeto: ${p.codigo}` : null,
-      entrada.conversaId ? `Conversa: /inbox?c=${entrada.conversaId}` : null,
+      entrada.conversaId ? `Conversa: /spinzap?c=${entrada.conversaId}` : null,
     ].filter(Boolean).join('\n'),
     data_prazo: prazo,
     prioridade: 'alta',

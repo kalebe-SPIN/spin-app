@@ -3,6 +3,8 @@ module.exports = {
   content: [
     './app/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
+    // Kalebe 2026-10-09: cores das etapas do Spinzap vivem em lib/spinzap
+    './lib/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
     extend: {

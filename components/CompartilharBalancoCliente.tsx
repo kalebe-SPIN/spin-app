@@ -116,7 +116,7 @@ export function CompartilharBalancoCliente({
         <span className="text-[10px] text-white/40">Vai pela conversa do WhatsApp Spin do projeto, com uma mensagem explicando.</span>
       </div>
       {enviadoConversa && (
-        <p className="text-xs text-verde">✓ Enviado. <Link href={`/inbox?c=${enviadoConversa}`} className="underline">Ver no inbox</Link></p>
+        <p className="text-xs text-verde">✓ Enviado. <Link href={`/spinzap?c=${enviadoConversa}`} className="underline">Ver no Spinzap</Link></p>
       )}
       {erro && <p className="text-xs text-coral bg-coral/10 border border-coral/30 rounded-lg p-2">⚠ {erro}</p>}
 

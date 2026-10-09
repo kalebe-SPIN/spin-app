@@ -361,7 +361,7 @@ export async function criarProjetoDaConversaAction(input: {
     console.error('[criarProjetoDaConversa] contatos do projeto', e)
   }
 
-  revalidatePath('/inbox')
+  revalidatePath('/spinzap')
   revalidatePath('/projetos')
   return { projeto_id: projetoId, codigo }
 }

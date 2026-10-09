@@ -556,6 +556,11 @@ export async function encerrarProjetoAction(entrada: {
   // Tarefas de follow-up abertas desse projeto não fazem mais sentido
   await supabase.from('agenda_tarefas').update({ status: 'cancelada' })
     .eq('projeto_id', entrada.projeto_id).in('status', ['pendente', 'em_andamento']).ilike('titulo', '%Follow-up%')
+  // Spinzap: perdido → a conversa do cliente vai pra "Perdido"
+  if (entrada.tipo === 'perdido') {
+    const { moverEtapaPeloProjeto } = await import('@/lib/spinzap/etapas')
+    await moverEtapaPeloProjeto(entrada.projeto_id, 'perdido')
+  }
 
   revalidatePath('/projetos')
   revalidatePath('/crm/pipeline')

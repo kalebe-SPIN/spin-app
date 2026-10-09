@@ -79,7 +79,7 @@ export async function dadosContatoConversa(admin: Admin, conversaId: string): Pr
     projetos: lista,
     projetoId,
     linkCard,
-    linkConversa: `${URL_PORTAL}/inbox?c=${conversaId}`,
+    linkConversa: `${URL_PORTAL}/spinzap?c=${conversaId}`,
     situacao,
   }
 }
