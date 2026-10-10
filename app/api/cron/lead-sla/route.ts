@@ -348,6 +348,15 @@ export async function GET(req: NextRequest) {
       stats.erros++
     }
 
+    // Kalebe 2026-10-10: lembrete 5 min antes das ligações marcadas pela Laís
+    try {
+      const { enviarLembretesLigacao } = await import('@/lib/spinzap/lembretes-ligacao')
+      const l = await enviarLembretesLigacao()
+      ;(stats as any).lembretes_ligacao = l.enviados
+    } catch (e) {
+      console.error('[cron lead-sla] lembretes de ligação', e)
+    }
+
     return NextResponse.json({ ok: true, stats })
   } catch (e: any) {
     console.error('[cron lead-sla]', e)

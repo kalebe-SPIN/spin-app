@@ -235,6 +235,7 @@ export async function POST(req: NextRequest) {
                 // pra o inbox mostrar algo útil ao invés de "[mídia não-texto]"
                 texto: msg.text?.body || msg.button?.text
                   || msg.interactive?.button_reply?.title
+                  || msg.interactive?.list_reply?.title
                   || (tipoMsg === 'document' ? (midiaObj.filename || null) : null)
                   || (cartoes.length ? textoDosCartoes(cartoes) : null)
                   || (loc ? `📍 ${[loc.name, loc.address].filter(Boolean).join(' — ') || 'Localização'}` : null)
@@ -247,6 +248,15 @@ export async function POST(req: NextRequest) {
                 status_entrega: 'lida',
                 ...(cartoes.length ? { dados: { contatos: cartoes } } : {}),
                 ...(loc ? { dados: { latitude: loc.latitude, longitude: loc.longitude, nome: loc.name || null, endereco: loc.address || null } } : {}),
+                // Kalebe 2026-10-10: qual botão/item de lista o cliente escolheu
+                // (id = a opção que a Laís mandou; o fluxo de atendimento lê daqui)
+                ...(tipoMsg === 'interactive' || tipoMsg === 'button' ? {
+                  dados: {
+                    resposta_id: msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.id || msg.button?.payload || null,
+                    resposta_titulo: msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || msg.button?.text || null,
+                    em_resposta_a: msg.context?.id || null,
+                  },
+                } : {}),
               })
 
               // Cartão de contato (ex.: o decisor) → salva no projeto da conversa

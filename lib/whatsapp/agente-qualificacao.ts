@@ -221,6 +221,23 @@ export async function processarMensagemQualificacao(
   if (ultima && ultima.direcao === 'outbound') {
     return { acao: 'ignorada', motivo: 'última mensagem é outbound' }
   }
+
+  // Kalebe 2026-10-10: roteiro da Laís pra lead novo (recepção com lista,
+  // etiquetas, ligação com o Comercial). Só em conversa nova ou que já está
+  // nele, e com a chave ligada (wa_config.lais_roteiro_ativo, mig 149). O que
+  // o roteiro ainda não cobre volta pra cá com as etiquetas preenchidas.
+  const ctxRoteiro = (contextoAtual as any).roteiro
+  if ((ctxRoteiro || !msgs.some((m) => m.direcao === 'outbound')) && (contextoAtual as any).roteiro?.passo !== 'legado') {
+    const { roteiroAtivo, processarRoteiroLais } = await import('./lais-roteiro')
+    if (await roteiroAtivo(admin)) {
+      const { data: etq } = await admin.from('wa_conversas').select('cidade').eq('id', conversa_id).maybeSingle()
+      const r = await processarRoteiroLais(admin, {
+        conversa_id, contato, contexto: contextoAtual as any, cidadeEtiqueta: (etq as any)?.cidade || null,
+      })
+      if (r.tratou) return { acao: 'perguntou', texto_enviado: '', contexto: r.contexto as ContextoQualificacao }
+      Object.assign(contextoAtual, r.contexto)
+    }
+  }
   // Kalebe 2026-10-01: a resposta vale até esta msg do cliente — se chegar
   // outra enquanto a IA pensa, não responde por cima (a rodada da msg nova,
   // disparada pelo webhook dela, responde considerando tudo)
@@ -253,7 +270,8 @@ export async function processarMensagemQualificacao(
   const historico = (msgs || []).map((m) => {
     const quem = m.direcao === 'inbound' ? 'Cliente' : (m.origem_agente_nome || 'Agente Spin')
     const anexado = anexos.some((a) => a.url === m.midia_url)
-    const t = m.tipo === 'text' ? (m.texto || '')
+    // Clique em botão/lista chega com o texto da opção escolhida
+    const t = ['text', 'interactive', 'button'].includes(m.tipo) ? (m.texto || '')
       : m.tipo === 'audio' ? '[áudio — você não consegue ouvir]'
       : m.tipo === 'image' ? (anexado ? '[foto — anexada abaixo]' : '[foto]')
       : m.tipo === 'document' ? `[arquivo: ${m.texto || 'documento'}${anexado ? ' — anexado abaixo' : ''}]`
@@ -633,7 +651,7 @@ Nesse caso retorne exatamente:
 {"contexto_atualizado": {"status_qualificacao": "conversa_humana"}, "proxima_mensagem": ""}
 No primeiro contato do cliente (você ainda não mandou nada), atenda normalmente.`
 
-async function criarProjetoDoLead(
+export async function criarProjetoDoLead(
   admin: ReturnType<typeof createAdminClient>,
   contato: any,
   ctx: ContextoQualificacao,

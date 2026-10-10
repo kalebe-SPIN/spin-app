@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { ModalProjetoConversa } from './ModalProjetoConversa'
+import { PerfilLead } from './PerfilLead'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 import { AvatarContato } from '@/components/AvatarContato'
 import { AvisosDoCliente } from '@/components/bianca/AvisosDoCliente'
@@ -772,6 +773,10 @@ export function InboxClient({
               onEtiquetas={salvarEtiquetas}
               onFornecedor={() => { setErro(null); setModalFornecedor(true) }}
             />
+            {/* Kalebe 2026-10-10: linha do perfil do lead — sessões com formulário próprio */}
+            {!ehEquipe(selecionada) && !ehFornecedorPuro(selecionada) && (
+              <PerfilLead key={`perfil-${selecionada.id}`} conversaId={selecionada.id} />
+            )}
 
             {/* Transferência temporária: aviso + devolução ao concluir */}
             {selecionada.transferida_de && !selecionada.encerrada_em && (

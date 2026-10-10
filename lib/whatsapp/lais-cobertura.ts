@@ -109,7 +109,7 @@ export async function processarCoberturaLais(conversa_id: string): Promise<
   const linhas = msgs.map((m) => {
     const quem = m.direcao === 'inbound' ? 'Cliente' : (m.origem_agente_nome || primeiroNome(m.remetente?.nome_completo) || 'Spin')
     const anexado = anexos.some((a) => a.url === m.midia_url)
-    const t = m.tipo === 'text' ? (m.texto || '')
+    const t = ['text', 'interactive', 'button'].includes(m.tipo) ? (m.texto || '')
       : m.tipo === 'audio' ? '[áudio — você não consegue ouvir]'
       : m.tipo === 'image' ? (anexado ? '[foto — anexada abaixo]' : `[foto${m.texto ? `: ${m.texto}` : ''}]`)
       : m.tipo === 'document' ? `[arquivo: ${m.texto || 'documento'}${anexado ? ' — anexado abaixo' : ''}]`
