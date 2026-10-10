@@ -25,6 +25,8 @@ import {
   mudarEtapaConversaAction,
   salvarEtiquetasConversaAction,
   concluirAtendimentoAction,
+  laisAssumirAction,
+  laisDevolverAction,
 } from '@/app/inbox/actions'
 import { ETAPAS, INFO_ETAPA, PERFIS, PRODUTOS, TIPOS_FORNECEDOR, infoProduto, rotuloTiposFornecedor, type Etapa } from '@/lib/spinzap/comum'
 import { cadastrarFornecedorDaConversaAction, desvincularFornecedorDaConversaAction, listarFornecedoresAction } from '@/app/inbox/fornecedor-actions'
@@ -68,6 +70,9 @@ type Conversa = {
   transferida_em?: string | null
   transferencia_recado?: string | null
   transferidor?: { nome_completo: string | null } | null
+  // Kalebe 2026-10-09: Laís cobrindo o usuário (mig 147)
+  lais_cobrindo_desde?: string | null
+  lais_cobrindo_por?: string | null
   setor?: string
 }
 
@@ -365,6 +370,40 @@ export function InboxClient({
   // Transferência temporária: quem recebeu devolve o cliente ao concluir
   const podeConcluir = !!selecionada?.transferida_de && !selecionada.encerrada_em
     && (selecionada.responsavel_id === usuarioId || usuarioRole === 'admin')
+
+  // Kalebe 2026-10-09: a Laís assume no lugar do usuário que não pode atender agora
+  const laisCobrindo = !!selecionada?.lais_cobrindo_desde
+  const podeAcionarLais = !!selecionada && !selecionada.encerrada_em && !laisCobrindo && !ehEquipe(selecionada)
+    && (selecionada.responsavel_id === usuarioId || usuarioRole === 'admin')
+    && !['nova', 'em_qualificacao'].includes(selecionada.status)
+
+  function laisAssumir() {
+    if (!selecionada) return
+    const id = selecionada.id
+    setErro(null); setOkMsg(null)
+    startTransition(async () => {
+      const r = await laisAssumirAction(id)
+      if ('erro' in r) setErro(r.erro)
+      else setOkMsg(r.respondeu
+        ? '🤖 A Laís assumiu e já respondeu o cliente. As demandas que surgirem chegam pra você.'
+        : '🤖 A Laís assumiu. Ela responde quando o cliente escrever e anota as demandas pra você.')
+      refreshConversas(); refreshMensagens(id)
+    })
+  }
+
+  function laisRetomar() {
+    if (!selecionada) return
+    const id = selecionada.id
+    setErro(null); setOkMsg(null)
+    startTransition(async () => {
+      const r = await laisDevolverAction(id)
+      if ('erro' in r) setErro(r.erro)
+      else setOkMsg(r.demandas.length
+        ? `Atendimento de volta com você. Demandas anotadas pela Laís: ${r.demandas.join(' · ')}`
+        : 'Atendimento de volta com você. A Laís não anotou demandas novas.')
+      refreshConversas(); refreshMensagens(id)
+    })
+  }
 
   function mudarEtapa(etapa: string) {
     if (!selecionada) return
@@ -680,6 +719,16 @@ export function InboxClient({
                     {selecionada.contato?.projeto_id ? '＋ Projeto' : '📁 Transformar em projeto'}
                   </button>
                 )}
+                {podeAcionarLais && (
+                  <button
+                    onClick={laisAssumir}
+                    disabled={isPending}
+                    title="Não pode atender agora? A Laís lê a conversa de hoje, segue com o cliente e anota as demandas pra você"
+                    className="px-3 py-1.5 rounded bg-weg-azul text-white text-xs font-bold hover:bg-weg-azul/90 disabled:opacity-40"
+                  >
+                    🤖 Laís assume
+                  </button>
+                )}
                 {!selecionada.encerrada_em && (usuarioRole === 'admin' || !selecionada.responsavel_id || selecionada.responsavel_id === usuarioId) && (
                   <button
                     onClick={() => { setOkMsg(null); setModalTransferir(true) }}
@@ -768,7 +817,26 @@ export function InboxClient({
                 Evita cenário em que você abre a conversa e responde por fora
                 (WhatsApp Business no celular) sem saber que o agente segue
                 respondendo em paralelo. */}
-            {(selecionada.agente_ativo ||
+            {/* Kalebe 2026-10-09: Laís cobrindo o usuário — quem estiver vendo retoma daqui */}
+            {laisCobrindo && (
+              <div className="shrink-0 mx-2 lg:mx-4 mt-2 px-3 py-2 border border-weg-azul/50 rounded-lg flex flex-wrap items-center gap-2 justify-between">
+                <p className="text-[11px] text-white/75 min-w-0">
+                  🤖 A <strong className="text-white">Laís</strong> está atendendo no lugar de{' '}
+                  <strong className="text-white">{selecionada.lais_cobrindo_por === usuarioId ? 'você' : (selecionada.responsavel?.nome_completo?.split(' ')[0] || 'quem atende')}</strong>{' '}
+                  desde {new Date(selecionada.lais_cobrindo_desde!).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.
+                  <span className="text-white/55"> Ela anota as demandas e devolve quando você retomar (ou escrever aqui).</span>
+                </p>
+                <button
+                  onClick={laisRetomar}
+                  disabled={isPending}
+                  className="px-3 py-1.5 rounded bg-verde text-white text-xs font-bold hover:bg-verde/90 disabled:opacity-40 shrink-0"
+                >
+                  Retomar atendimento
+                </button>
+              </div>
+            )}
+
+            {!laisCobrindo && (selecionada.agente_ativo ||
               ['nova', 'em_qualificacao', 'aguardando_representante'].includes(selecionada.status)) &&
               (!selecionada.responsavel_id || selecionada.responsavel_id !== usuarioId) && (
               <div className="shrink-0 mx-2 lg:mx-4 mt-2 lg:mt-3 p-2 lg:p-3 bg-sol/15 border border-sol/40 rounded-lg flex items-center gap-2 lg:gap-3">
@@ -1156,7 +1224,7 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
     <div className="shrink-0 px-2 lg:px-4 py-1.5 border-b border-white/10 flex flex-wrap items-center gap-1.5">
       {/* Kalebe 2026-10-09: contato também pode ser fornecedor (equipamento, produtos, serviço) */}
       {fornec ? (
-        <button onClick={onFornecedor} title={`Fornecedor: ${fornec.nome_fantasia || fornec.razao_social} — clique pra ver ou ajustar`}
+        <button data-etiqueta onClick={onFornecedor} title={`Fornecedor: ${fornec.nome_fantasia || fornec.razao_social} — clique pra ver ou ajustar`}
           className={`${chip} bg-[#f59e0b]/10 border-[#f59e0b]/40 text-[#f59e0b] hover:brightness-125`}>
           🏭 Fornecedor{fornec.tipos?.length ? ` · ${rotuloTiposFornecedor(fornec.tipos)}` : ''}
         </button>
@@ -1186,7 +1254,7 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
           {PRODUTOS.map((p) => <option key={p.valor} value={p.valor} className="bg-noite">{p.rotulo}</option>)}
         </select>
       ) : (
-        <button onClick={() => setEditando('produto')} title="Produto/serviço — clique pra trocar"
+        <button data-etiqueta onClick={() => setEditando('produto')} title="Produto/serviço — clique pra trocar"
           className={`${chip} ${produto ? 'bg-sol/10 border-sol/35 text-sol' : 'bg-white/[0.03] border-dashed border-white/20 text-white/45'} hover:brightness-125`}>
           {produto ? `${produto.emoji} ${produto.rotulo}` : '＋ Produto'}
         </button>
@@ -1210,7 +1278,7 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
             className="px-1.5 text-white/50 text-[11px]">✕</button>
         </form>
       ) : (
-        <button onClick={() => setEditando('cidade')} title="Cidade — clique pra trocar"
+        <button data-etiqueta onClick={() => setEditando('cidade')} title="Cidade — clique pra trocar"
           className={`${chip} ${c.cidade ? 'bg-white/[0.04] border-white/15 text-white/75' : 'bg-white/[0.03] border-dashed border-white/20 text-white/45'} hover:brightness-125`}>
           📍 {c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : 'Cidade'}
         </button>
@@ -1221,7 +1289,7 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
       </span>
 
       {!fornec && (
-        <button onClick={onFornecedor} title="Cadastrar este contato também como fornecedor (equipamento, produtos ou serviço)"
+        <button data-etiqueta onClick={onFornecedor} title="Cadastrar este contato também como fornecedor (equipamento, produtos ou serviço)"
           className={`${chip} bg-white/[0.03] border-dashed border-white/20 text-white/45 hover:text-[#f59e0b] hover:border-[#f59e0b]/40`}>
           ＋ Fornecedor
         </button>
@@ -1494,6 +1562,11 @@ function ItemConversa({ c, selecionada, onClick }: {
         {c.cidade && (
           <span className="text-[10px] text-white/45 truncate" title={`${c.cidade}${c.uf ? '/' + c.uf : ''}`}>
             📍 {c.cidade}
+          </span>
+        )}
+        {c.lais_cobrindo_desde && !encerrada && (
+          <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-weg-azul/15 text-weg-azul shrink-0" title="A Laís está atendendo no lugar do usuário">
+            🤖
           </span>
         )}
         {c.transferida_de && !encerrada && (

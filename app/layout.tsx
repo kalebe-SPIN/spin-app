@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import './globals.css'
+// Kalebe 2026-10-09: visual minimalista por cima de todas as telas
+import './visual-minimalista.css'
 import { PortalHeader } from '@/components/PortalHeader'
 import { AutoRefresh } from '@/components/AutoRefresh'
 

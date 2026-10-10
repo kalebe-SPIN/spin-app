@@ -5,6 +5,7 @@ import { iniciarBroadcastLead, RETOMADA_MIN } from './broadcast'
 import { getWaConfig } from './config'
 import { cadastroDoContato, avisarEquipe } from '@/lib/agentes/diretorio'
 import { NOME_SDR, URL_PORTAL } from '@/lib/agentes/nomes'
+import { anexosNovosDoCliente } from './anexos-ia'
 
 /** JSON da IA, tolerante a cercas de código e texto antes/depois. */
 function extrairJson(texto: string): any {
@@ -165,6 +166,16 @@ export async function processarMensagemQualificacao(
   if (!conv) return { erro: 'Conversa não encontrada' }
   const contato: any = (conv as any).contato
   if (!contato) return { erro: 'Contato ausente' }
+
+  // Kalebe 2026-10-09 (Spinzap): a Laís está cobrindo o usuário que atende
+  // esta conversa → segue o atendimento no lugar dele (mig 147; sem ela, a
+  // consulta falha e o fluxo normal continua)
+  const { data: cob } = await admin.from('wa_conversas').select('lais_cobrindo_desde').eq('id', conversa_id).maybeSingle()
+  if ((cob as any)?.lais_cobrindo_desde) {
+    const { processarCoberturaLais } = await import('./lais-cobertura')
+    const r = await processarCoberturaLais(conversa_id)
+    return 'erro' in r ? r : { acao: 'ignorada', motivo: `cobertura: ${r.motivo || r.acao}` }
+  }
 
   // Silencia quando humano já assumiu
   if (['em_atendimento', 'encerrada'].includes((conv as any).status)) {
@@ -590,44 +601,6 @@ const REGRA_MIDIA = `REGRA FIXA — ÁUDIO, FOTO E ARQUIVO
   Se ainda faltar nome ou cidade, pode pedir UMA vez, de leve, na mesma mensagem.
 - Arquivo que não veio anexado (planilha, Word, PDF grande, vídeo): agradeça e diga que já
   ficou registrado no atendimento pra equipe analisar.`
-
-/** Tamanho em bytes via HEAD (null se não der pra saber) */
-async function tamanhoRemoto(url: string): Promise<number | null> {
-  try {
-    const r = await fetch(url, { method: 'HEAD' })
-    const n = Number(r.headers.get('content-length'))
-    return r.ok && n > 0 ? n : null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Fotos/PDFs que o cliente mandou depois da última mensagem nossa — no
- * máximo 3, até 5 MB cada (limite de imagem da API e custo razoável).
- */
-async function anexosNovosDoCliente(
-  msgs: Array<{ direcao: string; tipo: string; midia_url?: string | null; midia_mime?: string | null }>,
-): Promise<Array<{ tipo: 'image' | 'pdf'; url: string }>> {
-  const novas: typeof msgs = []
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].direcao !== 'inbound') break
-    novas.unshift(msgs[i])
-  }
-  const candidatos = novas
-    .filter((m) => m.midia_url && (
-      (m.tipo === 'image' && /image\/(jpeg|png|webp|gif)/.test(String(m.midia_mime || 'image/jpeg')))
-      || (m.tipo === 'document' && String(m.midia_mime || '').includes('pdf'))
-    ))
-    .slice(-3)
-  const saida: Array<{ tipo: 'image' | 'pdf'; url: string }> = []
-  for (const m of candidatos) {
-    const tam = await tamanhoRemoto(m.midia_url!)
-    if (tam === null || tam > 5 * 1024 * 1024) continue
-    saida.push({ tipo: m.tipo === 'image' ? 'image' : 'pdf', url: m.midia_url! })
-  }
-  return saida
-}
 
 // Kalebe 2026-09-23: SDR fala com gente de fora — acesso restrito ao próprio
 // contato + canal de recado pra equipe interna.

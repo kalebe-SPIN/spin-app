@@ -87,13 +87,16 @@ export async function rodarPlantaoLais(): Promise<{ acolhidos: number; so_aviso:
   const { data: fornecedores } = await admin.from('wa_contatos')
     .select('telefone').not('fornecedor_id', 'is', null).is('cliente_id', null).is('projeto_id', null)
   const telFornecedor = new Set(((fornecedores || []) as Array<{ telefone: string }>).map((f) => f.telefone))
+  // Laís já cobrindo o usuário (mig 147): o plantão não entra por cima
+  const { data: cobrindo } = await admin.from('wa_conversas').select('id').not('lais_cobrindo_desde', 'is', null)
+  const emCobertura = new Set(((cobrindo || []) as Array<{ id: string }>).map((x) => x.id))
 
   let tratados = 0
   for (const c of (convs || []) as any[]) {
     if (tratados >= POR_RODADA) break
     const ct = c.contato
     if (!ct?.telefone || ct.tipo === 'colaborador' || ct.tipo === 'representante') continue
-    if (telFornecedor.has(ct.telefone)) continue
+    if (telFornecedor.has(ct.telefone) || emCobertura.has(c.id)) continue
 
     const { data: ultima } = await admin
       .from('wa_mensagens')

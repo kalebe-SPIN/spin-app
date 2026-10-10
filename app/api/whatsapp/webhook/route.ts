@@ -159,6 +159,10 @@ export async function POST(req: NextRequest) {
               .update({ status: 'em_atendimento', agente_ativo: null })
               .eq('id', convEco.id)
               .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
+            // Kalebe 2026-10-09: usuário voltou a responder pelo celular → a Laís
+            // para de cobrir e registra as demandas (mig 147; sem ela, nada muda)
+            const { encerrarCoberturaLais } = await import('@/lib/whatsapp/lais-cobertura')
+            await encerrarCoberturaLais(supabaseAdmin as any, convEco.id, { resumir: false, motivo: 'respondeu pelo celular' })
           } catch (e) {
             console.error('[webhook eco]', e)
           }
@@ -309,7 +313,13 @@ export async function POST(req: NextRequest) {
           // no banco) → está falando com humano. Agente fica fora.
           let respondendoConsultor = false
           const citadaId: string | undefined = (msg as any).context?.id
-          if (conversaId && citadaId) {
+          // Kalebe 2026-10-09: Laís cobrindo o usuário → ela responde mesmo que o
+          // cliente cite uma mensagem do consultor (mig 147; sem ela, segue igual)
+          const { data: cobertura } = conversaId
+            ? await supabaseAdmin.from('wa_conversas').select('lais_cobrindo_desde').eq('id', conversaId).maybeSingle()
+            : { data: null }
+          const laisCobrindo = !!(cobertura as any)?.lais_cobrindo_desde
+          if (conversaId && citadaId && !laisCobrindo) {
             const { data: citada } = await supabaseAdmin
               .from('wa_mensagens')
               .select('direcao, remetente_agente')

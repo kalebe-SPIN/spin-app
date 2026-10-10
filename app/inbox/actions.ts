@@ -95,12 +95,18 @@ export async function listarConversasAction(): Promise<
     for (const p of (perfisSetor || []) as any[]) if (p.setor_mensagens) setorDe.set(p.id, p.setor_mensagens)
   }
   const { data: grupos } = await admin.from('grupos_internos').select('chave, nome, emoji, ordem').eq('ativo', true).order('ordem')
+  // Laís cobrindo o usuário (mig 147; sem ela, a lista vem vazia)
+  const { data: cobertas } = await admin.from('wa_conversas')
+    .select('id, lais_cobrindo_desde, lais_cobrindo_por').not('lais_cobrindo_desde', 'is', null)
+  const cobertura = new Map(((cobertas || []) as any[]).map((x) => [x.id as string, x]))
 
   return {
     conversas: (data || []).map((c: any) => ({
       ...c,
+      lais_cobrindo_desde: cobertura.get(c.id)?.lais_cobrindo_desde || null,
+      lais_cobrindo_por: cobertura.get(c.id)?.lais_cobrindo_por || null,
       nao_lidas: qtd.get(c.id) || 0,
-      setor: ['nova', 'em_qualificacao', 'em_atendimento_ia'].includes(c.status) || c.agente_ativo
+      setor: ['nova', 'em_qualificacao', 'em_atendimento_ia'].includes(c.status) || c.agente_ativo || cobertura.has(c.id)
         ? 'lais'
         : c.responsavel_id ? (setorDe.get(c.responsavel_id) || 'sem_setor') : 'sem_responsavel',
     })),
@@ -116,6 +122,73 @@ export async function listarConversasAction(): Promise<
 async function acessoConversa(conversa_id: string): Promise<{ ok: true } | { erro: string }> {
   const { data } = await createClient().from('wa_conversas').select('id').eq('id', conversa_id).maybeSingle()
   return data ? { ok: true } : { erro: 'Você não tem acesso a esta conversa' }
+}
+
+/** Usuário voltou a falar com o cliente → a Laís para de cobrir (sem resumo, pra não segurar o envio). */
+async function retomarSeLaisCobrindo(conversa_id: string, usuario_id: string) {
+  try {
+    const { encerrarCoberturaLais } = await import('@/lib/whatsapp/lais-cobertura')
+    await encerrarCoberturaLais(createAdminClient(), conversa_id, { resumir: false, por_id: usuario_id, motivo: 'usuário retomou' })
+  } catch (e) {
+    console.error('[spinzap] retomar cobertura', e)
+  }
+}
+
+/**
+ * Kalebe 2026-10-09: "🤖 Laís assume" — o usuário não pode atender agora; a
+ * Laís lê a conversa do dia, segue com o cliente e passa as demandas pra ele.
+ * Se o cliente está esperando resposta, ela já responde.
+ */
+export async function laisAssumirAction(conversa_id: string): Promise<{ sucesso: true; respondeu: boolean } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const a = await acessoConversa(conversa_id)
+  if ('erro' in a) return a
+  const admin = createAdminClient()
+  const { data: conv } = await admin.from('wa_conversas').select('id, responsavel_id, encerrada_em').eq('id', conversa_id).maybeSingle()
+  if (!conv) return { erro: 'Conversa não encontrada' }
+  if (conv.encerrada_em) return { erro: 'Conversa encerrada' }
+  if (conv.responsavel_id && conv.responsavel_id !== check.user.id && check.perfil?.role !== 'admin') {
+    return { erro: 'Só quem está com o cliente (ou o admin) aciona a Laís' }
+  }
+  const cobrindo = conv.responsavel_id || check.user.id
+  const { error } = await admin.from('wa_conversas').update({
+    lais_cobrindo_desde: new Date().toISOString(),
+    lais_cobrindo_por: cobrindo,
+    agente_ativo: 'qualificacao',
+    responsavel_id: cobrindo,
+    status: 'em_atendimento',
+  }).eq('id', conversa_id)
+  if (error) return { erro: /lais_cobrindo/.test(error.message) ? 'Falta rodar a migration 147 (Laís assume) no Supabase.' : error.message }
+
+  const quem = (check.perfil?.nome_completo || 'Equipe').split(' ')[0]
+  const { data: dono } = await admin.from('profiles').select('nome_completo').eq('id', cobrindo).maybeSingle()
+  const para = String(dono?.nome_completo || quem).split(' ')[0]
+  await gravarMensagem(admin, {
+    conversa_id, direcao: 'outbound', tipo: 'system',
+    texto: `🤖 ${quem} acionou a Laís: ela segue o atendimento no lugar de ${para} e anota as demandas que surgirem.`,
+    remetente_id: check.user.id, origem_agente_nome: 'Spinzap', status_entrega: 'enviada',
+  })
+
+  // Cliente esperando resposta → a Laís já responde agora
+  const { processarCoberturaLais } = await import('@/lib/whatsapp/lais-cobertura')
+  const r = await processarCoberturaLais(conversa_id)
+  revalidatePath('/spinzap')
+  if ('erro' in r) return { erro: `A Laís assumiu, mas não conseguiu responder agora: ${r.erro}` }
+  return { sucesso: true, respondeu: r.acao === 'respondeu' }
+}
+
+/** "Retomar atendimento": a Laís devolve com o resumo do que houve e as demandas anotadas. */
+export async function laisDevolverAction(conversa_id: string): Promise<{ sucesso: true; resumo: string | null; demandas: string[] } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const a = await acessoConversa(conversa_id)
+  if ('erro' in a) return a
+  const { encerrarCoberturaLais } = await import('@/lib/whatsapp/lais-cobertura')
+  const r = await encerrarCoberturaLais(createAdminClient(), conversa_id, { por_id: check.user.id })
+  revalidatePath('/spinzap')
+  if (!r) return { erro: 'A Laís não estava cobrindo esta conversa' }
+  return { sucesso: true, resumo: r.resumo, demandas: r.demandas }
 }
 
 /** Etapa do atendimento (barra lateral do Spinzap), mudada à mão. */
@@ -254,6 +327,7 @@ export async function assumirConversaAction(conversa_id: string): Promise<
   if (error) return { erro: error.message }
   // Spinzap (mig 145): quem assume sem dono vira o dono do cliente
   await admin.from('wa_conversas').update({ dono_id: check.user.id }).eq('id', conversa_id).is('dono_id', null)
+  await retomarSeLaisCobrindo(conversa_id, check.user.id)
   revalidatePath('/spinzap')
   return { sucesso: true }
 }
@@ -409,6 +483,7 @@ export async function encerrarConversaAction(conversa_id: string): Promise<
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
   const acesso = await acessoConversa(conversa_id)
   if ('erro' in acesso) return acesso
+  await retomarSeLaisCobrindo(conversa_id, check.user.id)
   const admin = createAdminClient()
 
   const { error } = await admin
@@ -497,6 +572,7 @@ export async function enviarTextoAction(entrada: {
   if (!texto) return { erro: 'Mensagem vazia' }
   const acesso = await acessoConversa(entrada.conversa_id)
   if ('erro' in acesso) return acesso
+  await retomarSeLaisCobrindo(entrada.conversa_id, check.user.id)
 
   const _cfg = await getWaConfig()
   const token = _cfg.access_token
@@ -716,6 +792,7 @@ export async function iniciarChamadaAction(entrada: {
   if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
   const acesso = await acessoConversa(entrada.conversa_id)
   if ('erro' in acesso) return acesso
+  await retomarSeLaisCobrindo(entrada.conversa_id, check.user.id)
 
   const admin = createAdminClient()
 
@@ -846,6 +923,7 @@ export async function enviarArquivoAction(formData: FormData): Promise<
   if (!conversa_id || !arquivo) return { erro: 'Faltam conversa_id ou arquivo' }
   const acesso = await acessoConversa(conversa_id)
   if ('erro' in acesso) return acesso
+  await retomarSeLaisCobrindo(conversa_id, check.user.id)
 
   const _cfg = await getWaConfig()
   const token = _cfg.access_token

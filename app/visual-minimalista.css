@@ -1,0 +1,187 @@
+/* =========================================================================
+   Visual minimalista (Kalebe 2026-10-09): "menos cor nas escritas; a cor
+   vai nas bordas dos campos; botões com cor e texto branco; etiquetas
+   diferentes dos botões". Uma camada só, por cima das classes que as telas
+   já usam — nenhuma tela precisou mudar. Gerado por script; regras:
+     • Botão (button/a/label com fundo colorido)  → cheio, texto branco
+     • Etiqueta (span e afins com fundo colorido) → só contorno, texto neutro
+     • Cartão/aviso (div, p, section… com fundo colorido) → fundo neutro,
+       cor só na borda
+     • Texto colorido → neutro (vermelho de erro continua vermelho);
+       link colorido ganha sublinhado na cor
+     • Campos (input, select, textarea) → borda em amarelo Spin
+   Fora do alcance: PDFs/imagens geradas (.tema-fixo) e qualquer bloco
+   marcado com data-cor-livre (gráficos, por exemplo).
+   ========================================================================= */
+
+/* ── sol ── */
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-sol/"], [class*=" bg-sol/"]), [class~="bg-sol"]):not(:is([class~="bg-sol/5"], [class^="bg-sol/[0."], [class*=" bg-sol/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: #A77A00 !important; border-color: transparent !important; color: #fff !important;
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-sol/"], [class*=" bg-sol/"]), [class~="bg-sol"]):not(:is([class~="bg-sol/5"], [class^="bg-sol/[0."], [class*=" bg-sol/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover:not(:disabled) { background-color: #8C6600 !important; }
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-sol/"], [class*=" bg-sol/"]), [class~="bg-sol"]):not(:is([class~="bg-sol/5"], [class^="bg-sol/[0."], [class*=" bg-sol/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) :is([class*="text-"]) { color: inherit !important; }
+:is(span, small, em, b, strong, kbd, mark, abbr, time, select, [data-etiqueta]):is(:is([class^="bg-sol/"], [class*=" bg-sol/"]), [class~="bg-sol"]):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: transparent !important; border: 1px solid rgb(245 180 0 / 0.6) !important; color: rgb(var(--c-branco) / 0.88) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-sol/"], [class*=" bg-sol/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-sol/"], [class*=" bg-sol/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: rgb(var(--c-branco) / 0.025) !important; border-color: rgb(245 180 0 / 0.5) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-sol/"], [class*=" bg-sol/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-sol/"], [class*=" bg-sol/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not([class~="border"]):not([class~="border-2"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  box-shadow: inset 0 0 0 1px rgb(245 180 0 / 0.45);
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-sol/"], [class*=" bg-sol/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover { background-color: rgb(245 180 0 / 0.08) !important; }
+:is([class^="text-sol"], [class*=" text-sol"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) { color: rgb(var(--c-branco) / 0.92) !important; }
+a:is([class^="text-sol"], [class*=" text-sol"]):not(:is([class^="bg-sol/"], [class*=" bg-sol/"])):not([class~="bg-sol"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  text-decoration-line: underline; text-decoration-color: rgb(245 180 0 / 0.6); text-underline-offset: 3px;
+}
+
+/* ── verde ── */
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-verde/"], [class*=" bg-verde/"]), [class~="bg-verde"]):not(:is([class~="bg-verde/5"], [class^="bg-verde/[0."], [class*=" bg-verde/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: #16A34A !important; border-color: transparent !important; color: #fff !important;
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-verde/"], [class*=" bg-verde/"]), [class~="bg-verde"]):not(:is([class~="bg-verde/5"], [class^="bg-verde/[0."], [class*=" bg-verde/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover:not(:disabled) { background-color: #15803D !important; }
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-verde/"], [class*=" bg-verde/"]), [class~="bg-verde"]):not(:is([class~="bg-verde/5"], [class^="bg-verde/[0."], [class*=" bg-verde/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) :is([class*="text-"]) { color: inherit !important; }
+:is(span, small, em, b, strong, kbd, mark, abbr, time, select, [data-etiqueta]):is(:is([class^="bg-verde/"], [class*=" bg-verde/"]), [class~="bg-verde"]):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: transparent !important; border: 1px solid rgb(78 220 138 / 0.6) !important; color: rgb(var(--c-branco) / 0.88) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-verde/"], [class*=" bg-verde/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-verde/"], [class*=" bg-verde/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: rgb(var(--c-branco) / 0.025) !important; border-color: rgb(78 220 138 / 0.5) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-verde/"], [class*=" bg-verde/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-verde/"], [class*=" bg-verde/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not([class~="border"]):not([class~="border-2"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  box-shadow: inset 0 0 0 1px rgb(78 220 138 / 0.45);
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-verde/"], [class*=" bg-verde/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover { background-color: rgb(78 220 138 / 0.08) !important; }
+:is([class^="text-verde"], [class*=" text-verde"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) { color: rgb(var(--c-branco) / 0.92) !important; }
+a:is([class^="text-verde"], [class*=" text-verde"]):not(:is([class^="bg-verde/"], [class*=" bg-verde/"])):not([class~="bg-verde"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  text-decoration-line: underline; text-decoration-color: rgb(78 220 138 / 0.6); text-underline-offset: 3px;
+}
+
+/* ── coral ── */
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-coral/"], [class*=" bg-coral/"]), [class~="bg-coral"]):not(:is([class~="bg-coral/5"], [class^="bg-coral/[0."], [class*=" bg-coral/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: #DC2626 !important; border-color: transparent !important; color: #fff !important;
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-coral/"], [class*=" bg-coral/"]), [class~="bg-coral"]):not(:is([class~="bg-coral/5"], [class^="bg-coral/[0."], [class*=" bg-coral/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover:not(:disabled) { background-color: #B91C1C !important; }
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-coral/"], [class*=" bg-coral/"]), [class~="bg-coral"]):not(:is([class~="bg-coral/5"], [class^="bg-coral/[0."], [class*=" bg-coral/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) :is([class*="text-"]) { color: inherit !important; }
+:is(span, small, em, b, strong, kbd, mark, abbr, time, select, [data-etiqueta]):is(:is([class^="bg-coral/"], [class*=" bg-coral/"]), [class~="bg-coral"]):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: transparent !important; border: 1px solid rgb(232 92 92 / 0.6) !important; color: rgb(var(--c-branco) / 0.88) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-coral/"], [class*=" bg-coral/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-coral/"], [class*=" bg-coral/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: rgb(var(--c-branco) / 0.025) !important; border-color: rgb(232 92 92 / 0.5) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-coral/"], [class*=" bg-coral/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-coral/"], [class*=" bg-coral/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not([class~="border"]):not([class~="border-2"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  box-shadow: inset 0 0 0 1px rgb(232 92 92 / 0.45);
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-coral/"], [class*=" bg-coral/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover { background-color: rgb(232 92 92 / 0.08) !important; }
+
+/* ── weg-azul ── */
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"]), [class~="bg-weg-azul"]):not(:is([class~="bg-weg-azul/5"], [class^="bg-weg-azul/[0."], [class*=" bg-weg-azul/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: #0047BB !important; border-color: transparent !important; color: #fff !important;
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"]), [class~="bg-weg-azul"]):not(:is([class~="bg-weg-azul/5"], [class^="bg-weg-azul/[0."], [class*=" bg-weg-azul/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover:not(:disabled) { background-color: #003A99 !important; }
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"]), [class~="bg-weg-azul"]):not(:is([class~="bg-weg-azul/5"], [class^="bg-weg-azul/[0."], [class*=" bg-weg-azul/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) :is([class*="text-"]) { color: inherit !important; }
+:is(span, small, em, b, strong, kbd, mark, abbr, time, select, [data-etiqueta]):is(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"]), [class~="bg-weg-azul"]):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: transparent !important; border: 1px solid rgb(77 140 255 / 0.6) !important; color: rgb(var(--c-branco) / 0.88) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: rgb(var(--c-branco) / 0.025) !important; border-color: rgb(77 140 255 / 0.5) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not([class~="border"]):not([class~="border-2"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  box-shadow: inset 0 0 0 1px rgb(77 140 255 / 0.45);
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover { background-color: rgb(77 140 255 / 0.08) !important; }
+:is([class^="text-weg-azul"], [class*=" text-weg-azul"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) { color: rgb(var(--c-branco) / 0.92) !important; }
+a:is([class^="text-weg-azul"], [class*=" text-weg-azul"]):not(:is([class^="bg-weg-azul/"], [class*=" bg-weg-azul/"])):not([class~="bg-weg-azul"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  text-decoration-line: underline; text-decoration-color: rgb(77 140 255 / 0.6); text-underline-offset: 3px;
+}
+
+/* ── [#a78bfa] ── */
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"]), [class~="bg-[#a78bfa]"]):not(:is([class~="bg-[#a78bfa]/5"], [class^="bg-[#a78bfa]/[0."], [class*=" bg-[#a78bfa]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: #7C3AED !important; border-color: transparent !important; color: #fff !important;
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"]), [class~="bg-[#a78bfa]"]):not(:is([class~="bg-[#a78bfa]/5"], [class^="bg-[#a78bfa]/[0."], [class*=" bg-[#a78bfa]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover:not(:disabled) { background-color: #6D28D9 !important; }
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"]), [class~="bg-[#a78bfa]"]):not(:is([class~="bg-[#a78bfa]/5"], [class^="bg-[#a78bfa]/[0."], [class*=" bg-[#a78bfa]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) :is([class*="text-"]) { color: inherit !important; }
+:is(span, small, em, b, strong, kbd, mark, abbr, time, select, [data-etiqueta]):is(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"]), [class~="bg-[#a78bfa]"]):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: transparent !important; border: 1px solid rgb(167 139 250 / 0.6) !important; color: rgb(var(--c-branco) / 0.88) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: rgb(var(--c-branco) / 0.025) !important; border-color: rgb(167 139 250 / 0.5) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not([class~="border"]):not([class~="border-2"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  box-shadow: inset 0 0 0 1px rgb(167 139 250 / 0.45);
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover { background-color: rgb(167 139 250 / 0.08) !important; }
+:is([class^="text-[#a78bfa]"], [class*=" text-[#a78bfa]"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) { color: rgb(var(--c-branco) / 0.92) !important; }
+a:is([class^="text-[#a78bfa]"], [class*=" text-[#a78bfa]"]):not(:is([class^="bg-[#a78bfa]/"], [class*=" bg-[#a78bfa]/"])):not([class~="bg-[#a78bfa]"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  text-decoration-line: underline; text-decoration-color: rgb(167 139 250 / 0.6); text-underline-offset: 3px;
+}
+
+/* ── [#22d3ee] ── */
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"]), [class~="bg-[#22d3ee]"]):not(:is([class~="bg-[#22d3ee]/5"], [class^="bg-[#22d3ee]/[0."], [class*=" bg-[#22d3ee]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: #0E7490 !important; border-color: transparent !important; color: #fff !important;
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"]), [class~="bg-[#22d3ee]"]):not(:is([class~="bg-[#22d3ee]/5"], [class^="bg-[#22d3ee]/[0."], [class*=" bg-[#22d3ee]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover:not(:disabled) { background-color: #155E75 !important; }
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"]), [class~="bg-[#22d3ee]"]):not(:is([class~="bg-[#22d3ee]/5"], [class^="bg-[#22d3ee]/[0."], [class*=" bg-[#22d3ee]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) :is([class*="text-"]) { color: inherit !important; }
+:is(span, small, em, b, strong, kbd, mark, abbr, time, select, [data-etiqueta]):is(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"]), [class~="bg-[#22d3ee]"]):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: transparent !important; border: 1px solid rgb(34 211 238 / 0.6) !important; color: rgb(var(--c-branco) / 0.88) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: rgb(var(--c-branco) / 0.025) !important; border-color: rgb(34 211 238 / 0.5) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not([class~="border"]):not([class~="border-2"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  box-shadow: inset 0 0 0 1px rgb(34 211 238 / 0.45);
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover { background-color: rgb(34 211 238 / 0.08) !important; }
+:is([class^="text-[#22d3ee]"], [class*=" text-[#22d3ee]"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) { color: rgb(var(--c-branco) / 0.92) !important; }
+a:is([class^="text-[#22d3ee]"], [class*=" text-[#22d3ee]"]):not(:is([class^="bg-[#22d3ee]/"], [class*=" bg-[#22d3ee]/"])):not([class~="bg-[#22d3ee]"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  text-decoration-line: underline; text-decoration-color: rgb(34 211 238 / 0.6); text-underline-offset: 3px;
+}
+
+/* ── [#f59e0b] ── */
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"]), [class~="bg-[#f59e0b]"]):not(:is([class~="bg-[#f59e0b]/5"], [class^="bg-[#f59e0b]/[0."], [class*=" bg-[#f59e0b]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: #B45309 !important; border-color: transparent !important; color: #fff !important;
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"]), [class~="bg-[#f59e0b]"]):not(:is([class~="bg-[#f59e0b]/5"], [class^="bg-[#f59e0b]/[0."], [class*=" bg-[#f59e0b]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover:not(:disabled) { background-color: #92400E !important; }
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"]), [class~="bg-[#f59e0b]"]):not(:is([class~="bg-[#f59e0b]/5"], [class^="bg-[#f59e0b]/[0."], [class*=" bg-[#f59e0b]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) :is([class*="text-"]) { color: inherit !important; }
+:is(span, small, em, b, strong, kbd, mark, abbr, time, select, [data-etiqueta]):is(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"]), [class~="bg-[#f59e0b]"]):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: transparent !important; border: 1px solid rgb(245 158 11 / 0.6) !important; color: rgb(var(--c-branco) / 0.88) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: rgb(var(--c-branco) / 0.025) !important; border-color: rgb(245 158 11 / 0.5) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not([class~="border"]):not([class~="border-2"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  box-shadow: inset 0 0 0 1px rgb(245 158 11 / 0.45);
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover { background-color: rgb(245 158 11 / 0.08) !important; }
+:is([class^="text-[#f59e0b]"], [class*=" text-[#f59e0b]"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) { color: rgb(var(--c-branco) / 0.92) !important; }
+a:is([class^="text-[#f59e0b]"], [class*=" text-[#f59e0b]"]):not(:is([class^="bg-[#f59e0b]/"], [class*=" bg-[#f59e0b]/"])):not([class~="bg-[#f59e0b]"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  text-decoration-line: underline; text-decoration-color: rgb(245 158 11 / 0.6); text-underline-offset: 3px;
+}
+
+/* ── [#25D366] ── */
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"]), [class~="bg-[#25D366]"]):not(:is([class~="bg-[#25D366]/5"], [class^="bg-[#25D366]/[0."], [class*=" bg-[#25D366]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: #128C7E !important; border-color: transparent !important; color: #fff !important;
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"]), [class~="bg-[#25D366]"]):not(:is([class~="bg-[#25D366]/5"], [class^="bg-[#25D366]/[0."], [class*=" bg-[#25D366]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover:not(:disabled) { background-color: #075E54 !important; }
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"]), [class~="bg-[#25D366]"]):not(:is([class~="bg-[#25D366]/5"], [class^="bg-[#25D366]/[0."], [class*=" bg-[#25D366]/[0."])):not(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) :is([class*="text-"]) { color: inherit !important; }
+:is(span, small, em, b, strong, kbd, mark, abbr, time, select, [data-etiqueta]):is(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"]), [class~="bg-[#25D366]"]):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: transparent !important; border: 1px solid rgb(37 211 102 / 0.6) !important; color: rgb(var(--c-branco) / 0.88) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  background-color: rgb(var(--c-branco) / 0.025) !important; border-color: rgb(37 211 102 / 0.5) !important;
+}
+:is(:is(div, p, section, article, aside, li, td, th, details, form, header, footer, nav, ul, ol, h1, h2, h3, h4, blockquote):is(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"])), :is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"]))):not(:empty):not([class~="border"]):not([class~="border-2"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  box-shadow: inset 0 0 0 1px rgb(37 211 102 / 0.45);
+}
+:is(button, a, label, summary, [role="button"]):not([data-etiqueta]):is(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"])):is(:is([class~="text-left"], [class~="p-3"], [class~="p-4"], [class~="p-5"], [class~="p-6"])):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):hover { background-color: rgb(37 211 102 / 0.08) !important; }
+:is([class^="text-[#25D366]"], [class*=" text-[#25D366]"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) { color: rgb(var(--c-branco) / 0.92) !important; }
+a:is([class^="text-[#25D366]"], [class*=" text-[#25D366]"]):not(:is([class^="bg-[#25D366]/"], [class*=" bg-[#25D366]/"])):not([class~="bg-[#25D366]"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  text-decoration-line: underline; text-decoration-color: rgb(37 211 102 / 0.6); text-underline-offset: 3px;
+}
+
+/* ── Campos: a cor vai na borda ── */
+:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea):is([class~="border"], [class~="border-2"], .input-spin):not([class*="border-coral"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *) {
+  border-color: rgb(245 180 0 / 0.3);
+}
+:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select, textarea):is([class~="border"], [class~="border-2"], .input-spin):not([class*="border-coral"]):not(.tema-fixo *):not([data-cor-livre]):not([data-cor-livre] *):focus {
+  border-color: rgb(245 180 0 / 0.75);
+}
