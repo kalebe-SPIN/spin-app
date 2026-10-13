@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { getWaConfig } from '@/lib/whatsapp/config'
+import { calcularTarifa, type TarifaCalculada, type TarifaLida } from './tarifa'
 
 /**
  * Leitura de fatura de energia (CELESC) por IA — comum à tela (rota
@@ -31,6 +32,10 @@ export type DadosFatura = {
   historico_12_meses: any[]
   tem_geracao_propria: boolean | null
   geracao: any
+  /** Itens lidos da fatura (energia por posto, descontos, CIP) — Kalebe 2026-10-13 */
+  tarifa: TarifaLida | null
+  /** Tarifa calculada em código a partir dos itens (lib/fatura/tarifa.ts) */
+  tarifa_calculada: TarifaCalculada
   _aviso_endereco: string
   _avisos: string[]
 }
@@ -47,7 +52,7 @@ export async function analisarFatura(entrada: { base64: string; mime: string }):
   const anthropic = new Anthropic({ apiKey })
   const message = await anthropic.messages.create({
     model: MODELO_FATURA,
-    max_tokens: 4096,
+    max_tokens: 6000,   // itens da fatura (tarifa) aumentaram a resposta
     messages: [{
       role: 'user',
       content: [
@@ -103,6 +108,8 @@ export async function analisarFatura(entrada: { base64: string; mime: string }):
       historico_12_meses: historico,
       tem_geracao_propria: d.tem_geracao_propria ?? null,
       geracao: d.geracao || null,
+      tarifa: d.tarifa || null,
+      tarifa_calculada: calcularTarifa(d.tarifa, { valor_total: d.valor_total_reais, consumo_mes_kwh: d.consumo_mes_kwh, grupo: d.grupo }),
       _aviso_endereco: 'Endereço extraído pode estar abreviado. Confira atentamente antes de salvar.',
       _avisos: avisos,
     },
@@ -189,6 +196,23 @@ RETORNE APENAS UM BLOCO JSON, sem texto antes ou depois:
     "saldo_creditos_kwh": number | null,
     "creditos_a_expirar_kwh": number | null,
     "creditos_expiram_em": "MM/AAAA" | null
+  },
+  "tarifa": {
+    "itens_energia": [
+      { "descricao": "texto da linha", "posto": "unico" | "ponta" | "fora_ponta" | "intermediario",
+        "componente": "TE" | "TUSD" | "TE+TUSD" | "bandeira" | "outro",
+        "kwh": number | null, "tarifa_com_tributos": number | null, "valor": number | null }
+    ],
+    "consumo_faturado_kwh": number | null,
+    "descontos_subsidios": [ { "descricao": "texto da linha", "valor": number } ],
+    "subsidio": "nenhum" | "tarifa_social" | "rural" | "irrigante" | "outro",
+    "cip_iluminacao_publica": number | null,
+    "demanda_valor": number | null,
+    "outros_itens": [ { "descricao": "texto da linha", "valor": number } ],
+    "icms_pct": number | null,
+    "pis_pct": number | null,
+    "cofins_pct": number | null,
+    "custo_disponibilidade_kwh": number | null
   }
 }
 \`\`\`
@@ -202,6 +226,23 @@ GERAÇÃO PRÓPRIA (quando a UC já tem solar — tabela "Geradora no Período",
 - "geracao.injetado_mes_kwh" = injeção do mês de referência; "compensado_mes_kwh" = energia compensada/abatida no mês;
   "saldo_creditos_kwh" = saldo total de créditos no fechamento do mês; "creditos_a_expirar_kwh"/"creditos_expiram_em" se a fatura avisar.
 - Sem geração própria: "geracao" com todos os campos null.
+
+TARIFA — leia os ITENS FATURADOS do mês de referência (quadro "Itens da fatura"/"Descrição da operação"):
+- "itens_energia": TODA linha de energia consumida — "Consumo TE", "Consumo TUSD", "Energia Ativa Fornecida",
+  ponta/fora de ponta/intermediário (grupo A e tarifa branca) e "Adicional Bandeira" (componente "bandeira").
+  Para cada linha: kWh faturados, tarifa unitária COM tributos (R$/kWh, a coluna "Tarifa c/ tributos" ou
+  "Preço unit. com tributos") e o valor em R$ da linha. Se a linha juntar TE e TUSD, componente "TE+TUSD".
+  "posto": "unico" quando não houver separação por horário.
+- NÃO coloque em itens_energia: demanda (R$/kW), CIP/COSIP/iluminação pública, multas, juros, correção,
+  doações, serviços, parcelamentos, créditos de geração. Valor de demanda total vai em "demanda_valor";
+  CIP em "cip_iluminacao_publica"; o resto em "outros_itens".
+- "descontos_subsidios": linhas de desconto/subsídio (Tarifa Social de Energia Elétrica / Baixa Renda,
+  desconto rural, irrigante/aquicultor, outros) com o valor em R$ POSITIVO. "subsidio" = o tipo encontrado
+  ("nenhum" se não houver).
+- "consumo_faturado_kwh": kWh faturados no mês (sem somar TE e TUSD duas vezes).
+- "icms_pct"/"pis_pct"/"cofins_pct": alíquotas da fatura (número, ex.: 17 para 17%). "custo_disponibilidade_kwh":
+  30, 50 ou 100 se a fatura cobrar o mínimo; senão null.
+- Não calcule tarifa média: só transcreva os itens. Se não conseguir ler o quadro, "itens_energia": [].
 
 INSTRUÇÃO EXTRA PARA MÉDIA:
 - "consumo_medio_12m_kwh": média aritmética dos consumos válidos (>0) do histórico dos últimos 12 meses. Ignore meses zerados ou nulos.

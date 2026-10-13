@@ -48,6 +48,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: r.erro, resposta_claude: r.detalhe }, { status: 500 })
     }
 
+    // Kalebe 2026-10-13: a tarifa calculada da fatura vai pra base (referência
+    // quando um lead não tem a fatura) — falha aqui não atrapalha a leitura
+    const { registrarTarifaExtraida } = await import('@/lib/fatura/tarifa')
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    await registrarTarifaExtraida(createAdminClient(), {
+      origem: 'tela', usuario_id: user.id, dados: r.dados, tarifa: r.dados.tarifa_calculada, lida: r.dados.tarifa,
+    })
+
     return NextResponse.json({
       sucesso: true,
       provider: 'claude-api',

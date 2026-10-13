@@ -54,8 +54,25 @@ export async function calcularOrcamentoAction(
     ehAdmin = perfilAtual?.role === 'admin'
   }
   try {
+    // Kalebe 2026-10-13: R$/kWh não é fixo (grupo, horário e subsídios mudam
+    // o preço). No modo "valor da conta", usa a mediana das faturas reais
+    // lidas no sistema; o modo fatura já usa o consumo da própria fatura.
+    let parametros = PARAMETROS_DEFAULT
+    let avisoTarifa: { label: string; valor: string } | null = null
+    if ((entrada as EntradaSolar).modo === 'valor_mensal') {
+      const { tarifaDeReferencia } = await import('@/lib/fatura/tarifa')
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      const ref = await tarifaDeReferencia(createAdminClient())
+      if (ref) {
+        parametros = { ...PARAMETROS_DEFAULT, preco_medio_kwh_celesc: ref.tarifa_conta_kwh || ref.tarifa_kwh }
+        avisoTarifa = { label: 'Tarifa usada', valor: `R$ ${parametros.preco_medio_kwh_celesc.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}/kWh (mediana de ${ref.amostras} faturas reais)` }
+      } else {
+        avisoTarifa = { label: '⚠️ Tarifa provisória', valor: `R$ ${PARAMETROS_DEFAULT.preco_medio_kwh_celesc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/kWh — ainda não há faturas lidas na base; prefira o modo fatura` }
+      }
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const resultado = (adaptador as any).calcular(entrada, PARAMETROS_DEFAULT) as ResultadoOrcamento
+    const resultado = (adaptador as any).calcular(entrada, parametros) as ResultadoOrcamento
+    if (avisoTarifa) resultado.detalhes.push(avisoTarifa)
 
     // Solar: monta kit real do catálogo E aplica calcularProposta com matriz
     // de margem. Kalebe 2026-09-18: substitui a lógica antiga kWp × R$/kWp

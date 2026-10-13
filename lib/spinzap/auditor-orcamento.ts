@@ -85,6 +85,14 @@ export function auditarOrcamentoLead(o: OrcamentoLead, p: PerfilLead): Auditoria
     add('Técnico', false, false, `Sombreamento informado${p.peculiaridades.sombreamento_descricao ? ` (${p.peculiaridades.sombreamento_descricao})` : ''} — avaliar perda na visita`)
   }
 
+  // ── Tarifa (Kalebe 2026-10-13: vem da fatura, não de valor fixo) ──
+  if (o.entrada.modo === 'valor_mensal') {
+    const t = o.entrada.tarifa
+    if (!t?.tarifa_kwh) add('Coerência', false, true, 'Sem tarifa pra converter o valor da conta em kWh')
+    else if (t.fonte === 'base') add('Coerência', false, false, `Tarifa estimada pela base (${t.amostras || '?'} faturas reais, sem subsídio) — confirmar com a fatura do cliente`)
+    else add('Coerência', true, false, 'Tarifa calculada da fatura do cliente')
+  }
+
   // ── Coerência consumo × geração ──
   if (o.consumo_kwh_mes) {
     const cobertura = o.geracao_kwh_mes / o.consumo_kwh_mes

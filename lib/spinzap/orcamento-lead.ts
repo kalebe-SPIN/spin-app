@@ -15,9 +15,16 @@ import { calcularProposta, paramsToRecord, type FormasPagamento } from '@/lib/pr
 
 type Admin = ReturnType<typeof createAdminClient>
 
+/**
+ * Kalebe 2026-10-13: nada de R$/kWh fixo — a tarifa vem da FATURA do cliente
+ * (calculada em lib/fatura/tarifa.ts: grupo, horário, subsídios) ou, sem
+ * fatura, da mediana das faturas reais lidas (tarifas_extraidas).
+ */
+export type FonteTarifa = { tarifa_kwh: number; fonte: 'fatura' | 'base'; amostras?: number; subsidio?: string | null }
+
 export type EntradaOrcamentoLead =
-  | { modo: 'consumo_kwh'; consumo_kwh: number }
-  | { modo: 'valor_mensal'; valor_mensal: number }
+  | { modo: 'consumo_kwh'; consumo_kwh: number; tarifa?: FonteTarifa | null }
+  | { modo: 'valor_mensal'; valor_mensal: number; tarifa: FonteTarifa }
   | { modo: 'qtd_placas'; qtd_placas: number; inversor_kw?: number | null }
 
 export type OrcamentoLead = {
@@ -59,14 +66,21 @@ export async function montarOrcamentoLead(admin: Admin, e: {
   // Potência alvo
   let consumo: number | null = null
   let kwpAlvo = 0
+  const rotuloTarifa = (t: FonteTarifa) =>
+    `Tarifa de R$ ${t.tarifa_kwh.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}/kWh ${
+      t.fonte === 'fatura' ? 'calculada da sua fatura' : `(referência de ${t.amostras || 'várias'} faturas reais)`}${
+      t.subsidio && t.subsidio !== 'nenhum' ? `, com ${t.subsidio.replace('_', ' ')}` : ''}`
   if (e.entrada.modo === 'consumo_kwh') {
     consumo = e.entrada.consumo_kwh
     kwpAlvo = consumo / kwhPorKwpMes(e.cidade)
     premissas.push(`Consumo médio de ${Math.round(consumo)} kWh/mês`)
+    if (e.entrada.tarifa?.tarifa_kwh) premissas.push(rotuloTarifa(e.entrada.tarifa))
   } else if (e.entrada.modo === 'valor_mensal') {
-    consumo = e.entrada.valor_mensal / PARAMETROS_DEFAULT.preco_medio_kwh_celesc
+    if (!(e.entrada.tarifa?.tarifa_kwh > 0)) return { erro: 'Sem tarifa pra converter o valor da conta em kWh (precisa da fatura ou da base de tarifas)' }
+    consumo = e.entrada.valor_mensal / e.entrada.tarifa.tarifa_kwh
     kwpAlvo = consumo / kwhPorKwpMes(e.cidade)
     premissas.push(`Conta média de R$ ${e.entrada.valor_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (≈ ${Math.round(consumo)} kWh/mês)`)
+    premissas.push(rotuloTarifa(e.entrada.tarifa))
   } else {
     const placas = await listarPlacasDisponiveis(admin)
     const maior = placas[placas.length - 1]

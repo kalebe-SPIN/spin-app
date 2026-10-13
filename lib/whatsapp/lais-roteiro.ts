@@ -7,6 +7,7 @@ import { avisarUsuario, avisarEquipe } from '@/lib/agentes/diretorio'
 import { SERVICOS_LAIS, TEXTOS_LAIS, PERGUNTAS_LAIS, AREA_DA_FAIXA, type ServicoLais } from './lais-textos'
 import { horariosLivres, agendarLigacao, rotuloHorario, type HorarioLivre, type ParteDoDia } from '@/lib/spinzap/agenda-comercial'
 import { analisarFaturaPorUrl } from '@/lib/fatura/analisar'
+import { registrarTarifaExtraida, tarifaDeReferencia } from '@/lib/fatura/tarifa'
 import { mesclarPerfil, criarPendencia, anexarArquivoPerfil } from '@/lib/spinzap/perfil-servidor'
 import { carregarPerfil, prepararOrcamentoDoLead } from '@/lib/spinzap/orcamento-lais'
 
@@ -38,7 +39,7 @@ type Admin = ReturnType<typeof createAdminClient>
 type Passo = 'servico' | 'cidade' | 'oferta_ligacao' | 'escolha_horario' | 'quando_prefere' | 'confirmar' | 'agendado'
   // Lead que não quer ligação (orçamento por aqui)
   | 'sem_ligacao' | 'aguarda_fatura' | 'confirma_endereco' | 'modo_equipamentos' | 'config_equipamentos'
-  | 'conta_inverno' | 'conta_verao' | 'email' | 'perguntas' | 'aguarda_aprovacao'
+  | 'conta_inverno' | 'conta_verao' | 'fatura_tarifa' | 'email' | 'perguntas' | 'aguarda_aprovacao'
   | 'concluido' | 'legado'
 export type EstadoRoteiro = {
   passo: Passo
@@ -409,11 +410,35 @@ export async function processarRoteiroLais(admin: Admin, entrada: {
     await salvar({ ...estado, passo: 'aguarda_aprovacao', orcamento_id: r.orcamento_id, pergunta: undefined })
     return { tratou: true, contexto: ctx }
   }
+  // Lead sem fatura no caminho "valor da conta": tarifa = mediana das faturas
+  // reais lidas (tarifas_extraidas). Sem base, não chuta — passa pra equipe.
+  const usarTarifaDaBase = async (): Promise<{ tratou: boolean; contexto: Record<string, any> }> => {
+    const ref = await tarifaDeReferencia(admin, { classe: ctx.fatura?.classe || null })
+    if (!ref || !ctx.valor_conta_media) {
+      await texto(TEXTOS_LAIS.falhaOrcamento)
+      await avisarEquipe({
+        agente: 'qualificacao',
+        mensagem: `${contato.nome_exibicao || contato.telefone} informou conta média de R$ ${Number(ctx.valor_conta_media || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}, mas não mandou fatura e ainda não há base de tarifas pra calcular o kWh. Alguém assume? ${URL_PORTAL}/spinzap?c=${conversa_id}`,
+        conversa_id, projeto_id: contato.projeto_id || ctx.projeto_id || null,
+      }).catch(() => {})
+      await salvar({ ...estado, passo: 'concluido' })
+      await admin.from('wa_conversas').update({ status: 'em_atendimento', agente_ativo: null }).eq('id', conversa_id)
+      return { tratou: true, contexto: ctx }
+    }
+    // Valor da CONTA (com CIP etc.) ÷ tarifa da conta; sem ela, a tarifa de energia
+    ctx.orcamento_entrada = {
+      modo: 'valor_mensal', valor_mensal: ctx.valor_conta_media,
+      tarifa: { tarifa_kwh: ref.tarifa_conta_kwh || ref.tarifa_kwh, fonte: 'base', amostras: ref.amostras },
+    }
+    return pedirEmailOuPerguntar()
+  }
   const lerFatura = async (m: any): Promise<{ tratou: boolean; contexto: Record<string, any> }> => {
     const r = await analisarFaturaPorUrl(m.midia_url, m.midia_mime)
     const consumo = 'dados' in r ? Number(r.dados.consumo_medio_12m_kwh) || Number(r.dados.consumo_mes_kwh) || 0 : 0
     if ('erro' in r || consumo <= 0) {
       const falhas = (estado.falhas_fatura || 0) + 1
+      // Caminho "valor da conta": sem fatura legível, usa a tarifa da base
+      if (falhas >= 2 && ctx.valor_conta_media) return usarTarifaDaBase()
       if (falhas >= 2) {
         await botoes(TEXTOS_LAIS.modoEquipamentos, [
           { id: 'eq_config', titulo: TEXTOS_LAIS.botaoJaSeiConfiguracao },
@@ -427,8 +452,20 @@ export async function processarRoteiroLais(admin: Admin, entrada: {
       return { tratou: true, contexto: ctx }
     }
     const f = r.dados
-    ctx.fatura = { razao_social: f.razao_social, cpf_cnpj: f.cpf_cnpj, uc: f.uc, consumo_medio_kwh: consumo, tipo_ligacao: f.tipo_ligacao, valor_total_reais: f.valor_total_reais }
-    ctx.orcamento_entrada = { modo: 'consumo_kwh', consumo_kwh: consumo }
+    // Tarifa calculada da fatura (grupo, horário, subsídios) → base + premissa do orçamento
+    const tc = f.tarifa_calculada
+    await registrarTarifaExtraida(admin, { origem: 'lais', conversa_id, dados: f, tarifa: tc, lida: f.tarifa })
+    const tarifaCliente = tc.tarifa_conta_kwh || tc.tarifa_media_kwh
+    ctx.fatura = {
+      razao_social: f.razao_social, cpf_cnpj: f.cpf_cnpj, uc: f.uc, consumo_medio_kwh: consumo, tipo_ligacao: f.tipo_ligacao,
+      valor_total_reais: f.valor_total_reais, grupo: f.grupo, classe: f.classe,
+      tarifa: { media_kwh: tc.tarifa_media_kwh, conta_kwh: tc.tarifa_conta_kwh, subsidio: tc.subsidio, por_posto: tc.por_posto },
+    }
+    // Com a fatura, o consumo é o dela (histórico de 12 meses) — mais fiel que o valor da conta
+    ctx.orcamento_entrada = {
+      modo: 'consumo_kwh', consumo_kwh: consumo,
+      tarifa: tarifaCliente ? { tarifa_kwh: tarifaCliente, fonte: 'fatura', subsidio: tc.subsidio } : null,
+    }
     ctx.fatura_recebida = true
     await anexarArquivoPerfil(admin, { contato_id: contato.id, categoria: 'fatura', url: m.midia_url, nome: m.texto || 'Fatura', mime: m.midia_mime, origem: 'cliente', wa_mensagem_id: m.id, projeto_id: contato.projeto_id })
     if (f.tipo_ligacao) await mesclarPerfil(admin, contato.id, 'infra_eletrica', { tipo_rede: f.tipo_ligacao })
@@ -537,11 +574,31 @@ export async function processarRoteiroLais(admin: Admin, entrada: {
       await salvar({ ...estado, passo: 'conta_verao', conta_inverno: valor })
       return { tratou: true, contexto: ctx }
     }
-    // Média entre inverno e verão
+    // Média entre inverno e verão; o kWh sai da tarifa da FATURA do cliente
+    // (grupo, horário e subsídios mudam o preço) — Kalebe 2026-10-13
     const media = Math.round((((estado.conta_inverno || valor) + valor) / 2) * 100) / 100
-    ctx.orcamento_entrada = { modo: 'valor_mensal', valor_mensal: media }
     ctx.valor_conta_media = media
-    return pedirEmailOuPerguntar()
+    await botoes(TEXTOS_LAIS.pedirFaturaTarifa, [
+      { id: 'tarifa_enviar', titulo: TEXTOS_LAIS.botaoEnviarFatura },
+      { id: 'tarifa_sem_fatura', titulo: TEXTOS_LAIS.botaoNaoTenhoFatura },
+    ])
+    await salvar({ ...estado, passo: 'fatura_tarifa' })
+    return { tratou: true, contexto: ctx }
+  }
+
+  if (estado.passo === 'fatura_tarifa') {
+    if (ultimaMidia) return lerFatura(ultimaMidia)
+    if (clique === 'tarifa_enviar') {
+      await texto(TEXTOS_LAIS.pedirFatura)
+      return { tratou: true, contexto: ctx }
+    }
+    if (clique === 'tarifa_sem_fatura' || /n[aã]o tenho|sem fatura|depois/i.test(textoNovo)) return usarTarifaDaBase()
+    if (it.resposta) await texto(it.resposta)
+    await botoes(TEXTOS_LAIS.pedirFaturaTarifa, [
+      { id: 'tarifa_enviar', titulo: TEXTOS_LAIS.botaoEnviarFatura },
+      { id: 'tarifa_sem_fatura', titulo: TEXTOS_LAIS.botaoNaoTenhoFatura },
+    ])
+    return { tratou: true, contexto: ctx }
   }
 
   if (estado.passo === 'email') {

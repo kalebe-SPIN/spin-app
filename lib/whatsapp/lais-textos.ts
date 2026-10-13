@@ -108,6 +108,9 @@ export const TEXTOS_LAIS = {
   pedirContaInverno: 'Quanto vem a sua conta de luz no inverno, mais ou menos? (em R$)',
   pedirContaVerao: 'E no verão, quanto costuma vir? (em R$)',
   naoEntendiValor: 'Não entendi o valor 😅 Pode me mandar só o número? (ex.: 450)',
+  pedirFaturaTarifa: 'Pra calcular certinho o seu consumo, preciso ver uma fatura sua (pode ser de qualquer mês) — ' +
+    'o valor do kWh muda conforme o tipo de ligação, o horário e os descontos. Consegue me mandar?',
+  botaoNaoTenhoFatura: 'Não tenho agora',
   preparandoOrcamento: 'Perfeito, já tenho tudo! Vou montar seu orçamento e te envio em instantes 😊',
   orcamentoEmPreparo: 'Seu orçamento está sendo finalizado — já te envio por aqui 😊',
   falhaOrcamento: 'Tive um probleminha pra montar o orçamento por aqui — já passei pra nossa equipe comercial, que te chama em instantes.',
