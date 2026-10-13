@@ -94,9 +94,16 @@ export async function POST(req: NextRequest) {
       specs: Record<string, unknown>
       preco_unitario: number | null
       preco_com_frete: number | null
-      preco_custo_spin: number | null
     }[] = []
     const codigosVistos = new Set<string>()
+
+    // Kalebe 2026-10-13: a planilha não traz mais a coluna "Fator 0,4182" — a
+    // [5] virou potência (Wp/kW) e o importador gravava a POTÊNCIA como custo
+    // (ex.: SIW500H T012 com custo R$ 12). Custo Spin = tabela × fator WEG
+    // vigente nos parâmetros (mesma conta do botão "Aplicar desconto WEG").
+    const { data: paramFator } = await supabaseAdmin.from('parametros_precificacao')
+      .select('valor_numero').eq('chave', 'fator_kit_weg_preco_cliente').is('vigente_ate', null).eq('ativo', true).maybeSingle()
+    const fatorWeg = Number(paramFator?.valor_numero) > 0 ? Number(paramFator!.valor_numero) : 0.4182
 
     for (let i = 0; i < composicao.length; i++) {
       const l = composicao[i]
@@ -112,25 +119,22 @@ export async function POST(req: NextRequest) {
 
       const unitario = parseNumPtBr(l[3])
       const unitarioComFrete = parseNumPtBr(l[4])
-      // Coluna 5 = "Fator 0,4182" = preço com desconto WEG aplicado = custo real Spin
-      const custoComDesconto = parseNumPtBr(l[5])
       const { categoria, subcategoria, fabricante, specs } = classificar(tipo, nome, l)
 
       // Fallbacks — se planilha veio com célula vazia, tenta extrair do próprio nome/modelo
-      const modeloExtraido = extrairModelo(nome, l)
+      const modeloExtraido = extrairModelo(nome, l, categoria)
       preencherSpecsFallback(specs, categoria, subcategoria, modeloExtraido, nome)
 
       produtos.push({
         categoria,
         subcategoria,
         codigo_weg: sapRaw,
-        modelo: extrairModelo(nome, l),
+        modelo: modeloExtraido,
         fabricante,
         descricao_curta: nome,
         specs,
         preco_unitario: unitario,        // Preço tabela WEG (bruto)
         preco_com_frete: unitarioComFrete,
-        preco_custo_spin: custoComDesconto, // Custo real Spin (WEG × 0,4182)
       })
     }
 
@@ -184,7 +188,7 @@ export async function POST(req: NextRequest) {
         // (câmeras Wi-Fi, sensores, nobreaks, wallbox WEMOB) porque exige
         // cotação caso a caso. Marca como sob_cotacao pra excluir do
         // diagnóstico e do gerador de kits até ter preço cadastrado.
-        sob_cotacao: !((p.preco_unitario || 0) > 0 || (p.preco_custo_spin || 0) > 0),
+        sob_cotacao: !((p.preco_unitario || 0) > 0 || (p.preco_com_frete || 0) > 0),
         // disponivel_estoque só na criação — respeitamos o valor atual pra existentes
       }
     })
@@ -219,19 +223,38 @@ export async function POST(req: NextRequest) {
         .in('produto_id', idsComPreco)
         .is('vigente_ate', null)
 
-      const novosPrecos = produtosComPreco.map(p => ({
-        produto_id: idByCodigo.get(p.codigo_weg)!,
+      const novosPrecos = produtosComPreco.map(p => {
         // preco_venda = preço tabela WEG (o "cheio" que o cliente vê como referência)
-        preco_venda: p.preco_com_frete || p.preco_unitario!,
-        // preco_custo = preço com desconto WEG 0,4182 (o que a Spin realmente paga)
-        preco_custo: p.preco_custo_spin || p.preco_unitario || (p.preco_com_frete || 0.01),
-        vigente_de: hoje,
-      })).filter(np => np.produto_id)
+        const venda = p.preco_com_frete || p.preco_unitario!
+        return {
+          produto_id: idByCodigo.get(p.codigo_weg)!,
+          preco_venda: venda,
+          // preco_custo = tabela × fator WEG (o que a Spin realmente paga)
+          preco_custo: Math.round(venda * fatorWeg * 100) / 100 || 0.01,
+          vigente_de: hoje,
+        }
+      }).filter(np => np.produto_id)
 
       const { error: precoErr } = await supabaseAdmin
         .from('precos_produtos')
         .insert(novosPrecos)
       if (precoErr) console.error('[importar-planilha-weg] erro preços (não fatal):', precoErr)
+    }
+
+    // 4b. Kalebe 2026-10-13: placa/inversor WEG que SAIU da lista nova fica
+    // "sem estoque" — some do kit automático, do Orçamento Rápido e da Laís,
+    // mas continua no kit manual (item já reservado segue válido). O inverso
+    // NÃO é automático: item desligado de propósito (ex.: 127 V) fica como está.
+    const codigosDaPlanilha = new Set(codigosNovos)
+    const { data: weg } = await supabaseAdmin
+      .from('produtos')
+      .select('id, codigo_weg, modelo, disponivel_estoque')
+      .in('categoria', ['placa', 'inversor'])
+      .eq('ativo', true)
+    const sairam = ((weg || []) as Array<{ id: string; codigo_weg: string; modelo: string; disponivel_estoque: boolean }>)
+      .filter((p) => /^\d{7,8}$/.test(String(p.codigo_weg || '')) && !codigosDaPlanilha.has(p.codigo_weg) && p.disponivel_estoque)
+    if (sairam.length) {
+      await supabaseAdmin.from('produtos').update({ disponivel_estoque: false }).in('id', sairam.map((p) => p.id))
     }
 
     // 5. Atualiza histórico
@@ -250,6 +273,8 @@ export async function POST(req: NextRequest) {
       produtos_atualizados: atualizados,
       produtos_criados: criados,
       total_processados: produtos.length,
+      sem_estoque: sairam.map((p) => p.modelo),
+      fator_custo: fatorWeg,
     })
   } catch (e: unknown) {
     console.error('[importar-planilha-weg]', e)
@@ -495,11 +520,13 @@ function classificar(
  * Extrai o "modelo" — normalmente na coluna 11 pra placas, e no próprio nome
  * pros outros itens (que já vêm em formato de código WEG tipo "SIW300H M060 W00").
  */
-function extrairModelo(nome: string, linha: unknown[]): string {
-  // Planilha 2026-08 R0: modelo na col[10] pra placas ("WPV H66MBN4 W0"),
-  // vazia pros inversores (o próprio nome já é modelo).
+function extrairModelo(nome: string, linha: unknown[], categoria: string): string {
+  // Planilha 2026-08 R0: modelo na col[10] pra placas ("WPV H66MBN4 W0");
+  // pros inversores o próprio nome já é o modelo. Kalebe 2026-10-13: a
+  // planilha 2026-09 pôs "Máx Pmód" (670, 700…) na col[10] dos micro — só
+  // placa usa a col[10], senão o SIW100G virava modelo "670".
   const c10 = String(linha[10] || '').trim()
-  if (c10 && c10.length < 40) return c10
+  if (categoria === 'placa' && c10 && c10.length < 40 && !/^\d+([.,]\d+)?$/.test(c10)) return c10
   return nome
 }
 

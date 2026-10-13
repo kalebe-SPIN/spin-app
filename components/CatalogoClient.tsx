@@ -99,7 +99,9 @@ export function CatalogoClient({ historico, produtos, porCategoria }: Props) {
       const res = await fetch('/api/importar-planilha-weg', { method: 'POST', body: formData })
       const { ok, data, erro } = await parseResp(res)
       if (!ok) throw new Error(erro)
-      setResultado(`✅ Planilha processada: ${data.produtos_criados} novos + ${data.produtos_atualizados} atualizados = ${data.total_processados} produtos.`)
+      setResultado(`✅ Planilha processada: ${data.produtos_criados} novos + ${data.produtos_atualizados} atualizados = ${data.total_processados} produtos.` +
+        (Array.isArray(data.sem_estoque) && data.sem_estoque.length
+          ? ` Saíram da lista e ficaram sem estoque (${data.sem_estoque.length}): ${(data.sem_estoque as string[]).join(', ')}.` : ''))
       router.refresh()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Falha ao processar planilha'
