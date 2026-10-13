@@ -3,16 +3,20 @@
 import { useEffect, useState } from 'react'
 import {
   listarAgendaConversaAction,
+  listarResponsaveisAction,
   agendarNaConversaAction,
   cancelarFollowupAction,
   type ItemAgendaConversa,
 } from '@/app/inbox/agenda-actions'
+import { TIPOS_EVENTO, type TipoEvento } from '@/lib/agenda/tipos-evento'
 
 /**
- * Agenda com a Bianca a partir da conversa (Kalebe 2026-09-29):
+ * Agenda a partir da conversa (Kalebe 2026-09-29):
  *  - Follow-up: na hora marcada a Bianca manda a mensagem ao cliente aqui
- *  - Tarefa: vai pra agenda de tarefas do usuário
- *  - Evento: compromisso na agenda (ligação, reunião, visita)
+ *  - Tarefa: vai pra agenda de tarefas do responsável
+ *  - Evento: compromisso na agenda (call, ligação, reunião, reunião externa, visita)
+ * Kalebe 2026-10-13: escolhe quem executa — vai pra agenda da pessoa, ela
+ * recebe o aviso; evento avisa antes e pergunta "como foi?" depois.
  */
 
 type Aba = 'followup' | 'tarefa' | 'evento'
@@ -40,8 +44,12 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
   const [descricao, setDescricao] = useState('')
   const [prioridade, setPrioridade] = useState<'baixa' | 'media' | 'alta' | 'urgente'>('media')
   const [duracao, setDuracao] = useState(30)
-  const [tipoEvento, setTipoEvento] = useState<'ligacao' | 'reuniao' | 'visita_tecnica'>('ligacao')
+  const [tipoEvento, setTipoEvento] = useState<TipoEvento>('ligacao')
   const [local, setLocal] = useState('')
+  const [lembrete, setLembrete] = useState(30)
+  const [usuarios, setUsuarios] = useState<Array<{ id: string; nome: string }>>([])
+  const [responsavel, setResponsavel] = useState('')
+  const [eu, setEu] = useState('')
   const [itens, setItens] = useState<ItemAgendaConversa[]>([])
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -51,7 +59,13 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
     const r = await listarAgendaConversaAction(conversaId)
     if (!('erro' in r)) setItens(r.itens)
   }
-  useEffect(() => { carregar() // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    carregar()
+    listarResponsaveisAction().then((r) => {
+      if ('erro' in r) return
+      setUsuarios(r.usuarios); setEu(r.eu); setResponsavel((v) => v || r.eu)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversaId])
 
   async function salvar() {
@@ -59,13 +73,17 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
     try {
       const quandoIso = aba === 'tarefa' ? quando.slice(0, 10) : new Date(quando).toISOString()
       const r = await agendarNaConversaAction({
-        conversa_id: conversaId, tipo: aba, quando: quandoIso,
+        conversa_id: conversaId, tipo: aba, quando: quandoIso, responsavel_id: responsavel || null,
         titulo, descricao, modo, mensagem, cancelar_se_responder: cancelarSeResponder,
-        prioridade, duracao_min: duracao, tipo_evento: tipoEvento, local,
+        prioridade, duracao_min: duracao, tipo_evento: tipoEvento, local, lembrete_min: lembrete,
       })
       if ('erro' in r) { setErro(r.erro); return }
-      setOk(aba === 'followup' ? '✓ Follow-up agendado — a Bianca executa na hora marcada.'
-        : aba === 'tarefa' ? '✓ Tarefa criada na sua agenda.' : '✓ Evento criado na sua agenda.')
+      const paraOutro = responsavel && responsavel !== eu
+      const quem = paraOutro ? `na agenda de ${r.responsavel}, que já recebeu o aviso` : 'na sua agenda'
+      setOk(aba === 'followup'
+        ? `✓ Follow-up agendado${paraOutro ? ` no nome de ${r.responsavel} (avisado)` : ''} — a Bianca executa na hora marcada.`
+        : aba === 'tarefa' ? `✓ Tarefa criada ${quem}.`
+        : `✓ Evento criado ${quem}. Aviso ${lembrete} min antes e acompanhamento depois.${r.link_sala ? ` Sala: ${r.link_sala}` : ''}`)
       setMensagem(''); setTitulo(''); setDescricao('')
       carregar()
     } finally { setSalvando(false) }
@@ -82,8 +100,8 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-noite border border-white/15 rounded-xl p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-base font-bold text-white">Agendar com a Bianca</h2>
-            <p className="text-[11px] text-white/50">Ela acompanha e executa nesta conversa.</p>
+            <h2 className="text-base font-bold text-white">Agendar</h2>
+            <p className="text-[11px] text-white/50">Vai pra agenda de quem executa; a Bianca avisa e acompanha.</p>
           </div>
           <button onClick={onFechar} className="text-white/40 hover:text-white/80 text-lg leading-none">✕</button>
         </div>
@@ -96,6 +114,15 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
             </button>
           ))}
         </div>
+
+        <Campo rotulo={aba === 'followup' ? 'Responsável (recebe os avisos do follow-up)' : 'Responsável pela execução'}>
+          <select value={responsavel} onChange={(e) => setResponsavel(e.target.value)} className={inputCls} disabled={!usuarios.length}>
+            {!usuarios.length && <option value="" className="bg-noite">Carregando…</option>}
+            {usuarios.map((u) => (
+              <option key={u.id} value={u.id} className="bg-noite">{u.nome}{u.id === eu ? ' (você)' : ''}</option>
+            ))}
+          </select>
+        </Campo>
 
         {aba === 'followup' && (
           <div className="space-y-3">
@@ -120,7 +147,7 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
             </label>
             <p className="text-[10px] text-white/40">
               Se o cliente estiver há mais de 24h sem falar com o número da Spin, o WhatsApp não deixa a Bianca
-              mandar — ela te avisa na hora pra você chamar pelo celular.
+              mandar — ela avisa o responsável na hora pra chamar pelo celular.
             </p>
           </div>
         )}
@@ -130,6 +157,7 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
             <Campo rotulo="Título"><input value={titulo} onChange={(e) => setTitulo(e.target.value)} className={inputCls} placeholder="Ex.: Pedir foto do padrão de entrada" /></Campo>
             <div className="grid grid-cols-2 gap-3">
               <Campo rotulo="Prazo"><input type="date" value={quando.slice(0, 10)} onChange={(e) => setQuando(`${e.target.value}T09:00`)} className={inputCls} /></Campo>
+              {/* Prioridade em ordem crescente (a ordem carrega sentido) */}
               <Campo rotulo="Prioridade">
                 <select value={prioridade} onChange={(e) => setPrioridade(e.target.value as any)} className={inputCls}>
                   <option value="baixa" className="bg-noite">Baixa</option>
@@ -140,12 +168,13 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
               </Campo>
             </div>
             <Campo rotulo="Detalhes (opcional)"><textarea rows={2} value={descricao} onChange={(e) => setDescricao(e.target.value)} className={inputCls} /></Campo>
+            <p className="text-[10px] text-white/40">O responsável recebe o aviso agora e um lembrete no dia do prazo, às 9h.</p>
           </div>
         )}
 
         {aba === 'evento' && (
           <div className="space-y-3">
-            <Campo rotulo="Título"><input value={titulo} onChange={(e) => setTitulo(e.target.value)} className={inputCls} placeholder="Ex.: Ligar pra apresentar a proposta" /></Campo>
+            <Campo rotulo="Título"><input value={titulo} onChange={(e) => setTitulo(e.target.value)} className={inputCls} placeholder="Ex.: Apresentar a proposta" /></Campo>
             <div className="grid grid-cols-2 gap-3">
               <Campo rotulo="Início"><input type="datetime-local" value={quando} onChange={(e) => setQuando(e.target.value)} className={inputCls} /></Campo>
               <Campo rotulo="Duração">
@@ -156,23 +185,34 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Campo rotulo="Tipo">
-                <select value={tipoEvento} onChange={(e) => setTipoEvento(e.target.value as any)} className={inputCls}>
-                  <option value="ligacao" className="bg-noite">Ligação</option>
-                  <option value="reuniao" className="bg-noite">Reunião</option>
-                  <option value="visita_tecnica" className="bg-noite">Visita técnica</option>
+                <select value={tipoEvento} onChange={(e) => setTipoEvento(e.target.value as TipoEvento)} className={inputCls}>
+                  {TIPOS_EVENTO.map((t) => <option key={t.valor} value={t.valor} className="bg-noite">{t.rotulo}</option>)}
                 </select>
               </Campo>
-              <Campo rotulo="Local (opcional)"><input value={local} onChange={(e) => setLocal(e.target.value)} className={inputCls} /></Campo>
+              <Campo rotulo="Avisar antes">
+                <select value={lembrete} onChange={(e) => setLembrete(Number(e.target.value))} className={inputCls}>
+                  {[5, 15, 30, 60, 120].map((m) => <option key={m} value={m} className="bg-noite">{m < 60 ? `${m} min` : `${m / 60} h`}</option>)}
+                </select>
+              </Campo>
             </div>
+            {tipoEvento === 'call' ? (
+              <p className="text-[11px] text-white/60 border border-white/10 rounded-lg p-2">🎥 A sala de vídeo é criada automaticamente e vai no aviso do responsável.</p>
+            ) : (
+              <Campo rotulo={tipoEvento === 'reuniao_externa' ? 'Endereço da reunião (obrigatório)' : 'Local (opcional)'}>
+                <input value={local} onChange={(e) => setLocal(e.target.value)} className={inputCls}
+                  placeholder={tipoEvento === 'reuniao_externa' ? 'Rua, número, bairro, cidade' : ''} />
+              </Campo>
+            )}
             <Campo rotulo="Detalhes (opcional)"><textarea rows={2} value={descricao} onChange={(e) => setDescricao(e.target.value)} className={inputCls} /></Campo>
+            <p className="text-[10px] text-white/40">Depois do horário, a Bianca pergunta ao responsável como foi, pra registrar a execução.</p>
           </div>
         )}
 
         {erro && <p className="text-xs text-coral bg-coral/10 border border-coral/30 rounded-lg p-2">⚠ {erro}</p>}
-        {ok && <p className="text-xs text-verde">{ok}</p>}
+        {ok && <p className="text-xs text-white/85 border border-verde/40 rounded-lg p-2">{ok}</p>}
 
         <div className="flex justify-end">
-          <button onClick={salvar} disabled={salvando} className="px-5 py-2 bg-verde text-noite font-bold text-sm rounded-lg disabled:opacity-50">
+          <button onClick={salvar} disabled={salvando || !responsavel} className="px-5 py-2 bg-verde text-white font-bold text-sm rounded-lg disabled:opacity-50">
             {salvando ? 'Salvando…' : aba === 'followup' ? 'Agendar follow-up' : aba === 'tarefa' ? 'Criar tarefa' : 'Criar evento'}
           </button>
         </div>
@@ -193,6 +233,7 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
                     {i.quando ? new Date(i.quando.length === 10 ? `${i.quando}T12:00` : i.quando).toLocaleString('pt-BR', {
                       day: '2-digit', month: '2-digit', ...(i.quando.length === 10 ? {} : { hour: '2-digit', minute: '2-digit' }),
                     }) : 'sem data'} · {ROTULO_STATUS[i.status] || i.status}
+                    {i.responsavel ? ` · 👤 ${i.responsavel}` : ''}
                     {i.detalhe ? ` · ${i.detalhe}` : ''}
                   </p>
                 </li>

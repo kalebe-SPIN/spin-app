@@ -356,6 +356,15 @@ export async function GET(req: NextRequest) {
     } catch (e) {
       console.error('[cron lead-sla] lembretes de ligação', e)
     }
+    // Kalebe 2026-10-13: compromissos da conversa — lembrete antes e acompanhamento depois
+    try {
+      const { lembretesDeEventos } = await import('@/lib/agenda/lembretes-eventos')
+      const r = await lembretesDeEventos()
+      ;(stats as any).eventos_lembrados = r.antes
+      ;(stats as any).eventos_acompanhados = r.depois
+    } catch (e) {
+      console.error('[cron lead-sla] lembretes de eventos', e)
+    }
     // Roteiro da Laís parado esperando o lead (ex.: endereço da fatura) → segue
     try {
       const { avancarRoteirosParados } = await import('@/lib/whatsapp/lais-roteiro')

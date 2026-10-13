@@ -9,6 +9,8 @@ const TIPOS: { chave: TipoEvento; label: string; emoji: string }[] = [
   { chave: 'instalacao', label: 'Instalação', emoji: '⚡' },
   { chave: 'cliente', label: 'Cliente', emoji: '👤' },
   { chave: 'ligacao', label: 'Ligação', emoji: '📞' },
+  { chave: 'call', label: 'Call (vídeo)', emoji: '🎥' },
+  { chave: 'reuniao_externa', label: 'Reunião externa', emoji: '🚗' },
   { chave: 'outro', label: 'Outro', emoji: '📌' },
 ]
 

@@ -27,6 +27,9 @@ const CORES_TIPO: Record<string, string> = {
   reuniao: 'bg-blue-500/70 hover:bg-blue-500 text-white',
   visita: 'bg-verde/70 hover:bg-verde text-noite',
   ligacao: 'bg-purple-500/70 hover:bg-purple-500 text-white',
+  call: 'bg-purple-500/70 hover:bg-purple-500 text-white',
+  reuniao_externa: 'bg-blue-500/70 hover:bg-blue-500 text-white',
+  visita_tecnica: 'bg-verde/70 hover:bg-verde text-noite',
   geral: 'bg-sol/70 hover:bg-sol text-noite',
 }
 

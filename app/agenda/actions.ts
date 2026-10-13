@@ -14,6 +14,8 @@ import { dispararGatilho } from '@/lib/bianca/gatilhos'
 
 export type TipoEvento =
   | 'reuniao' | 'visita_tecnica' | 'instalacao' | 'cliente' | 'ligacao' | 'outro'
+  // Kalebe 2026-10-13: criados pela conversa do Spinzap
+  | 'call' | 'reuniao_externa'
 
 // ═══════════════════ CRIAR EVENTO ═══════════════════
 export async function criarEventoAction(input: {
