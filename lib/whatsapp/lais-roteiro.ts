@@ -3,9 +3,20 @@ import type { createAdminClient } from '@/lib/supabase/admin'
 import { getWaConfig } from './config'
 import { enviarTextoPeloCanal, enviarInterativoPeloCanal } from './enviar-canal'
 import { NOME_SDR, URL_PORTAL } from '@/lib/agentes/nomes'
-import { avisarUsuario } from '@/lib/agentes/diretorio'
-import { SERVICOS_LAIS, TEXTOS_LAIS, type ServicoLais } from './lais-textos'
+import { avisarUsuario, avisarEquipe } from '@/lib/agentes/diretorio'
+import { SERVICOS_LAIS, TEXTOS_LAIS, PERGUNTAS_LAIS, AREA_DA_FAIXA, type ServicoLais } from './lais-textos'
 import { horariosLivres, agendarLigacao, rotuloHorario, type HorarioLivre, type ParteDoDia } from '@/lib/spinzap/agenda-comercial'
+import { analisarFaturaPorUrl } from '@/lib/fatura/analisar'
+import { mesclarPerfil, criarPendencia, anexarArquivoPerfil } from '@/lib/spinzap/perfil-servidor'
+import { carregarPerfil, prepararOrcamentoDoLead } from '@/lib/spinzap/orcamento-lais'
+
+const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+/** Primeiro número do texto, no formato brasileiro ("R$ 1.200,50" → 1200.5; "uns 450" → 450). */
+function numeroDoTexto(t: string): number {
+  const m = String(t || '').match(/\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?/)
+  if (!m) return 0
+  return Number(m[0].replace(/\./g, '').replace(',', '.')) || 0
+}
 
 /**
  * Roteiro da Laís pra lead novo (Kalebe 2026-10-10):
@@ -24,13 +35,24 @@ import { horariosLivres, agendarLigacao, rotuloHorario, type HorarioLivre, type 
  */
 
 type Admin = ReturnType<typeof createAdminClient>
-type Passo = 'servico' | 'cidade' | 'oferta_ligacao' | 'escolha_horario' | 'quando_prefere' | 'confirmar' | 'agendado' | 'concluido' | 'legado'
+type Passo = 'servico' | 'cidade' | 'oferta_ligacao' | 'escolha_horario' | 'quando_prefere' | 'confirmar' | 'agendado'
+  // Lead que não quer ligação (orçamento por aqui)
+  | 'sem_ligacao' | 'aguarda_fatura' | 'confirma_endereco' | 'modo_equipamentos' | 'config_equipamentos'
+  | 'conta_inverno' | 'conta_verao' | 'email' | 'perguntas' | 'aguarda_aprovacao'
+  | 'concluido' | 'legado'
 export type EstadoRoteiro = {
   passo: Passo
   servico?: ServicoLais
   opcoes?: HorarioLivre[]
   proposto?: HorarioLivre
   agendado?: { evento_id: string; inicio: string; consultor_id: string; consultor_nome: string }
+  /** Pergunta com opções em andamento (PERGUNTAS_LAIS) */
+  pergunta?: string
+  /** Quando entrou no passo atual (prazo pra confirmar endereço) */
+  desde?: string
+  conta_inverno?: number
+  falhas_fatura?: number
+  orcamento_id?: string
 }
 
 const TIPO_SISTEMA: Record<ServicoLais, string> = {
@@ -69,6 +91,12 @@ type Interpretacao = {
   confirma?: boolean | null
   quer_reagendar?: boolean | null
   resposta?: string | null
+  email?: string | null
+  endereco?: { rua?: string | null; numero?: string | null; bairro?: string | null; cidade?: string | null; uf?: string | null; cep?: string | null } | null
+  endereco_confirmado?: boolean | null
+  qtd_placas?: number | null
+  inversor_kw?: number | null
+  valor_reais?: number | null
 }
 
 async function interpretar(passo: Passo, estado: EstadoRoteiro, historico: string[], novas: string): Promise<Interpretacao> {
@@ -90,6 +118,11 @@ Campos (null quando não souber):
 - parte_do_dia: "manha" | "tarde" | "noite" se só disse a parte do dia
 - confirma: true/false se confirmou ou desistiu do horário proposto
 - quer_reagendar: true se pediu pra mudar a ligação já marcada
+- email: e-mail que o cliente informou
+- endereco: {rua, numero, bairro, cidade, uf, cep} com o que o cliente informou do endereço da instalação (só os campos ditos)
+- endereco_confirmado: true se confirmou que o endereço mostrado está certo
+- qtd_placas e inversor_kw: números se o cliente disse quantas placas e/ou a potência do inversor (kW) que quer
+- valor_reais: número em reais se informou um valor de conta de luz (ex.: "uns 450" → 450)
 - resposta: se o cliente fez uma PERGUNTA fora do roteiro, uma resposta curta e cordial (até 2 frases, português do Brasil). Nunca diga preço, prazo, desconto, condição de pagamento nem detalhe técnico que você não sabe — nesses casos diga que o consultor explica na ligação. Sem pergunta: null.`
   try {
     const anthropic = new Anthropic({ apiKey: anthropic_api_key })
@@ -125,6 +158,8 @@ export async function processarRoteiroLais(admin: Admin, entrada: {
   contato: { id: string; telefone: string; nome_exibicao: string | null; projeto_id: string | null; cliente_id: string | null }
   contexto: Record<string, any>
   cidadeEtiqueta: string | null
+  /** Rodada sem mensagem nova do lead (prazo vencido, chamada pelo cron) */
+  gatilho?: 'prazo_endereco'
 }): Promise<{ tratou: boolean; contexto: Record<string, any> }> {
   const { conversa_id, contato } = entrada
   const ctx: Record<string, any> = { ...entrada.contexto }
@@ -136,7 +171,7 @@ export async function processarRoteiroLais(admin: Admin, entrada: {
 
   // Mensagens do cliente desde a última nossa (cliques chegam com o id da opção)
   const { data: ult } = await admin.from('wa_mensagens')
-    .select('direcao, tipo, texto, dados, criada_em, origem_agente_nome')
+    .select('id, direcao, tipo, texto, dados, criada_em, origem_agente_nome, midia_url, midia_mime')
     .eq('conversa_id', conversa_id).neq('tipo', 'system')
     .order('criada_em', { ascending: false }).limit(30)
   const msgs = ((ult || []) as any[]).reverse()
@@ -223,7 +258,7 @@ export async function processarRoteiroLais(admin: Admin, entrada: {
   }
 
   // Cliques resolvem sem IA; texto livre passa pelo intérprete
-  const it: Interpretacao = clique ? {} : await interpretar(estado.passo, estado, historico, textoNovo)
+  const it: Interpretacao = clique || entrada.gatilho || !textoNovo ? {} : await interpretar(estado.passo, estado, historico, textoNovo)
   if (it.cidade && !ctx.cidade) await definirCidade(it.cidade, it.uf)
 
   // ── RECEPCIONAR ──
@@ -256,8 +291,15 @@ export async function processarRoteiroLais(admin: Admin, entrada: {
   if (estado.passo === 'oferta_ligacao') {
     const aceita = clique === 'lig_sim' ? true : clique === 'lig_nao' ? false : it.aceita_ligacao ?? null
     if (aceita === true) return oferecerHorarios(TEXTOS_LAIS.opcoesHorario)
-    // Sem ligação: por enquanto segue a qualificação de hoje (fatura + equipe)
-    if (aceita === false) return legado()
+    // Sem ligação: orçamento por aqui — fatura ou perguntas
+    if (aceita === false) {
+      await botoes(TEXTOS_LAIS.semLigacao, [
+        { id: 'via_fatura', titulo: TEXTOS_LAIS.botaoEnviarFatura },
+        { id: 'via_perguntas', titulo: TEXTOS_LAIS.botaoResponderPerguntas },
+      ])
+      await salvar({ ...estado, passo: 'sem_ligacao' })
+      return { tratou: true, contexto: ctx }
+    }
     if (it.resposta) await texto(it.resposta)
     return depoisDaCidade()
   }
@@ -311,6 +353,243 @@ export async function processarRoteiroLais(admin: Admin, entrada: {
       return propor(estado.proposto)
     }
     return confirmarLigacao(admin, { conversa_id, contato, ctx, estado, nome, salvar, texto, oferecerHorarios })
+  }
+
+  // ── SEM LIGAÇÃO: orçamento por aqui ──
+  const ultimaMidia = [...novas].reverse().find((m) => ['document', 'image'].includes(m.tipo) && m.midia_url)
+  const pedirEmailOuPerguntar = async (): Promise<{ tratou: boolean; contexto: Record<string, any> }> => {
+    const perfil = await carregarPerfil(admin, contato.id)
+    if (!perfil.contato.email) {
+      await texto(TEXTOS_LAIS.pedirEmail)
+      await salvar({ ...estado, passo: 'email' })
+      return { tratou: true, contexto: ctx }
+    }
+    await texto(TEXTOS_LAIS.introPerguntas)
+    return perguntarProxima()
+  }
+  const perguntarProxima = async (): Promise<{ tratou: boolean; contexto: Record<string, any> }> => {
+    const p = await carregarPerfil(admin, contato.id)
+    const respondida: Record<string, boolean> = {
+      tipo_telhado: !!p.infra_civil.tipo_telhado,
+      area: !!p.infra_civil.area_m2,
+      aguas: !!p.infra_civil.aguas,
+      material_estrutura: !!p.infra_civil.material_estrutura,
+      sombreamento: p.peculiaridades.sombreamento === true || p.peculiaridades.sombreamento === false,
+      tipo_rede: !!p.infra_eletrica.tipo_rede,
+      disjuntor: !!p.infra_eletrica.disjuntor_a || !!ctx.disjuntor_nao_sei,
+    }
+    const q = PERGUNTAS_LAIS.find((x) => !respondida[x.chave])
+    if (!q) return finalizarOrcamento()
+    const opcoes = q.opcoes.map((o) => ({ id: `pq:${q.chave}:${o.id}`, titulo: o.titulo }))
+    if (!(await podeFalar())) return { tratou: true, contexto: ctx }
+    const r = opcoes.length <= 3
+      ? await enviarInterativoPeloCanal({ conversa_id, telefone: contato.telefone, texto: q.texto, origem_agente_nome: NOME_SDR, botoes: opcoes })
+      : await enviarInterativoPeloCanal({ conversa_id, telefone: contato.telefone, texto: q.texto, origem_agente_nome: NOME_SDR, lista: { botao: q.botao_lista || 'Ver opções', opcoes } })
+    if ('erro' in r) await texto(`${q.texto}\n\n${q.opcoes.map((o, i) => `${i + 1}) ${o.titulo}`).join('\n')}`)
+    await salvar({ ...estado, passo: 'perguntas', pergunta: q.chave })
+    return { tratou: true, contexto: ctx }
+  }
+  const finalizarOrcamento = async (): Promise<{ tratou: boolean; contexto: Record<string, any> }> => {
+    await texto(TEXTOS_LAIS.preparandoOrcamento)
+    const r = await prepararOrcamentoDoLead(admin, {
+      conversa_id, contato, entrada: ctx.orcamento_entrada, fatura: ctx.fatura || null, contexto: ctx,
+    }).catch((e) => ({ erro: e?.message || 'falha' }))
+    if ('erro' in r) {
+      console.error('[lais-roteiro] orçamento', r.erro)
+      await texto(TEXTOS_LAIS.falhaOrcamento)
+      await avisarEquipe({
+        agente: 'qualificacao',
+        mensagem: `A Laís não conseguiu montar o orçamento de ${contato.nome_exibicao || contato.telefone} (${r.erro}). Alguém assume? ${URL_PORTAL}/spinzap?c=${conversa_id}`,
+        conversa_id, projeto_id: contato.projeto_id || ctx.projeto_id || null,
+      }).catch(() => {})
+      await salvar({ ...estado, passo: 'concluido' })
+      await admin.from('wa_conversas').update({ status: 'em_atendimento', agente_ativo: null }).eq('id', conversa_id)
+      return { tratou: true, contexto: ctx }
+    }
+    await salvar({ ...estado, passo: 'aguarda_aprovacao', orcamento_id: r.orcamento_id, pergunta: undefined })
+    return { tratou: true, contexto: ctx }
+  }
+  const lerFatura = async (m: any): Promise<{ tratou: boolean; contexto: Record<string, any> }> => {
+    const r = await analisarFaturaPorUrl(m.midia_url, m.midia_mime)
+    const consumo = 'dados' in r ? Number(r.dados.consumo_medio_12m_kwh) || Number(r.dados.consumo_mes_kwh) || 0 : 0
+    if ('erro' in r || consumo <= 0) {
+      const falhas = (estado.falhas_fatura || 0) + 1
+      if (falhas >= 2) {
+        await botoes(TEXTOS_LAIS.modoEquipamentos, [
+          { id: 'eq_config', titulo: TEXTOS_LAIS.botaoJaSeiConfiguracao },
+          { id: 'eq_valor', titulo: TEXTOS_LAIS.botaoPeloValorConta },
+        ])
+        await salvar({ ...estado, passo: 'modo_equipamentos', falhas_fatura: falhas })
+      } else {
+        await texto(TEXTOS_LAIS.faturaNaoLida)
+        await salvar({ ...estado, passo: 'aguarda_fatura', falhas_fatura: falhas })
+      }
+      return { tratou: true, contexto: ctx }
+    }
+    const f = r.dados
+    ctx.fatura = { razao_social: f.razao_social, cpf_cnpj: f.cpf_cnpj, uc: f.uc, consumo_medio_kwh: consumo, tipo_ligacao: f.tipo_ligacao, valor_total_reais: f.valor_total_reais }
+    ctx.orcamento_entrada = { modo: 'consumo_kwh', consumo_kwh: consumo }
+    ctx.fatura_recebida = true
+    await anexarArquivoPerfil(admin, { contato_id: contato.id, categoria: 'fatura', url: m.midia_url, nome: m.texto || 'Fatura', mime: m.midia_mime, origem: 'cliente', wa_mensagem_id: m.id, projeto_id: contato.projeto_id })
+    if (f.tipo_ligacao) await mesclarPerfil(admin, contato.id, 'infra_eletrica', { tipo_rede: f.tipo_ligacao })
+    await mesclarPerfil(admin, contato.id, 'contato', { endereco: { rua: f.endereco.logradouro, bairro: f.endereco.bairro, cidade: f.endereco.cidade, uf: f.endereco.uf, cep: f.endereco.cep } })
+    if (f.endereco.cidade && !ctx.cidade) await definirCidade(f.endereco.cidade, f.endereco.uf)
+    // Endereço incompleto (sem número ou sem cidade) → confirma com o lead
+    const completo = /\d/.test(f.endereco.logradouro || '') && !!f.endereco.cidade
+    if (!completo) {
+      const end = [f.endereco.logradouro, f.endereco.bairro, f.endereco.cidade && `${f.endereco.cidade}/${f.endereco.uf || ''}`].filter(Boolean).join(', ') || 'sem endereço legível'
+      await texto(TEXTOS_LAIS.confirmarEnderecoFatura(end))
+      await salvar({ ...estado, passo: 'confirma_endereco', desde: new Date().toISOString() })
+      return { tratou: true, contexto: ctx }
+    }
+    return pedirEmailOuPerguntar()
+  }
+
+  if (estado.passo === 'sem_ligacao') {
+    if (ultimaMidia) return lerFatura(ultimaMidia)
+    if (clique === 'via_fatura') {
+      await texto(TEXTOS_LAIS.pedirFatura)
+      await salvar({ ...estado, passo: 'aguarda_fatura' })
+      return { tratou: true, contexto: ctx }
+    }
+    if (clique === 'via_perguntas') {
+      await botoes(TEXTOS_LAIS.modoEquipamentos, [
+        { id: 'eq_config', titulo: TEXTOS_LAIS.botaoJaSeiConfiguracao },
+        { id: 'eq_valor', titulo: TEXTOS_LAIS.botaoPeloValorConta },
+      ])
+      await salvar({ ...estado, passo: 'modo_equipamentos' })
+      return { tratou: true, contexto: ctx }
+    }
+    if (it.resposta) await texto(it.resposta)
+    await botoes(TEXTOS_LAIS.semLigacao, [
+      { id: 'via_fatura', titulo: TEXTOS_LAIS.botaoEnviarFatura },
+      { id: 'via_perguntas', titulo: TEXTOS_LAIS.botaoResponderPerguntas },
+    ])
+    return { tratou: true, contexto: ctx }
+  }
+
+  if (estado.passo === 'aguarda_fatura') {
+    if (ultimaMidia) return lerFatura(ultimaMidia)
+    if (it.resposta) await texto(it.resposta)
+    await texto(TEXTOS_LAIS.pedirFatura)
+    return { tratou: true, contexto: ctx }
+  }
+
+  if (estado.passo === 'confirma_endereco') {
+    // Lead não respondeu no prazo: usa só a cidade e deixa a pendência
+    if (entrada.gatilho === 'prazo_endereco') {
+      await criarPendencia(admin, contato.id, 'Endereço da instalação incompleto na fatura — o cliente não confirmou; confirmar antes da visita')
+      return pedirEmailOuPerguntar()
+    }
+    const e = it.endereco || {}
+    const temAlgo = Object.values(e).some((v) => v)
+    if (temAlgo) {
+      await mesclarPerfil(admin, contato.id, 'contato', { endereco: { rua: e.rua, numero: e.numero, bairro: e.bairro, cidade: e.cidade, uf: e.uf, cep: e.cep } })
+      if (e.cidade) await definirCidade(e.cidade, e.uf)
+    } else if (!it.endereco_confirmado) {
+      // Não respondeu o endereço: segue só com a cidade e deixa a pendência
+      await criarPendencia(admin, contato.id, 'Endereço da instalação incompleto na fatura — confirmar com o cliente')
+    }
+    return pedirEmailOuPerguntar()
+  }
+
+  if (estado.passo === 'modo_equipamentos') {
+    if (clique === 'eq_config' || it.qtd_placas) {
+      if (it.qtd_placas) { estado.passo = 'config_equipamentos' }
+      else {
+        await texto(TEXTOS_LAIS.pedirConfiguracao)
+        await salvar({ ...estado, passo: 'config_equipamentos' })
+        return { tratou: true, contexto: ctx }
+      }
+    } else if (clique === 'eq_valor') {
+      await texto(TEXTOS_LAIS.pedirContaInverno)
+      await salvar({ ...estado, passo: 'conta_inverno' })
+      return { tratou: true, contexto: ctx }
+    } else {
+      if (it.resposta) await texto(it.resposta)
+      await botoes(TEXTOS_LAIS.modoEquipamentos, [
+        { id: 'eq_config', titulo: TEXTOS_LAIS.botaoJaSeiConfiguracao },
+        { id: 'eq_valor', titulo: TEXTOS_LAIS.botaoPeloValorConta },
+      ])
+      return { tratou: true, contexto: ctx }
+    }
+  }
+
+  if (estado.passo === 'config_equipamentos') {
+    const qtd = Math.round(Number(it.qtd_placas) || 0)
+    if (qtd > 0 && qtd <= 500) {
+      ctx.orcamento_entrada = { modo: 'qtd_placas', qtd_placas: qtd, inversor_kw: Number(it.inversor_kw) || null }
+      return pedirEmailOuPerguntar()
+    }
+    if (it.resposta) await texto(it.resposta)
+    await texto(TEXTOS_LAIS.pedirConfiguracao)
+    return { tratou: true, contexto: ctx }
+  }
+
+  if (estado.passo === 'conta_inverno' || estado.passo === 'conta_verao') {
+    const valor = Number(it.valor_reais) || numeroDoTexto(textoNovo)
+    if (!(valor > 0 && valor < 1_000_000)) {
+      await texto(TEXTOS_LAIS.naoEntendiValor)
+      return { tratou: true, contexto: ctx }
+    }
+    if (estado.passo === 'conta_inverno') {
+      await texto(TEXTOS_LAIS.pedirContaVerao)
+      await salvar({ ...estado, passo: 'conta_verao', conta_inverno: valor })
+      return { tratou: true, contexto: ctx }
+    }
+    // Média entre inverno e verão
+    const media = Math.round((((estado.conta_inverno || valor) + valor) / 2) * 100) / 100
+    ctx.orcamento_entrada = { modo: 'valor_mensal', valor_mensal: media }
+    ctx.valor_conta_media = media
+    return pedirEmailOuPerguntar()
+  }
+
+  if (estado.passo === 'email') {
+    const achado = (textoNovo.match(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/i) || [])[0] || it.email || ''
+    const email = achado.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      await texto(TEXTOS_LAIS.emailInvalido)
+      return { tratou: true, contexto: ctx }
+    }
+    await mesclarPerfil(admin, contato.id, 'contato', { email })
+    await texto(TEXTOS_LAIS.introPerguntas)
+    return perguntarProxima()
+  }
+
+  if (estado.passo === 'perguntas' && estado.pergunta) {
+    const q = PERGUNTAS_LAIS.find((x) => x.chave === estado.pergunta)
+    let escolha: string | null = null
+    if (clique?.startsWith(`pq:${estado.pergunta}:`)) escolha = clique.split(':')[2]
+    else if (q) {
+      // Escreveu em vez de tocar: tenta casar com o texto da opção
+      const t = semAcento(textoNovo)
+      escolha = q.opcoes.find((o) => t.includes(semAcento(o.titulo)) || t === semAcento(o.id))?.id || null
+      if (!escolha && q.chave === 'sombreamento') escolha = /\bnao\b|\bnão\b|sem sombra/i.test(textoNovo) ? 'nao' : /\bsim\b|tem sombra/i.test(textoNovo) ? 'sim' : null
+      if (!escolha && q.chave === 'disjuntor') { const n = numeroDoTexto(textoNovo); if (n >= 10 && n <= 400) escolha = String(Math.round(n)) }
+    }
+    if (!escolha || !q) {
+      if (it.resposta) await texto(it.resposta)
+      return perguntarProxima()
+    }
+    if (q.chave === 'tipo_telhado') await mesclarPerfil(admin, contato.id, 'infra_civil', { tipo_telhado: escolha, ...(escolha === 'laje_impermeabilizada' ? { laje: true } : {}) })
+    if (q.chave === 'area') await mesclarPerfil(admin, contato.id, 'infra_civil', { area_m2: AREA_DA_FAIXA[escolha] ?? null, area_faixa: q.opcoes.find((o) => o.id === escolha)?.titulo })
+    if (q.chave === 'aguas') await mesclarPerfil(admin, contato.id, 'infra_civil', { aguas: Number(escolha) })
+    if (q.chave === 'material_estrutura') await mesclarPerfil(admin, contato.id, 'infra_civil', { material_estrutura: escolha })
+    if (q.chave === 'sombreamento') await mesclarPerfil(admin, contato.id, 'peculiaridades', { sombreamento: escolha === 'sim' })
+    if (q.chave === 'tipo_rede') await mesclarPerfil(admin, contato.id, 'infra_eletrica', { tipo_rede: escolha })
+    if (q.chave === 'disjuntor') {
+      if (escolha === 'nao_sei') {
+        ctx.disjuntor_nao_sei = true
+        await criarPendencia(admin, contato.id, 'Disjuntor geral: o cliente não soube informar — conferir na visita')
+      } else await mesclarPerfil(admin, contato.id, 'infra_eletrica', { disjuntor_a: Number(escolha) })
+    }
+    return perguntarProxima()
+  }
+
+  if (estado.passo === 'aguarda_aprovacao') {
+    if (it.resposta) await texto(it.resposta)
+    else await texto(TEXTOS_LAIS.orcamentoEmPreparo)
+    return { tratou: true, contexto: ctx }
   }
 
   if (estado.passo === 'agendado' && estado.agendado) {
@@ -396,4 +675,30 @@ async function confirmarLigacao(admin: Admin, a: {
     agendado: { evento_id: r.evento_id, inicio: h.inicio, consultor_id: h.consultor_id, consultor_nome: h.consultor_nome },
   }, { projeto_id: projetoId, status_qualificacao: 'qualificada' })
   return { tratou: true, contexto: a.ctx }
+}
+
+/**
+ * Cron (1 em 1 min): roteiros parados esperando o lead. Hoje: endereço da
+ * fatura sem resposta em 1 hora → a Laís segue só com a cidade e deixa a
+ * pendência no perfil (roteiro do Kalebe 2026-10-10).
+ */
+export async function avancarRoteirosParados(admin: Admin): Promise<number> {
+  if (!(await roteiroAtivo(admin))) return 0
+  const { data, error } = await admin.from('wa_conversas')
+    .select('id, cidade, contexto_qualificacao, contato:contato_id(id, telefone, nome_exibicao, projeto_id, cliente_id)')
+    .eq('contexto_qualificacao->roteiro->>passo', 'confirma_endereco')
+    .is('encerrada_em', null)
+    .limit(20)
+  if (error) return 0
+  let n = 0
+  for (const c of (data || []) as any[]) {
+    const desde = c.contexto_qualificacao?.roteiro?.desde
+    if (!desde || Date.now() - new Date(desde).getTime() < 60 * 60_000 || !c.contato) continue
+    await processarRoteiroLais(admin, {
+      conversa_id: c.id, contato: c.contato, contexto: c.contexto_qualificacao || {},
+      cidadeEtiqueta: c.cidade || null, gatilho: 'prazo_endereco',
+    }).catch((e) => console.error('[lais-roteiro] prazo endereço', e))
+    n++
+  }
+  return n
 }

@@ -70,6 +70,7 @@ function normalizar(secao: SecaoDados, d: any): Record<string, any> {
       aguas: aguas && QTD_AGUAS.some((o) => Number(o.valor) === aguas) ? aguas : null,
       material_estrutura: daLista(MATERIAIS_ESTRUTURA, d?.material_estrutura),
       area_m2: numero(d?.area_m2),
+      area_faixa: limpaTexto(d?.area_faixa, 40),
     }
   }
   if (secao === 'infra_eletrica') {

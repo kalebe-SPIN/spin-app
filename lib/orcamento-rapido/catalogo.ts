@@ -5,6 +5,12 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+// Kalebe 2026-10-10: todas as buscas aceitam um cliente do Supabase opcional
+// — a Laís monta orçamento pelo webhook, sem usuário logado (service role).
+// Sem o parâmetro, segue usando a sessão do usuário como antes.
+type Cliente = SupabaseClient<any, any, any>
 
 // Kalebe 2026-09-18: buscarPrecoKwpPorFaixa REMOVIDA. Antes o orçamento
 // rápido usava kWp × R$/kWp direto via fv_faixas_preco_kwp. Agora o valor
@@ -15,8 +21,8 @@ import { createClient } from '@/lib/supabase/server'
 /**
  * Lê parâmetro numérico do banco (fallback pra defaults do código quando não configurado).
  */
-export async function buscarParametroNumerico(chave: string, fallback: number): Promise<number> {
-  const supabase = createClient()
+export async function buscarParametroNumerico(chave: string, fallback: number, cliente?: Cliente): Promise<number> {
+  const supabase = cliente || createClient()
   const { data } = await supabase
     .from('parametros_precificacao')
     .select('valor_numero')
@@ -53,8 +59,8 @@ export type InversorCatalogo = {
  * Placas fotovoltaicas ativas + disponíveis em estoque, ordenadas por potência crescente.
  * Vazio se catálogo desabastecido (raro — sinaliza upload da planilha WEG).
  */
-export async function listarPlacasDisponiveis(): Promise<PlacaCatalogo[]> {
-  const supabase = createClient()
+export async function listarPlacasDisponiveis(cliente?: Cliente): Promise<PlacaCatalogo[]> {
+  const supabase = cliente || createClient()
   const { data } = await supabase
     .from('produtos')
     .select('id, codigo_weg, modelo, fabricante, specs, precos_produtos!inner(preco_venda, preco_custo, vigente_ate)')
@@ -110,8 +116,8 @@ export async function escolherInversor(opts: {
   kwp_sistema: number
   fases?: 'mono' | 'bi' | 'tri'
   tensao_v?: 220 | 380
-}): Promise<InversorCatalogo | null> {
-  const supabase = createClient()
+}, cliente?: Cliente): Promise<InversorCatalogo | null> {
+  const supabase = cliente || createClient()
   const { data } = await supabase
     .from('produtos')
     .select('id, codigo_weg, modelo, specs, precos_produtos!inner(preco_venda, preco_custo, vigente_ate)')
@@ -154,8 +160,8 @@ export async function escolherInversor(opts: {
  * Placa padrão a usar quando o usuário não especifica.
  * Estratégia: pega a de MAIOR potência disponível (menos placas = menor MO instalação).
  */
-export async function placaPadrao(): Promise<PlacaCatalogo | null> {
-  const placas = await listarPlacasDisponiveis()
+export async function placaPadrao(cliente?: Cliente): Promise<PlacaCatalogo | null> {
+  const placas = await listarPlacasDisponiveis(cliente)
   if (placas.length === 0) return null
   return placas[placas.length - 1] // maior potência
 }
@@ -170,7 +176,7 @@ export async function montarKit(opts: {
   placa_id?: string          // se null, usa placaPadrao()
   fases?: 'mono' | 'bi' | 'tri'
   tensao_v?: 220 | 380
-}): Promise<{
+}, cliente?: Cliente): Promise<{
   placa: PlacaCatalogo | null
   qtd_placas: number
   kwp_real: number
@@ -179,7 +185,7 @@ export async function montarKit(opts: {
   preco_tabela_weg: number   // referência
   aviso_estoque?: string
 }> {
-  const placas = await listarPlacasDisponiveis()
+  const placas = await listarPlacasDisponiveis(cliente)
   const placa = opts.placa_id
     ? placas.find(p => p.id === opts.placa_id) || null
     : (placas[placas.length - 1] || null)
@@ -198,7 +204,7 @@ export async function montarKit(opts: {
     kwp_sistema: kwp_real,
     fases: opts.fases,
     tensao_v: opts.tensao_v,
-  })
+  }, cliente)
 
   const custo_placas = (placa.preco_custo || 0) * qtd_placas
   const custo_inversor = inversor?.preco_custo || 0

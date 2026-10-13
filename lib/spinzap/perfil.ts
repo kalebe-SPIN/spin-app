@@ -49,6 +49,8 @@ export type PerfilCivil = {
   aguas?: number | null
   material_estrutura?: string | null
   area_m2?: number | null
+  /** Faixa que o lead escolheu no WhatsApp (ex.: "De 100 a 200 m²"); area_m2 = meio da faixa */
+  area_faixa?: string | null
 }
 export type PerfilEletrica = { tipo_rede?: string | null; disjuntor_a?: number | null }
 export type PerfilPeculiaridades = {

@@ -356,6 +356,13 @@ export async function GET(req: NextRequest) {
     } catch (e) {
       console.error('[cron lead-sla] lembretes de ligação', e)
     }
+    // Roteiro da Laís parado esperando o lead (ex.: endereço da fatura) → segue
+    try {
+      const { avancarRoteirosParados } = await import('@/lib/whatsapp/lais-roteiro')
+      ;(stats as any).roteiros_avancados = await avancarRoteirosParados(admin)
+    } catch (e) {
+      console.error('[cron lead-sla] roteiros parados', e)
+    }
 
     return NextResponse.json({ ok: true, stats })
   } catch (e: any) {

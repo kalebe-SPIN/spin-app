@@ -14,6 +14,40 @@ export const SERVICOS_LAIS = [
 ] as const
 export type ServicoLais = (typeof SERVICOS_LAIS)[number]['id']
 
+/**
+ * Perguntas com opções (o lead toca na certa). Ordem do roteiro. Lista até 10
+ * opções (título até 24); botões até 3 (título até 20).
+ */
+export const PERGUNTAS_LAIS: Array<{
+  chave: 'tipo_telhado' | 'area' | 'aguas' | 'material_estrutura' | 'sombreamento' | 'tipo_rede' | 'disjuntor'
+  texto: string
+  botao_lista?: string
+  opcoes: Array<{ id: string; titulo: string }>
+}> = [
+  { chave: 'tipo_telhado', texto: 'Qual o tipo de telhado?', botao_lista: 'Ver tipos', opcoes: [
+    { id: 'ceramica_colonial', titulo: 'Cerâmica colonial' }, { id: 'ceramica_francesa', titulo: 'Cerâmica francesa' },
+    { id: 'fibrocimento', titulo: 'Fibrocimento' }, { id: 'metalico_trapezoidal', titulo: 'Metálico trapezoidal' },
+    { id: 'metalico_onda', titulo: 'Metálico ondulado' }, { id: 'laje_impermeabilizada', titulo: 'Laje' },
+    { id: 'solo', titulo: 'No chão (solo)' }, { id: 'carport', titulo: 'Garagem (carport)' } ] },
+  { chave: 'area', texto: 'Qual a área total do imóvel, mais ou menos?', botao_lista: 'Ver opções', opcoes: [
+    { id: 'ate_100', titulo: 'Até 100 m²' }, { id: '100_200', titulo: 'De 100 a 200 m²' },
+    { id: '200_400', titulo: 'De 200 a 400 m²' }, { id: 'acima_400', titulo: 'Acima de 400 m²' } ] },
+  { chave: 'aguas', texto: 'Quantas águas tem o telhado?', botao_lista: 'Ver opções', opcoes: [
+    { id: '1', titulo: '1 água' }, { id: '2', titulo: '2 águas' }, { id: '3', titulo: '3 águas' },
+    { id: '4', titulo: '4 águas' }, { id: '5', titulo: '5 ou mais' } ] },
+  { chave: 'material_estrutura', texto: 'A estrutura do telhado é de qual material?', opcoes: [
+    { id: 'madeira', titulo: 'Madeira' }, { id: 'metalica', titulo: 'Metálica' }, { id: 'concreto', titulo: 'Concreto' } ] },
+  { chave: 'sombreamento', texto: 'Tem alguma sombra que bate no telhado (árvore, prédio, caixa d’água)?', opcoes: [
+    { id: 'sim', titulo: 'Sim, tem sombra' }, { id: 'nao', titulo: 'Não tem' } ] },
+  { chave: 'tipo_rede', texto: 'Qual o tipo de rede da sua casa? (está na fatura ou no padrão)', opcoes: [
+    { id: 'monofasico', titulo: 'Monofásica' }, { id: 'bifasico', titulo: 'Bifásica' }, { id: 'trifasico', titulo: 'Trifásica' } ] },
+  { chave: 'disjuntor', texto: 'Qual a corrente do disjuntor do relógio, na rua? (vem escrito no disjuntor, ex.: 50 A)', botao_lista: 'Ver opções', opcoes: [
+    { id: '40', titulo: '40 A' }, { id: '50', titulo: '50 A' }, { id: '63', titulo: '63 A' }, { id: '70', titulo: '70 A' },
+    { id: '80', titulo: '80 A' }, { id: '100', titulo: '100 A' }, { id: '125', titulo: '125 A' }, { id: 'nao_sei', titulo: 'Não sei' } ] },
+]
+/** Faixa de área → valor guardado no perfil (meio da faixa) */
+export const AREA_DA_FAIXA: Record<string, number> = { ate_100: 80, '100_200': 150, '200_400': 300, acima_400: 500 }
+
 export const TEXTOS_LAIS = {
   /** 1ª mensagem: boas-vindas + o que a Spin faz + lista de atendimento */
   boasVindas: (nome: string) =>
@@ -55,6 +89,32 @@ export const TEXTOS_LAIS = {
 
   /** Mensagem fora do roteiro depois de agendado */
   lembrarAgendado: (consultor: string, quando: string) => `Tá tudo certo: ${consultor} te liga ${quando}. Qualquer coisa, é só me chamar por aqui!`,
+
+  // ── Lead que não quer ligação ──
+  semLigacao: 'Sem problema! Monto seu orçamento por aqui mesmo. O que fica melhor pra você?',
+  botaoEnviarFatura: '📄 Enviar a fatura',
+  botaoResponderPerguntas: '💬 Responder perguntas',
+  pedirFatura: 'Pode me mandar a sua fatura de energia em PDF (ou uma foto bem nítida) 📄',
+  faturaNaoLida: 'Não consegui ler essa fatura 😕 Pode me mandar de novo, de preferência em PDF?',
+  confirmarEnderecoFatura: (endereco: string) =>
+    `Recebi sua fatura, obrigada! Fiquei com uma dúvida no endereço da instalação — na fatura está assim:\n*${endereco}*\nPode me confirmar o que falta (rua, número, bairro)?`,
+  pedirEmail: 'Pra eu colocar na proposta: qual o seu e-mail?',
+  emailInvalido: 'Acho que esse e-mail ficou incompleto 😅 Pode me mandar de novo?',
+  introPerguntas: 'Agora umas perguntinhas rápidas sobre o imóvel — é só tocar na opção certa 👇',
+  modoEquipamentos: 'Como você prefere que a gente escolha os equipamentos?',
+  botaoJaSeiConfiguracao: 'Já sei o que quero',
+  botaoPeloValorConta: 'Pelo valor da conta',
+  pedirConfiguracao: 'Me conta: quantas placas e qual inversor você tem em mente? Pode escrever do seu jeito (ex.: 10 placas e inversor de 5 kW).',
+  pedirContaInverno: 'Quanto vem a sua conta de luz no inverno, mais ou menos? (em R$)',
+  pedirContaVerao: 'E no verão, quanto costuma vir? (em R$)',
+  naoEntendiValor: 'Não entendi o valor 😅 Pode me mandar só o número? (ex.: 450)',
+  preparandoOrcamento: 'Perfeito, já tenho tudo! Vou montar seu orçamento e te envio em instantes 😊',
+  orcamentoEmPreparo: 'Seu orçamento está sendo finalizado — já te envio por aqui 😊',
+  falhaOrcamento: 'Tive um probleminha pra montar o orçamento por aqui — já passei pra nossa equipe comercial, que te chama em instantes.',
+
+  /** Legenda do PDF do orçamento (vai junto com o arquivo, depois da aprovação do admin) */
+  legendaOrcamento: (nome: string) =>
+    `${nome ? `${nome}, aqui` : 'Aqui'} está o seu orçamento de energia solar ☀️ Qualquer dúvida, é só me chamar por aqui!`,
 
   /** Lembrete 5 min antes (cliente) */
   lembreteCliente: (nome: string, consultor: string) =>
