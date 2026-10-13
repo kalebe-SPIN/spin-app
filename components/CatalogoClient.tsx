@@ -818,7 +818,7 @@ function ModalNovoProduto({ onFechar }: { onFechar: () => void }) {
           )}
           <p className="text-[10px] text-white/40 leading-relaxed">
             Preço venda = valor de tabela (mostrado como referência).
-            Preço custo = o que a Spin realmente paga (planilha WEG traz na coluna 5 já com desconto).
+            Preço custo = o que a Spin realmente paga (na importação da planilha WEG: tabela × fator WEG dos parâmetros).
           </p>
         </div>
 
