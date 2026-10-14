@@ -8,6 +8,7 @@ import {
   abrirCanalDoProjetoAction,
 } from '@/app/inbox/actions'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
+import { TextoFormatado } from '@/components/chat/TextoFormatado'
 import { rotuloNaTela } from '@/lib/equipe/rotulo'
 
 /**
@@ -194,7 +195,7 @@ function BolhaCompacta({ m }: { m: any }) {
           <p className="text-[9px] font-bold text-verde mb-0.5">{nome}</p>
         )}
         {m.tipo === 'text' ? (
-          <p className="text-xs text-white whitespace-pre-wrap break-words">{m.texto || ''}</p>
+          <TextoFormatado texto={m.texto || ''} className="text-xs text-white whitespace-pre-wrap break-words" />
         ) : m.tipo === 'audio' && m.midia_meta_id ? (
           <audio controls src={`/api/whatsapp/media/${m.midia_meta_id}`} className="max-w-full h-8 mt-0.5" />
         ) : m.tipo === 'image' && m.midia_meta_id ? (

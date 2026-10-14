@@ -149,13 +149,20 @@ export function ComposerWhatsApp({
     enviarArquivoFile(f, legenda, 'arquivo')
   }
 
-  function chamada(tipo: 'voz' | 'video') {
-    comConversa(tipo, async (id) => {
+  async function chamada(tipo: 'voz' | 'video') {
+    // Abre a aba já no clique — depois de esperar o servidor o navegador
+    // bloqueia a janela e a sala não abria (Kalebe 2026-10-14)
+    const aba = window.open('', '_blank')
+    let abriu = false
+    await comConversa(tipo, async (id) => {
       const r = await iniciarChamadaAction({ conversa_id: id, tipo })
       if ('erro' in r) { onErro(r.erro); return }
-      window.open(r.url_sala, '_blank', 'noopener')
+      if (aba) { aba.opener = null; aba.location.href = r.url_sala }
+      else window.open(r.url_sala, '_blank', 'noopener')
+      abriu = true
       onEnviado()
     }, textoSemBarreira)
+    if (!abriu) aba?.close()
   }
 
   async function abrirAgenda() {

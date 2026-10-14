@@ -7,6 +7,7 @@ import { usePerfilLead, ModalPerfil, type SecaoPerfilAberta } from './PerfilLead
 import { MenuConversa, type GrupoMenu } from './MenuConversa'
 import { ModalPropostaRapida } from './ModalPropostaRapida'
 import { ModalPropostaRecarga } from './ModalPropostaRecarga'
+import { TextoFormatado } from '@/components/chat/TextoFormatado'
 import { ModalAgendaBianca } from '@/components/chat/ModalAgendaBianca'
 import { SECOES } from '@/lib/spinzap/perfil'
 import { propostasDoContatoAction, abrirPropostaCategoriaAction } from '@/app/inbox/propostas-actions'
@@ -1840,7 +1841,7 @@ function BolhaMensagem({ m, contatos }: { m: Mensagem; contatos?: ContextoContat
           <p className="text-[10px] font-bold text-verde mb-0.5">{nomeRemetente}</p>
         )}
         {m.tipo === 'text' ? (
-          <p className="text-sm text-white whitespace-pre-wrap break-words">{m.texto || ''}</p>
+          <TextoFormatado texto={m.texto || ''} />
         ) : m.tipo === 'audio' ? (
           midiaUrl ? (
             <audio controls src={midiaUrl} className="max-w-full h-8" />
@@ -1898,7 +1899,7 @@ function BolhaMensagem({ m, contatos }: { m: Mensagem; contatos?: ContextoContat
         ) : m.tipo === 'sticker' && midiaUrl ? (
           <img src={midiaUrl} alt="figurinha" className="w-28 h-28 object-contain" loading="lazy" />
         ) : m.texto ? (
-          <p className="text-sm text-white whitespace-pre-wrap break-words">{m.texto}</p>
+          <TextoFormatado texto={m.texto} />
         ) : (
           <p className="text-sm text-white italic">[{m.tipo}]</p>
         )}

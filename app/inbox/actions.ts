@@ -853,17 +853,26 @@ export async function iniciarChamadaAction(entrada: {
     const token = _cfg.access_token
     const phoneNumberId = _cfg.phone_number_id
     if (!token || !phoneNumberId) return { erro: 'Meta Cloud API não configurada. Cadastre em /admin/whatsapp/config.' }
-    const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+    const enviar = (corpo: Record<string, unknown>) => fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: tel,
-        type: 'text',
-        text: { body: texto, preview_url: true },
-      }),
+      body: JSON.stringify({ messaging_product: 'whatsapp', to: tel, ...corpo }),
     })
-    const data = await resp.json()
+    // Kalebe 2026-10-14: convite com BOTÃO que abre a sala (cta_url); o link
+    // segue no texto. Se a Meta recusar o botão, vai como texto simples.
+    let resp = await enviar({
+      type: 'interactive',
+      interactive: {
+        type: 'cta_url',
+        body: { text: texto.slice(0, 1024) },
+        action: { name: 'cta_url', parameters: { display_text: 'Entrar na chamada', url: url_sala } },
+      },
+    })
+    let data = await resp.json()
+    if (!resp.ok && data?.error?.code !== 131047) {
+      resp = await enviar({ type: 'text', text: { body: texto, preview_url: true } })
+      data = await resp.json()
+    }
     if (!resp.ok) {
       return { erro: data?.error?.message || 'Erro Meta API' }
     }

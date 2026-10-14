@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createBrowserClient } from '@supabase/ssr'
+import { TextoFormatado } from '@/components/chat/TextoFormatado'
 import {
   listarGruposAction,
   mensagensDoGrupoAction,
@@ -126,7 +127,7 @@ export function GruposClient({ usuarioId }: { usuarioId: string }) {
                       <p className="text-[10px] font-bold text-white/55 mb-0.5">
                         {m.tipo === 'campanha' ? '🎁 ' : m.tipo === 'aviso' ? '📣 ' : ''}{autor}
                       </p>
-                      <p className="text-sm text-white whitespace-pre-wrap break-words">{m.texto}</p>
+                      <TextoFormatado texto={m.texto || ''} />
                       {m.link && <Link href={m.link} className="text-[11px] text-sol underline">abrir</Link>}
                       <p className="text-[10px] text-white/35 mt-1 text-right">
                         {new Date(m.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
