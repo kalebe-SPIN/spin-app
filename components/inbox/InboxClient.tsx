@@ -6,6 +6,7 @@ import { ModalProjetoConversa } from './ModalProjetoConversa'
 import { usePerfilLead, ModalPerfil, type SecaoPerfilAberta } from './PerfilLead'
 import { MenuConversa, type GrupoMenu } from './MenuConversa'
 import { ModalPropostaRapida } from './ModalPropostaRapida'
+import { ModalPropostaRecarga } from './ModalPropostaRecarga'
 import { ModalAgendaBianca } from '@/components/chat/ModalAgendaBianca'
 import { SECOES } from '@/lib/spinzap/perfil'
 import { propostasDoContatoAction, abrirPropostaCategoriaAction } from '@/app/inbox/propostas-actions'
@@ -136,6 +137,7 @@ export function InboxClient({
   const [modalDemanda, setModalDemanda] = useState(false)
   const [modalAgenda, setModalAgenda] = useState(false)
   const [modalProposta, setModalProposta] = useState(false)
+  const [modalRecarga, setModalRecarga] = useState(false)
   // Projetos do contato por categoria + categoria da etiqueta (Kalebe 2026-10-13)
   const [propostas, setPropostas] = useState<Exclude<Awaited<ReturnType<typeof propostasDoContatoAction>>, { erro: string }> | null>(null)
   // Kalebe 2026-09-30: pesquisa de contato (nome ou telefone)
@@ -420,6 +422,10 @@ export function InboxClient({
   // cabeçalho e a linha do perfil; atalho pra montar a proposta por aqui
   const comPerfil = !!selecionada && !ehEquipe(selecionada) && !ehFornecedorPuro(selecionada)
   const perfilLead = usePerfilLead(comPerfil && selecionada ? selecionada.id : null)
+  // Arquivo novo na conversa (fatura, foto…) atualiza o cadastro e o banco de arquivos na hora
+  const qtdMidias = mensagens.filter((m) => m.midia_url).length
+  useEffect(() => { if (qtdMidias) perfilLead.recarregar() // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qtdMidias])
 
   // Propostas por categoria (Kalebe 2026-10-13): "Montar proposta" segue a
   // etiqueta do cliente; cada categoria é um projeto do contato
@@ -436,6 +442,8 @@ export function InboxClient({
     if (!selecionada) return
     setErro(null)
     if (cat === 'fotovoltaico') { setModalProposta(true); return }
+    // Kalebe 2026-10-14: estação de recarga também se monta dentro do Spinzap
+    if (cat === 'recarga') { setModalRecarga(true); return }
     // Abre a aba já no clique (o navegador bloqueia janela aberta depois de esperar o servidor)
     const aba = window.open('', 'spin:projetos')
     const r = await abrirPropostaCategoriaAction(selecionada.id, cat)
@@ -457,6 +465,7 @@ export function InboxClient({
       ...(catEtiqueta ? [{
         chave: 'proposta', icone: INFO_CATEGORIA[catEtiqueta].emoji, rotulo: `Montar proposta · ${INFO_CATEGORIA[catEtiqueta].rotulo}`,
         detalhe: catEtiqueta === 'fotovoltaico' ? 'Calcula, audita e envia o PDF por aqui'
+          : catEtiqueta === 'recarga' ? 'Equipamentos, projeto e execução — PDF e envio por aqui'
           : projetoDaCat(catEtiqueta) ? `Abre o projeto ${projetoDaCat(catEtiqueta)!.codigo || ''}` : 'Cria o projeto e abre a proposta',
         tom: 'destaque' as const, onClick: () => abrirCategoria(catEtiqueta),
       }] : []),
@@ -474,10 +483,11 @@ export function InboxClient({
           chave: `perfil-${sec.chave}`, icone: sec.emoji, rotulo: sec.rotulo,
           detalhe: perfilLead.dados ? (completo ? '✓' : `${p.feitos}/${p.total}`) : '…',
           tom: completo ? 'ok' as const : p.feitos > 0 ? 'atencao' as const : undefined,
-          desabilitado: !perfilLead.dados, onClick: () => setSecaoPerfil(sec.chave),
+          // Recarrega ao abrir: arquivo que o cliente mandou depois de abrir a conversa tem que aparecer
+          desabilitado: !perfilLead.dados, onClick: () => { setSecaoPerfil(sec.chave); perfilLead.recarregar() },
         }
       }) : []),
-      ...(comPerfil && perfilLead.pendentes ? [{ chave: 'pendencias', icone: '⚠️', rotulo: 'Pendências', detalhe: String(perfilLead.pendentes), tom: 'perigo' as const, onClick: () => setSecaoPerfil('pendencias') }] : []),
+      ...(comPerfil && perfilLead.pendentes ? [{ chave: 'pendencias', icone: '⚠️', rotulo: 'Pendências', detalhe: String(perfilLead.pendentes), tom: 'perigo' as const, onClick: () => { setSecaoPerfil('pendencias'); perfilLead.recarregar() } }] : []),
       { chave: 'fornecedor', icone: '🏭', rotulo: s.contato?.fornecedor ? 'Fornecedor' : 'É fornecedor?', onClick: () => { setErro(null); setModalFornecedor(true) } },
     ] })
     const projetosContato = propostas?.projetos || []
@@ -963,6 +973,14 @@ export function InboxClient({
           nomeCliente={selecionada.contato?.nome_exibicao || ''}
           onFechar={() => setModalProposta(false)}
           onEnviada={() => { refreshMensagens(selecionada.id); refreshConversas(); perfilLead.recarregar() }}
+        />
+      )}
+      {modalRecarga && selecionada && (
+        <ModalPropostaRecarga
+          conversaId={selecionada.id}
+          nomeCliente={selecionada.contato?.nome_exibicao || ''}
+          onFechar={() => { setModalRecarga(false); carregarPropostas(selecionada.id) }}
+          onEnviada={() => { refreshMensagens(selecionada.id); refreshConversas(); carregarPropostas(selecionada.id) }}
         />
       )}
       {modalDemanda && selecionada && (

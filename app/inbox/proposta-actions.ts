@@ -176,7 +176,7 @@ export async function gerarPdfPropostaRapidaAction(conversa_id: string, e: Entra
 }
 
 /** Envia no WhatsApp o PDF já gerado (mesmo envio de proposta do Spinzap: CRM, follow-up, modelo fora da janela). */
-export async function enviarPdfPropostaRapidaAction(conversa_id: string, projeto_id: string, url_pdf: string, legenda: string): Promise<
+export async function enviarPdfPropostaRapidaAction(conversa_id: string, projeto_id: string, url_pdf: string, legenda: string, nome_arquivo?: string): Promise<
   { sucesso: true } | { erro: string }
 > {
   const a = await acesso(conversa_id)
@@ -186,7 +186,7 @@ export async function enviarPdfPropostaRapidaAction(conversa_id: string, projeto
   if (!doContato.some((p) => p.id === projeto_id)) return { erro: 'Projeto não é deste contato' }
   if (!/\/propostas-pdf\//.test(url_pdf)) return { erro: 'PDF inválido' }
   const r = await enviarPropostaPeloCanalAction({
-    projeto_id, url_pdf, nome_arquivo: 'Orcamento-Spin-Solar.pdf',
+    projeto_id, url_pdf, nome_arquivo: nome_arquivo && /^[\w.-]+\.pdf$/i.test(nome_arquivo) ? nome_arquivo : 'Orcamento-Spin-Solar.pdf',
     legenda: String(legenda || '').trim().slice(0, 900) || 'Segue o seu orçamento de energia solar ☀️',
   })
   if ('erro' in r) return { erro: r.erro }

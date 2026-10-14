@@ -1,66 +1,76 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
-
-export type VeRecargaSelecionada = {
-  wallbox: {
-    id: string
-    codigo_weg: string
-    modelo: string
-    potencia_kw: number
-    preco_unitario: number
-  }
-  qtd: number
-  acessorios: Array<{
-    id: string
-    codigo_weg: string
-    modelo: string
-    qtd: number
-    preco_unitario: number
-  }>
-  preco_wallbox_total: number       // wallbox × qtd
-  preco_acessorios_total: number    // soma acessórios
-  preco_bruto: number               // wallbox_total + acessórios
-  margem_pct: number                // margem SPIN aplicada
-  preco_final_cliente: number       // com margem aplicada
-}
+import {
+  calcularNoServidor, visaoDoUsuario, dadosBaseRecarga, cadastrarEquipamentoRecarga, gerarPropostaRecarga,
+  type DadosRecarga, type EquipamentoCatalogoRecarga,
+} from '@/lib/estacao-ve/proposta-recarga-servidor'
+import type { EntradaRecarga, PropostaRecarga, TipoEquipamentoRecarga } from '@/lib/estacao-ve/proposta-recarga'
+import { enviarPropostaPeloCanalAction } from '@/app/inbox/actions'
 
 /**
- * Salva a estação de recarga VE selecionada + atualiza valor_estimado
- * do projeto_item ve_recarga (destrava a proposta consolidada).
- *
- * Kalebe pediu 2026-08-25: acesso ao catálogo WEG (linha WEMOB) +
- * precificação padrão SPIN pra fechar orçamento de estação VE.
+ * Proposta da estação de recarga pela tela do projeto (Kalebe 2026-10-14) —
+ * mesma composição do Spinzap (equipamentos → projeto → execução), com o
+ * acesso pelo projeto (RLS) em vez da conversa.
  */
-export async function salvarVeRecargaAction(
-  projetoId: string,
-  selecao: VeRecargaSelecionada,
-) {
+
+async function acesso(projeto_id: string) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { sucesso: false, erro: 'Não autenticado' }
+  if (!user) return { erro: 'Não autenticado' as const }
+  const { data: pj } = await supabase.from('projetos').select('id').eq('id', projeto_id).maybeSingle()
+  if (!pj) return { erro: 'Você não tem acesso a este projeto' as const }
+  const admin = createAdminClient()
+  const { data: perfil } = await admin.from('profiles').select('role, nome_completo').eq('id', user.id).maybeSingle()
+  return { user, admin, ehAdmin: perfil?.role === 'admin', nome: (perfil as any)?.nome_completo || 'usuário' }
+}
 
-  if (!selecao?.wallbox?.id) return { sucesso: false, erro: 'Wallbox inválido' }
-  if (selecao.qtd <= 0) return { sucesso: false, erro: 'Quantidade inválida' }
-  if (selecao.preco_final_cliente <= 0) return { sucesso: false, erro: 'Preço inválido' }
+export async function dadosProjetoRecargaAction(projeto_id: string): Promise<DadosRecarga | { erro: string }> {
+  const a = await acesso(projeto_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  return dadosBaseRecarga(a.admin, { projetoId: projeto_id, cidade: null, uf: null, ehAdmin: a.ehAdmin })
+}
 
-  // 1. Grava seleção no projeto
-  const { error: errProj } = await supabase
-    .from('projetos')
-    .update({ ve_recarga_selecionada: selecao })
-    .eq('id', projetoId)
-  if (errProj) return { sucesso: false, erro: errProj.message }
+export async function calcularProjetoRecargaAction(projeto_id: string, entrada: EntradaRecarga): Promise<
+  { proposta: PropostaRecarga; mostra_interno: boolean } | { erro: string }
+> {
+  const a = await acesso(projeto_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const { proposta } = await calcularNoServidor(a.admin, entrada, a.ehAdmin)
+  return { proposta: visaoDoUsuario(proposta, a.ehAdmin), mostra_interno: a.ehAdmin }
+}
 
-  // 2. Atualiza projeto_itens do tipo ve_recarga com o total
-  await supabase
-    .from('projeto_itens')
-    .update({ valor_estimado: selecao.preco_final_cliente })
-    .eq('projeto_id', projetoId)
-    .eq('tipo', 've_recarga')
-    .neq('status', 'removido')
+export async function cadastrarEquipamentoProjetoRecargaAction(projeto_id: string, input: {
+  tipo: TipoEquipamentoRecarga; modelo: string; fabricante?: string | null; potencia_kw?: number | null; preco: number
+}): Promise<{ equipamento: EquipamentoCatalogoRecarga } | { erro: string }> {
+  const a = await acesso(projeto_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  return cadastrarEquipamentoRecarga(a.admin, input, a.nome)
+}
 
-  revalidatePath(`/projetos/${projetoId}`)
-  redirect(`/projetos/${projetoId}`)
+export async function gerarPdfProjetoRecargaAction(projeto_id: string, entrada: EntradaRecarga): Promise<
+  { url_pdf: string; projeto_id: string; proposta: PropostaRecarga } | { erro: string }
+> {
+  const a = await acesso(projeto_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const r = await gerarPropostaRecarga(a.admin, { projetoId: projeto_id, entrada, ehAdmin: a.ehAdmin, usuarioId: a.user.id })
+  if ('erro' in r) return r
+  revalidatePath(`/projetos/${projeto_id}`)
+  return { url_pdf: r.url_pdf, projeto_id, proposta: visaoDoUsuario(r.proposta, a.ehAdmin) }
+}
+
+export async function enviarPdfProjetoRecargaAction(projeto_id: string, url_pdf: string, legenda: string): Promise<
+  { sucesso: true } | { erro: string }
+> {
+  const a = await acesso(projeto_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  if (!/\/propostas-pdf\//.test(url_pdf)) return { erro: 'PDF inválido' }
+  const r = await enviarPropostaPeloCanalAction({
+    projeto_id, url_pdf, nome_arquivo: 'Proposta-Estacao-de-Recarga.pdf',
+    legenda: String(legenda || '').trim().slice(0, 900) || 'Segue a proposta da sua estação de recarga ⚡',
+  })
+  if ('erro' in r) return { erro: r.erro }
+  return { sucesso: true }
 }

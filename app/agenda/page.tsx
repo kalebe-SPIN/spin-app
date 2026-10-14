@@ -3,7 +3,9 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { BiancaChat } from '@/components/BiancaChat'
 import { BomDiaBotao } from '@/components/BomDiaBotao'
-import { CalendarioSemanal } from '@/components/agenda/CalendarioSemanal'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { STATUS_AGENDA } from '@/lib/campo/comum'
+import { CalendarioSemanal, type TarefaAgenda, type FollowupAgenda, type ServicoAgenda } from '@/components/agenda/CalendarioSemanal'
 import { OcupacaoBadges, calcularHorasOcupadas } from '@/components/agenda/OcupacaoBadges'
 import { SeletorPar, type Par } from '@/components/agenda/SeletorPar'
 import { ChatParEmpresa } from '@/components/agenda/ChatParEmpresa'
@@ -56,12 +58,12 @@ export default async function AgendaPage({
   const donoAtualId = parEscolhido?.id || user.id
   const donoAtualNome = parEscolhido?.nome || meuNome
 
-  // Range: semana atual + próxima semana (2 semanas visíveis)
+  // Range: semana passada até 5 semanas pra frente (o calendário navega por semana)
   const inicioSemana = new Date()
   inicioSemana.setHours(0, 0, 0, 0)
-  inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay())
+  inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay() - 7)
   const fimJanela = new Date(inicioSemana)
-  fimJanela.setDate(fimJanela.getDate() + 14)
+  fimJanela.setDate(fimJanela.getDate() + 42)
 
   const { data: eventosRaw } = await supabase
     .from('agenda_eventos')
@@ -82,6 +84,48 @@ export default async function AgendaPage({
     cor: e.cor,
     usuario_id: e.usuario_id,
     dono_nome: donoAtualNome,
+  }))
+
+  // Kalebe 2026-10-14: "não existe sincronicidade entre a agenda e o sistema" —
+  // a agenda mostrava só eventos. Agora entram também as tarefas (prazo), os
+  // follow-ups da Bianca e os serviços de campo de quem é o dono da agenda.
+  // Service role: itens criados por outra pessoa no nome dele (o dono já foi
+  // validado acima — eu ou um par meu).
+  const admin = createAdminClient()
+  const diaIso = (d: Date) => d.toISOString().slice(0, 10)
+  const [rTarefas, rAtrasadas, rFollowups, rServicos] = await Promise.all([
+    admin.from('agenda_tarefas')
+      .select('id, titulo, data_prazo, status, prioridade, projeto_id, wa_conversa_id, usuario_id')
+      .eq('usuario_id', donoAtualId).neq('status', 'cancelada')
+      .gte('data_prazo', diaIso(inicioSemana)).lt('data_prazo', diaIso(fimJanela))
+      .order('data_prazo').limit(300),
+    admin.from('agenda_tarefas')
+      .select('id, titulo, data_prazo, status, prioridade, projeto_id, wa_conversa_id, usuario_id')
+      .eq('usuario_id', donoAtualId).in('status', ['pendente', 'em_andamento'])
+      .lt('data_prazo', diaIso(inicioSemana)).order('data_prazo').limit(50),
+    admin.from('wa_followups')
+      .select('id, executar_em, status, mensagem, conversa_id, conversa:conversa_id(contato:contato_id(nome_exibicao, telefone))')
+      .eq('responsavel_id', donoAtualId).neq('status', 'cancelado')
+      .gte('executar_em', inicioSemana.toISOString()).lt('executar_em', fimJanela.toISOString())
+      .order('executar_em').limit(200),
+    admin.from('execucoes_servicos')
+      .select('id, os_numero, titulo, tipo_servico, status, data_agendada, hora_agendada, cliente_nome, cidade, projeto_id')
+      .eq('responsavel_tecnico', donoAtualId).in('status', STATUS_AGENDA)
+      .gte('data_agendada', diaIso(inicioSemana)).lt('data_agendada', diaIso(fimJanela))
+      .order('data_agendada').limit(200),
+  ])
+  const tarefas: TarefaAgenda[] = [...(rAtrasadas.data || []), ...(rTarefas.data || [])].map((t: any) => ({
+    id: t.id, titulo: t.titulo, data_prazo: t.data_prazo, status: t.status, prioridade: t.prioridade || 'media',
+    projeto_id: t.projeto_id || null, conversa_id: t.wa_conversa_id || null, usuario_id: t.usuario_id,
+  }))
+  const followups: FollowupAgenda[] = (rFollowups.data || []).map((f: any) => ({
+    id: f.id, executar_em: f.executar_em, status: f.status, mensagem: f.mensagem, conversa_id: f.conversa_id,
+    cliente: f.conversa?.contato?.nome_exibicao || f.conversa?.contato?.telefone || null,
+  }))
+  const servicos: ServicoAgenda[] = (rServicos.data || []).map((s: any) => ({
+    id: s.id, titulo: s.titulo || s.tipo_servico || 'Serviço de campo', os_numero: s.os_numero || null,
+    data: s.data_agendada, hora: s.hora_agendada ? String(s.hora_agendada).slice(0, 5) : null,
+    status: s.status, cliente: s.cliente_nome || null, cidade: s.cidade || null, projeto_id: s.projeto_id || null,
   }))
 
   // Ocupação — dia (hoje) e média do mês (últimos 30 dias)
@@ -159,6 +203,9 @@ export default async function AgendaPage({
           <div className="min-w-0">
             <CalendarioSemanal
               eventos={eventos}
+              tarefas={tarefas}
+              followups={followups}
+              servicos={servicos}
               usuarioLogadoId={user.id}
               donoAtualId={donoAtualId}
               donoAtualNome={donoAtualNome}

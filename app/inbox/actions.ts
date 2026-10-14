@@ -1148,7 +1148,8 @@ export async function enviarPropostaPeloCanalAction(entrada: {
           parametros: [
             primeiroNome(ct?.nome_exibicao) || 'tudo bem',
             primeiroNome(check.perfil?.nome_completo) || 'Spin Solar',
-            /equipamento/i.test(entrada.nome_arquivo) ? 'equipamentos' : 'energia solar',
+            /recarga/i.test(entrada.nome_arquivo) ? 'estação de recarga'
+              : /equipamento/i.test(entrada.nome_arquivo) ? 'equipamentos' : 'energia solar',
           ],
           botao_url_sufixo: sufixo,
           remetente_id: check.user.id,

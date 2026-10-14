@@ -67,8 +67,9 @@ export default async function OrcamentoPage(props: {
   // não pro genérico simplificado.
   const tiposUnicos = Array.from(new Set(tipos))
   const soVeRecarga = tiposUnicos.length === 1 && tiposUnicos[0] === 've_recarga'
-  if (soVeRecarga && projeto.ve_recarga_selecionada?.equipamentos?.length) {
-    redirect(`/projetos/${projetoId}/ve/proposta`)
+  // Kalebe 2026-10-14: a proposta da estação tem tela própria (composição + PDF)
+  if (soVeRecarga) {
+    redirect(`/projetos/${projetoId}/ve`)
   }
 
   // Kalebe 2026-09-29: venda direta de equipamentos tem tela própria

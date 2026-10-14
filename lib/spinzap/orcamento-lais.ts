@@ -16,7 +16,7 @@ import { PERFIL_VAZIO, type PerfilLead } from './perfil'
 type Admin = ReturnType<typeof createAdminClient>
 const reais = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-async function imagemComoDataUrl(url: string | null | undefined): Promise<string | null> {
+export async function imagemComoDataUrl(url: string | null | undefined): Promise<string | null> {
   if (!url) return null
   try {
     const r = await fetch(url)
