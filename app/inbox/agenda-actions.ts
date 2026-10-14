@@ -93,10 +93,18 @@ const dataHora = (iso: string) => new Date(iso).toLocaleString('pt-BR', {
   timeZone: 'America/Sao_Paulo', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
 })
 
+/** Lembrete ao cliente: antecedências aceitas (min) — 30 min, 1 h, 2 h, 1 dia */
+const ANTECEDENCIAS_LEMBRETE = [1440, 120, 60, 30] as const
+
 export async function agendarNaConversaAction(input: {
   conversa_id: string
-  tipo: 'followup' | 'tarefa' | 'evento'
-  quando: string                 // ISO (followup/evento) ou YYYY-MM-DD (tarefa)
+  /** lembrete (Kalebe 2026-10-14): a Bianca lembra o CLIENTE de um compromisso */
+  tipo: 'followup' | 'tarefa' | 'evento' | 'lembrete'
+  quando: string                 // ISO (followup/evento/lembrete = hora do compromisso) ou YYYY-MM-DD (tarefa)
+  /** lembrete: quantos minutos antes do compromisso a Bianca manda (pode ser vários) */
+  antecedencias_min?: number[]
+  /** lembrete de call: link da sala pra Bianca incluir */
+  link_sala?: string | null
   /** Quem executa (padrão: quem está criando) */
   responsavel_id?: string | null
   titulo?: string
@@ -153,6 +161,49 @@ export async function agendarNaConversaAction(input: {
         `💬 ${quemCriou} agendou um follow-up com *${nomeCliente}* em ${dataHora(quando.toISOString())}.`,
         `${input.modo === 'texto_exato' ? 'Mensagem' : 'Objetivo'}: ${mensagem}`,
         'A Bianca envia na hora marcada; se não der (janela de 24h), ela te avisa pra você chamar.',
+      ],
+    }
+  }
+
+  // Kalebe 2026-10-14: "ação de lembrete automatizado da Bianca para enviar ao
+  // cliente" — um follow-up por antecedência escolhida, que NÃO cancela se o
+  // cliente responder (lembrete vai de qualquer jeito). Janela de 24h fechada:
+  // mesmo caminho do follow-up (modelo de retomada / aviso ao responsável).
+  if (input.tipo === 'lembrete') {
+    const compromisso = new Date(input.quando)
+    if (isNaN(compromisso.getTime())) return { erro: 'Data/hora do compromisso inválida' }
+    if (compromisso.getTime() <= Date.now()) return { erro: 'O compromisso precisa estar no futuro' }
+    const assunto = String(input.titulo || '').trim()
+    if (!assunto) return { erro: 'Diga do que a Bianca deve lembrar o cliente' }
+    const antecedencias = Array.from(new Set((input.antecedencias_min || []).map(Number)))
+      .filter((m) => (ANTECEDENCIAS_LEMBRETE as readonly number[]).includes(m))
+    if (!antecedencias.length) return { erro: 'Escolha quando lembrar' }
+    const horarios = antecedencias
+      .map((m) => ({ m, em: new Date(compromisso.getTime() - m * 60_000) }))
+      .filter((h) => h.em.getTime() > Date.now() + 60_000)
+    if (!horarios.length) return { erro: 'Os horários de lembrete já passaram — escolha um mais perto do compromisso' }
+    const textoExato = input.modo === 'texto_exato'
+    const mensagemExata = String(input.mensagem || '').trim()
+    if (textoExato && !mensagemExata) return { erro: 'Escreva a mensagem do lembrete' }
+    const link = input.link_sala && /^https:\/\//.test(input.link_sala) ? input.link_sala : null
+    const objetivo = `Lembrete ao cliente do compromisso: ${assunto} — ${dataHora(compromisso.toISOString())}.` +
+      `${link ? ` Incluir o link da sala: ${link}.` : ''} Citar o dia e o horário e pedir que confirme.`
+    const { error } = await admin.from('wa_followups').insert(horarios.map((h) => ({
+      conversa_id: conv.id,
+      projeto_id: projetoId,
+      responsavel_id: respId,
+      executar_em: h.em.toISOString(),
+      modo: textoExato ? 'texto_exato' : 'bianca_escreve',
+      mensagem: textoExato ? mensagemExata : objetivo,
+      cancelar_se_responder: false,
+    })))
+    if (error) return { erro: error.message.includes('wa_followups') ? 'Falta rodar a migration 123 no Supabase.' : error.message }
+    const rotulo = (m: number) => (m >= 1440 ? '1 dia antes' : m >= 60 ? `${m / 60} h antes` : `${m} min antes`)
+    aviso = {
+      titulo: 'Lembrete ao cliente agendado',
+      linhas: [
+        `🔔 ${quemCriou} agendou lembretes da Bianca pra *${nomeCliente}*: ${assunto} — ${dataHora(compromisso.toISOString())}.`,
+        `Envios: ${horarios.map((h) => rotulo(h.m)).join(', ')}.`,
       ],
     }
   }
