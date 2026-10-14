@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import {
   dadosPropostaRapidaAction, calcularPropostaRapidaAction, gerarPdfPropostaRapidaAction, enviarPdfPropostaRapidaAction,
-  opcoesKitPropostaAction, type EntradaPropostaRapida,
+  opcoesKitPropostaAction, lerFaturaPropostaAction, type EntradaPropostaRapida,
 } from '@/app/inbox/proposta-actions'
 import { TIPOS_SISTEMA_FV, type OrcamentoLead, type TipoSistemaFv } from '@/lib/spinzap/orcamento-lead'
 import type { Auditoria } from '@/lib/spinzap/auditor-orcamento'
@@ -58,12 +58,34 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
   // Seções incorporadas (aluguel, alvenaria, elétrica predial…) — Kalebe 2026-10-13
   const [faixas, setFaixas] = useState<FaixaSecao[]>([])
   const [secoes, setSecoes] = useState<SecaoProposta[]>([])
+  // Kalebe 2026-10-14: fatura que o cliente mandou → lê e preenche os campos
+  type Pendente = { mensagem_id: string; nome: string; mime: string | null; criada_em: string; status: string | null }
+  const [pendentes, setPendentes] = useState<Pendente[]>([])
+  const [titular, setTitular] = useState<string | null>(null)
+  const [lendo, setLendo] = useState<string | null>(null)
+  const [faturaLida, setFaturaLida] = useState<string | null>(null)
+
+  async function lerFatura(id: string) {
+    setErro(null); setLendo(id)
+    try {
+      const r = await lerFaturaPropostaAction(conversaId, id)
+      if ('erro' in r) { setErro(r.erro); return }
+      setModo('consumo_kwh'); setValor(String(r.consumo_kwh))
+      if (r.tipo_rede && ['monofasico', 'bifasico', 'trifasico'].includes(r.tipo_rede)) setRede(r.tipo_rede as any)
+      if (r.cidade) setCidade(r.cidade)
+      setFatura({ consumo_kwh: r.consumo_kwh, tarifa_kwh: r.tarifa_kwh, subsidio: r.subsidio })
+      setTitular(r.titular)
+      setPendentes((ps) => ps.filter((p) => p.mensagem_id !== id))
+      setFaturaLida(`✓ Fatura lida e campos preenchidos: ${r.consumo_kwh.toLocaleString('pt-BR')} kWh/mês (média de ${r.meses} ${r.meses === 1 ? 'mês' : 'meses'})${r.cidade ? ` · ${r.cidade}` : ''}. O cadastro do cliente também foi atualizado.`)
+    } finally { setLendo(null) }
+  }
 
   useEffect(() => {
     dadosPropostaRapidaAction(conversaId).then((r) => {
       setCarregando(false)
       if ('erro' in r) { setErro(r.erro); return }
       setFaixas(r.faixas || []); setSecoes(r.secoes || [])
+      setPendentes(r.faturas_pendentes || []); setTitular(r.titular || null)
       if (r.tipo_rede && ['monofasico', 'bifasico', 'trifasico'].includes(r.tipo_rede)) setRede(r.tipo_rede as any)
       setCidade(r.cidade || '')
       setFatura(r.fatura); setTarifaBase(r.tarifa_base); setProjetoId(r.projeto_id)
@@ -163,9 +185,28 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
           </div>
         ) : (
           <>
+            {pendentes.length > 0 && (
+              <div className="rounded-xl border border-sol/45 px-3 py-2 space-y-1.5">
+                <p className="text-[11px] font-bold text-white/80">📄 Arquivo do cliente que pode ser a fatura — ler e preencher os campos:</p>
+                {pendentes.map((p) => (
+                  <div key={p.mensagem_id} className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-white/65 truncate">
+                      {p.nome} · {new Date(p.criada_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      {p.status === 'lendo' ? ' · lendo agora…' : p.status === 'erro' ? ' · a leitura falhou' : ''}
+                    </span>
+                    <button type="button" onClick={() => lerFatura(p.mensagem_id)} disabled={!!lendo}
+                      className="shrink-0 px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold disabled:opacity-40">
+                      {lendo === p.mensagem_id ? 'Lendo a fatura…' : 'Ler fatura'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {faturaLida && <p className="text-[11px] text-white/80 rounded-xl border border-verde/45 px-3 py-2">{faturaLida}</p>}
+
             {(fatura || tarifaBase) && (
               <div className="text-[11px] text-white/65 rounded-xl border border-white/10 px-3 py-2 space-y-0.5">
-                {fatura?.consumo_kwh && <p>📄 Fatura lida: {Math.round(fatura.consumo_kwh).toLocaleString('pt-BR')} kWh/mês{fatura.tarifa_kwh ? ` · tarifa R$ ${fatura.tarifa_kwh.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}/kWh` : ''}{fatura.subsidio && fatura.subsidio !== 'nenhum' ? ` · ${fatura.subsidio.replace('_', ' ')}` : ''}</p>}
+                {fatura?.consumo_kwh && <p>📄 Fatura lida: {Math.round(fatura.consumo_kwh).toLocaleString('pt-BR')} kWh/mês{fatura.tarifa_kwh ? ` · tarifa R$ ${fatura.tarifa_kwh.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}/kWh` : ''}{fatura.subsidio && fatura.subsidio !== 'nenhum' ? ` · ${fatura.subsidio.replace('_', ' ')}` : ''}{titular ? ` · titular ${titular}` : ''}</p>}
                 {!fatura?.tarifa_kwh && tarifaBase && <p>📊 Tarifa de referência: R$ {tarifaBase.tarifa_kwh.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}/kWh ({tarifaBase.amostras} faturas reais)</p>}
               </div>
             )}

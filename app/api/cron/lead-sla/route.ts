@@ -365,6 +365,13 @@ export async function GET(req: NextRequest) {
     } catch (e) {
       console.error('[cron lead-sla] lembretes de eventos', e)
     }
+    // Kalebe 2026-10-14: PDF de fatura que o webhook não conseguiu ler → lê agora (1 por rodada)
+    try {
+      const { lerFaturasPendentes } = await import('@/lib/spinzap/fatura-conversa')
+      ;(stats as any).faturas_lidas = await lerFaturasPendentes(admin, 1)
+    } catch (e) {
+      console.error('[cron lead-sla] faturas', e)
+    }
     // Roteiro da Laís parado esperando o lead (ex.: endereço da fatura) → segue
     try {
       const { avancarRoteirosParados } = await import('@/lib/whatsapp/lais-roteiro')

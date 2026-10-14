@@ -88,6 +88,10 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
   eh_admin: boolean
   faixas: FaixaSecao[]
   secoes: SecaoProposta[]
+  /** Titular da fatura lida (vai no PDF) */
+  titular: string | null
+  /** PDFs/fotos do cliente ainda não lidos como fatura (botão "Ler fatura") */
+  faturas_pendentes: Array<{ mensagem_id: string; nome: string; mime: string | null; criada_em: string; status: string | null }>
 } | { erro: string }> {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
@@ -96,16 +100,45 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
   const base = await tarifaDeReferencia(a.admin)
   const { projetosDoContato } = await import('@/lib/propostas/projetos-contato')
   const projetoFv = (await projetosDoContato(a.admin, a.contato)).find((p) => p.aberto && p.categoria === 'fotovoltaico')
-  const [faixas, secoes] = await Promise.all([carregarFaixasSecoes(a.admin), secoesDoProjeto(a.admin, projetoFv?.id || null)])
+  const { faturasNaoLidas } = await import('@/lib/spinzap/fatura-conversa')
+  const [faixas, secoes, pendentes] = await Promise.all([
+    carregarFaixasSecoes(a.admin), secoesDoProjeto(a.admin, projetoFv?.id || null), faturasNaoLidas(a.admin, conversa_id),
+  ])
   return {
     faixas,
     secoes,
+    titular: fatura?.razao_social || null,
+    faturas_pendentes: pendentes,
     tipo_rede: perfil.infra_eletrica.tipo_rede || fatura?.tipo_ligacao || null,
     cidade: perfil.contato.endereco?.cidade || a.conv.cidade || null,
     fatura: fatura ? { consumo_kwh: fatura.consumo_kwh, tarifa_kwh: fatura.tarifa_kwh, subsidio: fatura.subsidio } : null,
     tarifa_base: base ? { tarifa_kwh: base.tarifa_conta_kwh || base.tarifa_kwh, amostras: base.amostras } : null,
     projeto_id: projetoFv?.id || null,
     eh_admin: a.ehAdmin,
+  }
+}
+
+/**
+ * "Ler fatura" no Montar proposta (Kalebe 2026-10-14): lê o PDF/foto que o
+ * cliente mandou e devolve o que vai pros campos (consumo, rede, cidade).
+ * Também grava no cadastro do cliente, no contexto da conversa e nos arquivos.
+ */
+export async function lerFaturaPropostaAction(conversa_id: string, mensagem_id: string): Promise<
+  { consumo_kwh: number; meses: number; tarifa_kwh: number | null; subsidio: string | null; tipo_rede: string | null; cidade: string | null; titular: string | null; uc: string | null } | { erro: string }
+> {
+  const a = await acesso(conversa_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const { data: m } = await a.admin.from('wa_mensagens').select('conversa_id').eq('id', mensagem_id).maybeSingle()
+  if ((m as any)?.conversa_id !== conversa_id) return { erro: 'Arquivo não é desta conversa' }
+  const { lerFaturaDaMensagem } = await import('@/lib/spinzap/fatura-conversa')
+  // Já lida → devolve o que leu; lendo agora (webhook) → pede pra aguardar; erro/descartada → lê de novo
+  const r = await lerFaturaDaMensagem(a.admin, { mensagem_id, origem: 'usuario', usuario_id: a.user.id })
+  if ('erro' in r) return { erro: r.erro }
+  const f = r.fatura
+  revalidatePath('/spinzap')
+  return {
+    consumo_kwh: f.consumo_kwh, meses: f.meses, tarifa_kwh: f.tarifa_kwh, subsidio: f.subsidio,
+    tipo_rede: f.tipo_ligacao, cidade: f.cidade, titular: f.razao_social, uc: f.uc,
   }
 }
 

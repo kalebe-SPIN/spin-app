@@ -259,6 +259,17 @@ export async function POST(req: NextRequest) {
                 } : {}),
               })
 
+              // Kalebe 2026-10-14: PDF do cliente → lê como fatura em segundo plano
+              // e preenche o cadastro (lib/spinzap/fatura-conversa.ts)
+              if (mensagemId && tipoMsg === 'document' && midiaSalva?.midia_url && /pdf/i.test(midiaSalva.midia_mime || '')) {
+                const idMsg = mensagemId
+                waitUntil(
+                  import('@/lib/spinzap/fatura-conversa')
+                    .then(({ lerFaturaRecebida }) => lerFaturaRecebida(supabaseAdmin as any, idMsg))
+                    .catch((err) => console.error('[webhook fatura]', err)),
+                )
+              }
+
               // Cartão de contato (ex.: o decisor) → salva no projeto da conversa
               if (cartoes.length && contato) {
                 const { data: c } = await supabaseAdmin
