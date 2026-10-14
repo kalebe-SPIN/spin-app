@@ -279,7 +279,11 @@ export function InboxClient({
   // Auto-fetch mensagens ao trocar conversa + marca como lida (zera a etiqueta)
   const selecionadaRef = useRef<string | null>(null)
   selecionadaRef.current = selecionadaId
+  // Conversa aberta que estava não lida fica no grupo "Não lidas" até trocar
+  // de conversa — senão ela pula de lugar no clique
+  const fixadaNaoLida = useRef<string | null>(null)
   useEffect(() => {
+    fixadaNaoLida.current = selecionadaId && (conversas.find((c) => c.id === selecionadaId)?.nao_lidas || 0) > 0 ? selecionadaId : null
     if (selecionadaId) {
       refreshMensagens(selecionadaId)
       setConversas((cs) => cs.map((c) => (c.id === selecionadaId ? { ...c, nao_lidas: 0 } : c)))
@@ -359,14 +363,19 @@ export function InboxClient({
   })
   const qtdEncerradas = base.filter((c) => c.encerrada_em && (setorSel === 'todos' || c.setor === setorSel)).length
   // Barra lateral como um CRM: grupos por etapa (cor própria); conversas da
-  // equipe (avisos internos) num grupo à parte, no fim
+  // equipe (avisos internos) num grupo à parte, no fim.
+  // Kalebe 2026-10-14: não lidas SEMPRE primeiro — grupo próprio no topo.
+  const ehNaoLida = (c: Conversa) => (c.nao_lidas || 0) > 0 || c.id === fixadaNaoLida.current
+  const naoLidas = conversasFiltradas.filter(ehNaoLida)
+  const lidas = conversasFiltradas.filter((c) => !ehNaoLida(c))
   const grupos = [
+    { chave: 'nao_lidas', rotulo: '🔔 Não lidas', cls: 'border-verde/60 text-white/85', itens: naoLidas },
     ...ETAPAS.map((e) => ({
       chave: e.chave as string, rotulo: `${e.emoji} ${e.rotulo}`, cls: e.cls,
-      itens: conversasFiltradas.filter((c) => !ehEquipe(c) && !ehFornecedorPuro(c) && (c.etapa || 'atendimento_lais') === e.chave),
+      itens: lidas.filter((c) => !ehEquipe(c) && !ehFornecedorPuro(c) && (c.etapa || 'atendimento_lais') === e.chave),
     })),
-    { chave: 'fornecedores', rotulo: '🏭 Fornecedores', cls: 'bg-[#f59e0b]/10 border-[#f59e0b]/40 text-[#f59e0b]', itens: conversasFiltradas.filter((c) => !ehEquipe(c) && ehFornecedorPuro(c)) },
-    { chave: 'equipe', rotulo: '👥 Equipe', cls: 'bg-white/5 border-white/15 text-white/60', itens: conversasFiltradas.filter(ehEquipe) },
+    { chave: 'fornecedores', rotulo: '🏭 Fornecedores', cls: 'bg-[#f59e0b]/10 border-[#f59e0b]/40 text-[#f59e0b]', itens: lidas.filter((c) => !ehEquipe(c) && ehFornecedorPuro(c)) },
+    { chave: 'equipe', rotulo: '👥 Equipe', cls: 'bg-white/5 border-white/15 text-white/60', itens: lidas.filter(ehEquipe) },
   ].filter((g) => g.itens.length > 0)
   const cidadesDaLista = Array.from(new Set(conversas.map((c) => (c.cidade || '').trim()).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, 'pt-BR'))
