@@ -306,22 +306,28 @@ function classificar(
   // Wi-Fi") e rapid shutdown ("Módulo de Teste RSDW"). Agora exige que
   // a linha bata em "fotovoltaico|monofacial|bifacial|topcon|celula" ou
   // que o próprio Tipo seja "Módulo Fotovoltaico".
+  // Kalebe 2026-10-14: planilha 2026-09 trouxe "Módulo de Bateria" (LUNA2000-7),
+  // "Módulo de Controle" (LUNA2000-10KW, SBW400 C2400) e "Módulo Inteligente"
+  // (dimmer/interruptor Wi-Fi) — o "módulo" genérico virava placa. Agora o
+  // genérico só vale sem nenhum desses sinais, olhando tipo E nome.
+  const naoEhPlaca = /wi-?fi|dimmer|interruptor|cortina|intelig|bateria|controle|rsdw|rsd|rapid shutdown|^luna|^sbw/
   const isPlaca = (
     t.includes('fotovoltaico') || t.includes('monofacial') || t.includes('bifacial') ||
     t.includes('topcon') || t.includes('perc') || t.includes('heterojun') ||
     t.includes('celula') || t.includes('célula') ||
-    (t.includes('módulo') && !t.includes('wi-fi') && !t.includes('wifi') &&
-     !t.includes('dimmer') && !t.includes('interruptor') && !t.includes('cortina') &&
-     !/rsdw|rsd|rapid shutdown/.test(t))
+    (t.includes('módulo') && !naoEhPlaca.test(t) && !naoEhPlaca.test(n))
   )
   if (isPlaca) {
     // Planilha 2026-08: [5]=Wp | [6]=R$/Wp | [7]=Fabricante | [8]=Área m² | [9]=Largura mm | [10]=Modelo
+    // Wp < 100 é R$/Wp ou área em coluna deslocada (houve placa com "2,33 Wp") —
+    // fica null e o fallback tira a potência do nome ("720 Wp - JINKO").
+    const wp = parseNumPtBr(linha[5])
     return {
       categoria: 'placa',
       subcategoria: 'modulo_fotovoltaico',
       fabricante: String(linha[7] || 'WEG'),
       specs: {
-        potencia_wp: parseNumPtBr(linha[5]),
+        potencia_wp: wp && wp >= 100 ? wp : null,
         area_m2: parseNumPtBr(linha[8]),
         largura_mm: parseNumPtBr(linha[9]),
         tipo_celula: tipo,
@@ -464,8 +470,9 @@ function classificar(
   }
 
   // BATERIA / BESS / NOBREAK
+  // LUNA2000 (Huawei): módulo de bateria e módulo de controle do mesmo banco
   if (t.includes('bateria') || t.includes('cabine de bateria') || t.includes('nobreak') ||
-      /^sbw|^bscw|^bcw/i.test(nome)) {
+      /^sbw|^bscw|^bcw|^luna/i.test(nome)) {
     return { categoria: 'bateria', subcategoria: t.includes('nobreak') ? 'nobreak' : 'bess', fabricante: 'WEG', specs: { descricao: tipo } }
   }
 
