@@ -1,7 +1,7 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { avisarUsuario } from '@/lib/agentes/diretorio'
 import { URL_PORTAL } from '@/lib/agentes/nomes'
-import { montarOrcamentoLead, type EntradaOrcamentoLead } from './orcamento-lead'
+import { montarOrcamentoLead, type EntradaOrcamentoLead, type OrcamentoLead } from './orcamento-lead'
 import { auditarOrcamentoLead } from './auditor-orcamento'
 import { gerarPdfOrcamento } from './pdf-orcamento'
 import { PERFIL_VAZIO, type PerfilLead } from './perfil'
@@ -34,6 +34,56 @@ export async function carregarPerfil(admin: Admin, contatoId: string): Promise<P
   return { contato: d.contato || {}, infra_civil: d.infra_civil || {}, infra_eletrica: d.infra_eletrica || {}, peculiaridades: d.peculiaridades || {}, pendencias: d.pendencias || [] }
 }
 
+type ContatoLead = { id: string; telefone: string; nome_exibicao: string | null; projeto_id: string | null; cliente_id: string | null }
+
+/** Projeto ligado ao contato (cria pelo mesmo caminho da qualificação, se não tiver). */
+export async function garantirProjetoDoLead(admin: Admin, contato: ContatoLead, contexto: Record<string, any>): Promise<string | null> {
+  let projetoId = contato.projeto_id || contexto.projeto_id || null
+  if (!projetoId) {
+    const { criarProjetoDoLead } = await import('@/lib/whatsapp/agente-qualificacao')
+    projetoId = await criarProjetoDoLead(admin, contato, contexto as any)
+    if (projetoId) await admin.from('wa_contatos').update({ projeto_id: projetoId, tipo: 'lead' }).eq('id', contato.id)
+  }
+  return projetoId
+}
+
+/**
+ * PDF resumido do orçamento (cliente só nome + CPF/CNPJ, assinatura do
+ * Kalebe) guardado no bucket público propostas-pdf. Usado pela Laís e pelo
+ * "Montar proposta" do Spinzap.
+ */
+export async function gerarPdfDoOrcamento(admin: Admin, d: {
+  orc: OrcamentoLead
+  perfil: PerfilLead
+  contato: ContatoLead
+  fatura: { razao_social?: string | null; cpf_cnpj?: string | null } | null
+  projetoId: string
+  cidade: string | null
+  uf: string | null
+  prefixo: string
+}): Promise<{ url: string; nome_cliente: string } | { erro: string }> {
+  const { data: empresa } = await admin.from('configuracoes_empresa')
+    .select('razao_social, cnpj, telefone, email, logo_url, rt_nome, rt_assinatura_url').limit(1).maybeSingle()
+  const titularDaFatura = d.perfil.peculiaridades.titular_fatura !== false && !!d.fatura?.razao_social
+  const nomeCliente = titularDaFatura ? d.fatura!.razao_social! : (d.perfil.peculiaridades.titular_nome || d.contato.nome_exibicao || d.perfil.contato.primeiro_nome || 'Cliente')
+  const [assinatura, logo] = await Promise.all([imagemComoDataUrl((empresa as any)?.rt_assinatura_url), imagemComoDataUrl((empresa as any)?.logo_url)])
+  const o = d.orc
+  const pdf = gerarPdfOrcamento({
+    cliente_nome: nomeCliente,
+    cliente_documento: titularDaFatura ? d.fatura?.cpf_cnpj || null : null,
+    cidade: d.cidade ? `${d.cidade}${d.uf ? `/${d.uf}` : ''}` : null,
+    kwp: o.kwp, qtd_placas: o.qtd_placas, placa_modelo: o.placa.modelo, placa_wp: o.placa.potencia_wp,
+    inversor_modelo: o.inversor.modelo, inversor_kw: o.inversor.potencia_kw,
+    geracao_kwh_mes: o.geracao_kwh_mes, consumo_kwh_mes: o.consumo_kwh_mes,
+    pv_total: o.pv_total, formas_pagamento: o.formas_pagamento, premissas: o.premissas,
+    empresa: (empresa as any) || {}, assinatura, logo,
+  })
+  const caminho = `${d.projetoId}/${d.prefixo}-${Date.now()}.pdf`
+  const { error } = await admin.storage.from('propostas-pdf').upload(caminho, Buffer.from(pdf), { contentType: 'application/pdf', upsert: false })
+  if (error) return { erro: `Falha ao guardar o PDF: ${error.message}` }
+  return { url: admin.storage.from('propostas-pdf').getPublicUrl(caminho).data.publicUrl, nome_cliente: nomeCliente }
+}
+
 export async function prepararOrcamentoDoLead(admin: Admin, e: {
   conversa_id: string
   contato: { id: string; telefone: string; nome_exibicao: string | null; projeto_id: string | null; cliente_id: string | null }
@@ -51,38 +101,19 @@ export async function prepararOrcamentoDoLead(admin: Admin, e: {
   const auditoria = auditarOrcamentoLead(orc, perfil)
 
   // Projeto do lead (o orçamento fica no histórico dele)
-  let projetoId = e.contato.projeto_id || e.contexto.projeto_id || null
-  if (!projetoId) {
-    const { criarProjetoDoLead } = await import('@/lib/whatsapp/agente-qualificacao')
-    projetoId = await criarProjetoDoLead(admin, e.contato, { ...e.contexto, nome_cliente: e.contexto.nome_cliente || perfil.contato.primeiro_nome || e.contato.nome_exibicao || 'Cliente', cidade } as any)
-    if (projetoId) await admin.from('wa_contatos').update({ projeto_id: projetoId, tipo: 'lead' }).eq('id', e.contato.id)
-  }
+  const projetoId = await garantirProjetoDoLead(admin, e.contato, { ...e.contexto, nome_cliente: e.contexto.nome_cliente || perfil.contato.primeiro_nome || e.contato.nome_exibicao || 'Cliente', cidade })
   if (!projetoId) return { erro: 'Não consegui criar o projeto do lead' }
 
-  // PDF: cliente só com nome + CPF/CNPJ; assinatura do Kalebe
-  const { data: empresa } = await admin.from('configuracoes_empresa')
-    .select('razao_social, cnpj, telefone, email, logo_url, rt_nome, rt_assinatura_url').limit(1).maybeSingle()
-  const titularDaFatura = perfil.peculiaridades.titular_fatura !== false && !!e.fatura?.razao_social
-  const nomeCliente = titularDaFatura ? e.fatura!.razao_social! : (perfil.peculiaridades.titular_nome || e.contato.nome_exibicao || perfil.contato.primeiro_nome || 'Cliente')
-  const [assinatura, logo] = await Promise.all([imagemComoDataUrl((empresa as any)?.rt_assinatura_url), imagemComoDataUrl((empresa as any)?.logo_url)])
-  const pdf = gerarPdfOrcamento({
-    cliente_nome: nomeCliente,
-    cliente_documento: titularDaFatura ? e.fatura?.cpf_cnpj || null : null,
-    cidade: cidade ? `${cidade}${perfil.contato.endereco?.uf || (conv as any)?.uf ? `/${perfil.contato.endereco?.uf || (conv as any)?.uf}` : ''}` : null,
-    kwp: orc.kwp, qtd_placas: orc.qtd_placas, placa_modelo: orc.placa.modelo, placa_wp: orc.placa.potencia_wp,
-    inversor_modelo: orc.inversor.modelo, inversor_kw: orc.inversor.potencia_kw,
-    geracao_kwh_mes: orc.geracao_kwh_mes, consumo_kwh_mes: orc.consumo_kwh_mes,
-    pv_total: orc.pv_total, formas_pagamento: orc.formas_pagamento, premissas: orc.premissas,
-    empresa: (empresa as any) || {}, assinatura, logo,
+  const pdf = await gerarPdfDoOrcamento(admin, {
+    orc, perfil, contato: e.contato, fatura: e.fatura || null, projetoId,
+    cidade, uf: perfil.contato.endereco?.uf || (conv as any)?.uf || null, prefixo: 'orcamento-lais',
   })
-  const caminho = `${projetoId}/orcamento-lais-${Date.now()}.pdf`
-  const { error: eUp } = await admin.storage.from('propostas-pdf').upload(caminho, Buffer.from(pdf), { contentType: 'application/pdf', upsert: false })
-  if (eUp) return { erro: `Falha ao guardar o PDF: ${eUp.message}` }
-  const { data: pub } = admin.storage.from('propostas-pdf').getPublicUrl(caminho)
+  if ('erro' in pdf) return pdf
+  const nomeCliente = pdf.nome_cliente
 
   const { data: linha, error } = await admin.from('spinzap_orcamentos').insert({
     conversa_id: e.conversa_id, contato_id: e.contato.id, projeto_id: projetoId,
-    orcamento: orc, auditoria, url_pdf: pub.publicUrl, pv_total: orc.pv_total, potencia_kwp: orc.kwp,
+    orcamento: orc, auditoria, url_pdf: pdf.url, pv_total: orc.pv_total, potencia_kwp: orc.kwp,
   }).select('id').single()
   if (error || !linha) return { erro: /spinzap_orcamentos/.test(error?.message || '') ? 'Falta rodar a migration 150 no Supabase.' : (error?.message || 'Falha ao registrar') }
 

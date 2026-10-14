@@ -3,11 +3,15 @@
 import { useEffect, useState, useTransition, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { ModalProjetoConversa } from './ModalProjetoConversa'
-import { PerfilLead } from './PerfilLead'
+import { usePerfilLead, ModalPerfil, type SecaoPerfilAberta } from './PerfilLead'
+import { MenuConversa, type GrupoMenu } from './MenuConversa'
+import { ModalPropostaRapida } from './ModalPropostaRapida'
+import { ModalAgendaBianca } from '@/components/chat/ModalAgendaBianca'
+import { SECOES } from '@/lib/spinzap/perfil'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 import { AvatarContato } from '@/components/AvatarContato'
 import { AvisosDoCliente } from '@/components/bianca/AvisosDoCliente'
-import { BotaoNovaDemanda } from '@/components/campo/NovaDemandaModal'
+import { NovaDemandaModal } from '@/components/campo/NovaDemandaModal'
 import { rotuloNaTela } from '@/lib/equipe/rotulo'
 import { cartoesDoTexto, telefonesNoTexto, formatarTelefoneExibicao } from '@/lib/whatsapp/contatos-projeto'
 import { contatosDoProjetoDaConversaAction, salvarContatoDaConversaAction } from '@/app/inbox/contatos-actions'
@@ -125,12 +129,16 @@ export function InboxClient({
   const [verEncerradas, setVerEncerradas] = useState(false)
   const [fechadas, setFechadas] = useState<Set<string>>(new Set(['perdido']))   // grupos recolhidos
   const [modalConcluir, setModalConcluir] = useState(false)
+  // Kalebe 2026-10-13: atalhos do menu flutuante da conversa
+  const [secaoPerfil, setSecaoPerfil] = useState<SecaoPerfilAberta | null>(null)
+  const [modalDemanda, setModalDemanda] = useState(false)
+  const [modalAgenda, setModalAgenda] = useState(false)
+  const [modalProposta, setModalProposta] = useState(false)
   // Kalebe 2026-09-30: pesquisa de contato (nome ou telefone)
   const [busca, setBusca] = useState('')
   // Celular estilo WhatsApp: conversa em tela cheia abaixo do cabeçalho do portal
   const [ehCelular, setEhCelular] = useState(false)
   const [topoHeader, setTopoHeader] = useState(56)
-  const [menuAcoes, setMenuAcoes] = useState(false)
   const empurrouHistorico = useRef(false)
   const [modalAberto, setModalAberto] = useState(false)
   const [modalProjeto, setModalProjeto] = useState(false)
@@ -211,7 +219,6 @@ export function InboxClient({
   }, [ehCelular, selecionadaId])
 
   function abrirConversa(id: string) {
-    setMenuAcoes(false)
     if (id === selecionadaId) return
     setSelecionadaId(id)
     const url = `/spinzap?c=${id}`
@@ -224,7 +231,6 @@ export function InboxClient({
   }
 
   function voltarParaLista() {
-    setMenuAcoes(false)
     if (empurrouHistorico.current) { window.history.back(); return }
     setSelecionadaId(null)
     window.history.replaceState(null, '', '/spinzap')
@@ -404,6 +410,51 @@ export function InboxClient({
         : 'Atendimento de volta com você. A Laís não anotou demandas novas.')
       refreshConversas(); refreshMensagens(id)
     })
+  }
+
+  // Kalebe 2026-10-13: menu flutuante da conversa — substitui os botões do
+  // cabeçalho e a linha do perfil; atalho pra montar a proposta por aqui
+  const comPerfil = !!selecionada && !ehEquipe(selecionada) && !ehFornecedorPuro(selecionada)
+  const perfilLead = usePerfilLead(comPerfil && selecionada ? selecionada.id : null)
+  const gruposMenu: GrupoMenu[] = []
+  if (selecionada) {
+    const s = selecionada
+    const projetoId = s.contato?.projeto_id || null
+    const podeGerir = usuarioRole === 'admin' || !s.responsavel_id || s.responsavel_id === usuarioId
+    gruposMenu.push({ titulo: 'Proposta', itens: comPerfil ? [
+      { chave: 'proposta', icone: '💰', rotulo: 'Montar proposta', detalhe: 'Calcula, audita e envia o PDF por aqui', tom: 'destaque', onClick: () => { setErro(null); setModalProposta(true) } },
+      ...(projetoId ? [{ chave: 'proposta-completa', icone: '📑', rotulo: 'Proposta completa', detalhe: 'no projeto', href: `/projetos/${projetoId}/orcamento` }] : []),
+    ] : [] })
+    gruposMenu.push({ titulo: 'Cadastro do cliente', itens: ehEquipe(s) ? [] : [
+      ...(comPerfil ? SECOES.map((sec) => {
+        const p = perfilLead.progresso[sec.chave]
+        const completo = p.feitos >= p.total
+        return {
+          chave: `perfil-${sec.chave}`, icone: sec.emoji, rotulo: sec.rotulo,
+          detalhe: perfilLead.dados ? (completo ? '✓' : `${p.feitos}/${p.total}`) : '…',
+          tom: completo ? 'ok' as const : p.feitos > 0 ? 'atencao' as const : undefined,
+          desabilitado: !perfilLead.dados, onClick: () => setSecaoPerfil(sec.chave),
+        }
+      }) : []),
+      ...(comPerfil && perfilLead.pendentes ? [{ chave: 'pendencias', icone: '⚠️', rotulo: 'Pendências', detalhe: String(perfilLead.pendentes), tom: 'perigo' as const, onClick: () => setSecaoPerfil('pendencias') }] : []),
+      { chave: 'fornecedor', icone: '🏭', rotulo: s.contato?.fornecedor ? 'Fornecedor' : 'É fornecedor?', onClick: () => { setErro(null); setModalFornecedor(true) } },
+    ] })
+    gruposMenu.push({ titulo: 'Projeto', itens: [
+      ...(projetoId ? [{ chave: 'abrir-projeto', icone: '📁', rotulo: 'Abrir projeto', href: `/projetos/${projetoId}` }] : []),
+      ...((s.responsavel_id === usuarioId || usuarioRole === 'admin') ? [{
+        chave: 'criar-projeto', icone: '➕', rotulo: projetoId ? 'Novo projeto' : 'Transformar em projeto', onClick: () => setModalProjeto(true),
+      }] : []),
+      ...(s.contato && usuarioRole !== 'profissional_campo' ? [{ chave: 'demanda', icone: '🔧', rotulo: 'Demanda de campo', onClick: () => setModalDemanda(true) }] : []),
+    ] })
+    gruposMenu.push({ titulo: 'Atendimento', itens: [
+      { chave: 'agendar', icone: '📅', rotulo: 'Agendar', onClick: () => setModalAgenda(true) },
+      ...(podeAcionarLais ? [{ chave: 'lais', icone: '🤖', rotulo: 'Laís assume', onClick: laisAssumir }] : []),
+      ...(laisCobrindo ? [{ chave: 'retomar', icone: '🙋', rotulo: 'Retomar', onClick: laisRetomar }] : []),
+      ...(podeConcluir ? [{ chave: 'concluir', icone: '✔️', rotulo: 'Concluir atendimento', tom: 'ok' as const, onClick: () => { setErro(null); setModalConcluir(true) } }] : []),
+      ...(!s.encerrada_em && podeGerir ? [{ chave: 'transferir', icone: '↪️', rotulo: 'Transferir', onClick: () => { setOkMsg(null); setModalTransferir(true) } }] : []),
+      ...((!s.responsavel_id || s.responsavel_id !== usuarioId) ? [{ chave: 'assumir', icone: '✋', rotulo: 'Assumir', onClick: assumir }] : []),
+      ...(!s.encerrada_em ? [{ chave: 'encerrar', icone: '⏹️', rotulo: 'Encerrar', tom: 'perigo' as const, onClick: encerrar }] : []),
+    ] })
   }
 
   function mudarEtapa(etapa: string) {
@@ -679,86 +730,8 @@ export function InboxClient({
                   )}
                 </p>
               </div>
-              {/* Celular: ações num menu ⋮ */}
-              <button
-                onClick={() => setMenuAcoes((v) => !v)}
-                className="lg:hidden p-2 text-white/70 hover:text-white shrink-0"
-                aria-label="Ações da conversa"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
-                </svg>
-              </button>
-              <div
-                onClick={() => setMenuAcoes(false)}
-                className={`${menuAcoes ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row items-stretch lg:items-center gap-2 shrink-0
-                  absolute lg:static right-2 top-full mt-1 lg:mt-0 z-20 w-60 lg:w-auto p-2 lg:p-0
-                  bg-noite lg:bg-transparent border border-white/15 lg:border-0 rounded-xl lg:rounded-none shadow-2xl lg:shadow-none`}
-              >
-                {/* Kalebe 2026-09-29: conversa → projeto, já associados e pré-preenchidos */}
-                {selecionada.contato?.projeto_id && (
-                  <a
-                    href={`/projetos/${selecionada.contato.projeto_id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3 py-1.5 rounded bg-white/5 border border-white/15 text-white/80 text-xs font-bold hover:bg-white/10"
-                  >
-                    📁 Abrir projeto
-                  </a>
-                )}
-                {/* Kalebe 2026-10-07: abrir demanda pro time de campo daqui da conversa */}
-                {selecionada.contato && usuarioRole !== 'profissional_campo' && (
-                  <BotaoNovaDemanda key={`demanda-${selecionada.id}`} conversaId={selecionada.id} variante="compacto" />
-                )}
-                {(selecionada.responsavel_id === usuarioId || usuarioRole === 'admin') && (
-                  <button
-                    onClick={() => setModalProjeto(true)}
-                    disabled={isPending}
-                    className="px-3 py-1.5 rounded bg-verde/15 border border-verde/40 text-verde text-xs font-bold hover:bg-verde/25 disabled:opacity-40"
-                    title="Cria o projeto com os dados da conversa e da fatura, já ligado a este atendimento"
-                  >
-                    {selecionada.contato?.projeto_id ? '＋ Projeto' : '📁 Transformar em projeto'}
-                  </button>
-                )}
-                {podeAcionarLais && (
-                  <button
-                    onClick={laisAssumir}
-                    disabled={isPending}
-                    title="Não pode atender agora? A Laís lê a conversa de hoje, segue com o cliente e anota as demandas pra você"
-                    className="px-3 py-1.5 rounded bg-weg-azul text-white text-xs font-bold hover:bg-weg-azul/90 disabled:opacity-40"
-                  >
-                    🤖 Laís assume
-                  </button>
-                )}
-                {!selecionada.encerrada_em && (usuarioRole === 'admin' || !selecionada.responsavel_id || selecionada.responsavel_id === usuarioId) && (
-                  <button
-                    onClick={() => { setOkMsg(null); setModalTransferir(true) }}
-                    disabled={isPending}
-                    title="Passa o atendimento pra outro usuário — a Laís avisa no WhatsApp com resumo e link"
-                    className="px-3 py-1.5 rounded bg-weg-azul/15 border border-weg-azul/40 text-weg-azul text-xs font-bold hover:bg-weg-azul/25 disabled:opacity-40"
-                  >
-                    ↪ Transferir
-                  </button>
-                )}
-                {(!selecionada.responsavel_id || selecionada.responsavel_id !== usuarioId) && (
-                  <button
-                    onClick={assumir}
-                    disabled={isPending}
-                    className="px-3 py-1.5 rounded bg-sol/20 border border-sol/40 text-sol text-xs font-bold hover:bg-sol/30 disabled:opacity-40"
-                  >
-                    Assumir
-                  </button>
-                )}
-                {!selecionada.encerrada_em && (
-                  <button
-                    onClick={encerrar}
-                    disabled={isPending}
-                    className="px-3 py-1.5 rounded bg-coral/10 border border-coral/30 text-coral text-xs font-bold hover:bg-coral/20 disabled:opacity-40"
-                  >
-                    Encerrar
-                  </button>
-                )}
-              </div>
+              {/* Kalebe 2026-10-13: os botões do cabeçalho saíram pro menu
+                  flutuante (canto do chat) — o topo fica só com quem é o cliente */}
             </div>
 
             {/* Kalebe 2026-10-09 (Spinzap): etiquetas do cliente no cabeçalho —
@@ -773,10 +746,6 @@ export function InboxClient({
               onEtiquetas={salvarEtiquetas}
               onFornecedor={() => { setErro(null); setModalFornecedor(true) }}
             />
-            {/* Kalebe 2026-10-10: linha do perfil do lead — sessões com formulário próprio */}
-            {!ehEquipe(selecionada) && !ehFornecedorPuro(selecionada) && (
-              <PerfilLead key={`perfil-${selecionada.id}`} conversaId={selecionada.id} />
-            )}
 
             {/* Transferência temporária: aviso + devolução ao concluir */}
             {selecionada.transferida_de && !selecionada.encerrada_em && (
@@ -866,7 +835,8 @@ export function InboxClient({
             )}
 
             {/* Timeline */}
-            <div ref={timelineRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2 bg-noite/60">
+            <div className="relative flex-1 min-h-0 flex flex-col">
+            <div ref={timelineRef} className="flex-1 min-h-0 overflow-y-auto p-4 pb-16 space-y-2 bg-noite/60">
               {mensagens.length === 0 ? (
                 <p className="text-xs text-white/40 italic text-center py-8">Sem mensagens ainda.</p>
               ) : (
@@ -883,6 +853,14 @@ export function InboxClient({
                   />
                 ))
               )}
+            </div>
+            {/* Kalebe 2026-10-13: ícone flutuante → menu com fundo desfocado */}
+            <MenuConversa
+              key={`menu-${selecionada.id}`}
+              titulo={selecionada.contato?.nome_exibicao || selecionada.contato?.telefone || 'Contato'}
+              subtitulo={[selecionada.contato?.telefone, selecionada.responsavel?.nome_completo ? `👤 ${selecionada.responsavel.nome_completo.split(' ')[0]}` : null].filter(Boolean).join(' · ')}
+              grupos={gruposMenu}
+            />
             </div>
 
             {/* Composição — Kalebe 2026-09-14: botões arquivo + chamada + vídeo */}
@@ -919,6 +897,35 @@ export function InboxClient({
           onFechar={() => setModalTransferir(false)}
           onTransferido={(texto) => { setModalTransferir(false); setOkMsg(texto); refreshConversas() }}
         />
+      )}
+
+      {/* Kalebe 2026-10-13: janelas abertas pelo menu flutuante */}
+      {secaoPerfil && selecionada && perfilLead.dados && (
+        <ModalPerfil
+          secao={secaoPerfil}
+          conversaId={selecionada.id}
+          dados={perfilLead.dados}
+          onFechar={() => setSecaoPerfil(null)}
+          onSalvo={async () => { await perfilLead.recarregar(); refreshConversas() }}
+        />
+      )}
+      {modalProposta && selecionada && (
+        <ModalPropostaRapida
+          conversaId={selecionada.id}
+          nomeCliente={selecionada.contato?.nome_exibicao || ''}
+          onFechar={() => setModalProposta(false)}
+          onEnviada={() => { refreshMensagens(selecionada.id); refreshConversas(); perfilLead.recarregar() }}
+        />
+      )}
+      {modalDemanda && selecionada && (
+        <NovaDemandaModal
+          conversaId={selecionada.id}
+          onFechar={() => setModalDemanda(false)}
+          onSalva={(msg) => { setModalDemanda(false); setOkMsg(msg) }}
+        />
+      )}
+      {modalAgenda && selecionada && (
+        <ModalAgendaBianca conversaId={selecionada.id} onFechar={() => setModalAgenda(false)} />
       )}
 
       {modalFornecedor && selecionada && (
@@ -1292,13 +1299,7 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
       <span className={`${chip} bg-white/[0.03] border-white/10 text-white/50 font-mono`} title="Entrada do lead no sistema">
         📥 {new Date(entrada).toLocaleDateString('pt-BR')}
       </span>
-
-      {!fornec && (
-        <button data-etiqueta onClick={onFornecedor} title="Cadastrar este contato também como fornecedor (equipamento, produtos ou serviço)"
-          className={`${chip} bg-white/[0.03] border-dashed border-white/20 text-white/45 hover:text-[#f59e0b] hover:border-[#f59e0b]/40`}>
-          ＋ Fornecedor
-        </button>
-      )}
+      {/* "＋ Fornecedor" saiu daqui — fica no menu flutuante (Kalebe 2026-10-13) */}
     </div>
   )
 }

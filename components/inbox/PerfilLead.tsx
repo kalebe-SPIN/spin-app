@@ -24,64 +24,36 @@ type Carregado = Exclude<Dados, { erro: string }>
 const inputCls = 'w-full bg-white/5 border border-white/10 focus:border-sol/50 rounded-lg px-3 py-2 text-white text-sm focus:outline-none'
 const aZ = <T extends { rotulo: string }>(l: T[]) => [...l].sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR'))
 
-export function PerfilLead({ conversaId }: { conversaId: string }) {
+/**
+ * Kalebe 2026-10-13: as sessões saíram da linha do cabeçalho e abrem pelo
+ * menu flutuante da conversa — aqui ficam os dados (com o progresso de cada
+ * sessão) e a janela de cada uma.
+ */
+export function usePerfilLead(conversaId: string | null) {
   const [dados, setDados] = useState<Carregado | null>(null)
-  const [erro, setErro] = useState<string | null>(null)
-  const [aberta, setAberta] = useState<Secao | 'pendencias' | null>(null)
-
-  async function carregar() {
+  async function recarregar() {
+    if (!conversaId) { setDados(null); return }
     const r = await carregarPerfilAction(conversaId)
-    if ('erro' in r) setErro(r.erro)
-    else { setDados(r); setErro(null) }
+    setDados('erro' in r ? null : r)
   }
-  useEffect(() => { carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [conversaId])
-
-  if (erro) return null
+  useEffect(() => { setDados(null); recarregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [conversaId])
   const perfil = dados?.perfil || PERFIL_VAZIO
   const arquivos = dados?.arquivos || []
-  const pendentes = perfil.pendencias.filter((p) => !p.resolvida_em)
+  const progresso = Object.fromEntries(SECOES.map((s) => [s.chave, progressoSecao(s.chave, perfil, arquivos)])) as Record<Secao, { feitos: number; total: number }>
+  const pendentes = perfil.pendencias.filter((p) => !p.resolvida_em).length
+  return { dados, recarregar, progresso, pendentes }
+}
 
-  return (
-    <>
-      <div className="shrink-0 px-2 lg:px-4 py-1.5 border-b border-white/10 flex flex-wrap items-center gap-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-white/35 mr-0.5">Perfil</span>
-        {SECOES.map((s) => {
-          const { feitos, total } = progressoSecao(s.chave, perfil, arquivos)
-          const completo = feitos >= total
-          return (
-            <button
-              key={s.chave}
-              onClick={() => setAberta(s.chave)}
-              disabled={!dados}
-              title={`${s.rotulo}: ${feitos} de ${total}`}
-              className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold text-white/80 hover:text-white hover:bg-white/[0.04] disabled:opacity-40 ${
-                completo ? 'border-verde/50' : feitos > 0 ? 'border-sol/40' : 'border-white/15'
-              }`}
-            >
-              {s.emoji} {s.rotulo} <span className="font-mono text-white/45">{completo ? '✓' : `${feitos}/${total}`}</span>
-            </button>
-          )
-        })}
-        {pendentes.length > 0 && (
-          <button onClick={() => setAberta('pendencias')}
-            className="px-2 py-0.5 rounded-full border border-coral/50 text-[11px] font-semibold text-white/85 hover:bg-white/[0.04]">
-            ⚠ {pendentes.length} pendência{pendentes.length > 1 ? 's' : ''}
-          </button>
-        )}
-        {dados?.sem_migracao && <span className="text-[10px] text-white/40">(falta a migration 148)</span>}
-      </div>
+export type SecaoPerfilAberta = Secao | 'pendencias'
 
-      {aberta && dados && (
-        <ModalSecao
-          secao={aberta}
-          conversaId={conversaId}
-          dados={dados}
-          onFechar={() => setAberta(null)}
-          onSalvo={async () => { await carregar() }}
-        />
-      )}
-    </>
-  )
+export function ModalPerfil({ secao, conversaId, dados, onFechar, onSalvo }: {
+  secao: SecaoPerfilAberta
+  conversaId: string
+  dados: Carregado
+  onFechar: () => void
+  onSalvo: () => Promise<void>
+}) {
+  return <ModalSecao secao={secao} conversaId={conversaId} dados={dados} onFechar={onFechar} onSalvo={onSalvo} />
 }
 
 function ModalSecao({ secao, conversaId, dados, onFechar, onSalvo }: {
@@ -94,8 +66,8 @@ function ModalSecao({ secao, conversaId, dados, onFechar, onSalvo }: {
   const info = SECOES.find((s) => s.chave === secao)
   const titulo = secao === 'pendencias' ? '⚠ Pendências' : `${info?.emoji} ${info?.rotulo}`
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onFechar}>
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-noite border border-white/15 rounded-xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-md flex items-end sm:items-center justify-center sm:p-4" onClick={onFechar}>
+      <div className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto bg-noite/85 backdrop-blur-2xl border border-white/10 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold text-white">{titulo}</h2>
           <button onClick={onFechar} className="text-white/50 hover:text-white text-sm">✕</button>
