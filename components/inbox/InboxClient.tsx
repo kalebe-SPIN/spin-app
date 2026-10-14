@@ -968,6 +968,7 @@ export function InboxClient({
         <ModalPropostaRapida
           conversaId={selecionada.id}
           nomeCliente={selecionada.contato?.nome_exibicao || ''}
+          ehAdmin={usuarioRole === 'admin'}
           onFechar={() => setModalProposta(false)}
           onEnviada={() => { refreshMensagens(selecionada.id); refreshConversas(); perfilLead.recarregar() }}
         />
@@ -976,6 +977,7 @@ export function InboxClient({
         <ModalPropostaRecarga
           conversaId={selecionada.id}
           nomeCliente={selecionada.contato?.nome_exibicao || ''}
+          ehAdmin={usuarioRole === 'admin'}
           onFechar={() => { setModalRecarga(false); carregarPropostas(selecionada.id) }}
           onEnviada={() => { refreshMensagens(selecionada.id); refreshConversas(); carregarPropostas(selecionada.id) }}
         />
@@ -985,6 +987,7 @@ export function InboxClient({
           categoria={modalCategoria}
           conversaId={selecionada.id}
           nomeCliente={selecionada.contato?.nome_exibicao || ''}
+          ehAdmin={usuarioRole === 'admin'}
           onFechar={() => { setModalCategoria(null); carregarPropostas(selecionada.id) }}
           onEnviada={() => { refreshMensagens(selecionada.id); refreshConversas(); carregarPropostas(selecionada.id) }}
         />

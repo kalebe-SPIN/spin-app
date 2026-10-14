@@ -13,6 +13,8 @@ import { ComposicaoBess, type ApiBess } from '@/components/propostas/ComposicaoB
 import { ComposicaoOM, type ApiOM } from '@/components/propostas/ComposicaoOM'
 import { ComposicaoTecnico, type ApiTecnico } from '@/components/propostas/ComposicaoTecnico'
 import { VendaDiretaClient } from '@/components/venda-direta/VendaDiretaClient'
+import { PainelPrecificacao } from '@/components/precificacao/PainelPrecificacao'
+import type { ContextoPainel } from '@/lib/precificacao/painel'
 
 /**
  * Proposta das categorias BESS, O&M, projetos técnicos e venda (PDV) dentro
@@ -34,13 +36,18 @@ function VendaDireta({ conversaId }: { conversaId: string }) {
   return <VendaDiretaClient projeto={d.projeto} dadosIniciais={d.dadosIniciais} catalogo={d.catalogo} params={d.params} configEmpresa={d.configEmpresa} ehAdmin={d.ehAdmin} />
 }
 
-export function ModalPropostaCategoria({ categoria, conversaId, nomeCliente, onFechar, onEnviada }: {
+const CONTEXTO: Partial<Record<Cat, ContextoPainel>> = { bess: 'bess', om: 'om', projetos: 'projetos' }
+
+export function ModalPropostaCategoria({ categoria, conversaId, nomeCliente, ehAdmin, onFechar, onEnviada }: {
   categoria: Cat
   conversaId: string
   nomeCliente: string
+  ehAdmin?: boolean
   onFechar: () => void
   onEnviada: () => void
 }) {
+  const [painel, setPainel] = useState(false)
+  const [versao, setVersao] = useState(0)
   const enviar = useMemo(() => (projetoId: string, url: string, legenda: string) =>
     enviarPdfPropostaRapidaAction(conversaId, projetoId, url, legenda, ARQUIVO[categoria]), [conversaId, categoria])
   const apiBess = useMemo<ApiBess>(() => ({
@@ -63,13 +70,21 @@ export function ModalPropostaCategoria({ categoria, conversaId, nomeCliente, onF
             <h2 className="text-lg font-black text-white">{info.emoji} Proposta · {info.rotulo}</h2>
             <p className="text-[11px] text-white/50">{nomeCliente} · {info.descricao}</p>
           </div>
-          <button onClick={onFechar} aria-label="Fechar" className="w-8 h-8 rounded-full bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center shrink-0">✕</button>
+          <div className="flex items-center gap-2 shrink-0">
+            {ehAdmin && CONTEXTO[categoria] && (
+              <button type="button" onClick={() => setPainel(true)} className="px-3 py-1.5 rounded-full bg-sol text-white text-[11px] font-bold">⚙️ Precificação</button>
+            )}
+            <button onClick={onFechar} aria-label="Fechar" className="w-8 h-8 rounded-full bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center">✕</button>
+          </div>
         </div>
-        {categoria === 'bess' && <ComposicaoBess api={apiBess} nomeCliente={nomeCliente} onEnviada={onEnviada} />}
-        {categoria === 'om' && <ComposicaoOM api={apiOM} nomeCliente={nomeCliente} onEnviada={onEnviada} />}
-        {categoria === 'projetos' && <ComposicaoTecnico api={apiTec} nomeCliente={nomeCliente} onEnviada={onEnviada} />}
+        {categoria === 'bess' && <ComposicaoBess key={versao} api={apiBess} nomeCliente={nomeCliente} onEnviada={onEnviada} />}
+        {categoria === 'om' && <ComposicaoOM key={versao} api={apiOM} nomeCliente={nomeCliente} onEnviada={onEnviada} />}
+        {categoria === 'projetos' && <ComposicaoTecnico key={versao} api={apiTec} nomeCliente={nomeCliente} onEnviada={onEnviada} />}
         {categoria === 'venda' && <VendaDireta conversaId={conversaId} />}
       </div>
+      {painel && CONTEXTO[categoria] && (
+        <PainelPrecificacao contexto={CONTEXTO[categoria]!} onFechar={() => setPainel(false)} onAlterado={() => setVersao((v) => v + 1)} />
+      )}
     </div>
   )
 }

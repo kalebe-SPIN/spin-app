@@ -2,23 +2,31 @@ import type { createAdminClient } from '@/lib/supabase/admin'
 import { getInfoTipo } from '@/lib/tipos-projeto'
 import {
   CONFIG_SECAO, TIPOS_SECAO_LISTA, ehTipoSecao, rotuloSecao, totalSecoes,
-  type FaixaSecao, type SecaoProposta, type TipoSecao,
+  type FaixaSecao, type SecaoProposta, type TipoSecao, type VariavelPreco,
 } from './secoes'
 
 /** Seções das propostas no banco: tabela de faixas e projeto_itens do projeto. */
 
 type Admin = ReturnType<typeof createAdminClient>
 
+const chavesSecoes = () => TIPOS_SECAO_LISTA.map((t) => CONFIG_SECAO[t].faixa || t)
+
 export async function carregarFaixasSecoes(admin: Admin): Promise<FaixaSecao[]> {
-  const chaves = TIPOS_SECAO_LISTA.map((t) => CONFIG_SECAO[t].faixa).filter(Boolean) as string[]
   const { data } = await admin.from('faixas_precificacao_servicos')
-    .select('chave_servico, faixa_min, faixa_max, valor, descricao, ordem, ativo')
-    .in('chave_servico', chaves).eq('ativo', true).order('ordem')
+    .select('*').in('chave_servico', chavesSecoes()).eq('ativo', true).order('ordem')
   return ((data || []) as any[]).map((f) => ({
-    chave_servico: f.chave_servico, faixa_min: Number(f.faixa_min) || 0,
+    id: f.id, chave_servico: f.chave_servico, variavel: f.variavel ?? null, faixa_min: Number(f.faixa_min) || 0,
     faixa_max: f.faixa_max == null ? null : Number(f.faixa_max), valor: Number(f.valor) || 0,
     descricao: f.descricao || null, ordem: Number(f.ordem) || 0,
   }))
+}
+
+/** Variáveis estruturadas pelo admin (mig 156). Sem a migration: lista vazia (regra fixa de antes). */
+export async function carregarVariaveisPreco(admin: Admin, chaves?: string[]): Promise<VariavelPreco[]> {
+  const { data, error } = await admin.from('precificacao_variaveis')
+    .select('id, chave_servico, chave, rotulo, unidade, modo, ordem').eq('ativo', true).in('chave_servico', chaves || chavesSecoes())
+  if (error) return []
+  return ((data || []) as any[]).map((v) => ({ ...v, ordem: Number(v.ordem) || 0 }))
 }
 
 /** Seções já no projeto (inclusive as criadas pela tela de serviço avulso). */

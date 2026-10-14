@@ -11,6 +11,7 @@ import { TIPOS_REDE } from '@/lib/spinzap/perfil'
 import { fmtKwp, formatarMoedaBRL } from '@/lib/formatters'
 import { rotuloSecao, type FaixaSecao, type SecaoProposta } from '@/lib/propostas/secoes'
 import { SecoesProposta } from '@/components/propostas/SecoesProposta'
+import { PainelPrecificacao } from '@/components/precificacao/PainelPrecificacao'
 
 /**
  * "Montar proposta" direto da conversa (Kalebe 2026-10-13): escolhe a base
@@ -23,12 +24,16 @@ type Modo = EntradaPropostaRapida['modo']
 const inputCls = 'w-full bg-white/5 border border-white/10 focus:border-sol/50 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none'
 const num = (s: string) => Number(String(s).replace(/\./g, '').replace(',', '.')) || 0
 
-export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnviada }: {
+export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar, onEnviada }: {
   conversaId: string
   nomeCliente: string
+  ehAdmin?: boolean
   onFechar: () => void
   onEnviada: () => void
 }) {
+  // Kalebe 2026-10-14: admin edita a precificação sem sair da proposta
+  const [painel, setPainel] = useState(false)
+  const [versao, setVersao] = useState(0)
   const [carregando, setCarregando] = useState(true)
   const [modo, setModo] = useState<Modo>('consumo_kwh')
   const [valor, setValor] = useState('')
@@ -174,8 +179,17 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
             <h2 className="text-lg font-black text-white">💰 Montar proposta</h2>
             <p className="text-[11px] text-white/50">{nomeCliente} · mesmo motor de preço da proposta da Spin</p>
           </div>
-          <button onClick={onFechar} aria-label="Fechar" className="w-8 h-8 rounded-full bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center shrink-0">✕</button>
+          <div className="flex items-center gap-2 shrink-0">
+            {ehAdmin && (
+              <button type="button" onClick={() => setPainel(true)} className="px-3 py-1.5 rounded-full bg-sol text-white text-[11px] font-bold">⚙️ Precificação</button>
+            )}
+            <button onClick={onFechar} aria-label="Fechar" className="w-8 h-8 rounded-full bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center">✕</button>
+          </div>
         </div>
+        {painel && (
+          <PainelPrecificacao contexto="fotovoltaico" onFechar={() => setPainel(false)}
+            onAlterado={() => { setVersao((v) => v + 1); setResultado(null); setPdf(null) }} />
+        )}
 
         {carregando ? <p className="text-sm text-white/50">Carregando o que já sabemos do cliente…</p> : enviada ? (
           <div className="rounded-2xl border border-verde/45 p-4 space-y-2">
@@ -331,7 +345,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
 
             <div className="space-y-2 rounded-2xl border border-white/10 p-3">
               <span className="block text-[11px] font-bold text-white/60">Serviços adicionais</span>
-              <SecoesProposta faixas={faixas} secoes={secoes} onChange={setSecoes} />
+              <SecoesProposta faixas={faixas} secoes={secoes} onChange={setSecoes} versao={versao} />
             </div>
 
             {!o && (

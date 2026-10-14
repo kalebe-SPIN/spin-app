@@ -76,7 +76,7 @@ export async function gerarPdfDoOrcamento(admin: Admin, d: {
     kwp: o.kwp, qtd_placas: o.qtd_placas, placa_modelo: o.placa.modelo, placa_wp: o.placa.potencia_wp,
     inversor_modelo: o.inversor.modelo, inversor_kw: o.inversor.potencia_kw, inversor_qtd: o.inversor.qtd,
     extras: (o.extras || []).map((x) => ({ descricao: x.descricao, qtd: x.qtd })),
-    secoes: (o.secoes || []).map(rotuloSecao),
+    secoes: (o.secoes || []).map((s) => rotuloSecao(s)),
     geracao_kwh_mes: o.geracao_kwh_mes, consumo_kwh_mes: o.consumo_kwh_mes,
     pv_total: o.pv_total, formas_pagamento: o.formas_pagamento, premissas: o.premissas,
     empresa: (empresa as any) || {}, assinatura, logo,
