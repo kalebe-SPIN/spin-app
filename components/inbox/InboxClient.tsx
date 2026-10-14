@@ -8,6 +8,8 @@ import { MenuConversa, type GrupoMenu } from './MenuConversa'
 import { ModalPropostaRapida } from './ModalPropostaRapida'
 import { ModalAgendaBianca } from '@/components/chat/ModalAgendaBianca'
 import { SECOES } from '@/lib/spinzap/perfil'
+import { propostasDoContatoAction, abrirPropostaCategoriaAction } from '@/app/inbox/propostas-actions'
+import { CATEGORIAS_PROPOSTA, INFO_CATEGORIA, type CategoriaProposta } from '@/lib/propostas/categorias'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 import { AvatarContato } from '@/components/AvatarContato'
 import { AvisosDoCliente } from '@/components/bianca/AvisosDoCliente'
@@ -134,6 +136,8 @@ export function InboxClient({
   const [modalDemanda, setModalDemanda] = useState(false)
   const [modalAgenda, setModalAgenda] = useState(false)
   const [modalProposta, setModalProposta] = useState(false)
+  // Projetos do contato por categoria + categoria da etiqueta (Kalebe 2026-10-13)
+  const [propostas, setPropostas] = useState<Exclude<Awaited<ReturnType<typeof propostasDoContatoAction>>, { erro: string }> | null>(null)
   // Kalebe 2026-09-30: pesquisa de contato (nome ou telefone)
   const [busca, setBusca] = useState('')
   // Celular estilo WhatsApp: conversa em tela cheia abaixo do cabeçalho do portal
@@ -416,14 +420,51 @@ export function InboxClient({
   // cabeçalho e a linha do perfil; atalho pra montar a proposta por aqui
   const comPerfil = !!selecionada && !ehEquipe(selecionada) && !ehFornecedorPuro(selecionada)
   const perfilLead = usePerfilLead(comPerfil && selecionada ? selecionada.id : null)
+
+  // Propostas por categoria (Kalebe 2026-10-13): "Montar proposta" segue a
+  // etiqueta do cliente; cada categoria é um projeto do contato
+  const idSelecionada = comPerfil && selecionada ? selecionada.id : null
+  const produtoSelecionada = selecionada?.produto || null
+  async function carregarPropostas(id: string | null) {
+    if (!id) { setPropostas(null); return }
+    const r = await propostasDoContatoAction(id)
+    setPropostas('erro' in r ? null : r)
+  }
+  useEffect(() => { setPropostas(null); carregarPropostas(idSelecionada) // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idSelecionada, produtoSelecionada])
+  async function abrirCategoria(cat: CategoriaProposta) {
+    if (!selecionada) return
+    setErro(null)
+    if (cat === 'fotovoltaico') { setModalProposta(true); return }
+    // Abre a aba já no clique (o navegador bloqueia janela aberta depois de esperar o servidor)
+    const aba = window.open('', 'spin:projetos')
+    const r = await abrirPropostaCategoriaAction(selecionada.id, cat)
+    if ('erro' in r) { aba?.close(); setErro(r.erro); return }
+    if (aba) aba.location.href = r.url
+    else window.location.href = r.url
+    if (r.criado) setOkMsg(`Projeto novo de ${INFO_CATEGORIA[cat].rotulo.toLowerCase()} criado pra este contato.`)
+    carregarPropostas(selecionada.id)
+  }
+
   const gruposMenu: GrupoMenu[] = []
   if (selecionada) {
     const s = selecionada
     const projetoId = s.contato?.projeto_id || null
     const podeGerir = usuarioRole === 'admin' || !s.responsavel_id || s.responsavel_id === usuarioId
-    gruposMenu.push({ titulo: 'Proposta', itens: comPerfil ? [
-      { chave: 'proposta', icone: '💰', rotulo: 'Montar proposta', detalhe: 'Calcula, audita e envia o PDF por aqui', tom: 'destaque', onClick: () => { setErro(null); setModalProposta(true) } },
-      ...(projetoId ? [{ chave: 'proposta-completa', icone: '📑', rotulo: 'Proposta completa', detalhe: 'no projeto', href: `/projetos/${projetoId}/orcamento` }] : []),
+    const catEtiqueta = propostas?.etiqueta.categoria || null
+    const projetoDaCat = (c: CategoriaProposta) => propostas?.projetos.find((p) => p.aberto && p.categoria === c)
+    gruposMenu.push({ titulo: 'Propostas', itens: comPerfil ? [
+      ...(catEtiqueta ? [{
+        chave: 'proposta', icone: INFO_CATEGORIA[catEtiqueta].emoji, rotulo: `Montar proposta · ${INFO_CATEGORIA[catEtiqueta].rotulo}`,
+        detalhe: catEtiqueta === 'fotovoltaico' ? 'Calcula, audita e envia o PDF por aqui'
+          : projetoDaCat(catEtiqueta) ? `Abre o projeto ${projetoDaCat(catEtiqueta)!.codigo || ''}` : 'Cria o projeto e abre a proposta',
+        tom: 'destaque' as const, onClick: () => abrirCategoria(catEtiqueta),
+      }] : []),
+      ...CATEGORIAS_PROPOSTA.filter((c) => c.chave !== catEtiqueta).map((c) => ({
+        chave: `cat-${c.chave}`, icone: c.emoji, rotulo: c.rotulo,
+        detalhe: propostas ? (projetoDaCat(c.chave)?.codigo || 'novo projeto') : '…',
+        onClick: () => abrirCategoria(c.chave),
+      })),
     ] : [] })
     gruposMenu.push({ titulo: 'Cadastro do cliente', itens: ehEquipe(s) ? [] : [
       ...(comPerfil ? SECOES.map((sec) => {
@@ -439,8 +480,15 @@ export function InboxClient({
       ...(comPerfil && perfilLead.pendentes ? [{ chave: 'pendencias', icone: '⚠️', rotulo: 'Pendências', detalhe: String(perfilLead.pendentes), tom: 'perigo' as const, onClick: () => setSecaoPerfil('pendencias') }] : []),
       { chave: 'fornecedor', icone: '🏭', rotulo: s.contato?.fornecedor ? 'Fornecedor' : 'É fornecedor?', onClick: () => { setErro(null); setModalFornecedor(true) } },
     ] })
-    gruposMenu.push({ titulo: 'Projeto', itens: [
-      ...(projetoId ? [{ chave: 'abrir-projeto', icone: '📁', rotulo: 'Abrir projeto', href: `/projetos/${projetoId}` }] : []),
+    const projetosContato = propostas?.projetos || []
+    gruposMenu.push({ titulo: 'Projetos', itens: [
+      // Cada projeto do contato (um por categoria); antes de carregar, o principal
+      ...(projetosContato.length
+        ? projetosContato.slice(0, 6).map((p) => ({
+            chave: `proj-${p.id}`, icone: p.categoria ? INFO_CATEGORIA[p.categoria].emoji : '📁',
+            rotulo: p.codigo || 'Projeto', detalhe: p.status.replace(/_/g, ' '), href: `/projetos/${p.id}`,
+          }))
+        : projetoId ? [{ chave: 'abrir-projeto', icone: '📁', rotulo: 'Abrir projeto', href: `/projetos/${projetoId}` }] : []),
       ...((s.responsavel_id === usuarioId || usuarioRole === 'admin') ? [{
         chave: 'criar-projeto', icone: '➕', rotulo: projetoId ? 'Novo projeto' : 'Transformar em projeto', onClick: () => setModalProjeto(true),
       }] : []),

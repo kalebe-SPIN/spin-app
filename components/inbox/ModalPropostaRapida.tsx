@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import {
   dadosPropostaRapidaAction, calcularPropostaRapidaAction, gerarPdfPropostaRapidaAction, enviarPdfPropostaRapidaAction,
-  type EntradaPropostaRapida,
+  opcoesKitPropostaAction, type EntradaPropostaRapida,
 } from '@/app/inbox/proposta-actions'
-import type { OrcamentoLead } from '@/lib/spinzap/orcamento-lead'
+import { TIPOS_SISTEMA_FV, type OrcamentoLead, type TipoSistemaFv } from '@/lib/spinzap/orcamento-lead'
 import type { Auditoria } from '@/lib/spinzap/auditor-orcamento'
 import { TIPOS_REDE } from '@/lib/spinzap/perfil'
 import { fmtKwp, formatarMoedaBRL } from '@/lib/formatters'
@@ -42,6 +42,17 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
   const [ocupado, setOcupado] = useState<null | 'calculando' | 'gerando' | 'enviando'>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [enviada, setEnviada] = useState(false)
+  // Kalebe 2026-10-13: sistema, modelos e itens extras
+  type Opcoes = Exclude<Awaited<ReturnType<typeof opcoesKitPropostaAction>>, { erro: string }>
+  const [catalogo, setCatalogo] = useState<Opcoes | null>(null)
+  const [sistema, setSistema] = useState<TipoSistemaFv>('string')
+  const [placaId, setPlacaId] = useState('')
+  const [inversorId, setInversorId] = useState('')
+  const [inversorQtd, setInversorQtd] = useState('')
+  const [extras, setExtras] = useState<Array<{ produto_id: string; rotulo: string; qtd: number }>>([])
+  const [catExtra, setCatExtra] = useState('')
+  const [itemExtra, setItemExtra] = useState('')
+  const [qtdExtra, setQtdExtra] = useState('1')
 
   useEffect(() => {
     dadosPropostaRapidaAction(conversaId).then((r) => {
@@ -52,12 +63,39 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
       setFatura(r.fatura); setTarifaBase(r.tarifa_base); setProjetoId(r.projeto_id)
       if (r.fatura?.consumo_kwh) { setModo('consumo_kwh'); setValor(String(Math.round(r.fatura.consumo_kwh))) }
     })
+    opcoesKitPropostaAction().then((r) => { if (!('erro' in r)) setCatalogo(r) })
   }, [conversaId])
 
   // Qualquer mudança na entrada invalida o cálculo e o PDF
-  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, cidade])
+  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, cidade, sistema, placaId, inversorId, inversorQtd, extras])
+  // Trocou o sistema: o modelo escolhido não vale mais
+  useEffect(() => { setInversorId(''); setInversorQtd('') }, [sistema])
 
-  const entrada = (): EntradaPropostaRapida => ({ modo, valor: num(valor), inversor_kw: num(inversorKw) || null, tipo_rede: rede, cidade })
+  // Inversores do sistema escolhido que servem na rede (bifásica usa monofásico; micro é sempre mono)
+  const fasesRede = rede === 'trifasico' ? 'tri' : 'mono'
+  const inversoresDoSistema = (catalogo?.inversores[sistema] || []).filter((i) => sistema === 'micro' || !i.fases || i.fases === fasesRede)
+  const itensDaCategoria = catalogo?.extras.find((g) => g.categoria === catExtra)?.itens || []
+  function adicionarExtra() {
+    const it = itensDaCategoria.find((i) => i.id === itemExtra)
+    const q = Math.round(num(qtdExtra))
+    if (!it || !(q > 0)) return
+    setExtras((xs) => {
+      const ja = xs.find((x) => x.produto_id === it.id)
+      return ja ? xs.map((x) => (x.produto_id === it.id ? { ...x, qtd: x.qtd + q } : x)) : [...xs, { produto_id: it.id, rotulo: it.rotulo, qtd: q }]
+    })
+    setItemExtra(''); setQtdExtra('1')
+  }
+
+  const entrada = (): EntradaPropostaRapida => ({
+    modo, valor: num(valor), inversor_kw: num(inversorKw) || null, tipo_rede: rede, cidade,
+    opcoes: {
+      tipo_sistema: sistema,
+      placa_id: placaId || null,
+      inversor_id: inversorId || null,
+      inversor_qtd: sistema !== 'micro' && num(inversorQtd) > 0 ? Math.round(num(inversorQtd)) : null,
+      extras: extras.map((x) => ({ produto_id: x.produto_id, qtd: x.qtd })),
+    },
+  })
 
   async function calcular() {
     setErro(null); setOcupado('calculando')
@@ -169,6 +207,80 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
               )}
             </div>
 
+            {/* Kalebe 2026-10-13: sistema, modelos e itens extras */}
+            <div className="space-y-3 rounded-2xl border border-white/10 p-3">
+              <div>
+                <span className="block text-[11px] font-bold text-white/60 mb-1">Sistema</span>
+                <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/10">
+                  {TIPOS_SISTEMA_FV.map((t) => (
+                    <button key={t.valor} onClick={() => setSistema(t.valor)}
+                      className={`py-2 rounded-lg text-xs font-bold ${sistema === t.valor ? 'bg-weg-azul text-white' : 'text-white/60 hover:text-white'}`}>
+                      {t.rotulo}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Potência em ordem crescente (a ordem carrega sentido) */}
+                <label className="block">
+                  <span className="block text-[11px] font-bold text-white/60 mb-1">Placa</span>
+                  <select value={placaId} onChange={(e) => setPlacaId(e.target.value)} className={inputCls} disabled={!catalogo}>
+                    <option value="" className="bg-noite">Automático (maior potência)</option>
+                    {(catalogo?.placas || []).map((p) => <option key={p.id} value={p.id} className="bg-noite">{p.rotulo}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block text-[11px] font-bold text-white/60 mb-1">{sistema === 'micro' ? 'Microinversor' : 'Inversor'}</span>
+                  <select value={inversorId} onChange={(e) => setInversorId(e.target.value)} className={inputCls} disabled={!catalogo}>
+                    <option value="" className="bg-noite">Automático (recomendado)</option>
+                    {inversoresDoSistema.map((i) => <option key={i.id} value={i.id} className="bg-noite">{i.rotulo}</option>)}
+                  </select>
+                </label>
+              </div>
+              {sistema !== 'micro' && inversorId && (
+                <label className="block max-w-[200px]">
+                  <span className="block text-[11px] font-bold text-white/60 mb-1">Quantidade de inversores</span>
+                  <input value={inversorQtd} onChange={(e) => setInversorQtd(e.target.value)} inputMode="numeric" placeholder="1" className={inputCls} />
+                </label>
+              )}
+              {sistema === 'micro' && (
+                <p className="text-[11px] text-white/45">A quantidade de microinversores sai das placas (placas por micro) e fica múltipla das fases da rede, balanceada.</p>
+              )}
+              {catalogo && inversoresDoSistema.length === 0 && (
+                <p className="text-[11px] text-coral">Nenhum {sistema === 'micro' ? 'microinversor' : sistema === 'hibrido' ? 'inversor híbrido' : 'inversor string'} disponível pra essa rede no catálogo.</p>
+              )}
+
+              <div>
+                <span className="block text-[11px] font-bold text-white/60 mb-1">Itens extras</span>
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.4fr_64px_auto] gap-2">
+                  <select value={catExtra} onChange={(e) => { setCatExtra(e.target.value); setItemExtra('') }} className={inputCls} disabled={!catalogo}>
+                    <option value="" className="bg-noite">Categoria…</option>
+                    {(catalogo?.extras || []).map((g) => <option key={g.categoria} value={g.categoria} className="bg-noite">{g.rotulo}</option>)}
+                  </select>
+                  <select value={itemExtra} onChange={(e) => setItemExtra(e.target.value)} className={inputCls} disabled={!catExtra}>
+                    <option value="" className="bg-noite">{catExtra ? 'Item…' : 'Escolha a categoria'}</option>
+                    {itensDaCategoria.map((i) => <option key={i.id} value={i.id} className="bg-noite">{i.rotulo}</option>)}
+                  </select>
+                  <input value={qtdExtra} onChange={(e) => setQtdExtra(e.target.value)} inputMode="numeric" aria-label="Quantidade" className={inputCls} />
+                  <button onClick={adicionarExtra} disabled={!itemExtra} className="px-4 py-2.5 rounded-xl bg-weg-azul text-white text-sm font-bold disabled:opacity-40">Adicionar</button>
+                </div>
+                {extras.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {extras.map((x) => (
+                      <li key={x.produto_id} className="flex items-center justify-between gap-2 text-[12px] text-white/80 border border-white/10 rounded-lg px-2.5 py-1.5">
+                        <span className="truncate">{x.rotulo}</span>
+                        <span className="flex items-center gap-2 shrink-0">
+                          <span className="font-mono text-white/60">{x.qtd} un.</span>
+                          <button onClick={() => setExtras((xs) => xs.filter((y) => y.produto_id !== x.produto_id))} aria-label="Tirar"
+                            className="w-6 h-6 rounded-full bg-white/[0.06] text-white/60 hover:text-white">✕</button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
             {!o && (
               <button onClick={calcular} disabled={!!ocupado || !(num(valor) > 0)}
                 className="w-full py-3 rounded-xl bg-verde text-white font-bold text-sm disabled:opacity-40">
@@ -191,7 +303,10 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px]">
                     <span className="text-white/50">Placas</span><span className="text-white/85 text-right">{o.qtd_placas} × {o.placa.modelo} ({o.placa.potencia_wp} Wp)</span>
-                    <span className="text-white/50">Inversor</span><span className="text-white/85 text-right">{o.inversor.modelo} ({String(o.inversor.potencia_kw).replace('.', ',')} kW)</span>
+                    <span className="text-white/50">{o.tipo_sistema === 'micro' ? 'Microinversores' : 'Inversor'}</span><span className="text-white/85 text-right">{o.inversor.qtd > 1 ? `${o.inversor.qtd} × ` : ''}{o.inversor.modelo} ({String(o.inversor.potencia_kw).replace('.', ',')} kW)</span>
+                    {o.extras.map((x) => (
+                      <Fragment key={x.produto_id}><span className="text-white/50 truncate">{x.descricao}</span><span className="text-white/85 text-right">{x.qtd} un.</span></Fragment>
+                    ))}
                     <span className="text-white/50">Geração estimada</span><span className="text-white/85 text-right">{o.geracao_kwh_mes.toLocaleString('pt-BR')} kWh/mês</span>
                     {o.consumo_kwh_mes ? <><span className="text-white/50">Consumo considerado</span><span className="text-white/85 text-right">{Math.round(o.consumo_kwh_mes).toLocaleString('pt-BR')} kWh/mês</span></> : null}
                     <span className="text-white/50">PIX ({o.formas_pagamento.a_vista_pix.desconto_pct}% desc.)</span><span className="text-white/85 text-right">{formatarMoedaBRL(o.formas_pagamento.a_vista_pix.valor)}</span>

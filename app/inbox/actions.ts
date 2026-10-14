@@ -1327,6 +1327,8 @@ async function garantirCanalDoProjeto(
     .from('wa_contatos')
     .update({ projeto_id })
     .eq('id', contato.id)
+  // Kalebe 2026-10-13: vários projetos por contato (mig 153) — sem a coluna, ignora
+  await admin.from('projetos').update({ wa_contato_id: contato.id }).eq('id', projeto_id).is('wa_contato_id', null)
 
   const conversa = await findOrCreateConversaAtiva(admin, contato.id, {
     status_inicial: 'em_atendimento',

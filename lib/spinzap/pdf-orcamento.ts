@@ -19,6 +19,10 @@ export type DadosPdfOrcamento = {
   placa_wp: number
   inversor_modelo: string
   inversor_kw: number
+  /** Quantidade de inversores (micro: vários) */
+  inversor_qtd?: number
+  /** Itens extras incluídos (só descrição e quantidade — preço só no total) */
+  extras?: Array<{ descricao: string; qtd: number }>
   geracao_kwh_mes: number
   consumo_kwh_mes?: number | null
   pv_total: number
@@ -90,11 +94,17 @@ export function gerarPdfOrcamento(d: DadosPdfOrcamento): ArrayBuffer {
   titulo('Sistema proposto')
   linha('Potência', `${num(d.kwp, 2)} kWp`)
   linha('Placas', `${d.qtd_placas} × ${d.placa_modelo} (${num(d.placa_wp)} Wp)`)
-  linha('Inversor', `${d.inversor_modelo} (${num(d.inversor_kw, 1)} kW)`)
+  linha('Inversor', `${(d.inversor_qtd || 1) > 1 ? `${d.inversor_qtd} × ` : ''}${d.inversor_modelo} (${num(d.inversor_kw, 1)} kW)`)
   linha('Geração estimada', `${num(d.geracao_kwh_mes)} kWh/mês`)
   if (d.consumo_kwh_mes) linha('Consumo considerado', `${num(d.consumo_kwh_mes)} kWh/mês`)
   if (d.cidade) linha('Local', d.cidade)
   y += 4
+
+  if (d.extras?.length) {
+    titulo('Itens inclusos')
+    for (const x of d.extras) linha(x.descricao.length > 70 ? `${x.descricao.slice(0, 69)}…` : x.descricao, `${x.qtd} un.`)
+    y += 4
+  }
 
   titulo('Investimento')
   linha('Valor total', reais(d.pv_total), true)
