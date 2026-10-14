@@ -233,7 +233,8 @@ export async function opcoesKitPropostaAction(): Promise<{
     if (p.categoria === 'inversor' && p.subcategoria !== 'otimizador') continue
     const chave = p.categoria === 'inversor' ? 'otimizador' : p.categoria
     if (!grupos.has(chave)) grupos.set(chave, [])
-    grupos.get(chave)!.push({ id: p.id, rotulo: p.descricao || p.modelo, destino: destinoDoExtra(p) })
+    // Sem estoque continua escolhível (como no kit manual), mas avisado
+    grupos.get(chave)!.push({ id: p.id, rotulo: `${p.descricao || p.modelo}${p.disponivel ? '' : ' · sem estoque'}`, destino: destinoDoExtra(p) })
   }
   const extras = Array.from(grupos.entries())
     .map(([categoria, itens]) => ({
