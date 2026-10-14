@@ -8,10 +8,11 @@ import { MenuConversa, type GrupoMenu } from './MenuConversa'
 import { ModalPropostaRapida } from './ModalPropostaRapida'
 import { ModalPropostaRecarga } from './ModalPropostaRecarga'
 import { TextoFormatado } from '@/components/chat/TextoFormatado'
+import { SeletorCidade } from './SeletorCidade'
 import { ModalAgendaBianca } from '@/components/chat/ModalAgendaBianca'
 import { SECOES } from '@/lib/spinzap/perfil'
 import { propostasDoContatoAction, abrirPropostaCategoriaAction } from '@/app/inbox/propostas-actions'
-import { CATEGORIAS_PROPOSTA, INFO_CATEGORIA, type CategoriaProposta } from '@/lib/propostas/categorias'
+import { CATEGORIAS_PROPOSTA, INFO_CATEGORIA, categoriaDoTipo, type CategoriaProposta } from '@/lib/propostas/categorias'
 import { ComposerWhatsApp } from '@/components/chat/ComposerWhatsApp'
 import { AvatarContato } from '@/components/AvatarContato'
 import { AvisosDoCliente } from '@/components/bianca/AvisosDoCliente'
@@ -37,7 +38,7 @@ import {
   laisAssumirAction,
   laisDevolverAction,
 } from '@/app/inbox/actions'
-import { ETAPAS, INFO_ETAPA, PERFIS, PRODUTOS, TIPOS_FORNECEDOR, infoProduto, rotuloTiposFornecedor, type Etapa } from '@/lib/spinzap/comum'
+import { ETAPAS, INFO_ETAPA, TIPOS_FORNECEDOR, infoProduto, rotuloTiposFornecedor, type Etapa } from '@/lib/spinzap/comum'
 import { cadastrarFornecedorDaConversaAction, desvincularFornecedorDaConversaAction, listarFornecedoresAction } from '@/app/inbox/fornecedor-actions'
 
 type Conversa = {
@@ -126,7 +127,7 @@ export function InboxClient({
   const [verFiltros, setVerFiltros] = useState(false)
   const [fPeriodo, setFPeriodo] = useState<'todos' | 'hoje' | '7d' | '30d' | 'mes' | 'mes_passado'>('todos')
   const [fCidade, setFCidade] = useState('')
-  const [fPerfil, setFPerfil] = useState('')
+  // Kalebe 2026-10-14: filtro só pelas 4 categorias principais
   const [fProduto, setFProduto] = useState('')
   const [fContato, setFContato] = useState<'' | 'clientes' | 'equipe' | 'fornecedores' | 'forn_equipamento' | 'forn_produtos' | 'forn_servico'>('')
   const [modalFornecedor, setModalFornecedor] = useState(false)
@@ -349,8 +350,7 @@ export function InboxClient({
     if (fContato === 'fornecedores' && !ehFornecedor(c)) return false
     if (fContato.startsWith('forn_') && !(c.contato?.fornecedor?.tipos || []).includes(fContato.slice(5))) return false
     if (fCidade && semAcento(c.cidade || '') !== semAcento(fCidade)) return false
-    if (fProduto && c.produto !== fProduto) return false
-    if (fPerfil && infoProduto(c.produto)?.grupo !== fPerfil) return false
+    if (fProduto && categoriaDoTipo(c.produto) !== fProduto) return false
     return true
   }
   const base = conversas.filter(passaFiltros)
@@ -379,8 +379,7 @@ export function InboxClient({
   ].filter((g) => g.itens.length > 0)
   const cidadesDaLista = Array.from(new Set(conversas.map((c) => (c.cidade || '').trim()).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, 'pt-BR'))
-  const produtosDoPerfil = fPerfil ? PRODUTOS.filter((p) => p.grupo === fPerfil) : PRODUTOS
-  const filtrosAtivos = [fPeriodo !== 'todos', !!fCidade, !!fPerfil, !!fProduto, !!fContato].filter(Boolean).length
+  const filtrosAtivos = [fPeriodo !== 'todos', !!fCidade, !!fProduto, !!fContato].filter(Boolean).length
   const chipsSetor = [
     { chave: 'todos', rotulo: 'Todos', qtd: abertas.length },
     { chave: 'lais', rotulo: '🤖 Laís', qtd: qtdSetor('lais') },
@@ -653,17 +652,10 @@ export function InboxClient({
                 </select>
               </label>
               <label className="block">
-                <span className="block text-[10px] font-bold text-white/50 mb-0.5">Perfil de compra</span>
-                <select value={fPerfil} onChange={(e) => { setFPerfil(e.target.value); setFProduto('') }} className={selCls}>
-                  <option value="" className="bg-noite">Todos</option>
-                  {PERFIS.map((p) => <option key={p.valor} value={p.valor} className="bg-noite">{p.rotulo}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="block text-[10px] font-bold text-white/50 mb-0.5">Produto/serviço</span>
+                <span className="block text-[10px] font-bold text-white/50 mb-0.5">Categoria</span>
                 <select value={fProduto} onChange={(e) => setFProduto(e.target.value)} className={selCls}>
-                  <option value="" className="bg-noite">Todos</option>
-                  {produtosDoPerfil.map((p) => <option key={p.valor} value={p.valor} className="bg-noite">{p.rotulo}</option>)}
+                  <option value="" className="bg-noite">Todas</option>
+                  {CATEGORIAS_PROPOSTA.map((c) => <option key={c.chave} value={c.chave} className="bg-noite">{c.emoji} {c.rotulo}</option>)}
                 </select>
               </label>
               <label className="block col-span-2">
@@ -680,7 +672,7 @@ export function InboxClient({
               </label>
               {filtrosAtivos > 0 && (
                 <button
-                  onClick={() => { setFPeriodo('todos'); setFCidade(''); setFPerfil(''); setFProduto(''); setFContato('') }}
+                  onClick={() => { setFPeriodo('todos'); setFCidade(''); setFProduto(''); setFContato('') }}
                   className="col-span-2 text-[11px] text-coral/80 hover:text-coral font-bold py-1"
                 >
                   ✕ Limpar filtros
@@ -1298,11 +1290,11 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
   onFornecedor: () => void
 }) {
   const [editando, setEditando] = useState<null | 'produto' | 'cidade'>(null)
-  const [cidade, setCidade] = useState(c.cidade || '')
-  const [uf, setUf] = useState(c.uf || '')
   const etapa = (c.etapa || 'atendimento_lais') as Etapa
   const info = INFO_ETAPA[etapa] || ETAPAS[0]
   const produto = infoProduto(c.produto)
+  const catTipo = categoriaDoTipo(c.produto)
+  const catEtiqueta = catTipo && catTipo !== 'secao' ? catTipo : null
   const entrada = c.contato?.criado_em || c.criada_em
   const fornec = c.contato?.fornecedor || null
   const chip = 'px-2 py-0.5 rounded-full border text-[11px] font-bold'
@@ -1330,41 +1322,40 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
         {ETAPAS.map((e) => <option key={e.chave} value={e.chave} className="bg-noite text-white">{e.emoji} {e.rotulo}</option>)}
       </select>
 
+      {/* Kalebe 2026-10-14: só as 4 categorias principais (fotovoltaico,
+          recarga, BESS, O&M). Subtipo que a Laís marcou (ex.: híbrido) é
+          mantido enquanto a categoria não muda. Ordem = a das propostas. */}
       {editando === 'produto' ? (
         <select
           autoFocus
-          value={c.produto || ''}
-          onChange={(e) => { onEtiquetas({ produto: e.target.value || null }); setEditando(null) }}
+          value={catEtiqueta || ''}
+          onChange={(e) => {
+            const nova = e.target.value as CategoriaProposta | ''
+            if (nova !== catEtiqueta) onEtiquetas({ produto: nova ? INFO_CATEGORIA[nova].tipoPadrao : null })
+            setEditando(null)
+          }}
           onBlur={() => setEditando(null)}
           className={`${chip} bg-white/5 border-white/25 text-white focus:outline-none`}
         >
-          <option value="" className="bg-noite">— sem produto —</option>
-          {PRODUTOS.map((p) => <option key={p.valor} value={p.valor} className="bg-noite">{p.rotulo}</option>)}
+          <option value="" className="bg-noite">— sem categoria —</option>
+          {CATEGORIAS_PROPOSTA.map((k) => <option key={k.chave} value={k.chave} className="bg-noite">{k.emoji} {k.rotulo}</option>)}
         </select>
       ) : (
-        <button data-etiqueta onClick={() => setEditando('produto')} title="Produto/serviço — clique pra trocar"
-          className={`${chip} ${produto ? 'bg-sol/10 border-sol/35 text-sol' : 'bg-white/[0.03] border-dashed border-white/20 text-white/45'} hover:brightness-125`}>
-          {produto ? `${produto.emoji} ${produto.rotulo}` : '＋ Produto'}
+        <button data-etiqueta onClick={() => setEditando('produto')} title={`Categoria${produto ? ` (${produto.rotulo})` : ''} — clique pra trocar`}
+          className={`${chip} ${catEtiqueta ? 'bg-sol/10 border-sol/35 text-sol' : 'bg-white/[0.03] border-dashed border-white/20 text-white/45'} hover:brightness-125`}>
+          {catEtiqueta ? `${INFO_CATEGORIA[catEtiqueta].emoji} ${INFO_CATEGORIA[catEtiqueta].rotulo}` : '＋ Categoria'}
         </button>
-      )}
-      {produto?.perfil && (
-        <span className={`${chip} bg-white/[0.04] border-white/15 text-white/60`} title="Perfil de compra">{produto.perfil}</span>
       )}
       </>)}
 
       {editando === 'cidade' ? (
-        <form
-          onSubmit={(e) => { e.preventDefault(); onEtiquetas({ cidade, uf }); setEditando(null) }}
-          className="flex items-center gap-1"
-        >
-          <input autoFocus value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Cidade"
-            className="w-32 px-2 py-0.5 rounded-full bg-white/5 border border-white/25 text-[11px] text-white focus:outline-none" />
-          <input value={uf} onChange={(e) => setUf(e.target.value.toUpperCase().slice(0, 2))} placeholder="UF"
-            className="w-10 px-2 py-0.5 rounded-full bg-white/5 border border-white/25 text-[11px] text-white uppercase focus:outline-none" />
-          <button type="submit" className="px-2 py-0.5 rounded-full bg-verde/20 border border-verde/40 text-verde text-[11px] font-bold">OK</button>
-          <button type="button" onClick={() => { setCidade(c.cidade || ''); setUf(c.uf || ''); setEditando(null) }}
-            className="px-1.5 text-white/50 text-[11px]">✕</button>
-        </form>
+        // Kalebe 2026-10-14: menu suspenso do cadastro de cidades + cadastrar nova
+        <SeletorCidade
+          cidadeAtual={c.cidade || null}
+          ufAtual={c.uf || null}
+          onEscolher={(x) => { onEtiquetas({ cidade: x.cidade, uf: x.uf }); setEditando(null) }}
+          onCancelar={() => setEditando(null)}
+        />
       ) : (
         <button data-etiqueta onClick={() => setEditando('cidade')} title="Cidade — clique pra trocar"
           className={`${chip} ${c.cidade ? 'bg-white/[0.04] border-white/15 text-white/75' : 'bg-white/[0.03] border-dashed border-white/20 text-white/45'} hover:brightness-125`}>

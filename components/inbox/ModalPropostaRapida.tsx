@@ -9,6 +9,8 @@ import { TIPOS_SISTEMA_FV, type OrcamentoLead, type TipoSistemaFv } from '@/lib/
 import type { Auditoria } from '@/lib/spinzap/auditor-orcamento'
 import { TIPOS_REDE } from '@/lib/spinzap/perfil'
 import { fmtKwp, formatarMoedaBRL } from '@/lib/formatters'
+import { rotuloSecao, type FaixaSecao, type SecaoProposta } from '@/lib/propostas/secoes'
+import { SecoesProposta } from '@/components/propostas/SecoesProposta'
 
 /**
  * "Montar proposta" direto da conversa (Kalebe 2026-10-13): escolhe a base
@@ -53,11 +55,15 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
   const [catExtra, setCatExtra] = useState('')
   const [itemExtra, setItemExtra] = useState('')
   const [qtdExtra, setQtdExtra] = useState('1')
+  // Seções incorporadas (aluguel, alvenaria, elétrica predial…) — Kalebe 2026-10-13
+  const [faixas, setFaixas] = useState<FaixaSecao[]>([])
+  const [secoes, setSecoes] = useState<SecaoProposta[]>([])
 
   useEffect(() => {
     dadosPropostaRapidaAction(conversaId).then((r) => {
       setCarregando(false)
       if ('erro' in r) { setErro(r.erro); return }
+      setFaixas(r.faixas || []); setSecoes(r.secoes || [])
       if (r.tipo_rede && ['monofasico', 'bifasico', 'trifasico'].includes(r.tipo_rede)) setRede(r.tipo_rede as any)
       setCidade(r.cidade || '')
       setFatura(r.fatura); setTarifaBase(r.tarifa_base); setProjetoId(r.projeto_id)
@@ -67,7 +73,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
   }, [conversaId])
 
   // Qualquer mudança na entrada invalida o cálculo e o PDF
-  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, cidade, sistema, placaId, inversorId, inversorQtd, extras])
+  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes])
   // Trocou o sistema: o modelo escolhido não vale mais
   useEffect(() => { setInversorId(''); setInversorQtd('') }, [sistema])
 
@@ -95,6 +101,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
       inversor_qtd: sistema !== 'micro' && num(inversorQtd) > 0 ? Math.round(num(inversorQtd)) : null,
       extras: extras.map((x) => ({ produto_id: x.produto_id, qtd: x.qtd })),
     },
+    secoes,
   })
 
   async function calcular() {
@@ -281,6 +288,11 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
               </div>
             </div>
 
+            <div className="space-y-2 rounded-2xl border border-white/10 p-3">
+              <span className="block text-[11px] font-bold text-white/60">Serviços adicionais</span>
+              <SecoesProposta faixas={faixas} secoes={secoes} onChange={setSecoes} />
+            </div>
+
             {!o && (
               <button onClick={calcular} disabled={!!ocupado || !(num(valor) > 0)}
                 className="w-full py-3 rounded-xl bg-verde text-white font-bold text-sm disabled:opacity-40">
@@ -307,6 +319,14 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, onFechar, onEnvia
                     {o.extras.map((x) => (
                       <Fragment key={x.produto_id}><span className="text-white/50 truncate">{x.descricao}</span><span className="text-white/85 text-right">{x.qtd} un.</span></Fragment>
                     ))}
+                    {(o.secoes || []).length > 0 && (
+                      <>
+                        <span className="text-white/50">Sistema fotovoltaico</span><span className="text-white/85 text-right">{formatarMoedaBRL(o.pv_sistema || 0)}</span>
+                        {(o.secoes || []).map((s, i) => (
+                          <Fragment key={`sec-${i}`}><span className="text-white/50 truncate">{rotuloSecao(s).titulo}</span><span className="text-white/85 text-right">{formatarMoedaBRL(s.valor)}</span></Fragment>
+                        ))}
+                      </>
+                    )}
                     <span className="text-white/50">Geração estimada</span><span className="text-white/85 text-right">{o.geracao_kwh_mes.toLocaleString('pt-BR')} kWh/mês</span>
                     {o.consumo_kwh_mes ? <><span className="text-white/50">Consumo considerado</span><span className="text-white/85 text-right">{Math.round(o.consumo_kwh_mes).toLocaleString('pt-BR')} kWh/mês</span></> : null}
                     <span className="text-white/50">PIX ({o.formas_pagamento.a_vista_pix.desconto_pct}% desc.)</span><span className="text-white/85 text-right">{formatarMoedaBRL(o.formas_pagamento.a_vista_pix.valor)}</span>

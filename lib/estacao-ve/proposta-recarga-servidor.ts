@@ -6,6 +6,8 @@ import {
   type EntradaRecarga, type ParametrosRecarga, type PropostaRecarga, type TipoEquipamentoRecarga,
 } from './proposta-recarga'
 import { gerarPdfPropostaRecarga } from './pdf-proposta-recarga'
+import { carregarFaixasSecoes, salvarSecoesNoProjeto, secoesDoProjeto } from '@/lib/propostas/secoes-servidor'
+import type { FaixaSecao, SecaoProposta } from '@/lib/propostas/secoes'
 
 /**
  * Lado servidor da proposta de estação de recarga (Kalebe 2026-10-14):
@@ -38,6 +40,9 @@ export type DadosRecarga = {
   eh_admin: boolean
   margem_padrao_pct: number | null
   comissao_padrao_pct: number | null
+  /** Tabela de faixas das seções (aluguel, alvenaria…) e as seções já no projeto */
+  faixas: FaixaSecao[]
+  secoes: SecaoProposta[]
 }
 
 export async function carregarParametrosRecarga(admin: Admin): Promise<{ params: ParametrosRecarga; record: ParametrosVigentes }> {
@@ -142,7 +147,9 @@ export async function dadosBaseRecarga(admin: Admin, a: {
   uf: string | null
   ehAdmin: boolean
 }): Promise<DadosRecarga> {
-  const [{ params }, equipamentos] = await Promise.all([carregarParametrosRecarga(admin), carregarEquipamentosRecarga(admin)])
+  const [{ params }, equipamentos, faixas, secoes] = await Promise.all([
+    carregarParametrosRecarga(admin), carregarEquipamentosRecarga(admin), carregarFaixasSecoes(admin), secoesDoProjeto(admin, a.projetoId),
+  ])
   let salva: EntradaRecarga | null = null, url: string | null = null, codigo: string | null = null
   let cidade = a.cidade, uf = a.uf
   if (a.projetoId) {
@@ -168,6 +175,9 @@ export async function dadosBaseRecarga(admin: Admin, a: {
     eh_admin: a.ehAdmin,
     margem_padrao_pct: a.ehAdmin ? params.margem_pct : null,
     comissao_padrao_pct: a.ehAdmin ? params.comissao_pct : null,
+    faixas,
+    // As seções do projeto valem (podem ter sido mexidas na tela do serviço avulso)
+    secoes,
   }
 }
 
@@ -250,7 +260,7 @@ export async function gerarPropostaRecarga(admin: Admin, a: {
   const [assinatura, logo] = await Promise.all([
     imagemComoDataUrl((empresa as any)?.rt_assinatura_url), imagemComoDataUrl((empresa as any)?.logo_url),
   ])
-  const formas = calcularFormasPagamento(proposta.pv_total, record)
+  const formas = calcularFormasPagamento(proposta.total_geral, record)
   const pdf = gerarPdfPropostaRecarga({
     codigo_projeto: projeto.codigo || null,
     cliente_nome: nome || 'Cliente',
@@ -306,19 +316,24 @@ export async function gerarPropostaRecarga(admin: Admin, a: {
     impostos_r: p.imposto,
     potencia_efetiva_kw: p.potencia_total_kw,
     preco_final_cliente: p.pv_total,
+    total_secoes: p.total_secoes,
+    total_com_secoes: p.total_geral,
     url_pdf_proposta_ve: url,
     gerado_em: new Date().toISOString(),
   }
   await admin.from('projetos').update({ ve_recarga_selecionada: selecao }).eq('id', a.projetoId)
+  // Item da estação = só a estação; cada seção vira o próprio item (soma no consolidado)
   await admin.from('projeto_itens').update({ valor_estimado: p.pv_total })
     .eq('projeto_id', a.projetoId).eq('tipo', 've_recarga').neq('status', 'removido')
+  await salvarSecoesNoProjeto(admin, a.projetoId, a.entrada.secoes || [], a.usuarioId)
   await admin.from('projeto_propostas_historico').insert({
-    projeto_id: a.projetoId, url_pdf: url, pv_total: p.pv_total, potencia_ca_kw: p.potencia_total_kw,
+    projeto_id: a.projetoId, url_pdf: url, pv_total: p.total_geral, potencia_ca_kw: p.potencia_total_kw,
     modo_composicao: 'estacao_recarga', gerado_por: a.usuarioId,
     memoria_calculo: {
       margem_pct: p.margem_pct, comissao_pct: p.comissao_pct, impostos_pct: p.imposto_pct,
       equipamentos: p.subtotal_equipamentos, projeto: p.subtotal_projeto, materiais: p.subtotal_materiais,
       servicos_execucao: p.subtotal_servicos_execucao, custo_total: p.custo_total, desconto_max: p.desconto_max,
+      estacao: p.pv_total, secoes: p.total_secoes,
     },
   })
 

@@ -7,7 +7,7 @@ export type TipoItem =
   | 'fv_ongrid' | 'fv_hibrido' | 'fv_zero_grid' | 'fv_offgrid'
   | 'bess' | 've_recarga'
   | 'srv_limpeza' | 'srv_manutencao' | 'srv_eletrica_predial' | 'srv_padrao_entrada'
-  | 'srv_laudo_tecnico' | 'srv_analise_rede'
+  | 'srv_laudo_tecnico' | 'srv_analise_rede' | 'srv_projeto_tecnico'
   | 'srv_retirada_recolocacao' | 'srv_instalacao_placas'
   | 'srv_alvenaria' | 'srv_serralheria' | 'srv_carpintaria'
   | 'aluguel_maquinas' | 'aluguel_equipamentos'
@@ -117,6 +117,14 @@ export const TIPOS_ITEM: InfoTipo[] = [
     chave: 'srv_analise_rede', emoji: '📊🔌', label: 'Análise de rede', grupo: 'servico',
     descricao: 'Medição qualidade de energia (harmônicos, tensão, THD) e diagnóstico da instalação.',
     exemploUso: 'Cliente com queima recorrente, análise antes de FV grande',
+    disponivel: true,
+    fluxoPassos: 3,
+  },
+  {
+    // Kalebe 2026-10-14: "projetos técnicos" virou categoria principal de proposta
+    chave: 'srv_projeto_tecnico', emoji: '📐', label: 'Projeto técnico', grupo: 'servico',
+    descricao: 'Projeto elétrico, diagramas, ART e homologação junto à concessionária.',
+    exemploUso: 'Projeto elétrico de obra, homologação de sistema de terceiros, adequação',
     disponivel: true,
     fluxoPassos: 3,
   },
@@ -255,6 +263,7 @@ export const PASSOS_POR_TIPO: Record<TipoItem, PassoWorkflow[]> = {
   srv_padrao_entrada:     ['cliente', 'fatura', 'padrao', 'orcamento'],
   srv_laudo_tecnico:      ['cliente', 'servico_config', 'orcamento'],
   srv_analise_rede:       ['cliente', 'servico_config', 'orcamento'],
+  srv_projeto_tecnico:    ['cliente', 'servico_config', 'orcamento'],
   // Kalebe 2026-09-01: telhado agora vive no perfil do cliente
   srv_retirada_recolocacao: ['cliente', 'servico_config', 'orcamento'],
   srv_instalacao_placas:    ['cliente', 'padrao', 'servico_config', 'orcamento'],

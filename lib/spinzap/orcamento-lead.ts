@@ -1,6 +1,7 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { PARAMETROS_DEFAULT, TIPOS_REDE_INFO, fatorSolPorCidade, type TipoRede } from '@/lib/orcamento-rapido/tipos'
-import { calcularProposta, paramsToRecord, type FormasPagamento, type ItemLista } from '@/lib/precificacao/calcular'
+import { calcularFormasPagamento, calcularProposta, paramsToRecord, type FormasPagamento, type ItemLista } from '@/lib/precificacao/calcular'
+import { ehTipoSecao, totalSecoes, type SecaoProposta } from '@/lib/propostas/secoes'
 
 /**
  * Orçamento fotovoltaico montado pela Laís (Kalebe 2026-10-10) e pelo
@@ -64,6 +65,23 @@ export type OrcamentoLead = {
   /** Interno (dupla visão): não vai pro cliente */
   interno: { margem_pct: number; desconto_max_negociacao: number }
   premissas: string[]
+  /** Seções incorporadas (aluguel, alvenaria…) — já somadas em pv_total */
+  secoes?: SecaoProposta[]
+  /** Só o sistema fotovoltaico, sem as seções */
+  pv_sistema?: number
+}
+
+/**
+ * Soma as seções incorporadas (valor ao cliente) ao orçamento e refaz as
+ * formas de pagamento sobre o total (Kalebe 2026-10-13: seções dentro das propostas).
+ */
+export async function aplicarSecoes(admin: Admin, orc: OrcamentoLead, secoes?: SecaoProposta[] | null): Promise<OrcamentoLead> {
+  const validas = (secoes || []).filter((s) => ehTipoSecao(s.tipo) && Number(s.valor) > 0)
+  if (!validas.length) return { ...orc, secoes: [], pv_sistema: orc.pv_total }
+  const { data } = await admin.from('parametros_precificacao')
+    .select('chave, valor_numero, valor_json, unidade').is('vigente_ate', null).eq('ativo', true)
+  const total = Math.round((orc.pv_total + totalSecoes(validas)) * 100) / 100
+  return { ...orc, secoes: validas, pv_sistema: orc.pv_total, pv_total: total, formas_pagamento: calcularFormasPagamento(total, paramsToRecord(data || [])) }
 }
 
 /** Perfil (monofásico/bifásico/trifásico) → rede do catálogo. SC: trifásico 220/380 V. */

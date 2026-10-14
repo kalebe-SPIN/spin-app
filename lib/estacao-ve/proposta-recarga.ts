@@ -1,4 +1,5 @@
 import { deduzirFasesPorPotencia, type FasesRede } from './montar-lista-ca'
+import { totalSecoes, type SecaoProposta } from '@/lib/propostas/secoes'
 
 /**
  * Proposta da estação de recarga (Kalebe 2026-10-14) — composição na ordem
@@ -50,6 +51,8 @@ export type EntradaRecarga = {
   /** Só admin: ajuste de margem/comissão (null = parâmetro) */
   margem_pct?: number | null
   comissao_pct?: number | null
+  /** Seções incorporadas (aluguel, alvenaria, elétrica predial…) — valor ao cliente */
+  secoes?: SecaoProposta[]
 }
 
 export type ParametrosRecarga = {
@@ -104,6 +107,11 @@ export type PropostaRecarga = {
   potencia_total_kw: number
   fases: FasesRede
   corrente_total_a: number
+  /** Seções incorporadas: somam no total geral (já são valor ao cliente) */
+  secoes: SecaoProposta[]
+  total_secoes: number
+  /** Estação (pv_total) + seções — o que o cliente paga */
+  total_geral: number
   avisos: string[]
 }
 
@@ -320,6 +328,9 @@ export function calcularPropostaRecarga(
     potencia_total_kw: potTotal,
     fases,
     corrente_total_a: correnteTotal,
+    secoes: (e.secoes || []).filter((s) => Number(s.valor) > 0),
+    total_secoes: totalSecoes(e.secoes),
+    total_geral: Math.round((pv + totalSecoes(e.secoes)) * 100) / 100,
     avisos,
   }
 }

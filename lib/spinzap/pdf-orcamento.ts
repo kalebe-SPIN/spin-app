@@ -23,6 +23,8 @@ export type DadosPdfOrcamento = {
   inversor_qtd?: number
   /** Itens extras incluídos (só descrição e quantidade — preço só no total) */
   extras?: Array<{ descricao: string; qtd: number }>
+  /** Seções incorporadas (aluguel, alvenaria…) — escopo, preço só no total */
+  secoes?: Array<{ titulo: string; detalhe: string }>
   geracao_kwh_mes: number
   consumo_kwh_mes?: number | null
   pv_total: number
@@ -106,8 +108,18 @@ export function gerarPdfOrcamento(d: DadosPdfOrcamento): ArrayBuffer {
     y += 4
   }
 
+  if (d.secoes?.length) {
+    titulo('Serviços adicionais')
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(60, 60, 60)
+    for (const s of d.secoes) {
+      const partes = doc.splitTextToSize(`• ${s.titulo}${s.detalhe ? `: ${s.detalhe}` : ''}`, W) as string[]
+      doc.text(partes, L, y); y += 4.6 * partes.length + 1.5
+    }
+    y += 4
+  }
+
   titulo('Investimento')
-  linha('Valor total', reais(d.pv_total), true)
+  linha(d.secoes?.length ? 'Valor total (sistema e serviços adicionais)' : 'Valor total', reais(d.pv_total), true)
   const f = d.formas_pagamento
   linha(`À vista no PIX (${num(f.a_vista_pix.desconto_pct, 0)}% de desconto)`, reais(f.a_vista_pix.valor))
   linha(`Cartão de crédito`, `${f.parcelado_cartao.parcelas}× de ${reais(f.parcelado_cartao.valor_parcela)}`)

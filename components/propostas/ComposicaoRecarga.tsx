@@ -8,6 +8,9 @@ import {
 } from '@/lib/estacao-ve/proposta-recarga'
 import type { DadosRecarga, EquipamentoCatalogoRecarga } from '@/lib/estacao-ve/proposta-recarga-servidor'
 import type { FasesRede } from '@/lib/estacao-ve/montar-lista-ca'
+import type { SecaoProposta } from '@/lib/propostas/secoes'
+import { CampoNumero, inputCls } from './CampoNumero'
+import { SecoesProposta } from './SecoesProposta'
 
 /**
  * Composição da proposta de estação de recarga (Kalebe 2026-10-14) — a mesma
@@ -26,26 +29,7 @@ export type ApiRecarga = {
   enviar?: (projeto_id: string, url_pdf: string, legenda: string) => Promise<{ sucesso: true } | { erro: string }>
 }
 
-const inputCls = 'w-full bg-white/5 border border-white/10 focus:border-sol/50 rounded-xl px-3 py-2 text-white text-sm focus:outline-none'
-const lerNum = (s: string) => Number(String(s).replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0
 const reais = formatarMoedaBRL
-
-/** Campo numérico em pt-BR (vírgula decimal) que só devolve número. */
-function CampoNumero({ valor, onChange, casas = 0, className = inputCls, ...resto }: {
-  valor: number; onChange: (n: number) => void; casas?: number; className?: string
-} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
-  const fmt = (n: number) => (n ? n.toLocaleString('pt-BR', { maximumFractionDigits: Math.max(casas, 2) }) : '')
-  const [txt, setTxt] = useState(fmt(valor))
-  const editando = useRef(false)
-  useEffect(() => { if (!editando.current) setTxt(fmt(valor)) // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [valor])
-  return (
-    <input {...resto} value={txt} inputMode="decimal" className={className}
-      onFocus={() => { editando.current = true }}
-      onBlur={() => { editando.current = false; setTxt(fmt(valor)) }}
-      onChange={(e) => { setTxt(e.target.value); onChange(lerNum(e.target.value)) }} />
-  )
-}
 
 function Opcao({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -79,6 +63,7 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
   const [respostas, setRespostas] = useState<RespostasRecarga | null>(null)
   const [margem, setMargem] = useState<number | null>(null)
   const [comissao, setComissao] = useState<number | null>(null)
+  const [secoes, setSecoes] = useState<SecaoProposta[]>([])
   const [escolhido, setEscolhido] = useState('')
   const [qtdNova, setQtdNova] = useState(1)
   const [novo, setNovo] = useState<null | { tipo: TipoEquipamentoRecarga; modelo: string; fabricante: string; potencia: number; preco: number }>(null)
@@ -93,7 +78,7 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
   useEffect(() => {
     api.carregar().then((r) => {
       if ('erro' in r) { setErro(r.erro); return }
-      setDados(r); setCatalogo(r.equipamentos)
+      setDados(r); setCatalogo(r.equipamentos); setSecoes(r.secoes || [])
       if (r.url_pdf && r.projeto_id) setPdf({ url_pdf: r.url_pdf, projeto_id: r.projeto_id })
       if (r.salva) {
         setEquipamentos(r.salva.equipamentos || [])
@@ -108,10 +93,10 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
   }, [])
 
   const entrada = useMemo<EntradaRecarga | null>(() => respostas && ({
-    equipamentos, respostas,
+    equipamentos, respostas, secoes,
     margem_pct: dados?.eh_admin ? margem : null,
     comissao_pct: dados?.eh_admin ? comissao : null,
-  }), [equipamentos, respostas, margem, comissao, dados?.eh_admin])
+  }), [equipamentos, respostas, secoes, margem, comissao, dados?.eh_admin])
 
   // Recalcula no servidor a cada mudança (com folga pra digitação)
   const pedido = useRef(0)
@@ -344,6 +329,11 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
         )}
       </Bloco>
 
+      {/* 4. Seções incorporadas (aluguel, alvenaria, elétrica predial…) */}
+      <Bloco n="4" titulo="Serviços adicionais" valor={secoes.length ? reais(secoes.reduce((s, x) => s + (x.valor > 0 ? x.valor : 0), 0)) : null}>
+        <SecoesProposta faixas={dados.faixas || []} secoes={secoes} onChange={setSecoes} />
+      </Bloco>
+
       {/* Preço */}
       <section className="rounded-2xl border border-sol/40 p-3 space-y-2">
         {interno && (
@@ -365,9 +355,15 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
                 <p className="flex justify-between"><span>Desconto máximo na negociação</span><span className="tabular-nums">{reais(p.desconto_max)}</span></p>
               </div>
             )}
+            {p.total_secoes > 0 && (
+              <div className="text-[11px] text-white/60 space-y-0.5">
+                <p className="flex justify-between"><span>Estação de recarga</span><span className="tabular-nums">{reais(p.pv_total)}</span></p>
+                <p className="flex justify-between"><span>Serviços adicionais</span><span className="tabular-nums">{reais(p.total_secoes)}</span></p>
+              </div>
+            )}
             <div className="flex items-end justify-between gap-2 pt-1">
               <span className="text-[11px] font-bold text-white/60 uppercase">Total ao cliente</span>
-              <span className="text-2xl font-black text-white tabular-nums">{reais(p.pv_total)}</span>
+              <span className="text-2xl font-black text-white tabular-nums">{reais(p.total_geral)}</span>
             </div>
           </>
         ) : (

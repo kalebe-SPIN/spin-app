@@ -9,13 +9,17 @@ import type { TipoItem } from '@/lib/tipos-projeto'
  * Mapa num lugar só — ajustar aqui se uma classificação mudar.
  */
 
-export type CategoriaProposta = 'fotovoltaico' | 'recarga' | 'bess' | 'om'
+export type CategoriaProposta = 'fotovoltaico' | 'recarga' | 'bess' | 'om' | 'venda' | 'projetos'
 
+// Kalebe 2026-10-14: "adicionar nas 4 categorias principais mais duas: venda
+// de ponto de venda e projetos técnicos" — ordem = a que ele definiu
 export const CATEGORIAS_PROPOSTA: Array<{ chave: CategoriaProposta; rotulo: string; emoji: string; tipoPadrao: TipoItem; descricao: string }> = [
   { chave: 'fotovoltaico', rotulo: 'Projeto fotovoltaico', emoji: '☀️', tipoPadrao: 'fv_ongrid', descricao: 'On-grid, híbrido, zero-grid, off-grid' },
   { chave: 'recarga', rotulo: 'Estação de recarga', emoji: '⚡', tipoPadrao: 've_recarga', descricao: 'Carregadores de veículo elétrico' },
   { chave: 'bess', rotulo: 'Sistema BESS', emoji: '🔋', tipoPadrao: 'bess', descricao: 'Armazenamento de energia' },
-  { chave: 'om', rotulo: 'O&M', emoji: '🧹', tipoPadrao: 'srv_manutencao', descricao: 'Limpeza, manutenção, laudos e análises' },
+  { chave: 'om', rotulo: 'O&M', emoji: '🧹', tipoPadrao: 'srv_manutencao', descricao: 'Limpeza, manutenção, retirada e recolocação' },
+  { chave: 'venda', rotulo: 'Venda (ponto de venda)', emoji: '🛒', tipoPadrao: 'venda_equipamentos', descricao: 'Venda direta de equipamentos' },
+  { chave: 'projetos', rotulo: 'Projetos técnicos', emoji: '📐', tipoPadrao: 'srv_projeto_tecnico', descricao: 'Projeto elétrico, laudos, análise de rede, homologação' },
 ]
 export const INFO_CATEGORIA = Object.fromEntries(CATEGORIAS_PROPOSTA.map((c) => [c.chave, c])) as Record<CategoriaProposta, (typeof CATEGORIAS_PROPOSTA)[number]>
 
@@ -25,9 +29,11 @@ export const CATEGORIA_DO_TIPO: Record<string, CategoriaProposta | 'secao'> = {
   srv_instalacao_placas: 'fotovoltaico',
   ve_recarga: 'recarga',
   bess: 'bess',
-  srv_limpeza: 'om', srv_manutencao: 'om', srv_retirada_recolocacao: 'om', srv_laudo_tecnico: 'om', srv_analise_rede: 'om',
+  srv_limpeza: 'om', srv_manutencao: 'om', srv_retirada_recolocacao: 'om',
+  venda_equipamentos: 'venda',
+  srv_projeto_tecnico: 'projetos', srv_laudo_tecnico: 'projetos', srv_analise_rede: 'projetos',
   srv_eletrica_predial: 'secao', srv_padrao_entrada: 'secao', srv_alvenaria: 'secao', srv_serralheria: 'secao',
-  srv_carpintaria: 'secao', aluguel_maquinas: 'secao', aluguel_equipamentos: 'secao', venda_equipamentos: 'secao', outros: 'secao',
+  srv_carpintaria: 'secao', aluguel_maquinas: 'secao', aluguel_equipamentos: 'secao', outros: 'secao',
 }
 
 /** tipo_projeto antigo (projetos criados pela Laís) → categoria */
@@ -59,5 +65,6 @@ export function urlDoFluxo(projetoId: string, tipo: string): string {
   if (tipo === 'srv_manutencao') return `${base}/servico-revisao`
   if (tipo === 'srv_retirada_recolocacao') return `${base}/servico-retirada`
   if (tipo === 'srv_instalacao_placas') return `${base}/servico-instalacao`
+  if (tipo === 'venda_equipamentos') return `${base}/venda-direta`
   return `${base}/servico?tipo=${tipo}`
 }

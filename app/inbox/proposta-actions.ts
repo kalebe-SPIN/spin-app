@@ -4,9 +4,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import {
-  montarOrcamentoLead, carregarCatalogoProposta, destinoDoExtra, TIPOS_SISTEMA_FV,
+  montarOrcamentoLead, carregarCatalogoProposta, destinoDoExtra, aplicarSecoes, TIPOS_SISTEMA_FV,
   type EntradaOrcamentoLead, type OrcamentoLead, type OpcoesKit, type TipoSistemaFv,
 } from '@/lib/spinzap/orcamento-lead'
+import { carregarFaixasSecoes, salvarSecoesNoProjeto, secoesDoProjeto } from '@/lib/propostas/secoes-servidor'
+import type { FaixaSecao, SecaoProposta } from '@/lib/propostas/secoes'
 import { auditarOrcamentoLead, type Auditoria } from '@/lib/spinzap/auditor-orcamento'
 import { carregarPerfil, gerarPdfDoOrcamento } from '@/lib/spinzap/orcamento-lais'
 import { garantirProjetoDaCategoria } from '@/lib/propostas/projetos-contato'
@@ -29,6 +31,8 @@ export type EntradaPropostaRapida = {
   cidade: string
   /** Sistema (string/micro/híbrido), modelos e itens extras — Kalebe 2026-10-13 */
   opcoes?: OpcoesKit
+  /** Seções incorporadas (aluguel, alvenaria, elétrica predial…) */
+  secoes?: SecaoProposta[]
 }
 
 async function acesso(conversa_id: string) {
@@ -82,6 +86,8 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
   tarifa_base: { tarifa_kwh: number; amostras: number } | null
   projeto_id: string | null
   eh_admin: boolean
+  faixas: FaixaSecao[]
+  secoes: SecaoProposta[]
 } | { erro: string }> {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
@@ -90,7 +96,10 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
   const base = await tarifaDeReferencia(a.admin)
   const { projetosDoContato } = await import('@/lib/propostas/projetos-contato')
   const projetoFv = (await projetosDoContato(a.admin, a.contato)).find((p) => p.aberto && p.categoria === 'fotovoltaico')
+  const [faixas, secoes] = await Promise.all([carregarFaixasSecoes(a.admin), secoesDoProjeto(a.admin, projetoFv?.id || null)])
   return {
+    faixas,
+    secoes,
     tipo_rede: perfil.infra_eletrica.tipo_rede || fatura?.tipo_ligacao || null,
     cidade: perfil.contato.endereco?.cidade || a.conv.cidade || null,
     fatura: fatura ? { consumo_kwh: fatura.consumo_kwh, tarifa_kwh: fatura.tarifa_kwh, subsidio: fatura.subsidio } : null,
@@ -121,8 +130,9 @@ async function calcular(a: Exclude<Awaited<ReturnType<typeof acesso>>, { erro: a
   perfil.infra_eletrica = { ...perfil.infra_eletrica, tipo_rede: e.tipo_rede }
   const cidade = e.cidade?.trim() || null
   if (cidade) perfil.contato = { ...perfil.contato, endereco: { ...(perfil.contato.endereco || {}), cidade } }
-  const orc = await montarOrcamentoLead(a.admin, { entrada, tipo_rede_perfil: e.tipo_rede, cidade, opcoes: e.opcoes })
-  if ('erro' in orc) return orc
+  const montado = await montarOrcamentoLead(a.admin, { entrada, tipo_rede_perfil: e.tipo_rede, cidade, opcoes: e.opcoes })
+  if ('erro' in montado) return montado
+  const orc = await aplicarSecoes(a.admin, montado, e.secoes)
   return { orc, auditoria: auditarOrcamentoLead(orc, perfil), perfil, cidade }
 }
 
@@ -163,6 +173,7 @@ export async function gerarPdfPropostaRapidaAction(conversa_id: string, e: Entra
     projetoId, cidade: r.cidade, uf: r.perfil.contato.endereco?.uf || a.conv.uf || null, prefixo: 'orcamento-spinzap',
   })
   if ('erro' in pdf) return pdf
+  await salvarSecoesNoProjeto(a.admin, projetoId, r.orc.secoes || [], a.user.id)
   await a.admin.from('projeto_propostas_historico').insert({
     projeto_id: projetoId, url_pdf: pdf.url, pv_total: r.orc.pv_total, potencia_cc_kwp: r.orc.kwp,
     potencia_ca_kw: r.orc.inversor.potencia_kw, modo_composicao: 'orcamento_spinzap', memoria_calculo: r.orc.interno,

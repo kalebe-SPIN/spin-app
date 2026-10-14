@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import type { PropostaRecarga, RespostasRecarga } from './proposta-recarga'
+import { rotuloSecao } from '@/lib/propostas/secoes'
 
 /**
  * PDF da proposta de estação de recarga (Kalebe 2026-10-14), gerado no
@@ -134,9 +135,19 @@ export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
   }
   y += 4
 
+  // Seções incorporadas (aluguel, alvenaria, elétrica predial…): escopo, sem preço
+  if (p.secoes.length) {
+    titulo('4. Serviços adicionais')
+    for (const s of p.secoes) {
+      const r = rotuloSecao(s)
+      servico(r.titulo, r.detalhe || 'incluso')
+    }
+    y += 3
+  }
+
   // Investimento: só o total consolidado
   titulo('Investimento')
-  linha('Valor total (equipamentos, projeto e execução)', reais(p.pv_total), true)
+  linha(p.secoes.length ? 'Valor total (estação e serviços adicionais)' : 'Valor total (equipamentos, projeto e execução)', reais(p.total_geral), true)
   const f = d.formas_pagamento
   linha(`À vista no PIX (${num(f.a_vista_pix.desconto_pct, 0)}% de desconto)`, reais(f.a_vista_pix.valor))
   linha('Cartão de crédito', `${f.parcelado_cartao.parcelas}× de ${reais(f.parcelado_cartao.valor_parcela)}`)
