@@ -67,13 +67,13 @@ export default async function AgendaPage({
 
   const { data: eventosRaw } = await supabase
     .from('agenda_eventos')
-    .select('id, titulo, data_hora_inicio, data_hora_fim, tipo, status, local, cor, usuario_id')
+    .select('id, titulo, data_hora_inicio, data_hora_fim, tipo, status, local, cor, usuario_id, wa_conversa_id, projeto_id, url_reuniao, cliente_nome')
     .eq('usuario_id', donoAtualId)
     .gte('data_hora_inicio', inicioSemana.toISOString())
     .lt('data_hora_inicio', fimJanela.toISOString())
     .order('data_hora_inicio', { ascending: true })
 
-  const eventos: EventoResumo[] = (eventosRaw || []).map((e) => ({
+  const eventos: EventoResumo[] = (eventosRaw || []).map((e: any) => ({
     id: e.id,
     titulo: e.titulo,
     data_hora_inicio: e.data_hora_inicio,
@@ -84,6 +84,10 @@ export default async function AgendaPage({
     cor: e.cor,
     usuario_id: e.usuario_id,
     dono_nome: donoAtualNome,
+    conversa_id: e.wa_conversa_id || null,
+    projeto_id: e.projeto_id || null,
+    url_reuniao: e.url_reuniao || null,
+    cliente_nome: e.cliente_nome || null,
   }))
 
   // Kalebe 2026-10-14: "não existe sincronicidade entre a agenda e o sistema" —

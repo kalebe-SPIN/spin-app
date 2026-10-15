@@ -30,6 +30,12 @@ export type EventoResumo = {
   cor: string | null
   usuario_id: string
   dono_nome: string | null
+  /** Conversa do Spinzap de onde o evento saiu (acesso rápido) */
+  conversa_id?: string | null
+  projeto_id?: string | null
+  /** Sala da call (Jitsi) */
+  url_reuniao?: string | null
+  cliente_nome?: string | null
 }
 
 export function EventoPopover({
@@ -67,9 +73,11 @@ export function EventoPopover({
   }
 
   return (
+    // Kalebe 2026-10-15: no celular o popup saía da tela (era "absolute" a partir
+    // do centro) — agora é um cartão centrado que cabe na largura e rola na altura
     <div
       ref={ref}
-      className="absolute z-50 w-80 bg-noite border border-sol/30 rounded-xl shadow-2xl shadow-black/50 p-4"
+      className="relative w-[min(22rem,calc(100vw-2rem))] max-h-[85vh] overflow-y-auto bg-noite border border-sol/30 rounded-xl shadow-2xl shadow-black/50 p-4"
       onClick={(e) => e.stopPropagation()}
     >
       {modo === 'ver' && <VistaVer evento={evento} souDono={souDono} setModo={setModo} comAcao={comAcao} isPending={isPending} />}
@@ -106,6 +114,22 @@ function VistaVer({ evento, souDono, setModo, comAcao, isPending }: {
 
       {!souDono && evento.dono_nome && (
         <p className="text-[11px] text-weg-azul mb-3">👥 Agenda de <strong>{evento.dono_nome}</strong></p>
+      )}
+      {evento.cliente_nome && <p className="text-xs text-white/60 mb-2">👤 {evento.cliente_nome}</p>}
+
+      {/* Acesso rápido: conversa no Spinzap, sala da call e projeto */}
+      {(evento.conversa_id || evento.url_reuniao || evento.projeto_id) && (
+        <div className="flex flex-wrap gap-2 mb-1">
+          {evento.conversa_id && (
+            <a href={`/spinzap?c=${evento.conversa_id}`} className="px-3 py-2 rounded-lg bg-verde text-white text-xs font-bold text-start">💬 Abrir conversa no Spinzap</a>
+          )}
+          {evento.url_reuniao && (
+            <a href={evento.url_reuniao} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-lg bg-weg-azul text-white text-xs font-bold text-start">🎥 Entrar na chamada</a>
+          )}
+          {evento.projeto_id && (
+            <a href={`/projetos/${evento.projeto_id}`} className="px-3 py-2 rounded-lg border border-white/15 text-white/80 text-xs font-bold text-start">📁 Projeto</a>
+          )}
+        </div>
       )}
 
       <div className="grid grid-cols-2 gap-2 mt-3">

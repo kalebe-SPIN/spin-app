@@ -40,6 +40,7 @@ import {
   laisDevolverAction,
 } from '@/app/inbox/actions'
 import { ETAPAS, INFO_ETAPA, TIPOS_FORNECEDOR, infoProduto, rotuloTiposFornecedor, type Etapa } from '@/lib/spinzap/comum'
+import type { PendenciaConversa, TipoPendencia } from '@/lib/spinzap/pendencias-conversa'
 import { cadastrarFornecedorDaConversaAction, desvincularFornecedorDaConversaAction, listarFornecedoresAction } from '@/app/inbox/fornecedor-actions'
 
 type Conversa = {
@@ -70,6 +71,8 @@ type Conversa = {
   responsavel: { nome_completo: string | null } | null
   /** Mensagens do cliente ainda não lidas por este usuário (migration 131) */
   nao_lidas?: number
+  /** Kalebe 2026-10-15: tarefas, follow-ups, lembretes e eventos abertos desta conversa */
+  pendencias?: PendenciaConversa[]
   // Kalebe 2026-10-09 — Spinzap (mig 145)
   etapa?: string | null
   etapa_em?: string | null
@@ -126,7 +129,10 @@ export function InboxClient({
   const [setorSel, setSetorSel] = useState<string>('todos')
   const [setores, setSetores] = useState<Array<{ chave: string; nome: string; emoji: string | null }>>([])
   const [verFiltros, setVerFiltros] = useState(false)
-  const [fPeriodo, setFPeriodo] = useState<'todos' | 'hoje' | '7d' | '30d' | 'mes' | 'mes_passado'>('todos')
+  const [fPeriodo, setFPeriodo] = useState<'todos' | 'hoje' | '7d' | '30d' | 'mes' | 'mes_passado' | 'personalizado'>('todos')
+  // Kalebe 2026-10-15: período personalizado (de / até, YYYY-MM-DD)
+  const [fDe, setFDe] = useState('')
+  const [fAte, setFAte] = useState('')
   const [fCidade, setFCidade] = useState('')
   // Kalebe 2026-10-14: filtro só pelas 4 categorias principais
   const [fProduto, setFProduto] = useState('')
@@ -325,6 +331,12 @@ export function InboxClient({
     if (fPeriodo === '30d') return [new Date(ini(agora).getTime() - 29 * 864e5), null] as const
     if (fPeriodo === 'mes') return [new Date(agora.getFullYear(), agora.getMonth(), 1), null] as const
     if (fPeriodo === 'mes_passado') return [new Date(agora.getFullYear(), agora.getMonth() - 1, 1), new Date(agora.getFullYear(), agora.getMonth(), 1)] as const
+    if (fPeriodo === 'personalizado') {
+      // "até" inclui o dia inteiro
+      const de = fDe ? new Date(`${fDe}T00:00:00`) : null
+      const ate = fAte ? new Date(new Date(`${fAte}T00:00:00`).getTime() + 864e5) : null
+      return [de, ate] as const
+    }
     return [null, null] as const
   })()
   const entradaDe = (c: Conversa) => c.contato?.criado_em || c.criada_em
@@ -637,8 +649,21 @@ export function InboxClient({
                   <option value="30d" className="bg-noite">Últimos 30 dias</option>
                   <option value="mes" className="bg-noite">Este mês</option>
                   <option value="mes_passado" className="bg-noite">Mês passado</option>
+                  <option value="personalizado" className="bg-noite">Personalizado…</option>
                 </select>
               </label>
+              {fPeriodo === 'personalizado' && (
+                <div className="col-span-2 grid grid-cols-2 gap-1.5">
+                  <label className="block">
+                    <span className="block text-[10px] font-bold text-white/50 mb-0.5">De</span>
+                    <input type="date" value={fDe} max={fAte || undefined} onChange={(e) => setFDe(e.target.value)} className={selCls} />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[10px] font-bold text-white/50 mb-0.5">Até</span>
+                    <input type="date" value={fAte} min={fDe || undefined} onChange={(e) => setFAte(e.target.value)} className={selCls} />
+                  </label>
+                </div>
+              )}
               <label className="block">
                 <span className="block text-[10px] font-bold text-white/50 mb-0.5">Cidade</span>
                 <select value={fCidade} onChange={(e) => setFCidade(e.target.value)} className={selCls}>
@@ -667,7 +692,7 @@ export function InboxClient({
               </label>
               {filtrosAtivos > 0 && (
                 <button
-                  onClick={() => { setFPeriodo('todos'); setFCidade(''); setFProduto(''); setFContato('') }}
+                  onClick={() => { setFPeriodo('todos'); setFDe(''); setFAte(''); setFCidade(''); setFProduto(''); setFContato('') }}
                   className="col-span-2 text-[11px] text-coral/80 hover:text-coral font-bold py-1"
                 >
                   ✕ Limpar filtros
@@ -1593,6 +1618,46 @@ function fotoDoContato(c: Conversa): string | null {
   return c.contato?.foto_url || c.contato?.cliente?.foto_url || null
 }
 
+/**
+ * Pendências da agenda na lista (Kalebe 2026-10-15): um ícone por tipo com a
+ * quantidade e a data da próxima; borda vermelha se alguma está atrasada.
+ * Passar o mouse mostra cada item (título, quando, responsável).
+ */
+const ICONE_PENDENCIA: Record<TipoPendencia, { icone: string; rotulo: string }> = {
+  tarefa: { icone: '☐', rotulo: 'Tarefa' },
+  followup: { icone: '💬', rotulo: 'Follow-up' },
+  lembrete: { icone: '🔔', rotulo: 'Lembrete ao cliente' },
+  evento: { icone: '📅', rotulo: 'Evento' },
+}
+function quandoCurto(q: string): string {
+  const soData = /^\d{4}-\d{2}-\d{2}$/.test(q)
+  const d = new Date(soData ? `${q}T12:00:00` : q)
+  if (isNaN(d.getTime())) return ''
+  const chave = (x: Date) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`
+  const hoje = new Date(); const amanha = new Date(Date.now() + 864e5)
+  const dia = chave(d) === chave(hoje) ? 'hoje' : chave(d) === chave(amanha) ? 'amanhã' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  return soData ? dia : `${dia} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+}
+function PendenciasConversa({ itens }: { itens: PendenciaConversa[] }) {
+  const tipos = (['tarefa', 'followup', 'lembrete', 'evento'] as TipoPendencia[]).filter((t) => itens.some((i) => i.tipo === t))
+  return (
+    <div className="flex flex-wrap items-center gap-1 mt-1">
+      {tipos.map((t) => {
+        const doTipo = itens.filter((i) => i.tipo === t)
+        const atrasada = doTipo.some((i) => i.atrasada)
+        const proxima = doTipo[0]
+        const dica = doTipo.map((i) => `${ICONE_PENDENCIA[t].rotulo}: ${i.titulo} · ${quandoCurto(i.quando)}${i.atrasada ? ' (atrasada)' : ''}${i.responsavel ? ` · ${i.responsavel}` : ''}`).join('\n')
+        return (
+          <span key={t} title={dica}
+            className={`text-[10px] leading-none px-1.5 py-1 rounded-md border text-white/80 whitespace-nowrap ${atrasada ? 'border-coral/70' : 'border-weg-azul/50'}`}>
+            {ICONE_PENDENCIA[t].icone}{doTipo.length > 1 ? ` ${doTipo.length}` : ''} · {atrasada ? 'atrasada' : quandoCurto(proxima.quando)}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 function ItemConversa({ c, selecionada, onClick }: {
   c: Conversa; selecionada: boolean; onClick: () => void
 }) {
@@ -1672,6 +1737,7 @@ function ItemConversa({ c, selecionada, onClick }: {
           </span>
         )}
       </div>
+      {!!c.pendencias?.length && <PendenciasConversa itens={c.pendencias} />}
       </div>
       </div>
     </button>

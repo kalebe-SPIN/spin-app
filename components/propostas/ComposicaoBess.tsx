@@ -9,6 +9,8 @@ import { CampoNumero, inputCls } from './CampoNumero'
 import { SecoesProposta } from './SecoesProposta'
 import { RodapeProposta } from './RodapeProposta'
 import { Bloco } from './ui'
+import { CadastroDatasheetModal } from '@/components/CadastroDatasheetModal'
+import type { CategoriaProduto } from '@/app/admin/catalogo/actions'
 
 /**
  * Proposta de BESS (sistema de armazenamento) dentro do Spinzap
@@ -91,6 +93,9 @@ export function ComposicaoBess({ api, nomeCliente, onEnviada }: { api: ApiBess; 
   const [comissao, setComissao] = useState<number | null>(null)
   const [r, setR] = useState<ResultadoBess | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  // Kalebe 2026-10-14: equipamento novo (datasheet + valores) sem sair da proposta — admin
+  const [cadastro, setCadastro] = useState<CategoriaProduto | null>(null)
+  const recarregarCatalogo = () => api.carregar().then((d) => { if (!('erro' in d)) setCatalogo(d.catalogo) })
 
   useEffect(() => {
     api.carregar().then((d) => {
@@ -125,6 +130,17 @@ export function ComposicaoBess({ api, nomeCliente, onEnviada }: { api: ApiBess; 
           <Segmento key={s.chave} rotulo={s.rotulo} obrigatorio={s.obrigatorio} qtdInicial={s.qtdInicial}
             opcoes={catalogo[s.chave]} itens={kit[s.chave]} onChange={(itens) => setKit((k) => ({ ...k, [s.chave]: itens }))} />
         ))}
+        {ehAdmin && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button type="button" onClick={() => setCadastro('bateria')} className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start">📄 Cadastrar bateria (datasheet)</button>
+            <button type="button" onClick={() => setCadastro('inversor')} className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start">📄 Cadastrar inversor híbrido (datasheet)</button>
+            <button type="button" onClick={() => setCadastro('outro')} className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start">📄 Outro equipamento</button>
+          </div>
+        )}
+        {cadastro && (
+          <CadastroDatasheetModal categoriaInicial={cadastro} subcategoriaInversor="inversor_hibrido"
+            onClose={() => setCadastro(null)} onCreated={() => { recarregarCatalogo() }} />
+        )}
       </Bloco>
 
       <Bloco n="2" titulo="Projeto e execução" valor={c && ehAdmin ? reais(c.projeto_art + c.instalacao + c.frete) : null}>

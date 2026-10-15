@@ -1,17 +1,25 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import {
-  dadosPropostaRapidaAction, calcularPropostaRapidaAction, gerarPdfPropostaRapidaAction, enviarPdfPropostaRapidaAction,
-  opcoesKitPropostaAction, lerFaturaPropostaAction, type EntradaPropostaRapida,
+  dadosPropostaRapidaAction, calcularPropostaRapidaAction, prepararPdfOficialPropostaRapidaAction, registrarPdfPropostaRapidaAction,
+  enviarPdfPropostaRapidaAction, opcoesKitPropostaAction, lerFaturaPropostaAction, type EntradaPropostaRapida, type DadosPdfOficial,
 } from '@/app/inbox/proposta-actions'
+import { PropostaPDFTemplate } from '@/components/PropostaPDFTemplate'
+import { esperarImagens, pdfDoTemplate, subirPdfProposta } from '@/lib/propostas/pdf-oficial-cliente'
+import type { PropostaCalculada } from '@/lib/precificacao/calcular'
 import { TIPOS_SISTEMA_FV, type OrcamentoLead, type TipoSistemaFv } from '@/lib/spinzap/orcamento-lead'
 import type { Auditoria } from '@/lib/spinzap/auditor-orcamento'
-import { TIPOS_REDE } from '@/lib/spinzap/perfil'
-import { fmtKwp, formatarMoedaBRL } from '@/lib/formatters'
+import { TIPOS_REDE, TIPOS_TELHADO } from '@/lib/spinzap/perfil'
+import { fmtKwp, fmtNum, formatarMoedaBRL } from '@/lib/formatters'
 import { rotuloSecao, type FaixaSecao, type SecaoProposta } from '@/lib/propostas/secoes'
 import { SecoesProposta } from '@/components/propostas/SecoesProposta'
 import { PainelPrecificacao } from '@/components/precificacao/PainelPrecificacao'
+import { CadastroDatasheetModal } from '@/components/CadastroDatasheetModal'
+import type { CategoriaProduto } from '@/app/admin/catalogo/actions'
+
+const TELHADOS_AZ = [...TIPOS_TELHADO].sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR'))
 
 /**
  * "Montar proposta" direto da conversa (Kalebe 2026-10-13): escolhe a base
@@ -34,6 +42,10 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   // Kalebe 2026-10-14: admin edita a precificação sem sair da proposta
   const [painel, setPainel] = useState(false)
   const [versao, setVersao] = useState(0)
+  // Kalebe 2026-10-14: cadastro de equipamento novo (datasheet + valores) sem sair da proposta
+  const [cadastroDatasheet, setCadastroDatasheet] = useState<CategoriaProduto | null>(null)
+  // Telhado → estrutura do kit (+ cabo solar, MC4, disjuntor e DPS, como na proposta formal)
+  const [telhado, setTelhado] = useState('')
   const [carregando, setCarregando] = useState(true)
   const [modo, setModo] = useState<Modo>('consumo_kwh')
   const [valor, setValor] = useState('')
@@ -44,7 +56,10 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   const [tarifaBase, setTarifaBase] = useState<{ tarifa_kwh: number; amostras: number } | null>(null)
   const [projetoId, setProjetoId] = useState<string | null>(null)
   const [resultado, setResultado] = useState<{ orcamento: OrcamentoLead; auditoria: Auditoria; mostra_interno: boolean } | null>(null)
-  const [pdf, setPdf] = useState<{ url_pdf: string; projeto_id: string } | null>(null)
+  const [pdf, setPdf] = useState<{ url_pdf: string; projeto_id: string; nome_arquivo: string } | null>(null)
+  // Kalebe 2026-10-15: o PDF é a proposta OFICIAL (mesmo template de /projetos/[id]/orcamento)
+  const [oficial, setOficial] = useState<DadosPdfOficial | null>(null)
+  const templateRef = useRef<HTMLDivElement>(null)
   const [legenda, setLegenda] = useState(`Oi${nomeCliente ? `, ${nomeCliente.split(' ')[0]}` : ''}! Segue o seu orçamento de energia solar ☀️ Qualquer dúvida, é só me chamar por aqui.`)
   const [ocupado, setOcupado] = useState<null | 'calculando' | 'gerando' | 'enviando'>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -92,6 +107,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
       setFaixas(r.faixas || []); setSecoes(r.secoes || [])
       setPendentes(r.faturas_pendentes || []); setTitular(r.titular || null)
       if (r.tipo_rede && ['monofasico', 'bifasico', 'trifasico'].includes(r.tipo_rede)) setRede(r.tipo_rede as any)
+      setTelhado(r.tipo_telhado || '')
       setCidade(r.cidade || '')
       setFatura(r.fatura); setTarifaBase(r.tarifa_base); setProjetoId(r.projeto_id)
       if (r.fatura?.consumo_kwh) { setModo('consumo_kwh'); setValor(String(Math.round(r.fatura.consumo_kwh))) }
@@ -100,7 +116,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   }, [conversaId])
 
   // Qualquer mudança na entrada invalida o cálculo e o PDF
-  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes])
+  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, telhado, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes])
   // Trocou o sistema: o modelo escolhido não vale mais
   useEffect(() => { setInversorId(''); setInversorQtd('') }, [sistema])
 
@@ -127,6 +143,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
       inversor_id: inversorId || null,
       inversor_qtd: sistema !== 'micro' && num(inversorQtd) > 0 ? Math.round(num(inversorQtd)) : null,
       extras: extras.map((x) => ({ produto_id: x.produto_id, qtd: x.qtd })),
+      complementos_cc: { tipo_telhado: telhado || null },
     },
     secoes,
   })
@@ -139,19 +156,38 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
       else setResultado(r)
     } finally { setOcupado(null) }
   }
-  async function gerarPdf(): Promise<{ url_pdf: string; projeto_id: string } | null> {
+  async function gerarPdf(): Promise<{ url_pdf: string; projeto_id: string; nome_arquivo: string } | null> {
     if (pdf) return pdf
     setErro(null); setOcupado('gerando')
     try {
-      const r = await gerarPdfPropostaRapidaAction(conversaId, entrada())
-      if ('erro' in r) { setErro(r.erro); return null }
-      setPdf(r); setProjetoId(r.projeto_id)
+      const e = entrada()
+      const d = await prepararPdfOficialPropostaRapidaAction(conversaId, e)
+      if ('erro' in d) { setErro(d.erro); return null }
+      setProjetoId(d.projeto_id)
+      // Desenha o template oficial fora da tela, vira PDF e sobe (como no projeto)
+      flushSync(() => setOficial(d.dados))
+      const el = templateRef.current
+      if (!el) { setErro('Não consegui montar o PDF'); return null }
+      await esperarImagens(el)
+      const blob = await pdfDoTemplate(el)
+      const url = await subirPdfProposta(d.projeto_id, blob, 'proposta-spinzap')
+      if (typeof url !== 'string') { setErro(url.erro); return null }
+      const reg = await registrarPdfPropostaRapidaAction(conversaId, d.projeto_id, url, e)
+      if ('erro' in reg) { setErro(reg.erro); return null }
+      const r = { url_pdf: url, projeto_id: d.projeto_id, nome_arquivo: d.nome_arquivo }
+      setPdf(r)
       return r
-    } finally { setOcupado(null) }
+    } catch (x) {
+      setErro(x instanceof Error ? x.message : 'Falha ao gerar o PDF')
+      return null
+    } finally { setOcupado(null); setOficial(null) }
   }
   async function verPdf() {
+    // Abre a aba já no clique (depois do await o navegador bloquearia o pop-up)
+    const aba = window.open('', '_blank')
     const r = await gerarPdf()
-    if (r) window.open(r.url_pdf, '_blank', 'noopener')
+    if (r && aba) aba.location.href = r.url_pdf
+    else aba?.close()
   }
   async function enviar() {
     const barrado = resultado && !resultado.auditoria.aprovado
@@ -160,7 +196,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
     if (!r) return
     setOcupado('enviando'); setErro(null)
     try {
-      const e = await enviarPdfPropostaRapidaAction(conversaId, r.projeto_id, r.url_pdf, legenda)
+      const e = await enviarPdfPropostaRapidaAction(conversaId, r.projeto_id, r.url_pdf, legenda, r.nome_arquivo)
       if ('erro' in e) setErro(e.erro)
       else { setEnviada(true); onEnviada() }
     } finally { setOcupado(null) }
@@ -186,10 +222,6 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
             <button onClick={onFechar} aria-label="Fechar" className="w-8 h-8 rounded-full bg-white/[0.06] text-white/70 hover:text-white flex items-center justify-center">✕</button>
           </div>
         </div>
-        {painel && (
-          <PainelPrecificacao contexto="fotovoltaico" onFechar={() => setPainel(false)}
-            onAlterado={() => { setVersao((v) => v + 1); setResultado(null); setPdf(null) }} />
-        )}
 
         {carregando ? <p className="text-sm text-white/50">Carregando o que já sabemos do cliente…</p> : enviada ? (
           <div className="rounded-2xl border border-verde/45 p-4 space-y-2">
@@ -267,7 +299,17 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
                   <input value={cidade} onChange={(e) => setCidade(e.target.value)} className={inputCls} />
                 </label>
               )}
+              <label className="block">
+                <span className="block text-[11px] font-bold text-white/60 mb-1">Telhado (estrutura)</span>
+                <select value={telhado} onChange={(e) => setTelhado(e.target.value)} className={`${inputCls} ${telhado ? '' : 'border-sol/50'}`}>
+                  <option value="" className="bg-noite">Não informado (estrutura genérica)</option>
+                  {TELHADOS_AZ.map((t) => <option key={t.valor} value={t.valor} className="bg-noite">{t.rotulo}</option>)}
+                </select>
+              </label>
             </div>
+            {(telhado === 'solo' || telhado === 'carport') && (
+              <p className="text-[11px] text-white/55">Estrutura de {telhado === 'solo' ? 'solo' : 'carport'} não sai por quantidade de placas: inclua o item em “Itens extras” (categoria Estrutura). Cabos, conectores e proteções entram automáticos.</p>
+            )}
 
             {/* Kalebe 2026-10-13: sistema, modelos e itens extras */}
             <div className="space-y-3 rounded-2xl border border-white/10 p-3">
@@ -310,6 +352,13 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
               )}
               {catalogo && inversoresDoSistema.length === 0 && (
                 <p className="text-[11px] text-coral">Nenhum {sistema === 'micro' ? 'microinversor' : sistema === 'hibrido' ? 'inversor híbrido' : 'inversor string'} disponível pra essa rede no catálogo.</p>
+              )}
+              {ehAdmin && (
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setCadastroDatasheet('placa')} className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start">📄 Cadastrar placa (datasheet)</button>
+                  <button type="button" onClick={() => setCadastroDatasheet('inversor')} className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start">📄 Cadastrar inversor (datasheet)</button>
+                  <button type="button" onClick={() => setCadastroDatasheet('outro')} className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start">📄 Outro equipamento</button>
+                </div>
               )}
 
               <div>
@@ -374,6 +423,12 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
                     {o.extras.map((x) => (
                       <Fragment key={x.produto_id}><span className="text-white/50 truncate">{x.descricao}</span><span className="text-white/85 text-right">{x.qtd} un.</span></Fragment>
                     ))}
+                    {o.complementos && o.complementos.itens.length > 0 && (
+                      <>
+                        <span className="text-white/50">Estrutura e materiais CC/CA</span>
+                        <span className="text-white/85 text-right">{resultado.mostra_interno ? formatarMoedaBRL(o.complementos.total) : `${o.complementos.itens.length} itens`}</span>
+                      </>
+                    )}
                     {(o.secoes || []).length > 0 && (
                       <>
                         <span className="text-white/50">Sistema fotovoltaico</span><span className="text-white/85 text-right">{formatarMoedaBRL(o.pv_sistema || 0)}</span>
@@ -387,6 +442,26 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
                     <span className="text-white/50">PIX ({o.formas_pagamento.a_vista_pix.desconto_pct}% desc.)</span><span className="text-white/85 text-right">{formatarMoedaBRL(o.formas_pagamento.a_vista_pix.valor)}</span>
                     <span className="text-white/50">Cartão</span><span className="text-white/85 text-right">{o.formas_pagamento.parcelado_cartao.parcelas}× de {formatarMoedaBRL(o.formas_pagamento.parcelado_cartao.valor_parcela)}</span>
                   </div>
+                  {o.complementos && o.complementos.itens.length > 0 && (
+                    <details className="rounded-xl border border-white/10 px-3 py-2">
+                      <summary className="text-[11px] font-bold text-white/70 cursor-pointer">
+                        Estrutura{o.complementos.tipo_telhado ? ` (${TIPOS_TELHADO.find((t) => t.valor === o.complementos!.tipo_telhado)?.rotulo || o.complementos.tipo_telhado})` : ''}, cabos, conectores e proteções
+                      </summary>
+                      <ul className="mt-2 space-y-1">
+                        {o.complementos.itens.map((i, n) => (
+                          <li key={n} className="text-[11px] text-white/70 flex justify-between gap-2">
+                            <span className={i.subtotal > 0 || !resultado.mostra_interno ? '' : 'text-coral'}>{i.modelo}</span>
+                            <span className="tabular-nums shrink-0">{fmtNum(i.qtd, 0)} {i.unidade}{resultado.mostra_interno ? ` · ${formatarMoedaBRL(i.subtotal)}` : ''}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {o.complementos.avisos.length > 0 && (
+                        <ul className="mt-2 space-y-0.5">
+                          {o.complementos.avisos.map((a, n) => <li key={n} className="text-[11px] text-coral">⚠ {a}</li>)}
+                        </ul>
+                      )}
+                    </details>
+                  )}
                   {resultado.mostra_interno && (
                     <p className="text-[10px] text-white/40">Interno: margem {o.interno.margem_pct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% · desconto máx. {formatarMoedaBRL(o.interno.desconto_max_negociacao)}</p>
                   )}
@@ -432,6 +507,24 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
           </>
         )}
       </div>
+      {/* Template da proposta oficial, fora da tela, só enquanto gera o PDF */}
+      {oficial && (
+        <div className="tema-fixo" style={{ position: 'absolute', left: '-99999px', top: 0, zIndex: -1 }} aria-hidden>
+          <PropostaPDFTemplate ref={templateRef} projeto={oficial.projeto} proposta={{ pv_total: oficial.pv_total } as PropostaCalculada}
+            configEmpresa={oficial.config_empresa} listaCa={[]} campanhaAplicada={oficial.campanha} />
+        </div>
+      )}
+      {/* Fora do cartão (o desfoque do cartão prenderia o painel dentro dele) */}
+      {painel && (
+        <PainelPrecificacao contexto="fotovoltaico" onFechar={() => setPainel(false)}
+          onAlterado={() => { setVersao((v) => v + 1); setResultado(null); setPdf(null) }} />
+      )}
+      {cadastroDatasheet && (
+        <CadastroDatasheetModal categoriaInicial={cadastroDatasheet}
+          subcategoriaInversor={TIPOS_SISTEMA_FV.find((t) => t.valor === sistema)?.subcategoria}
+          onClose={() => setCadastroDatasheet(null)}
+          onCreated={() => { opcoesKitPropostaAction().then((r) => { if (!('erro' in r)) setCatalogo(r) }) }} />
+      )}
     </div>
   )
 }

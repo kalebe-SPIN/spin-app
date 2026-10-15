@@ -11,11 +11,14 @@ let cache: CidadeRegistro[] | null = null
 
 const campo = 'px-2 py-0.5 rounded-full bg-white/5 border border-white/25 text-[11px] text-white focus:outline-none'
 
-export function SeletorCidade({ cidadeAtual, ufAtual, onEscolher, onCancelar }: {
+export function SeletorCidade({ cidadeAtual, ufAtual, onEscolher, onCancelar, campoFormulario }: {
   cidadeAtual: string | null
   ufAtual: string | null
-  onEscolher: (c: { cidade: string; uf: string }) => void
-  onCancelar: () => void
+  /** km: distância até a sede no cadastro (vira o deslocamento das propostas) */
+  onEscolher: (c: { cidade: string; uf: string; km: number }) => void
+  onCancelar?: () => void
+  /** Dentro de formulário de proposta: campo do tamanho dos outros, sem o ✕ */
+  campoFormulario?: string
 }) {
   const [cidades, setCidades] = useState<CidadeRegistro[] | null>(cache)
   const [nova, setNova] = useState<null | { cidade: string; uf: string; km: string }>(null)
@@ -42,7 +45,7 @@ export function SeletorCidade({ cidadeAtual, ufAtual, onEscolher, onCancelar }: 
       if ('erro' in r) { setErro(r.erro); return }
       cache = [...(cache || []).filter((c) => c.id !== r.cidade.id), r.cidade].sort((a, b) => a.cidade.localeCompare(b.cidade, 'pt-BR'))
       setCidades(cache)
-      onEscolher({ cidade: r.cidade.cidade, uf: r.cidade.uf })
+      onEscolher({ cidade: r.cidade.cidade, uf: r.cidade.uf, km: r.cidade.km })
     } finally { setSalvando(false) }
   }
 
@@ -61,21 +64,21 @@ export function SeletorCidade({ cidadeAtual, ufAtual, onEscolher, onCancelar }: 
   }
 
   return (
-    <span className="flex items-center gap-1">
-      <select autoFocus value={valor} disabled={!cidades}
+    <span className={campoFormulario ? 'block space-y-1' : 'flex items-center gap-1'}>
+      <select autoFocus={!campoFormulario} value={valor} disabled={!cidades}
         onChange={(e) => {
           const v = e.target.value
           if (v === 'nova') { setNova({ cidade: '', uf: ufAtual || 'SC', km: '' }); return }
           const c = (cidades || []).find((x) => x.id === v)
-          if (c) onEscolher({ cidade: c.cidade, uf: c.uf })
+          if (c) onEscolher({ cidade: c.cidade, uf: c.uf, km: c.km })
         }}
-        className={`${campo} max-w-[220px]`}>
+        className={campoFormulario || `${campo} max-w-[220px]`}>
         <option value="" className="bg-noite">{cidades ? 'Escolha a cidade…' : 'Carregando…'}</option>
         {cidadeAtual && !atual && <option value="atual" className="bg-noite">{cidadeAtual}{ufAtual ? `/${ufAtual}` : ''} (sem cadastro)</option>}
         {(cidades || []).map((c) => <option key={c.id} value={c.id} className="bg-noite">{c.cidade}/{c.uf}</option>)}
         <option value="nova" className="bg-noite">＋ Cadastrar nova cidade…</option>
       </select>
-      <button type="button" onClick={onCancelar} className="px-1.5 text-white/50 text-[11px]" aria-label="Cancelar">✕</button>
+      {onCancelar && <button type="button" onClick={onCancelar} className="px-1.5 text-white/50 text-[11px]" aria-label="Cancelar">✕</button>}
       {erro && <span className="text-[11px] text-coral">{erro}</span>}
     </span>
   )

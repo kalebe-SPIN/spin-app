@@ -5,9 +5,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import {
   calcularNoServidor, visaoDoUsuario, dadosBaseRecarga, cadastrarEquipamentoRecarga, gerarPropostaRecarga,
-  type DadosRecarga, type EquipamentoCatalogoRecarga,
+  type DadosRecarga, type EquipamentoCatalogoRecarga, type NovoEquipamentoRecarga,
 } from '@/lib/estacao-ve/proposta-recarga-servidor'
-import type { EntradaRecarga, PropostaRecarga, TipoEquipamentoRecarga } from '@/lib/estacao-ve/proposta-recarga'
+import type { EntradaRecarga, PropostaRecarga } from '@/lib/estacao-ve/proposta-recarga'
 import { enviarPropostaPeloCanalAction } from '@/app/inbox/actions'
 
 /**
@@ -42,9 +42,7 @@ export async function calcularProjetoRecargaAction(projeto_id: string, entrada: 
   return { proposta: visaoDoUsuario(proposta, a.ehAdmin), mostra_interno: a.ehAdmin }
 }
 
-export async function cadastrarEquipamentoProjetoRecargaAction(projeto_id: string, input: {
-  tipo: TipoEquipamentoRecarga; modelo: string; fabricante?: string | null; potencia_kw?: number | null; preco: number
-}): Promise<{ equipamento: EquipamentoCatalogoRecarga } | { erro: string }> {
+export async function cadastrarEquipamentoProjetoRecargaAction(projeto_id: string, input: NovoEquipamentoRecarga): Promise<{ equipamento: EquipamentoCatalogoRecarga } | { erro: string }> {
   const a = await acesso(projeto_id)
   if ('erro' in a) return { erro: a.erro as string }
   return cadastrarEquipamentoRecarga(a.admin, input, a.nome)

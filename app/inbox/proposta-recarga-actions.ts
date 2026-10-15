@@ -7,9 +7,9 @@ import { garantirProjetoDaCategoria, projetosDoContato } from '@/lib/propostas/p
 import { carregarPerfil } from '@/lib/spinzap/orcamento-lais'
 import {
   calcularNoServidor, visaoDoUsuario, dadosBaseRecarga, cadastrarEquipamentoRecarga, gerarPropostaRecarga,
-  type DadosRecarga, type EquipamentoCatalogoRecarga,
+  type DadosRecarga, type EquipamentoCatalogoRecarga, type NovoEquipamentoRecarga,
 } from '@/lib/estacao-ve/proposta-recarga-servidor'
-import type { EntradaRecarga, PropostaRecarga, TipoEquipamentoRecarga } from '@/lib/estacao-ve/proposta-recarga'
+import type { EntradaRecarga, PropostaRecarga } from '@/lib/estacao-ve/proposta-recarga'
 
 /**
  * Proposta de estação de recarga montada dentro do Spinzap (Kalebe
@@ -56,9 +56,7 @@ export async function calcularPropostaRecargaAction(conversa_id: string, entrada
   return { proposta: visaoDoUsuario(proposta, a.ehAdmin), mostra_interno: a.ehAdmin }
 }
 
-export async function cadastrarEquipamentoRecargaAction(conversa_id: string, input: {
-  tipo: TipoEquipamentoRecarga; modelo: string; fabricante?: string | null; potencia_kw?: number | null; preco: number
-}): Promise<{ equipamento: EquipamentoCatalogoRecarga } | { erro: string }> {
+export async function cadastrarEquipamentoRecargaAction(conversa_id: string, input: NovoEquipamentoRecarga): Promise<{ equipamento: EquipamentoCatalogoRecarga } | { erro: string }> {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
   return cadastrarEquipamentoRecarga(a.admin, input, a.nome)

@@ -8,9 +8,10 @@ import {
   type EntradaOrcamentoLead, type OrcamentoLead, type OpcoesKit, type TipoSistemaFv,
 } from '@/lib/spinzap/orcamento-lead'
 import { carregarFaixasSecoes, salvarSecoesNoProjeto, secoesDoProjeto } from '@/lib/propostas/secoes-servidor'
-import type { FaixaSecao, SecaoProposta } from '@/lib/propostas/secoes'
+import { rotuloSecao, type FaixaSecao, type SecaoProposta } from '@/lib/propostas/secoes'
 import { auditarOrcamentoLead, type Auditoria } from '@/lib/spinzap/auditor-orcamento'
-import { carregarPerfil, gerarPdfDoOrcamento } from '@/lib/spinzap/orcamento-lais'
+import { carregarPerfil } from '@/lib/spinzap/orcamento-lais'
+import { nomearProposta } from '@/lib/downloads'
 import { garantirProjetoDaCategoria } from '@/lib/propostas/projetos-contato'
 import { tarifaDeReferencia } from '@/lib/fatura/tarifa'
 import { enviarPropostaPeloCanalAction } from '@/app/inbox/actions'
@@ -81,6 +82,8 @@ async function faturaConhecida(admin: ReturnType<typeof createAdminClient>, conv
 
 export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
   tipo_rede: string | null
+  /** Do perfil (infra civil) — escolhe a estrutura do kit */
+  tipo_telhado: string | null
   cidade: string | null
   fatura: { consumo_kwh: number | null; tarifa_kwh: number | null; subsidio: string | null } | null
   tarifa_base: { tarifa_kwh: number; amostras: number } | null
@@ -110,6 +113,7 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
     titular: fatura?.razao_social || null,
     faturas_pendentes: pendentes,
     tipo_rede: perfil.infra_eletrica.tipo_rede || fatura?.tipo_ligacao || null,
+    tipo_telhado: perfil.infra_civil.tipo_telhado || null,
     cidade: perfil.contato.endereco?.cidade || a.conv.cidade || null,
     fatura: fatura ? { consumo_kwh: fatura.consumo_kwh, tarifa_kwh: fatura.tarifa_kwh, subsidio: fatura.subsidio } : null,
     tarifa_base: base ? { tarifa_kwh: base.tarifa_conta_kwh || base.tarifa_kwh, amostras: base.amostras } : null,
@@ -161,6 +165,8 @@ async function calcular(a: Exclude<Awaited<ReturnType<typeof acesso>>, { erro: a
   const perfil = await carregarPerfil(a.admin, a.contato.id)
   // A rede escolhida na tela vale pro cálculo e pro auditor
   perfil.infra_eletrica = { ...perfil.infra_eletrica, tipo_rede: e.tipo_rede }
+  const telhado = e.opcoes?.complementos_cc?.tipo_telhado
+  if (telhado) perfil.infra_civil = { ...perfil.infra_civil, tipo_telhado: telhado }
   const cidade = e.cidade?.trim() || null
   if (cidade) perfil.contato = { ...perfil.contato, endereco: { ...(perfil.contato.endereco || {}), cidade } }
   const montado = await montarOrcamentoLead(a.admin, { entrada, tipo_rede_perfil: e.tipo_rede, cidade, opcoes: e.opcoes })
@@ -169,7 +175,14 @@ async function calcular(a: Exclude<Awaited<ReturnType<typeof acesso>>, { erro: a
   return { orc, auditoria: auditarOrcamentoLead(orc, perfil), perfil, cidade }
 }
 
-const semInterno = (o: OrcamentoLead, admin: boolean) => (admin ? o : { ...o, interno: { margem_pct: 0, desconto_max_negociacao: 0 } })
+// Dupla visão: fora do admin, nada de margem nem preço de item (só o total ao cliente)
+const semInterno = (o: OrcamentoLead, admin: boolean): OrcamentoLead => (admin ? o : {
+  ...o,
+  interno: { margem_pct: 0, desconto_max_negociacao: 0 },
+  complementos: o.complementos
+    ? { ...o.complementos, total: 0, itens: o.complementos.itens.map((i) => ({ ...i, preco_unitario: 0, subtotal: 0 })) }
+    : o.complementos,
+})
 
 export async function calcularPropostaRapidaAction(conversa_id: string, e: EntradaPropostaRapida): Promise<
   { orcamento: OrcamentoLead; auditoria: Auditoria; mostra_interno: boolean } | { erro: string }
@@ -181,15 +194,11 @@ export async function calcularPropostaRapidaAction(conversa_id: string, e: Entra
   return { orcamento: semInterno(r.orc, a.ehAdmin), auditoria: r.auditoria, mostra_interno: a.ehAdmin }
 }
 
-/** Gera o PDF (recalcula no servidor — o preço não vem da tela) e guarda no projeto do contato. */
-export async function gerarPdfPropostaRapidaAction(conversa_id: string, e: EntradaPropostaRapida): Promise<
-  { url_pdf: string; projeto_id: string } | { erro: string }
-> {
-  const a = await acesso(conversa_id)
-  if ('erro' in a) return { erro: a.erro as string }
-  const r = await calcular(a, e)
-  if ('erro' in r) return r
-  // Projeto da categoria fotovoltaica do contato (cria um novo se não houver aberto)
+type Acesso = Exclude<Awaited<ReturnType<typeof acesso>>, { erro: any }>
+type Calculado = Exclude<Awaited<ReturnType<typeof calcular>>, { erro: string }>
+
+/** Projeto da categoria fotovoltaica do contato (cria um novo se não houver aberto). */
+async function projetoFvDoContato(a: Acesso, r: Calculado): Promise<{ projeto_id: string } | { erro: string }> {
   const etiqueta = String(a.conv.produto || '')
   const tipoItem = r.orc.tipo_sistema === 'hibrido' ? 'fv_hibrido' : etiqueta.startsWith('fv_') ? etiqueta : 'fv_ongrid'
   const proj = await garantirProjetoDaCategoria(a.admin, {
@@ -197,26 +206,116 @@ export async function gerarPdfPropostaRapidaAction(conversa_id: string, e: Entra
     nome_cliente: r.perfil.contato.primeiro_nome || a.contato.nome_exibicao || null,
   })
   if ('erro' in proj) return proj
-  const projetoId = proj.projeto_id
   // Quem montou vira o consultor do projeto, se ainda não tiver
-  await a.admin.from('projetos').update({ consultor_id: a.user.id }).eq('id', projetoId).is('consultor_id', null)
-  const fatura = await faturaConhecida(a.admin, a.conv, a.contato)
-  const pdf = await gerarPdfDoOrcamento(a.admin, {
-    orc: r.orc, perfil: r.perfil, contato: a.contato, fatura: fatura ? { razao_social: fatura.razao_social, cpf_cnpj: fatura.cpf_cnpj } : null,
-    projetoId, cidade: r.cidade, uf: r.perfil.contato.endereco?.uf || a.conv.uf || null, prefixo: 'orcamento-spinzap',
-  })
-  if ('erro' in pdf) return pdf
-  await salvarSecoesNoProjeto(a.admin, projetoId, r.orc.secoes || [], a.user.id)
+  await a.admin.from('projetos').update({ consultor_id: a.user.id }).eq('id', proj.projeto_id).is('consultor_id', null)
+  return { projeto_id: proj.projeto_id }
+}
+
+/**
+ * Dados pro template da PROPOSTA OFICIAL (components/PropostaPDFTemplate —
+ * o mesmo PDF de /projetos/[id]/orcamento). Kalebe 2026-10-15: "quero que a
+ * proposta seja igual à proposta oficial que sai via projetos". O PDF é
+ * desenhado no navegador (como no projeto) e depois registrado no servidor.
+ */
+export type DadosPdfOficial = {
+  projeto: Record<string, any>
+  pv_total: number
+  config_empresa: { logo_url: string | null; razao_social: string | null; cnpj: string | null; rt_nome: string | null }
+  campanha: { titulo: string; subtitulo?: string | null; condicao_especial: string; vigente_ate?: string | null } | null
+}
+
+export async function prepararPdfOficialPropostaRapidaAction(conversa_id: string, e: EntradaPropostaRapida): Promise<
+  { projeto_id: string; nome_arquivo: string; dados: DadosPdfOficial } | { erro: string }
+> {
+  const a = await acesso(conversa_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const r = await calcular(a, e)
+  if ('erro' in r) return r
+  const proj = await projetoFvDoContato(a, r)
+  if ('erro' in proj) return proj
+  const o = r.orc
+  const [{ data: pj }, { data: emp }, fatura] = await Promise.all([
+    a.admin.from('projetos').select('id, codigo, cliente_razao_social, cliente_cpf_cnpj, analise_fatura, campanha_aplicada_id').eq('id', proj.projeto_id).maybeSingle(),
+    a.admin.from('configuracoes_empresa').select('logo_url, razao_social, cnpj, rt_nome').limit(1).maybeSingle(),
+    faturaConhecida(a.admin, a.conv, a.contato),
+  ])
+  const p = (pj || {}) as any
+  // Histórico de consumo da fatura (gráfico consumo × geração): do projeto FV ou do projeto principal do contato
+  let analise = p.analise_fatura || null
+  if (!analise?.historico_12_meses?.length && a.contato.projeto_id && a.contato.projeto_id !== proj.projeto_id) {
+    const { data: principal } = await a.admin.from('projetos').select('analise_fatura').eq('id', a.contato.projeto_id).maybeSingle()
+    if ((principal as any)?.analise_fatura?.historico_12_meses?.length) analise = (principal as any).analise_fatura
+  }
+  let campanha: DadosPdfOficial['campanha'] = null
+  if (p.campanha_aplicada_id) {
+    const { data: c } = await a.admin.from('campanhas_mes').select('titulo, subtitulo, condicao_especial, vigente_ate').eq('id', p.campanha_aplicada_id).maybeSingle()
+    if (c) campanha = c as any
+  }
+  const potenciaCa = Math.round(o.inversor.potencia_kw * o.inversor.qtd * 1000) / 1000
+  const uf = r.perfil.contato.endereco?.uf || a.conv.uf || 'SC'
+  const cliente = fatura?.razao_social || p.cliente_razao_social || a.contato.nome_exibicao || 'Cliente'
+  const projeto = {
+    id: proj.projeto_id,
+    codigo: p.codigo || '',
+    // Bloco Cliente do PDF: só nome + CPF/CNPJ
+    cliente_razao_social: cliente,
+    cliente_cpf_cnpj: fatura?.cpf_cnpj || p.cliente_cpf_cnpj || null,
+    cliente_endereco: { cidade: r.cidade || null, uf },
+    uf,
+    kit_selecionado: {
+      placa: { modelo: o.placa.modelo, potencia_wp: o.placa.potencia_wp },
+      qtd_placas: o.qtd_placas,
+      inversor: { modelo: o.inversor.modelo, potencia_kw: o.inversor.potencia_kw },
+      qtd_inversores: o.inversor.qtd,
+      potencia_cc_kwp: o.kwp,
+      potencia_ca_kw: potenciaCa,
+      fci_pct: potenciaCa > 0 ? (o.kwp / potenciaCa) * 100 : 0,
+    },
+    // Já somados no preço: aparecem como "incluso", sem valor (dupla visão)
+    extras_proposta: [
+      ...o.extras.map((x) => ({ secao: x.destino === 'kit' ? 'kit_weg' : 'lista_ca', produto_id: x.produto_id, descricao: x.descricao, qtd: x.qtd, valor: 0 })),
+      ...(o.secoes || []).map((s) => ({ secao: 'incluso', descricao: rotuloSecao(s).titulo, qtd: 1, valor: 0 })),
+    ],
+    analise_fatura: analise,
+    desconto_admin_pct: 0,
+    desconto_admin_valor: 0,
+    assinatura_cliente: null,
+  }
+  return {
+    projeto_id: proj.projeto_id,
+    nome_arquivo: nomearProposta({ cliente, potenciaCcKwp: o.kwp, potenciaCaKw: potenciaCa }),
+    dados: { projeto, pv_total: o.pv_total, config_empresa: (emp as any) || { logo_url: null, razao_social: null, cnpj: null, rt_nome: null }, campanha },
+  }
+}
+
+/**
+ * Registra o PDF oficial já enviado pro storage (o navegador desenha e sobe,
+ * como em /projetos/[id]/orcamento): histórico do projeto, seções e arquivos
+ * do contato. Recalcula no servidor — os valores não vêm da tela.
+ */
+export async function registrarPdfPropostaRapidaAction(conversa_id: string, projeto_id: string, url_pdf: string, e: EntradaPropostaRapida): Promise<
+  { sucesso: true } | { erro: string }
+> {
+  const a = await acesso(conversa_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const { projetosDoContato } = await import('@/lib/propostas/projetos-contato')
+  if (!(await projetosDoContato(a.admin, a.contato)).some((p) => p.id === projeto_id)) return { erro: 'Projeto não é deste contato' }
+  if (!url_pdf.includes(`/propostas-pdf/${projeto_id}/`)) return { erro: 'PDF inválido' }
+  const r = await calcular(a, e)
+  if ('erro' in r) return r
+  const o = r.orc
+  await salvarSecoesNoProjeto(a.admin, projeto_id, o.secoes || [], a.user.id)
   await a.admin.from('projeto_propostas_historico').insert({
-    projeto_id: projetoId, url_pdf: pdf.url, pv_total: r.orc.pv_total, potencia_cc_kwp: r.orc.kwp,
-    potencia_ca_kw: r.orc.inversor.potencia_kw, modo_composicao: 'orcamento_spinzap', memoria_calculo: r.orc.interno,
+    projeto_id, url_pdf, pv_total: o.pv_total, pv_bruto: o.pv_total, potencia_cc_kwp: o.kwp,
+    potencia_ca_kw: Math.round(o.inversor.potencia_kw * o.inversor.qtd * 100) / 100, modo_composicao: 'orcamento_spinzap',
+    memoria_calculo: { ...o.interno, complementos: o.complementos || null, extras: o.extras, secoes: o.secoes || [] }, gerado_por: a.user.id,
   })
   await a.admin.from('spinzap_arquivos').insert({
-    contato_id: a.contato.id, categoria: 'orcamento', url: pdf.url, nome: 'Orçamento (Spinzap)', mime: 'application/pdf',
-    origem: 'gerado', projeto_id: projetoId, criado_por: a.user.id,
+    contato_id: a.contato.id, categoria: 'orcamento', url: url_pdf, nome: 'Proposta fotovoltaica', mime: 'application/pdf',
+    origem: 'gerado', projeto_id, criado_por: a.user.id,
   })
   revalidatePath('/spinzap')
-  return { url_pdf: pdf.url, projeto_id: projetoId }
+  return { sucesso: true }
 }
 
 /** Envia no WhatsApp o PDF já gerado (mesmo envio de proposta do Spinzap: CRM, follow-up, modelo fora da janela). */
@@ -230,7 +329,7 @@ export async function enviarPdfPropostaRapidaAction(conversa_id: string, projeto
   if (!doContato.some((p) => p.id === projeto_id)) return { erro: 'Projeto não é deste contato' }
   if (!/\/propostas-pdf\//.test(url_pdf)) return { erro: 'PDF inválido' }
   const r = await enviarPropostaPeloCanalAction({
-    projeto_id, url_pdf, nome_arquivo: nome_arquivo && /^[\w.-]+\.pdf$/i.test(nome_arquivo) ? nome_arquivo : 'Orcamento-Spin-Solar.pdf',
+    projeto_id, url_pdf, nome_arquivo: nome_arquivo && /^[\w .-]+\.pdf$/i.test(nome_arquivo) ? nome_arquivo : 'Orcamento-Spin-Solar.pdf',
     legenda: String(legenda || '').trim().slice(0, 900) || 'Segue o seu orçamento de energia solar ☀️',
   })
   if ('erro' in r) return { erro: r.erro }

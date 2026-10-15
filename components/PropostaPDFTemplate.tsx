@@ -76,7 +76,8 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
     // Kalebe 2026-09-23: extras kit_weg/lista_ca já estão no pv_total (motor
     // aplica fator + margem). No PDF aparecem como "incluso", sem preço de
     // tabela (regra dupla-visão). Só serviços/legado somam aqui.
-    const extraNoMotor = (e: { secao?: string }) => e.secao === 'kit_weg' || e.secao === 'lista_ca'
+    // 'incluso': serviço já somado no total (proposta montada no Spinzap — Kalebe 2026-10-15)
+    const extraNoMotor = (e: { secao?: string }) => e.secao === 'kit_weg' || e.secao === 'lista_ca' || e.secao === 'incluso'
     const totalExtras = extras
       .filter((e) => !extraNoMotor(e))
       .reduce((s, e) => s + (Number(e.valor) || 0), 0)

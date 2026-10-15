@@ -121,7 +121,8 @@ Regras:
 - Se o datasheet tiver várias variantes (ex: 570/575/580W), escolha a que o documento destaca e cite as demais em observacoes.`
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
+      // Mesmo modelo da leitura de fatura (lib/fatura/analisar.ts), que roda em produção
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       system: systemPrompt,
       messages: [{

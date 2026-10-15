@@ -83,20 +83,25 @@ export async function precificarComplementosCC(
     : `${distEfetiva}m × ${Math.max(1, totalEntradasMppt)} entradas MPPT`
   // Kalebe 2026-09-02: 1ª tentativa cabo_cc/cabo, fallback cabo_ca com 6mm
   // (planilha WEG traz o cabo solar HEPR 6mm² cadastrado em cabo_ca).
+  // Kalebe 2026-10-14: só 'cabo_cc' — 'cabo' não existe no enum de categoria e
+  // derrubava a consulta inteira (caía no cabo CA 3×4 mm²)
   let cabo = await buscarProdutoComPreco(supabase, hojeIso, {
-    categorias: ['cabo_cc', 'cabo'],
+    categorias: ['cabo_cc'],
     contem: ['6mm'],
+    estrito: true,
   })
   if (!cabo.ok) {
     cabo = await buscarProdutoComPreco(supabase, hojeIso, {
       categorias: ['cabo_ca'],
       contem: ['6mm', 'solar'],
+      estrito: true,
     })
   }
   if (!cabo.ok) {
     cabo = await buscarProdutoComPreco(supabase, hojeIso, {
       categorias: ['cabo_ca'],
       contem: ['6mm'],
+      estrito: true,
     })
   }
   itens.push({
@@ -110,33 +115,35 @@ export async function precificarComplementosCC(
   })
   if (!cabo.ok) avisos.push(`Cabo solar (${metrosCabo}m) — ${cabo.motivo}`)
 
-  // 2. Estrutura
-  const tipo = String(entrada.tipo_telhado || '').toLowerCase()
-  let contemEstrut: string[] = []
-  if (/fibro/.test(tipo)) contemEstrut = ['fibro']
-  else if (/metal|zinco|alumin/.test(tipo)) contemEstrut = ['metal']
-  else if (/ceram|barro|colonial/.test(tipo)) contemEstrut = ['ceram']
-  else if (/laje|concreto/.test(tipo)) contemEstrut = ['laje']
-  let estrutura = await buscarProdutoComPreco(supabase, hojeIso, {
-    categorias: ['estrutura'],
-    contem: [...contemEstrut, 'kit'],
-    pegarMaiorPreco: true,
-  })
-  if (!estrutura.ok) {
-    estrutura = await buscarProdutoComPreco(supabase, hojeIso, {
-      categorias: ['estrutura'],
-      contem: contemEstrut,
-      pegarMaiorPreco: true,
-    })
+  // 2. Estrutura — Kalebe 2026-10-14: kit do tipo de telhado (metálico não
+  // pega Fibrometálico; acessório avulso não conta como kit), nº de módulos
+  // lido do nome ("3 módulos em retrato" = 3) e cota o MAIOR custo total
+  // (kits × preço), não o maior preço unitário.
+  const tel = filtroEstruturaDoTelhado(entrada.tipo_telhado)
+  const naoConterEstrut = [...tel.naoConter, 'acessorio', ...(ehMicroinversor ? [] : ['microinversor'])]
+  const custoTotalKit = (c: { modelo: string; preco: number }) => Math.ceil(entrada.qtd_placas / modulosDoKit(c.modelo)) * c.preco
+  let estrutura: BuscaResult = { ok: false, motivo: `${tel.rotulo}: cotar à parte (inclua em itens extras)` }
+  if (!tel.cotarAParte) {
+    const tentativas = [
+      ...(ehMicroinversor && tel.contem.length ? [[...tel.contem, 'microinversor']] : []),
+      [...tel.contem, 'kit'],
+      tel.contem,
+    ]
+    for (const contem of tentativas) {
+      estrutura = await buscarProdutoComPreco(supabase, hojeIso, {
+        categorias: ['estrutura'], contem, naoConter: naoConterEstrut,
+        pegarMaiorPreco: true, estrito: contem.length > 0, pontuar: custoTotalKit,
+      })
+      if (estrutura.ok) break
+    }
   }
-  const matchModulos = estrutura.ok ? String(estrutura.modelo).match(/p\/\s*(\d+)\s*m[oó]dulos?/i) : null
-  const modulosPorKit = matchModulos ? Number(matchModulos[1]) : 4
+  const modulosPorKit = estrutura.ok ? modulosDoKit(estrutura.modelo) : 4
   const qtdKitsEstrutura = Math.ceil(entrada.qtd_placas / modulosPorKit)
   itens.push({
     categoria: 'estrutura',
     modelo: estrutura.ok
       ? `${estrutura.modelo} · ${entrada.qtd_placas} módulos ÷ ${modulosPorKit}`
-      : `Estrutura ${contemEstrut[0] || 'genérica'} · ${entrada.qtd_placas} módulos ÷ ${modulosPorKit} · ⚠ não cadastrado`,
+      : `Estrutura ${tel.rotulo} · ${entrada.qtd_placas} módulos · ⚠ ${tel.cotarAParte ? 'cotar à parte' : 'não cadastrado'}`,
     qtd: qtdKitsEstrutura, unidade: 'kit',
     preco_unitario: estrutura.ok ? estrutura.preco : 0,
     subtotal: estrutura.ok ? qtdKitsEstrutura * estrutura.preco : 0,
@@ -289,6 +296,29 @@ export async function precificarComplementosCC(
 
 // ─── Helpers internos ─────────────────────────────────────────────────
 
+/**
+ * Tipo de telhado (perfil do Spinzap ou seção de telhado do projeto) → filtro
+ * do kit de estrutura no catálogo WEG. Solo e carport não têm kit por
+ * quantidade de placas: ficam pra cotar à parte (itens extras).
+ */
+export function filtroEstruturaDoTelhado(tipoTelhado: string | null | undefined): {
+  contem: string[]; naoConter: string[]; rotulo: string; cotarAParte: boolean
+} {
+  const t = String(tipoTelhado || '').toLowerCase()
+  if (/fibro/.test(t)) return { contem: ['fibro'], naoConter: [], rotulo: 'fibrocimento', cotarAParte: false }
+  if (/metal|zinco|alumin|trapez|onda|zipad/.test(t)) return { contem: ['metal'], naoConter: ['fibro'], rotulo: 'metálico', cotarAParte: false }
+  if (/ceram|barro|colonial|frances/.test(t)) return { contem: ['ceram'], naoConter: [], rotulo: 'cerâmico', cotarAParte: false }
+  if (/laje|concreto/.test(t)) return { contem: ['laje'], naoConter: [], rotulo: 'laje', cotarAParte: false }
+  if (/solo/.test(t)) return { contem: [], naoConter: [], rotulo: 'de solo', cotarAParte: true }
+  if (/carport/.test(t)) return { contem: [], naoConter: [], rotulo: 'carport', cotarAParte: true }
+  return { contem: [], naoConter: [], rotulo: 'genérica', cotarAParte: false }
+}
+
+/** Módulos por kit, lido do nome ("kit p/ 4 módulos", "3 módulos em retrato"); sem número = 4. */
+export function modulosDoKit(modelo: string): number {
+  return Number((String(modelo || '').match(/(\d+)\s*m[oó]dulos?/i) || [])[1]) || 4
+}
+
 type BuscaResult =
   | { ok: true; id: string; modelo: string; preco: number }
   | { ok: false; motivo: string }
@@ -304,6 +334,10 @@ async function buscarProdutoComPreco(
      *  fazem sentido no contexto (ex: DPS 1100V CC quando busca é CA). */
     naoConter?: string[]
     pegarMaiorPreco?: boolean
+    /** Sem nenhum produto com TODOS os termos de `contem`, falha (não cai na categoria inteira) */
+    estrito?: boolean
+    /** Nota de cada cotação pra escolher o maior/menor (padrão: o preço unitário) */
+    pontuar?: (c: { modelo: string; preco: number }) => number
   },
 ): Promise<BuscaResult> {
   const { data: ativos } = await supabase
@@ -344,7 +378,8 @@ async function buscarProdutoComPreco(
     usandoInativos = true
   }
 
-  const normalizar = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  // Kalebe 2026-10-14: tira o acento antes (senão "Cerâmico" virava "cermico" e não batia com "ceram")
+  const normalizar = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
   // Kalebe 2026-09-06: primeiro corta o LIXO (naoConter) — DPS 1100V é CC,
   // não faz sentido pra dimensionamento CA por exemplo.
   const semLixo = lista.filter((p: any) => {
@@ -356,53 +391,46 @@ async function buscarProdutoComPreco(
     const alvo = normalizar(`${p.modelo || ''} ${p.subcategoria || ''} ${p.descricao_curta || ''}`)
     return !filtro.contem || filtro.contem.every((k) => alvo.includes(normalizar(k)))
   })
+  if (filtro.estrito && filtro.contem?.length && preferidos.length === 0) {
+    return { ok: false, motivo: `nenhum produto "${filtro.contem.join(' + ')}" na categoria ${filtro.categorias.join('/')}` }
+  }
   const candidatos = preferidos.length > 0 ? preferidos : semLixo.length > 0 ? semLixo : lista
 
-  const cotacoes: Array<{ id: string; modelo: string; preco: number }> = []
-  for (const escolhido of candidatos) {
+  // Preços de todos os candidatos de uma vez (em lotes): o vigente mais
+  // recente de cada um e, na falta dele, o último (vencido).
+  const vigente = new Map<string, number>()
+  const ultimo = new Map<string, number>()
+  const ids = candidatos.map((c: any) => c.id as string)
+  for (let i = 0; i < ids.length; i += 100) {
     const { data: precos } = await supabase
       .from('precos_produtos')
-      .select('preco_venda, vigente_de, vigente_ate')
-      .eq('produto_id', escolhido.id)
-      .or(`vigente_ate.is.null,vigente_ate.gte.${hojeIso}`)
+      .select('produto_id, preco_venda, vigente_de, vigente_ate')
+      .in('produto_id', ids.slice(i, i + 100))
       .order('vigente_de', { ascending: false })
-      .limit(1)
-    const preco = Number((precos || [])[0]?.preco_venda) || 0
-    if (preco > 0) {
-      const modelo = usandoInativos ? `${escolhido.modelo} (inativo)` : escolhido.modelo
-      cotacoes.push({ id: escolhido.id, modelo, preco })
+    for (const r of (precos || []) as any[]) {
+      const preco = Number(r.preco_venda) || 0
+      if (!ultimo.has(r.produto_id)) ultimo.set(r.produto_id, preco)
+      if (!vigente.has(r.produto_id) && (!r.vigente_ate || r.vigente_ate >= hojeIso)) vigente.set(r.produto_id, preco)
     }
   }
-  if (cotacoes.length > 0) {
-    // Kalebe 2026-09-06: pegarMaiorPreco true = MAIOR (estrutura, margem seg),
-    // false = MENOR (DPS/disjuntor — dimensionamento já garante margem).
-    const escolhida = filtro.pegarMaiorPreco
-      ? cotacoes.reduce((a, b) => (a.preco >= b.preco ? a : b))
-      : cotacoes.reduce((a, b) => (a.preco <= b.preco ? a : b))
-    return { ok: true, ...escolhida }
-  }
+  // Kalebe 2026-09-06: pegarMaiorPreco true = MAIOR (estrutura, margem seg),
+  // false = MENOR (DPS/disjuntor — dimensionamento já garante margem).
+  const nota = (c: { modelo: string; preco: number }) => (filtro.pontuar ? filtro.pontuar(c) : c.preco)
+  const escolher = (cs: Array<{ id: string; modelo: string; preco: number }>) => filtro.pegarMaiorPreco
+    ? cs.reduce((a, b) => (nota(a) >= nota(b) ? a : b))
+    : cs.reduce((a, b) => (nota(a) <= nota(b) ? a : b))
+  const sufInat = usandoInativos ? ' (inativo)' : ''
+
+  const cotacoes = candidatos
+    .map((p: any) => ({ id: p.id as string, modelo: `${p.modelo}${sufInat}`, preco: vigente.get(p.id) || 0 }))
+    .filter((c) => c.preco > 0)
+  if (cotacoes.length > 0) return { ok: true, ...escolher(cotacoes) }
 
   // Fallback: qualquer preço, mesmo vencido
-  const cotacoesVencidas: Array<{ id: string; modelo: string; preco: number }> = []
-  for (const escolhido of candidatos) {
-    const { data: precos } = await supabase
-      .from('precos_produtos')
-      .select('preco_venda, vigente_de, vigente_ate')
-      .eq('produto_id', escolhido.id)
-      .order('vigente_de', { ascending: false })
-      .limit(1)
-    const preco = Number((precos || [])[0]?.preco_venda) || 0
-    if (preco > 0) {
-      const suffixInat = usandoInativos ? ' (inativo)' : ''
-      const modelo = `${escolhido.modelo}${suffixInat} · ⚠ preço vencido`
-      if (!filtro.pegarMaiorPreco) return { ok: true, id: escolhido.id, modelo, preco }
-      cotacoesVencidas.push({ id: escolhido.id, modelo, preco })
-    }
-  }
-  if (cotacoesVencidas.length > 0) {
-    const escolhida = cotacoesVencidas.reduce((a, b) => (a.preco >= b.preco ? a : b))
-    return { ok: true, ...escolhida }
-  }
+  const cotacoesVencidas = candidatos
+    .map((p: any) => ({ id: p.id as string, modelo: `${p.modelo}${sufInat} · ⚠ preço vencido`, preco: ultimo.get(p.id) || 0 }))
+    .filter((c) => c.preco > 0)
+  if (cotacoesVencidas.length > 0) return { ok: true, ...escolher(cotacoesVencidas) }
 
   const detalhes = `${candidatos.length} produto(s) encontrado(s) mas SEM preço em precos_produtos`
   if (usandoInativos) return { ok: false, motivo: `só produtos INATIVOS na categoria + ${detalhes}` }

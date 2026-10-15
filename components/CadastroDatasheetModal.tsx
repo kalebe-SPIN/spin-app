@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useRef, useTransition } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState, useRef, useTransition } from 'react'
+import { createPortal } from 'react-dom'
 import { criarProdutoViaDatasheetAction, type CategoriaProduto } from '@/app/admin/catalogo/actions'
+import { lerDatasheet, subirDatasheet, ehFabricanteWeg, FATOR_CUSTO_WEG, type DadosDatasheet } from '@/lib/catalogo/datasheet-cliente'
 
 const CATEGORIAS: { chave: CategoriaProduto; emoji: string; label: string }[] = [
   { chave: 'placa',         emoji: '☀️', label: 'Placa fotovoltaica' },
@@ -21,30 +22,50 @@ const CATEGORIAS: { chave: CategoriaProduto; emoji: string; label: string }[] = 
   { chave: 'outro',         emoji: '📦', label: 'Outro' },
 ]
 
-type SpecsExtraidas = Record<string, unknown>
+/**
+ * Inversor solar precisa da subcategoria certa pra aparecer nas propostas
+ * (o fluxo filtra por ela) — não vale o texto livre que a IA sugere.
+ */
+const SUBCATEGORIAS_INVERSOR = [
+  { valor: 'inversor_hibrido', rotulo: 'Inversor híbrido' },
+  { valor: 'inversor_string', rotulo: 'Inversor string' },
+  { valor: 'microinversor', rotulo: 'Microinversor' },
+]
+const subcategoriaInversorDe = (texto: string | null | undefined, padrao?: string) => {
+  const t = String(texto || '').toLowerCase()
+  if (/micro/.test(t)) return 'microinversor'
+  if (/h[ií]brid/.test(t)) return 'inversor_hibrido'
+  if (/string|on.?grid|trif|monof/.test(t)) return 'inversor_string'
+  return padrao || 'inversor_string'
+}
 
-type ExtracaoResposta = {
-  fabricante?: string
-  modelo?: string
-  descricao_curta?: string
-  subcategoria?: string
-  codigo_sugerido?: string | null
-  specs?: SpecsExtraidas
+/** "1.370,36" (pt-BR) ou "1370.36" → número; vazio → NaN */
+const lerValor = (s: string) => {
+  const t = s.trim()
+  if (!t) return NaN
+  if (!t.includes(',') && /^\d+\.\d{1,2}$/.test(t)) return parseFloat(t)
+  return parseFloat(t.replace(/\./g, '').replace(',', '.'))
 }
 
 export function CadastroDatasheetModal({
   onClose,
   onCreated,
+  categoriaInicial,
+  subcategoriaInversor,
 }: {
   onClose: () => void
-  onCreated: () => void
+  onCreated: (produtoId?: string) => void
+  /** Categoria já marcada ao abrir (ex.: "inversor" a partir da proposta) */
+  categoriaInicial?: CategoriaProduto
+  /** Subcategoria padrão de inversor (string, micro ou híbrido, conforme a proposta) */
+  subcategoriaInversor?: string
 }) {
   const [pending, startTransition] = useTransition()
   const [extraindo, setExtraindo] = useState(false)
   const [salvando, setSalvando] = useState(false)
-  const [categoria, setCategoria] = useState<CategoriaProduto>('placa')
+  const [categoria, setCategoria] = useState<CategoriaProduto>(categoriaInicial || 'placa')
   const [arquivo, setArquivo] = useState<File | null>(null)
-  const [extraido, setExtraido] = useState<ExtracaoResposta | null>(null)
+  const [extraido, setExtraido] = useState<DadosDatasheet | null>(null)
   // Campos editáveis (pré-preenchidos pela IA)
   const [fabricante, setFabricante] = useState('')
   const [modelo, setModelo] = useState('')
@@ -55,40 +76,44 @@ export function CadastroDatasheetModal({
   const [precoTabela, setPrecoTabela] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Vai direto no <body>: dentro de popup com desfoque o "fixed" ficaria preso no cartão
+  const [montado, setMontado] = useState(false)
+  useEffect(() => setMontado(true), [])
 
-  const ehWeg = fabricante.trim().toUpperCase().startsWith('WEG')
-  const custoCalc = ehWeg && precoTabela
-    ? (parseFloat(precoTabela.replace(',', '.')) * 0.4182)
-    : (precoTabela ? parseFloat(precoTabela.replace(',', '.')) : 0)
+  const ehWeg = ehFabricanteWeg(fabricante)
+  const precoNum = lerValor(precoTabela)
+  const custoCalc = !isNaN(precoNum) ? (ehWeg ? precoNum * FATOR_CUSTO_WEG : precoNum) : 0
+
+  function trocarCategoria(c: CategoriaProduto) {
+    setCategoria(c); setExtraido(null)
+    if (c === 'inversor') setSubcategoria(subcategoriaInversorDe(null, subcategoriaInversor))
+  }
 
   async function handleExtrair() {
     setErro(null)
     if (!arquivo) { setErro('Anexe o PDF do datasheet primeiro'); return }
-    if (arquivo.type !== 'application/pdf') { setErro('Precisa ser PDF (não imagem)'); return }
-
     setExtraindo(true)
     try {
-      const fd = new FormData()
-      fd.append('arquivo', arquivo)
-      fd.append('categoria', categoria)
-      const res = await fetch('/api/extrair-datasheet', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok || !json.sucesso) {
-        throw new Error(json.erro || 'IA não conseguiu extrair')
-      }
-      const e = json as ExtracaoResposta
+      const e = await lerDatasheet(arquivo, categoria)
+      if ('erro' in e) { setErro(e.erro); return }
       setExtraido(e)
       setFabricante(e.fabricante || '')
       setModelo(e.modelo || '')
       setDescricao(e.descricao_curta || '')
-      setSubcategoria(e.subcategoria || '')
+      setSubcategoria(categoria === 'inversor' ? subcategoriaInversorDe(`${e.subcategoria || ''} ${e.descricao_curta || ''}`, subcategoriaInversor) : (e.subcategoria || ''))
       setCodigoWeg(e.codigo_sugerido || '')
       setSpecsJson(JSON.stringify(e.specs || {}, null, 2))
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha na extração')
     } finally {
       setExtraindo(false)
     }
+  }
+
+  /** Sem datasheet (ou a IA falhou): abre os campos pra preencher à mão */
+  function preencherManual() {
+    setErro(null)
+    setExtraido({})
+    if (categoria === 'inversor' && !subcategoria) setSubcategoria(subcategoriaInversorDe(null, subcategoriaInversor))
+    if (!specsJson) setSpecsJson(categoria === 'placa' ? '{\n  "potencia_wp": null\n}' : categoria === 'inversor' ? '{\n  "potencia_kw": null,\n  "tensao_desc": null,\n  "entradas_mppt": null\n}' : categoria === 'bateria' ? '{\n  "capacidade_kwh": null\n}' : '{}')
   }
 
   async function handleSalvar() {
@@ -104,27 +129,16 @@ export function CadastroDatasheetModal({
       setErro('JSON de specs inválido — corrija a sintaxe')
       return
     }
+    // Sem a potência o equipamento não entra no dimensionamento das propostas
+    if (categoria === 'placa' && !(Number(specsObj.potencia_wp) > 0)) { setErro('Informe a potência da placa (specs → potencia_wp)'); return }
+    if (categoria === 'inversor' && !(Number(specsObj.potencia_kw) > 0)) { setErro('Informe a potência do inversor (specs → potencia_kw)'); return }
 
     setSalvando(true)
     try {
-      // 1. Upload do PDF pro storage pra ficar como url_datasheet
-      let urlDatasheet: string | undefined
-      if (arquivo) {
-        const supabase = createClient()
-        const codigo = codigoWeg.trim() || `SPIN-${Date.now().toString(36).toUpperCase()}`
-        const path = `${codigo}-${Date.now()}.pdf`
-        const { error: upErr } = await supabase.storage
-          .from('datasheets')
-          .upload(path, arquivo, { contentType: 'application/pdf', upsert: false })
-        if (!upErr) {
-          const { data } = supabase.storage.from('datasheets').getPublicUrl(path)
-          urlDatasheet = data.publicUrl
-        }
-        // Se upload falhar (bucket não existe/permissão), continua mesmo assim — só sem PDF anexo
-      }
+      // 1. Upload do PDF pro storage pra ficar como url_datasheet (falhou → segue sem anexo)
+      const urlDatasheet = arquivo ? await subirDatasheet(arquivo, codigoWeg.trim() || null) : null
 
       startTransition(async () => {
-        const precoNum = precoTabela.trim() ? parseFloat(precoTabela.replace(',', '.')) : undefined
         const res = await criarProdutoViaDatasheetAction({
           categoria,
           modelo: modelo.trim(),
@@ -132,16 +146,17 @@ export function CadastroDatasheetModal({
           codigo_weg: codigoWeg.trim() || undefined,
           subcategoria: subcategoria.trim() || undefined,
           descricao_curta: descricao.trim(),
+          descricao_tecnica: extraido?.descricao_tecnica || undefined,
           specs: specsObj,
-          preco_tabela_weg: (precoNum && !isNaN(precoNum)) ? precoNum : undefined,
-          url_datasheet: urlDatasheet,
+          preco_tabela_weg: (!isNaN(precoNum) && precoNum > 0) ? precoNum : undefined,
+          url_datasheet: urlDatasheet || undefined,
         })
         if ('erro' in res) {
           setErro(res.erro)
           setSalvando(false)
           return
         }
-        onCreated()
+        onCreated(res.produto_id)
         onClose()
       })
     } catch (e) {
@@ -153,17 +168,19 @@ export function CadastroDatasheetModal({
   const podeExtrair = !!arquivo && !extraindo && !extraido
   const podeSalvar = !!extraido && !salvando && !pending && !!modelo.trim() && !!fabricante.trim() && !!descricao.trim()
 
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  if (!montado) return null
+  return createPortal(
+    // Abre por cima dos popups de proposta (z-50/60) e não deixa o clique fechar o popup de baixo
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[70] flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
       <div className="bg-noite border border-white/20 rounded-xl p-6 max-w-2xl w-full space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-white">📄 Cadastrar via datasheet (IA)</h3>
+          <h3 className="text-xl font-bold text-white">📄 Cadastrar equipamento (datasheet)</h3>
           <button onClick={onClose} className="text-white/60 hover:text-white text-xl">✕</button>
         </div>
 
         <p className="text-xs text-white/60 leading-relaxed">
           Escolha a categoria, anexe o PDF do datasheet e a IA extrai as specs automaticamente.
-          Você revisa, digita o preço de tabela (sem desconto) e cadastra.
+          Você revisa, digita o preço de tabela (sem desconto) e cadastra. Sem datasheet, dá pra preencher à mão.
         </p>
 
         {/* Etapa 1 — Categoria */}
@@ -176,7 +193,7 @@ export function CadastroDatasheetModal({
                 <button
                   key={c.chave}
                   type="button"
-                  onClick={() => { setCategoria(c.chave); setExtraido(null) }}
+                  onClick={() => trocarCategoria(c.chave)}
                   disabled={extraindo || salvando}
                   className={`p-1.5 rounded border text-center transition disabled:opacity-40 ${
                     ativo ? 'bg-sol/15 border-sol text-white' : 'bg-white/[0.02] border-white/10 text-white/60 hover:border-white/30'
@@ -192,11 +209,11 @@ export function CadastroDatasheetModal({
 
         {/* Etapa 2 — Upload PDF */}
         <div>
-          <label className="block text-xs font-semibold text-white/70 mb-2">2. Datasheet PDF *</label>
+          <label className="block text-xs font-semibold text-white/70 mb-2">2. Datasheet PDF</label>
           <input
             ref={inputRef}
             type="file"
-            accept="application/pdf"
+            accept="application/pdf,image/png,image/jpeg,image/webp"
             className="hidden"
             onChange={e => { setArquivo(e.target.files?.[0] || null); setExtraido(null); setErro(null) }}
           />
@@ -224,29 +241,39 @@ export function CadastroDatasheetModal({
           </button>
         </div>
 
-        {/* Etapa 3 — Extrair via IA */}
-        {podeExtrair && (
-          <button
-            type="button"
-            onClick={handleExtrair}
-            disabled={extraindo}
-            className="w-full py-2.5 bg-weg-azul text-white font-bold text-sm rounded-lg hover:bg-weg-azul/90 disabled:opacity-40 transition"
-          >
-            🤖 Extrair specs com IA (Claude Vision)
-          </button>
+        {/* Etapa 3 — Extrair via IA (ou preencher à mão) */}
+        {!extraido && !extraindo && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleExtrair}
+              disabled={!podeExtrair}
+              className="py-2.5 bg-weg-azul text-white font-bold text-sm rounded-lg hover:bg-weg-azul/90 disabled:opacity-40 transition"
+            >
+              🤖 Ler datasheet com IA
+            </button>
+            <button
+              type="button"
+              onClick={preencherManual}
+              className="py-2.5 bg-white/[0.06] border border-white/15 text-white font-bold text-sm rounded-lg hover:bg-white/10 transition"
+            >
+              ✍️ Preencher à mão
+            </button>
+          </div>
         )}
         {extraindo && (
-          <div className="p-3 bg-weg-azul/10 border border-weg-azul/30 rounded-lg text-center text-xs text-weg-azul">
+          <div className="p-3 border border-weg-azul/40 rounded-lg text-center text-xs text-white/80">
             🤖 Lendo o datasheet... isso leva ~10-20 segundos
           </div>
         )}
 
         {/* Etapa 4 — Revisão do que a IA extraiu */}
         {extraido && (
-          <div className="space-y-3 p-4 rounded-lg bg-verde/5 border border-verde/20">
-            <p className="text-[10px] uppercase tracking-wider font-bold text-verde">
-              ✓ Specs extraídas · revise antes de salvar
+          <div className="space-y-3 p-4 rounded-lg border border-verde/30">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-white/70">
+              {arquivo && Object.keys(extraido).length ? '✓ Specs extraídas · revise antes de salvar' : 'Dados do equipamento'}
             </p>
+            {extraido.observacoes && <p className="text-[11px] text-white/55">IA: {extraido.observacoes}</p>}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -269,9 +296,16 @@ export function CadastroDatasheetModal({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-white/70 mb-1">Subcategoria</label>
-                <input type="text" value={subcategoria} onChange={e => setSubcategoria(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+                <label className="block text-xs font-semibold text-white/70 mb-1">Subcategoria{categoria === 'inversor' ? ' *' : ''}</label>
+                {categoria === 'inversor' ? (
+                  <select value={subcategoria} onChange={e => setSubcategoria(e.target.value)}
+                    className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none">
+                    {SUBCATEGORIAS_INVERSOR.map(s => <option key={s.valor} value={s.valor} className="bg-noite">{s.rotulo}</option>)}
+                  </select>
+                ) : (
+                  <input type="text" value={subcategoria} onChange={e => setSubcategoria(e.target.value)}
+                    className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-white/70 mb-1">SKU / Código</label>
@@ -282,7 +316,7 @@ export function CadastroDatasheetModal({
 
             <div>
               <label className="block text-xs font-semibold text-white/70 mb-1">
-                Specs (JSON extraído — edite se quiser corrigir algum valor)
+                Specs (JSON — edite se quiser corrigir algum valor)
               </label>
               <textarea
                 rows={6}
@@ -296,26 +330,27 @@ export function CadastroDatasheetModal({
 
         {/* Etapa 5 — Preço */}
         {extraido && (
-          <div className="p-4 rounded-lg bg-sol/5 border border-sol/20 space-y-3">
-            <p className="text-[10px] uppercase tracking-wider font-bold text-sol">💰 Preço (sem desconto)</p>
+          <div className="p-4 rounded-lg border border-sol/30 space-y-3">
+            <p className="text-[10px] uppercase tracking-wider font-bold text-white/70">💰 Preço (sem desconto)</p>
             <div>
               <label className="block text-xs font-semibold text-white/70 mb-1">
-                Preço de tabela (R$) — {ehWeg ? 'sistema aplicará desconto WEG 0,4182' : `fabricante ${fabricante || '?'} — sem fator, custo = tabela`}
+                Preço de tabela (R$) — {ehWeg ? `o sistema aplica o fator WEG ${String(FATOR_CUSTO_WEG).replace('.', ',')}` : `fabricante ${fabricante || '?'} — sem fator, custo = tabela`}
               </label>
-              <input type="number" inputMode="decimal" step="0.01" value={precoTabela} onChange={e => setPrecoTabela(e.target.value)}
-                placeholder="Ex: 1370,36" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
-              {precoTabela && !isNaN(parseFloat(precoTabela.replace(',', '.'))) && (
+              <input type="text" inputMode="decimal" value={precoTabela} onChange={e => setPrecoTabela(e.target.value)}
+                placeholder="Ex.: 1.370,36" className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded text-white text-sm focus:border-sol focus:outline-none" />
+              {!isNaN(precoNum) && precoNum > 0 && (
                 <p className="text-[10px] text-white/50 mt-1">
-                  Custo Spin calculado: <strong className="text-verde">R$ {custoCalc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
-                  {ehWeg && <span className="text-white/40"> (venda × 0,4182)</span>}
+                  Custo Spin calculado: <strong className="text-white">{custoCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                  {ehWeg && <span className="text-white/40"> (tabela × {String(FATOR_CUSTO_WEG).replace('.', ',')})</span>}
                 </p>
               )}
+              {!(precoNum > 0) && <p className="text-[10px] text-white/45 mt-1">Sem preço o item fica cadastrado, mas não aparece nas propostas até ter preço.</p>}
             </div>
           </div>
         )}
 
         {erro && (
-          <div className="p-2.5 bg-coral/10 border border-coral/30 rounded text-xs text-coral">
+          <div className="p-2.5 border border-coral/40 rounded text-xs text-white/85">
             ⚠️ {erro}
           </div>
         )}
@@ -326,11 +361,12 @@ export function CadastroDatasheetModal({
             Cancelar
           </button>
           <button onClick={handleSalvar} disabled={!podeSalvar}
-            className="flex-1 py-2 bg-sol text-noite text-sm font-bold rounded-lg hover:bg-sol/90 disabled:opacity-40 transition">
+            className="flex-1 py-2 bg-verde text-white text-sm font-bold rounded-lg hover:bg-verde/90 disabled:opacity-40 transition">
             {salvando || pending ? 'Salvando...' : '✓ Cadastrar produto'}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

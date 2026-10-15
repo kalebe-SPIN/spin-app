@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { EventoPopover, type EventoResumo } from './EventoPopover'
 import { CriarEventoInline } from './CriarEventoInline'
@@ -24,6 +25,33 @@ type ItemAberto =
   | { tipo: 'tarefa'; item: TarefaAgenda }
   | { tipo: 'followup'; item: FollowupAgenda }
   | { tipo: 'servico'; item: ServicoAgenda }
+
+/**
+ * Popup da agenda (Kalebe 2026-10-15: no celular saía da tela): vai direto no
+ * <body> — fora de cartão com desfoque, que prenderia o "fixed" — e o cartão
+ * cabe na largura da tela e rola na altura.
+ */
+function PopupAgenda({ onFechar, children, borda = 'border-white/15', cartao = true }: {
+  onFechar: () => void; children: ReactNode; borda?: string
+  /** false: o conteúdo já traz o próprio cartão (EventoPopover) */
+  cartao?: boolean
+}) {
+  const [montado, setMontado] = useState(false)
+  useEffect(() => setMontado(true), [])
+  if (!montado) return null
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onFechar}>
+      <div className="absolute inset-0 bg-black/40" />
+      {cartao ? (
+        <div className={`relative w-[min(24rem,calc(100vw-2rem))] max-h-[85vh] overflow-y-auto bg-noite border ${borda} rounded-xl shadow-2xl p-4 space-y-2`}
+          onClick={(e) => e.stopPropagation()}>
+          {children}
+        </div>
+      ) : <div className="relative" onClick={(e) => e.stopPropagation()}>{children}</div>}
+    </div>,
+    document.body,
+  )
+}
 
 const chaveDia = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const TAREFA_FEITA = ['concluida']
@@ -244,23 +272,18 @@ export function CalendarioSemanal({
 
       {/* Popover aberto (usa portal simulado via fixed positioning) */}
       {aberto && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4" onClick={() => setAberto(null)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <EventoPopover
-              evento={aberto}
-              souDono={aberto.usuario_id === usuarioLogadoId}
-              onFechar={() => setAberto(null)}
-              onMudou={() => startTransition(() => router.refresh())}
-            />
-          </div>
-        </div>
+        <PopupAgenda onFechar={() => setAberto(null)} cartao={false}>
+          <EventoPopover
+            evento={aberto}
+            souDono={aberto.usuario_id === usuarioLogadoId}
+            onFechar={() => setAberto(null)}
+            onMudou={() => startTransition(() => router.refresh())}
+          />
+        </PopupAgenda>
       )}
 
       {itemAberto && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4" onClick={() => setItemAberto(null)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative w-80 bg-noite border border-white/15 rounded-xl shadow-2xl p-4 space-y-2" onClick={(e) => e.stopPropagation()}>
+        <PopupAgenda onFechar={() => setItemAberto(null)}>
             {itemAberto.tipo === 'tarefa' && (() => {
               const t = itemAberto.item
               const feita = TAREFA_FEITA.includes(t.status)
@@ -315,24 +338,20 @@ export function CalendarioSemanal({
                 </>
               )
             })()}
-          </div>
-        </div>
+        </PopupAgenda>
       )}
 
       {criandoEm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4" onClick={() => setCriandoEm(null)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative bg-noite border border-sol/30 rounded-xl shadow-2xl p-4 w-96" onClick={(e) => e.stopPropagation()}>
-            <CriarEventoInline
-              dataHoraInicio={criandoEm.dia}
-              donoId={donoAtualId}
-              donoNome={donoAtualNome}
-              paraOutro={donoAtualId !== usuarioLogadoId}
-              onFechar={() => setCriandoEm(null)}
-              onCriado={() => { setCriandoEm(null); startTransition(() => router.refresh()) }}
-            />
-          </div>
-        </div>
+        <PopupAgenda onFechar={() => setCriandoEm(null)} borda="border-sol/30">
+          <CriarEventoInline
+            dataHoraInicio={criandoEm.dia}
+            donoId={donoAtualId}
+            donoNome={donoAtualNome}
+            paraOutro={donoAtualId !== usuarioLogadoId}
+            onFechar={() => setCriandoEm(null)}
+            onCriado={() => { setCriandoEm(null); startTransition(() => router.refresh()) }}
+          />
+        </PopupAgenda>
       )}
     </div>
   )

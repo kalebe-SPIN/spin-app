@@ -12,6 +12,9 @@ import { CampoNumero, inputCls } from './CampoNumero'
 import { SecoesProposta } from './SecoesProposta'
 import { RodapeProposta } from './RodapeProposta'
 import { Bloco, Opcao, Rotulo } from './ui'
+import { SeletorCidade } from '@/components/inbox/SeletorCidade'
+
+const TELHADOS_AZ = [...OPCOES_TELHADO].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
 
 /**
  * Proposta de O&M dentro do Spinzap (Kalebe 2026-10-14): limpeza, manutenção
@@ -64,20 +67,28 @@ export function ComposicaoOM({ api, nomeCliente, onEnviada }: { api: ApiOM; nome
   const [retirada, setRetirada] = useState<EntradasRetiradaRecolocacao>(retiradaPadrao(0))
   const [ajuste, setAjuste] = useState(0)
   const [secoes, setSecoes] = useState<SecaoProposta[]>([])
+  // Kalebe 2026-10-15: limpeza simplificada — telhado, local, residencial/empresa, placas e extras
+  const [local, setLocal] = useState<{ cidade: string; uf: string } | null>(null)
+  const [tipoInstalacao, setTipoInstalacao] = useState<'residencial' | 'empresa' | null>(null)
+  const [comExtras, setComExtras] = useState(false)
 
   useEffect(() => {
     api.carregar().then((r) => {
       if ('erro' in r) { setErro(r.erro); return }
-      setD(r); setSecoes(r.secoes)
+      setD(r); setSecoes(r.secoes); setComExtras(r.secoes.length > 0)
       const e = r.entrada
       setServico(e?.servico || 'limpeza')
       setLimpeza(e?.limpeza || limpezaPadrao(r.km)); setRevisao(e?.revisao || revisaoPadrao(r.km)); setRetirada(e?.retirada || retiradaPadrao(r.km))
       setAjuste(Number(e?.ajuste) || 0)
+      setLocal(e?.local || (r.cidade ? { cidade: r.cidade, uf: '' } : null))
+      setTipoInstalacao(e?.tipo_instalacao || null)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const entrada = useMemo<EntradaOM>(() => ({ servico, limpeza, revisao, retirada, ajuste, secoes }), [servico, limpeza, revisao, retirada, ajuste, secoes])
+  const entrada = useMemo<EntradaOM>(() => ({
+    servico, limpeza, revisao, retirada, ajuste, secoes: comExtras ? secoes : [], local, tipo_instalacao: tipoInstalacao,
+  }), [servico, limpeza, revisao, retirada, ajuste, secoes, comExtras, local, tipoInstalacao])
   const r = useMemo(() => (d ? calcularEntradaOM(entrada, d.params) : null), [entrada, d])
 
   if (!d) return erro ? <p className="text-xs text-coral border border-coral/40 rounded-xl p-2">⚠ {erro}</p> : <p className="text-sm text-white/50">Carregando parâmetros…</p>
@@ -109,19 +120,44 @@ export function ComposicaoOM({ api, nomeCliente, onEnviada }: { api: ApiOM; nome
       <Bloco n="1" titulo="Escopo do serviço">
         {servico === 'limpeza' && (
           <>
-            {comum(limpeza, setLimpeza)}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <Rotulo texto="Telhado"><Sel valor={limpeza.tipo_telhado} opcoes={OPCOES_TELHADO} onChange={(x) => setLimpeza({ ...limpeza, tipo_telhado: x })} /></Rotulo>
-              <Rotulo texto="Sujeira">
-                <Sel valor={limpeza.sujidade || 'medio'} opcoes={[{ id: 'leve', label: 'Leve' }, { id: 'medio', label: 'Média' }, { id: 'pesado', label: 'Pesada' }]}
-                  onChange={(x) => setLimpeza({ ...limpeza, sujidade: x })} />
-              </Rotulo>
+            {/* O essencial, rápido: placas, telhado, local e tipo de instalação */}
+            <div className="grid grid-cols-2 gap-2">
+              <Rotulo texto="Placas"><CampoNumero valor={limpeza.qtd_modulos} onChange={(n) => setLimpeza({ ...limpeza, qtd_modulos: Math.round(n) })} placeholder="Ex.: 12" /></Rotulo>
+              <Rotulo texto="Telhado"><Sel valor={limpeza.tipo_telhado} opcoes={TELHADOS_AZ} onChange={(x) => setLimpeza({ ...limpeza, tipo_telhado: x })} /></Rotulo>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Opcao ativo={limpeza.tem_ponto_agua} onClick={() => setLimpeza({ ...limpeza, tem_ponto_agua: !limpeza.tem_ponto_agua })}>Tem ponto de água</Opcao>
-              <Opcao ativo={limpeza.tem_ponto_energia} onClick={() => setLimpeza({ ...limpeza, tem_ponto_energia: !limpeza.tem_ponto_energia })}>Tem ponto de energia</Opcao>
-              <Opcao ativo={!!limpeza.cliente_disponibiliza_ajudante} onClick={() => setLimpeza({ ...limpeza, cliente_disponibiliza_ajudante: !limpeza.cliente_disponibiliza_ajudante })}>Cliente cede ajudante</Opcao>
+            <div>
+              <span className="block text-[11px] font-bold text-white/60 mb-1">Local (cidade)</span>
+              <SeletorCidade cidadeAtual={local?.cidade || null} ufAtual={local?.uf || null} campoFormulario={inputCls}
+                onEscolher={(c) => { setLocal({ cidade: c.cidade, uf: c.uf }); setLimpeza((l) => ({ ...l, km_deslocamento: c.km })) }} />
             </div>
+            <div>
+              <span className="block text-[11px] font-bold text-white/60 mb-1">Instalação</span>
+              <div className="flex flex-wrap gap-2">
+                <Opcao ativo={tipoInstalacao === 'residencial'} onClick={() => setTipoInstalacao('residencial')}>🏠 Residencial</Opcao>
+                <Opcao ativo={tipoInstalacao === 'empresa'} onClick={() => setTipoInstalacao('empresa')}>🏢 Empresa</Opcao>
+              </div>
+            </div>
+            {local && <p className="text-[11px] text-white/45">📍 {local.cidade}{local.uf ? `/${local.uf}` : ''} · {limpeza.km_deslocamento ? `${fmtNum(limpeza.km_deslocamento, 0)} km da Spin` : 'sem km no cadastro — informe nos ajustes'}</p>}
+            {/* O resto já vem no padrão (térreo, dia útil, sujeira média, com água e energia) */}
+            <details className="rounded-xl border border-white/10 px-3 py-2">
+              <summary className="text-[11px] font-bold text-white/70 cursor-pointer">Ajustes finos (opcional)</summary>
+              <div className="mt-2 space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <Rotulo texto="Pavimento"><Sel valor={limpeza.pavimento} opcoes={OPCOES_PAVIMENTO} onChange={(x) => setLimpeza({ ...limpeza, pavimento: x })} /></Rotulo>
+                  <Rotulo texto="Programação"><Sel valor={limpeza.programacao} opcoes={OPCOES_PROGRAMACAO} onChange={(x) => setLimpeza({ ...limpeza, programacao: x })} /></Rotulo>
+                  <Rotulo texto="Deslocamento (km de ida)"><CampoNumero valor={limpeza.km_deslocamento} onChange={(n) => setLimpeza({ ...limpeza, km_deslocamento: n })} /></Rotulo>
+                  <Rotulo texto="Sujeira">
+                    <Sel valor={limpeza.sujidade || 'medio'} opcoes={[{ id: 'leve', label: 'Leve' }, { id: 'medio', label: 'Média' }, { id: 'pesado', label: 'Pesada' }]}
+                      onChange={(x) => setLimpeza({ ...limpeza, sujidade: x })} />
+                  </Rotulo>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Opcao ativo={limpeza.tem_ponto_agua} onClick={() => setLimpeza({ ...limpeza, tem_ponto_agua: !limpeza.tem_ponto_agua })}>Tem ponto de água</Opcao>
+                  <Opcao ativo={limpeza.tem_ponto_energia} onClick={() => setLimpeza({ ...limpeza, tem_ponto_energia: !limpeza.tem_ponto_energia })}>Tem ponto de energia</Opcao>
+                  <Opcao ativo={!!limpeza.cliente_disponibiliza_ajudante} onClick={() => setLimpeza({ ...limpeza, cliente_disponibiliza_ajudante: !limpeza.cliente_disponibiliza_ajudante })}>Cliente cede ajudante</Opcao>
+                </div>
+              </div>
+            </details>
           </>
         )}
         {servico === 'revisao' && (
@@ -167,8 +203,12 @@ export function ComposicaoOM({ api, nomeCliente, onEnviada }: { api: ApiOM; nome
         )}
       </Bloco>
 
-      <Bloco n="2" titulo="Serviços adicionais">
-        <SecoesProposta faixas={d.faixas} secoes={secoes} onChange={setSecoes} />
+      <Bloco n="2" titulo="Serviços adicionais" valor={comExtras && r?.total_secoes ? reais(r.total_secoes) : null}>
+        <div className="flex flex-wrap gap-2">
+          <Opcao ativo={!comExtras} onClick={() => setComExtras(false)}>Só o serviço</Opcao>
+          <Opcao ativo={comExtras} onClick={() => setComExtras(true)}>Incluir extras na proposta</Opcao>
+        </div>
+        {comExtras && <SecoesProposta faixas={d.faixas} secoes={secoes} onChange={setSecoes} />}
       </Bloco>
 
       <section className="rounded-2xl border border-sol/40 p-3 space-y-2">

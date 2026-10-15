@@ -6,11 +6,19 @@ import {
   respostasPadrao, rotuloFases,
   type EntradaRecarga, type EquipamentoRecarga, type PropostaRecarga, type RespostasRecarga, type TipoEquipamentoRecarga,
 } from '@/lib/estacao-ve/proposta-recarga'
-import type { DadosRecarga, EquipamentoCatalogoRecarga } from '@/lib/estacao-ve/proposta-recarga-servidor'
+import type { DadosRecarga, EquipamentoCatalogoRecarga, NovoEquipamentoRecarga } from '@/lib/estacao-ve/proposta-recarga-servidor'
 import type { FasesRede } from '@/lib/estacao-ve/montar-lista-ca'
 import type { SecaoProposta } from '@/lib/propostas/secoes'
+import { lerDatasheet, subirDatasheet, ehFabricanteWeg, FATOR_CUSTO_WEG } from '@/lib/catalogo/datasheet-cliente'
 import { CampoNumero, inputCls } from './CampoNumero'
 import { SecoesProposta } from './SecoesProposta'
+
+type NovoForm = {
+  tipo: TipoEquipamentoRecarga; modelo: string; fabricante: string; descricao: string
+  potencia: number; tabela: number; preco: number
+  arquivo: File | null; specs: Record<string, unknown> | null; lido: string | null
+}
+const NOVO_VAZIO: NovoForm = { tipo: 'carregador', modelo: '', fabricante: '', descricao: '', potencia: 0, tabela: 0, preco: 0, arquivo: null, specs: null, lido: null }
 
 /**
  * Composição da proposta de estação de recarga (Kalebe 2026-10-14) — a mesma
@@ -23,8 +31,7 @@ import { SecoesProposta } from './SecoesProposta'
 export type ApiRecarga = {
   carregar: () => Promise<DadosRecarga | { erro: string }>
   calcular: (e: EntradaRecarga) => Promise<{ proposta: PropostaRecarga; mostra_interno: boolean } | { erro: string }>
-  cadastrar: (i: { tipo: TipoEquipamentoRecarga; modelo: string; fabricante?: string | null; potencia_kw?: number | null; preco: number }) =>
-    Promise<{ equipamento: EquipamentoCatalogoRecarga } | { erro: string }>
+  cadastrar: (i: NovoEquipamentoRecarga) => Promise<{ equipamento: EquipamentoCatalogoRecarga } | { erro: string }>
   gerarPdf: (e: EntradaRecarga) => Promise<{ url_pdf: string; projeto_id: string; proposta: PropostaRecarga } | { erro: string }>
   enviar?: (projeto_id: string, url_pdf: string, legenda: string) => Promise<{ sucesso: true } | { erro: string }>
 }
@@ -66,7 +73,10 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
   const [secoes, setSecoes] = useState<SecaoProposta[]>([])
   const [escolhido, setEscolhido] = useState('')
   const [qtdNova, setQtdNova] = useState(1)
-  const [novo, setNovo] = useState<null | { tipo: TipoEquipamentoRecarga; modelo: string; fabricante: string; potencia: number; preco: number }>(null)
+  // Kalebe 2026-10-14: equipamento novo com datasheet (a IA lê, admin) e valores
+  const [novo, setNovo] = useState<NovoForm | null>(null)
+  const [lendoDatasheet, setLendoDatasheet] = useState(false)
+  const arquivoRef = useRef<HTMLInputElement>(null)
   const [calc, setCalc] = useState<{ proposta: PropostaRecarga; mostra_interno: boolean } | null>(null)
   const [calculando, setCalculando] = useState(false)
   const [pdf, setPdf] = useState<{ url_pdf: string; projeto_id: string } | null>(null)
@@ -141,11 +151,40 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
     setEquipamentos((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)))
   const responder = (patch: Partial<RespostasRecarga>) => setRespostas((r) => (r ? { ...r, ...patch } : r))
 
+  // Preço de tabela → custo: WEG com o fator de integrador; outro fabricante, custo = tabela
+  const custoDaTabela = (tabela: number, fabricante: string) =>
+    Math.round((ehFabricanteWeg(fabricante) ? tabela * FATOR_CUSTO_WEG : tabela) * 100) / 100
+
+  async function lerDatasheetNovo() {
+    if (!novo?.arquivo) return
+    setErro(null); setLendoDatasheet(true)
+    try {
+      const d = await lerDatasheet(novo.arquivo, 'outro')
+      if ('erro' in d) { setErro(d.erro); return }
+      const potencia = Number((d.specs as any)?.potencia_kw) || 0
+      setNovo((n) => n && {
+        ...n,
+        modelo: d.modelo || n.modelo,
+        fabricante: d.fabricante || n.fabricante,
+        descricao: d.descricao_curta || n.descricao,
+        potencia: n.tipo === 'carregador' && potencia > 0 ? potencia : n.potencia,
+        preco: n.tabela > 0 ? custoDaTabela(n.tabela, d.fabricante || n.fabricante) : n.preco,
+        specs: d.specs || null,
+        lido: `✓ Lido: ${[d.fabricante, d.modelo].filter(Boolean).join(' ')}${potencia > 0 ? ` · ${fmtNum(potencia, potencia % 1 ? 1 : 0)} kW` : ''}${d.observacoes ? ` — ${d.observacoes}` : ''}`,
+      })
+    } finally { setLendoDatasheet(false) }
+  }
+
   async function cadastrarNovo() {
     if (!novo) return
     setErro(null); setOcupado('cadastrando')
     try {
-      const r = await api.cadastrar({ tipo: novo.tipo, modelo: novo.modelo, fabricante: novo.fabricante || null, potencia_kw: novo.potencia || null, preco: novo.preco })
+      const url_datasheet = novo.arquivo ? await subirDatasheet(novo.arquivo, null) : null
+      const r = await api.cadastrar({
+        tipo: novo.tipo, modelo: novo.modelo, fabricante: novo.fabricante || null, potencia_kw: novo.potencia || null,
+        preco: novo.preco, preco_tabela: novo.tabela || null, descricao: novo.descricao || null,
+        url_datasheet, specs: novo.specs,
+      })
       if ('erro' in r) { setErro(r.erro); return }
       setCatalogo((cs) => [...cs, r.equipamento].sort((a, b) => a.modelo.localeCompare(b.modelo, 'pt-BR')))
       adicionar(r.equipamento, 1)
@@ -219,26 +258,57 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
         </div>
 
         {!novo ? (
-          <button type="button" onClick={() => setNovo({ tipo: 'carregador', modelo: '', fabricante: '', potencia: 0, preco: 0 })}
-            className="text-xs font-bold text-white/70 hover:text-white">+ Cadastrar novo (carregador, totem, suporte…)</button>
+          <button type="button" onClick={() => setNovo(NOVO_VAZIO)}
+            className="px-3 py-2 rounded-xl bg-weg-azul text-white text-xs font-bold text-start">
+            ＋ Cadastrar equipamento novo (carregador, totem, suporte…){dados.eh_admin ? ' · com datasheet' : ''}
+          </button>
         ) : (
           <div className="rounded-xl border border-sol/40 p-3 space-y-2">
             <div className="flex gap-2">
               <Opcao ativo={novo.tipo === 'carregador'} onClick={() => setNovo({ ...novo, tipo: 'carregador' })}>Carregador</Opcao>
               <Opcao ativo={novo.tipo === 'opcional'} onClick={() => setNovo({ ...novo, tipo: 'opcional', potencia: 0 })}>Opcional / extra</Opcao>
             </div>
+            {/* Datasheet: a leitura pela IA é só do admin */}
+            {dados.eh_admin && (
+              <div className="rounded-xl border border-white/10 p-2 space-y-1.5">
+                <input ref={arquivoRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0] || null; setNovo((n) => n && { ...n, arquivo: f, lido: null }) }} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => arquivoRef.current?.click()}
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/15 text-white text-[11px] font-bold text-start">
+                    📎 {novo.arquivo ? 'Trocar datasheet' : 'Anexar datasheet (PDF)'}
+                  </button>
+                  <button type="button" onClick={lerDatasheetNovo} disabled={!novo.arquivo || lendoDatasheet}
+                    className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start disabled:opacity-40">
+                    {lendoDatasheet ? 'Lendo o datasheet…' : '🤖 Ler e preencher'}
+                  </button>
+                  {novo.arquivo && <span className="text-[11px] text-white/55 truncate max-w-full">{novo.arquivo.name}</span>}
+                </div>
+                {novo.lido && <p className="text-[11px] text-white/75">{novo.lido}</p>}
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input value={novo.modelo} onChange={(e) => setNovo({ ...novo, modelo: e.target.value })} placeholder="Nome / modelo" className={inputCls} />
-              <input value={novo.fabricante} onChange={(e) => setNovo({ ...novo, fabricante: e.target.value })} placeholder="Fabricante (opcional)" className={inputCls} />
+              <input value={novo.fabricante} onChange={(e) => setNovo({ ...novo, fabricante: e.target.value, preco: novo.tabela > 0 ? custoDaTabela(novo.tabela, e.target.value) : novo.preco })}
+                placeholder="Fabricante (opcional)" className={inputCls} />
               {novo.tipo === 'carregador' && (
                 <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Potência (kW)</span>
                   <CampoNumero valor={novo.potencia} onChange={(n) => setNovo({ ...novo, potencia: n })} casas={1} placeholder="Ex.: 7,4" /></label>
               )}
-              <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Custo (R$)</span>
+              <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Preço de tabela (R$, sem desconto)</span>
+                <CampoNumero valor={novo.tabela} onChange={(n) => setNovo({ ...novo, tabela: n, preco: n > 0 ? custoDaTabela(n, novo.fabricante) : novo.preco })} casas={2} placeholder="Opcional" /></label>
+              <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Custo Spin (R$)</span>
                 <CampoNumero valor={novo.preco} onChange={(n) => setNovo({ ...novo, preco: n })} casas={2} placeholder="Ex.: 4.500,00" /></label>
             </div>
+            {novo.tabela > 0 && (
+              <p className="text-[11px] text-white/50">
+                {ehFabricanteWeg(novo.fabricante)
+                  ? `WEG: custo = tabela × ${fmtNum(FATOR_CUSTO_WEG, 4)} = ${reais(custoDaTabela(novo.tabela, novo.fabricante))} (dá pra ajustar)`
+                  : 'Outro fabricante: custo = tabela (dá pra ajustar)'}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setNovo(null)} className="px-3 py-2 rounded-xl border border-white/15 text-white/70 text-xs font-bold">Cancelar</button>
+              <button type="button" onClick={() => { setNovo(null); if (arquivoRef.current) arquivoRef.current.value = '' }} className="px-3 py-2 rounded-xl border border-white/15 text-white/70 text-xs font-bold">Cancelar</button>
               <button type="button" onClick={cadastrarNovo} disabled={ocupado === 'cadastrando' || !novo.modelo.trim() || !(novo.preco > 0) || (novo.tipo === 'carregador' && !(novo.potencia > 0))}
                 className="px-3 py-2 rounded-xl bg-verde text-white text-xs font-bold disabled:opacity-40">
                 {ocupado === 'cadastrando' ? 'Cadastrando…' : 'Cadastrar e adicionar'}

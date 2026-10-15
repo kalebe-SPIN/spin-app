@@ -99,10 +99,14 @@ export async function listarConversasAction(): Promise<
   const { data: cobertas } = await admin.from('wa_conversas')
     .select('id, lais_cobrindo_desde, lais_cobrindo_por').not('lais_cobrindo_desde', 'is', null)
   const cobertura = new Map(((cobertas || []) as any[]).map((x) => [x.id as string, x]))
+  // Kalebe 2026-10-15: pendências abertas da agenda (ícones na lista)
+  const { pendenciasDasConversas } = await import('@/lib/spinzap/pendencias-conversa')
+  const pendencias = await pendenciasDasConversas(admin, new Set((data || []).map((c: any) => c.id as string)))
 
   return {
     conversas: (data || []).map((c: any) => ({
       ...c,
+      pendencias: pendencias.get(c.id) || [],
       lais_cobrindo_desde: cobertura.get(c.id)?.lais_cobrindo_desde || null,
       lais_cobrindo_por: cobertura.get(c.id)?.lais_cobrindo_por || null,
       nao_lidas: qtd.get(c.id) || 0,

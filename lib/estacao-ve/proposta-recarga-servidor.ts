@@ -184,19 +184,33 @@ export async function dadosBaseRecarga(admin: Admin, a: {
 export { respostasPadrao }
 
 /** "Cadastrar novo" carregador ou opcional (totem, suporte…) direto da proposta. */
-export async function cadastrarEquipamentoRecarga(admin: Admin, input: {
+export type NovoEquipamentoRecarga = {
   tipo: TipoEquipamentoRecarga
   modelo: string
   fabricante?: string | null
   potencia_kw?: number | null
+  /** Custo Spin (é o que o motor usa) */
   preco: number
-}, autor: string): Promise<{ equipamento: EquipamentoCatalogoRecarga } | { erro: string }> {
+  /** Preço de tabela, sem desconto (vira o preço de venda; sem ele, venda = custo) */
+  preco_tabela?: number | null
+  /** Kalebe 2026-10-14: datasheet anexado e o que a IA leu dele */
+  url_datasheet?: string | null
+  specs?: Record<string, unknown> | null
+  descricao?: string | null
+}
+
+export async function cadastrarEquipamentoRecarga(admin: Admin, input: NovoEquipamentoRecarga, autor: string): Promise<{ equipamento: EquipamentoCatalogoRecarga } | { erro: string }> {
   const modelo = String(input.modelo || '').trim()
   if (!modelo) return { erro: 'Informe o nome/modelo do equipamento' }
   const preco = Number(input.preco)
   if (!(preco > 0)) return { erro: 'Informe o custo do equipamento' }
   const potencia = Number(input.potencia_kw) || 0
   if (input.tipo === 'carregador' && !(potencia > 0)) return { erro: 'Informe a potência do carregador (kW)' }
+  const tabela = Number(input.preco_tabela) || 0
+  // Specs do datasheet (sem vazios) + a potência confirmada na tela
+  const specs: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(input.specs || {})) if (v !== null && v !== undefined && v !== '') specs[k] = v
+  if (input.tipo === 'carregador') specs.potencia_kw = potencia
   const { data: criado, error } = await admin.from('produtos').insert({
     codigo_weg: null,
     codigo_interno_spin: `VE-${Date.now().toString(36).toUpperCase()}`,
@@ -204,15 +218,16 @@ export async function cadastrarEquipamentoRecarga(admin: Admin, input: {
     fabricante: String(input.fabricante || '').trim() || 'Não informado',
     categoria: 'outro',
     subcategoria: input.tipo === 'carregador' ? 've_wallbox' : 've_opcional',
-    descricao_curta: modelo,
+    descricao_curta: String(input.descricao || '').trim() || modelo,
     descricao_tecnica: `Cadastrado na proposta de estação de recarga por ${autor}`,
-    specs: input.tipo === 'carregador' ? { potencia_kw: potencia } : {},
+    specs,
+    url_datasheet: String(input.url_datasheet || '').trim() || null,
     ativo: true,
     disponivel_estoque: true,
   }).select('id').single()
   if (error || !criado) return { erro: `Não consegui cadastrar: ${error?.message || 'sem detalhes'}` }
   await admin.from('precos_produtos').insert({
-    produto_id: criado.id, preco_venda: preco, preco_custo: preco, vigente_de: new Date().toISOString().slice(0, 10),
+    produto_id: criado.id, preco_venda: tabela > 0 ? tabela : preco, preco_custo: preco, vigente_de: new Date().toISOString().slice(0, 10),
   })
   return {
     equipamento: {

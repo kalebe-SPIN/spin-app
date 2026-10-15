@@ -4,7 +4,7 @@ import { calcularBessPuro, normalizarKitBess, pendenciaKitBess, type CalculoBess
 import { totalSecoes, type FaixaSecao, type SecaoProposta } from './secoes'
 import { calcularLimpezaAutomatico, type EntradasLimpeza, type ParametrosLimpeza } from '@/lib/precificacao/servico-limpeza'
 import { calcularRevisao, type EntradasRevisao, type ParametrosRevisao } from '@/lib/precificacao/servico-revisao'
-import { calcularRetiradaRecolocacao, type EntradasRetiradaRecolocacao, type ParametrosRetiradaRecolocacao } from '@/lib/precificacao/servico-retirada-recolocacao'
+import { calcularRetiradaRecolocacao, OPCOES_TELHADO, type EntradasRetiradaRecolocacao, type ParametrosRetiradaRecolocacao } from '@/lib/precificacao/servico-retirada-recolocacao'
 
 /**
  * Propostas de BESS, O&M e projetos técnicos montadas no Spinzap
@@ -148,6 +148,9 @@ export type EntradaOM = {
   /** Ajuste em R$ sobre o calculado (margem/desconto), como nas telas do projeto */
   ajuste: number
   secoes?: SecaoProposta[]
+  /** Kalebe 2026-10-15 (limpeza simplificada): onde é e se é casa ou empresa — vão no escopo */
+  local?: { cidade: string; uf: string } | null
+  tipo_instalacao?: 'residencial' | 'empresa' | null
 }
 export type ResultadoOM = { subtotal: number; valor_servico: number; total_secoes: number; total: number; resultado: any; memoria: string[]; erro: string | null }
 
@@ -177,7 +180,13 @@ const br = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }
 export function blocosPdfOM(e: EntradaOM) {
   const servicos: Array<{ nome: string; texto: string }> = []
   if (e.servico === 'limpeza' && e.limpeza) {
-    servicos.push({ nome: 'Limpeza fotovoltaica', texto: `limpeza de ${br(e.limpeza.qtd_modulos)} módulos fotovoltaicos.` })
+    const telhado = OPCOES_TELHADO.find((t) => t.id === e.limpeza!.tipo_telhado)?.label.toLowerCase()
+    const onde = [
+      e.tipo_instalacao ? `instalação ${e.tipo_instalacao === 'empresa' ? 'empresarial' : 'residencial'}` : null,
+      telhado && e.limpeza.tipo_telhado !== 'outro' ? `telhado ${telhado}` : null,
+      e.local?.cidade ? `${e.local.cidade}${e.local.uf ? `/${e.local.uf}` : ''}` : null,
+    ].filter(Boolean).join(', ')
+    servicos.push({ nome: 'Limpeza fotovoltaica', texto: `limpeza de ${br(e.limpeza.qtd_modulos)} módulos fotovoltaicos${onde ? ` (${onde})` : ''}.` })
     if (!e.limpeza.tem_ponto_agua) servicos.push({ nome: 'Água', texto: 'fornecimento de água para a limpeza (sem ponto de água no local).' })
   } else if (e.servico === 'revisao' && e.revisao) {
     servicos.push({ nome: 'Manutenção com revisão', texto: `revisão da usina com ${br(e.revisao.qtd_modulos)} módulos fotovoltaicos.` })

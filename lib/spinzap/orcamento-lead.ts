@@ -2,6 +2,7 @@ import type { createAdminClient } from '@/lib/supabase/admin'
 import { PARAMETROS_DEFAULT, TIPOS_REDE_INFO, fatorSolPorCidade, type TipoRede } from '@/lib/orcamento-rapido/tipos'
 import { calcularFormasPagamento, calcularProposta, paramsToRecord, type FormasPagamento, type ItemLista } from '@/lib/precificacao/calcular'
 import { ehTipoSecao, totalSecoes, type SecaoProposta } from '@/lib/propostas/secoes'
+import { filtroEstruturaDoTelhado, precificarComplementosCC, type ItemComplementoCC } from '@/lib/kit-auto/complementos-cc'
 
 /**
  * Orçamento fotovoltaico montado pela Laís (Kalebe 2026-10-10) e pelo
@@ -44,7 +45,15 @@ export type OpcoesKit = {
   /** string/híbrido: quantos inversores (micro: calculado pelas entradas) */
   inversor_qtd?: number | null
   extras?: Array<{ produto_id: string; qtd: number }>
+  /**
+   * Kalebe 2026-10-14: com isso, entram no kit os complementos CC da proposta
+   * formal (estrutura do tipo de telhado, cabo solar, MC4, disjuntor e DPS CA).
+   * Sem isso (Laís), segue só placa + inversor + extras.
+   */
+  complementos_cc?: { tipo_telhado: string | null }
 }
+
+export type ComplementosOrcamento = { tipo_telhado: string | null; itens: ItemComplementoCC[]; total: number; avisos: string[] }
 
 export type ExtraOrcamento = { produto_id: string; descricao: string; categoria: string; qtd: number; destino: 'kit' | 'lista_ca' }
 
@@ -58,6 +67,8 @@ export type OrcamentoLead = {
   placa: { id: string; modelo: string; potencia_wp: number; area_m2: number | null }
   inversor: { id: string; modelo: string; potencia_kw: number; fases: 'mono' | 'bi' | 'tri' | null; qtd: number; entradas: number | null }
   extras: ExtraOrcamento[]
+  /** Estrutura + materiais CC (só quando pedido em opcoes.complementos_cc) */
+  complementos?: ComplementosOrcamento | null
   consumo_kwh_mes: number | null
   geracao_kwh_mes: number
   pv_total: number
@@ -274,10 +285,25 @@ export async function montarOrcamentoLead(admin: Admin, e: {
     else kitExtras += p.preco_venda * qtd
   }
 
+  // ── Complementos CC (estrutura do telhado, cabo solar, MC4, disjuntor, DPS) ──
+  // Mesma conta da proposta formal: entram no kit WEG bruto.
+  let complementos: ComplementosOrcamento | null = null
+  if (op.complementos_cc) {
+    const fasesKit = { mono: 'monofasico', bi: 'bifasico', tri: 'trifasico' } as const
+    const r = await precificarComplementosCC(admin, {
+      qtd_placas: qtdPlacas,
+      tipo_telhado: op.complementos_cc.tipo_telhado,
+      distancia_string_qgbt_m: 0,
+      inversores: [{ id: inversor.id, modelo: inversor.modelo, potencia_kw: inversor.potencia_kw!, fases: inversor.fases ? fasesKit[inversor.fases] : undefined, qtd: invQtd }],
+      tipo_ligacao_cliente: e.tipo_rede_perfil || 'monofasico',
+    })
+    complementos = { tipo_telhado: op.complementos_cc.tipo_telhado, itens: r.itens, total: Math.round(r.total * 100) / 100, avisos: r.avisos }
+  }
+
   const { data: linhas } = await admin.from('parametros_precificacao')
     .select('chave, valor_numero, valor_json, unidade').is('vigente_ate', null).eq('ativo', true)
   const params = paramsToRecord(linhas || [])
-  const kitBruto = placa.preco_venda * qtdPlacas + inversor.preco_venda * invQtd + kitExtras
+  const kitBruto = placa.preco_venda * qtdPlacas + inversor.preco_venda * invQtd + kitExtras + (complementos?.total || 0)
   const proposta = calcularProposta({
     placa: { qtd: qtdPlacas, preco_venda_unitario: placa.preco_venda, modelo: placa.modelo, potencia_wp: placa.potencia_wp! },
     inversor: { qtd: invQtd, preco_venda_unitario: inversor.preco_venda, modelo: inversor.modelo, potencia_kw: inversor.potencia_kw! },
@@ -291,6 +317,12 @@ export async function montarOrcamentoLead(admin: Admin, e: {
   premissas.push(`Rede ${rede.label}`)
   if (tipoSistema === 'micro') premissas.push('Sistema com microinversores (um por grupo de placas, distribuídos entre as fases)')
   if (tipoSistema === 'hibrido') premissas.push('Sistema híbrido (pronto pra baterias)')
+  if (complementos) {
+    const tel = filtroEstruturaDoTelhado(complementos.tipo_telhado)
+    premissas.push(tel.cotarAParte
+      ? 'Cabos solares, conectores e proteções CA inclusos'
+      : `Estrutura de fixação${complementos.tipo_telhado ? ` para telhado ${tel.rotulo}` : ''}, cabos solares, conectores e proteções CA inclusos`)
+  }
   if (e.cidade) premissas.push(`Irradiação de ${e.cidade}`)
   return {
     entrada: e.entrada,
@@ -302,6 +334,7 @@ export async function montarOrcamentoLead(admin: Admin, e: {
     placa: { id: placa.id, modelo: placa.modelo, potencia_wp: placa.potencia_wp!, area_m2: placa.area_m2 },
     inversor: { id: inversor.id, modelo: inversor.modelo, potencia_kw: inversor.potencia_kw!, fases: inversor.fases, qtd: invQtd, entradas: inversor.entradas },
     extras,
+    complementos,
     consumo_kwh_mes: consumo,
     geracao_kwh_mes: Math.round(kwp * kwhPorKwpMes(e.cidade)),
     pv_total: Math.round(proposta.pv_total * 100) / 100,
