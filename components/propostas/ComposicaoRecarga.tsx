@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatarMoedaBRL, fmtNum } from '@/lib/formatters'
 import {
-  respostasPadrao, rotuloFases,
+  respostasPadrao, rotuloFases, trechosDaResposta, TIPOS_TRECHO,
   type EntradaRecarga, type EquipamentoRecarga, type PropostaRecarga, type RespostasRecarga, type TipoEquipamentoRecarga,
+  type TipoTrecho, type TrechoRecarga,
 } from '@/lib/estacao-ve/proposta-recarga'
 import type { DadosRecarga, EquipamentoCatalogoRecarga, NovoEquipamentoRecarga } from '@/lib/estacao-ve/proposta-recarga-servidor'
 import type { FasesRede } from '@/lib/estacao-ve/montar-lista-ca'
@@ -92,7 +93,10 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
       if (r.url_pdf && r.projeto_id) setPdf({ url_pdf: r.url_pdf, projeto_id: r.projeto_id })
       if (r.salva) {
         setEquipamentos(r.salva.equipamentos || [])
-        setRespostas({ ...respostasPadrao({ distancia_padrao_m: r.distancia_padrao_m }, r.km_deslocamento), ...r.salva.respostas })
+        // Proposta antiga (sem trechos): vira um trecho com a distância e o tipo marcado
+        const salvas = { ...respostasPadrao({ distancia_padrao_m: r.distancia_padrao_m }, r.km_deslocamento), ...r.salva.respostas }
+        const legados = r.salva.respostas?.trechos?.length ? salvas.trechos! : trechosDaResposta({ ...salvas, trechos: undefined })
+        setRespostas({ ...salvas, trechos: legados.length ? legados : [{ tipo: 'externo', metros: salvas.distancia_m || r.distancia_padrao_m }] })
         setMargem(r.salva.margem_pct ?? r.margem_padrao_pct); setComissao(r.salva.comissao_pct ?? r.comissao_padrao_pct)
       } else {
         setRespostas(respostasPadrao({ distancia_padrao_m: r.distancia_padrao_m }, r.km_deslocamento))
@@ -150,6 +154,21 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
   const mudar = (i: number, patch: Partial<EquipamentoRecarga>) =>
     setEquipamentos((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)))
   const responder = (patch: Partial<RespostasRecarga>) => setRespostas((r) => (r ? { ...r, ...patch } : r))
+  // Kalebe 2026-10-15: metragem por tipo de intervenção; distância e marcações antigas acompanham
+  function mudarTrechos(trechos: TrechoRecarga[]) {
+    const tem = (t: TipoTrecho) => trechos.some((x) => x.tipo === t && x.metros > 0)
+    responder({
+      trechos,
+      distancia_m: trechos.reduce((s, x) => s + (x.metros || 0), 0),
+      eletroduto_externo: tem('externo'), infra_embutida: tem('embutido'), alvenaria: tem('alvenaria'),
+    })
+  }
+  const trechosAtuais = respostas?.trechos || []
+  const mudarTrecho = (i: number, patch: Partial<TrechoRecarga>) => mudarTrechos(trechosAtuais.map((t, j) => (j === i ? { ...t, ...patch } : t)))
+  function adicionarCarregadorDoCliente() {
+    // Sem equipamento: só a potência do carregador do cliente (dimensiona cabo, disjuntor e DPS)
+    setEquipamentos((xs) => [...xs, { produto_id: null, modelo: 'Carregador do cliente', tipo: 'carregador', potencia_kw: 0, qtd: 1, preco_unitario: 0, do_cliente: true }])
+  }
 
   // Preço de tabela → custo: WEG com o fator de integrador; outro fabricante, custo = tabela
   const custoDaTabela = (tabela: number, fabricante: string) =>
@@ -258,10 +277,17 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
         </div>
 
         {!novo ? (
-          <button type="button" onClick={() => setNovo(NOVO_VAZIO)}
-            className="px-3 py-2 rounded-xl bg-weg-azul text-white text-xs font-bold text-start">
-            ＋ Cadastrar equipamento novo (carregador, totem, suporte…){dados.eh_admin ? ' · com datasheet' : ''}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setNovo(NOVO_VAZIO)}
+              className="px-3 py-2 rounded-xl bg-weg-azul text-white text-xs font-bold text-start">
+              ＋ Cadastrar equipamento novo (carregador, totem, suporte…){dados.eh_admin ? ' · com datasheet' : ''}
+            </button>
+            {/* Kalebe 2026-10-15: orçar sem equipamento — só projeto, execução e materiais */}
+            <button type="button" onClick={adicionarCarregadorDoCliente}
+              className="px-3 py-2 rounded-xl bg-weg-azul text-white text-xs font-bold text-start">
+              ＋ Sem equipamento (carregador do cliente)
+            </button>
+          </div>
         ) : (
           <div className="rounded-xl border border-sol/40 p-3 space-y-2">
             <div className="flex gap-2">
@@ -322,7 +348,10 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
             {equipamentos.map((x, i) => (
               <li key={`${x.produto_id}-${i}`} className="rounded-xl border border-white/10 p-2 space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-bold text-white truncate">{x.tipo === 'carregador' ? '⚡' : '📦'} {x.modelo}</span>
+                  <span className="text-[13px] font-bold text-white truncate">
+                    {x.tipo === 'carregador' ? '⚡' : '📦'} {x.modelo}
+                    {x.do_cliente && <span data-etiqueta className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded border border-weg-azul/60 text-white/80">fornecido pelo cliente</span>}
+                  </span>
                   <button type="button" onClick={() => setEquipamentos((xs) => xs.filter((_, j) => j !== i))} aria-label="Tirar"
                     className="w-6 h-6 rounded-full bg-white/[0.06] text-white/60 hover:text-white shrink-0">✕</button>
                 </div>
@@ -331,12 +360,16 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
                     <CampoNumero valor={x.qtd} onChange={(n) => mudar(i, { qtd: Math.max(1, Math.round(n)) })} /></label>
                   {x.tipo === 'carregador' ? (
                     <label className="block"><span className="block text-[10px] text-white/50">Potência (kW)</span>
-                      <CampoNumero valor={x.potencia_kw} onChange={(n) => mudar(i, { potencia_kw: n })} casas={1}
+                      <CampoNumero valor={x.potencia_kw} onChange={(n) => mudar(i, { potencia_kw: n })} casas={1} placeholder="Ex.: 7,4"
                         className={`${inputCls} ${x.potencia_kw > 0 ? '' : 'border-coral/60'}`} /></label>
                   ) : <span />}
-                  <label className="block"><span className="block text-[10px] text-white/50">Custo un. (R$)</span>
-                    <CampoNumero valor={x.preco_unitario} onChange={(n) => mudar(i, { preco_unitario: n })} casas={2}
-                      className={`${inputCls} ${x.preco_unitario > 0 ? '' : 'border-coral/60'}`} placeholder="sob cotação" /></label>
+                  {x.do_cliente ? (
+                    <p className="text-[10px] text-white/50 self-end pb-2">Não entra no preço — só dimensiona cabo, disjuntor e DPS</p>
+                  ) : (
+                    <label className="block"><span className="block text-[10px] text-white/50">Custo un. (R$)</span>
+                      <CampoNumero valor={x.preco_unitario} onChange={(n) => mudar(i, { preco_unitario: n })} casas={2}
+                        className={`${inputCls} ${x.preco_unitario > 0 ? '' : 'border-coral/60'}`} placeholder="sob cotação" /></label>
+                  )}
                 </div>
               </li>
             ))}
@@ -355,9 +388,33 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
 
       {/* 3. Execução */}
       <Bloco n="3" titulo="Execução" valor={p ? reais(p.subtotal_execucao) : null}>
+        {/* Kalebe 2026-10-15: metragem por tipo de intervenção (ex.: 13 m subterrâneo + 17 m eletroduto externo) */}
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[11px] font-bold text-white/60">Caminho até o ponto de conexão, por trecho</span>
+            <span className="text-[11px] font-bold text-white/80 tabular-nums">Total {fmtNum(trechosAtuais.reduce((s, t) => s + (t.metros || 0), 0), 0)} m</span>
+          </div>
+          {trechosAtuais.map((t, i) => (
+            <div key={i} className="grid grid-cols-[1fr_88px_auto] gap-2 items-center">
+              {/* Ordem do caminho mais comum (aparente → subterrâneo → existente → alvenaria) */}
+              <select value={t.tipo} onChange={(e) => mudarTrecho(i, { tipo: e.target.value as TipoTrecho, concretagem: e.target.value === 'subterraneo' ? t.concretagem : undefined })} className={inputCls}>
+                {TIPOS_TRECHO.map((x) => <option key={x.tipo} value={x.tipo} className="bg-noite">{x.rotulo}</option>)}
+              </select>
+              <CampoNumero valor={t.metros} onChange={(n) => mudarTrecho(i, { metros: Math.max(0, n) })} aria-label="Metros" placeholder="m" />
+              <button type="button" onClick={() => mudarTrechos(trechosAtuais.filter((_, j) => j !== i))} aria-label="Tirar trecho"
+                className="w-8 h-8 rounded-full bg-white/[0.06] text-white/60 hover:text-white">✕</button>
+              {t.tipo === 'subterraneo' && (
+                <div className="col-span-3 flex flex-wrap items-center gap-2 pl-1">
+                  <Opcao ativo={!!t.concretagem} onClick={() => mudarTrecho(i, { concretagem: !t.concretagem })}>Recompor o piso em concreto</Opcao>
+                  <span className="text-[10px] text-white/45">vala aberta, tubulação passada e vala fechada</span>
+                </div>
+              )}
+            </div>
+          ))}
+          <button type="button" onClick={() => mudarTrechos([...trechosAtuais, { tipo: trechosAtuais.length ? 'subterraneo' : 'externo', metros: 0 }])}
+            className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start">＋ Adicionar trecho</button>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Até o ponto de conexão (m)</span>
-            <CampoNumero valor={respostas.distancia_m} onChange={(n) => responder({ distancia_m: n })} /></label>
           <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Rede</span>
             {/* Mono → bi → tri: a ordem carrega sentido */}
             <select value={respostas.fases || ''} onChange={(e) => responder({ fases: (e.target.value || null) as FasesRede | null })} className={inputCls}>
@@ -368,11 +425,22 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
             <CampoNumero valor={respostas.km_deslocamento} onChange={(n) => responder({ km_deslocamento: n })} placeholder={dados.cidade ? '0' : 'cidade sem cadastro'} /></label>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Opcao ativo={respostas.eletroduto_externo} onClick={() => responder({ eletroduto_externo: !respostas.eletroduto_externo })}>Eletroduto externo</Opcao>
-          <Opcao ativo={respostas.alvenaria} onClick={() => responder({ alvenaria: !respostas.alvenaria })}>Intervenção na alvenaria</Opcao>
-          <Opcao ativo={respostas.infra_embutida} onClick={() => responder({ infra_embutida: !respostas.infra_embutida })}>Infraestrutura embutida</Opcao>
           <Opcao ativo={respostas.aterramento} onClick={() => responder({ aterramento: !respostas.aterramento })}>Aterramento</Opcao>
         </div>
+        {/* Dimensionamento elétrico pela potência dos carregadores */}
+        {p && p.circuitos.length > 0 && (
+          <div className="rounded-xl border border-weg-azul/45 px-3 py-2 space-y-1">
+            <p className="text-[11px] font-bold text-white/70 uppercase tracking-wider">Dimensionamento elétrico · {rotuloFases(p.fases)} · {fmtNum(p.distancia_total_m, 0)} m</p>
+            {p.circuitos.map((c, i) => (
+              <p key={i} className="text-[12px] text-white/80">
+                {c.qtd > 1 ? `${c.qtd} × ` : ''}carregador {fmtNum(c.potencia_kw, c.potencia_kw % 1 ? 1 : 0)} kW → {fmtNum(c.corrente_a, 1)} A ·
+                {' '}cabo {c.bitola_mm2} mm² ({c.condutores} condutores) · disjuntor {c.disjuntor_a} A {c.polos === 3 ? 'tripolar' : 'bipolar'} ·
+                {' '}{c.dps_un} DPS
+              </p>
+            ))}
+            {p.disjuntor_geral_a && <p className="text-[12px] text-white/80">Disjuntor geral da estação: {p.disjuntor_geral_a} A</p>}
+          </div>
+        )}
         {dados.cidade && <p className="text-[11px] text-white/45">📍 {dados.cidade}{dados.km_deslocamento ? ` · ${fmtNum(dados.km_deslocamento, 0)} km da Spin (cadastro de cidades)` : ' · cidade sem km cadastrado'}</p>}
         {p && (
           <>

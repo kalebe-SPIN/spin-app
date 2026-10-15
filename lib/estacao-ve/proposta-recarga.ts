@@ -30,10 +30,34 @@ export type EquipamentoRecarga = {
   qtd: number
   /** Custo Spin por unidade (R$) */
   preco_unitario: number
+  /**
+   * Kalebe 2026-10-15: orçar sem equipamento — o carregador é do cliente.
+   * Só a potência importa (dimensiona cabo, disjuntor e DPS); não entra no preço.
+   */
+  do_cliente?: boolean
 }
 
+/**
+ * Trechos do caminho até o ponto de conexão, por tipo de intervenção
+ * (Kalebe 2026-10-15: "a instalação é de 30 m, mas 13 m será subterrâneo —
+ * abrir vala, passar tubulação e concretar — e o restante por eletroduto externo").
+ */
+export type TipoTrecho = 'externo' | 'subterraneo' | 'embutido' | 'alvenaria'
+export type TrechoRecarga = {
+  tipo: TipoTrecho
+  metros: number
+  /** Subterrâneo: recompor o piso em concreto depois de fechar a vala */
+  concretagem?: boolean
+}
+export const TIPOS_TRECHO: Array<{ tipo: TipoTrecho; rotulo: string; detalhe: string }> = [
+  { tipo: 'externo', rotulo: 'Eletroduto externo (aparente)', detalhe: 'eletroduto rígido fixado na parede, com abraçadeiras, luvas e curvas' },
+  { tipo: 'subterraneo', rotulo: 'Subterrâneo (vala)', detalhe: 'abrir vala, passar a tubulação e fechar' },
+  { tipo: 'embutido', rotulo: 'Tubulação embutida existente', detalhe: 'passagem dos cabos pela tubulação que já existe' },
+  { tipo: 'alvenaria', rotulo: 'Embutir na alvenaria', detalhe: 'rasgos e recomposição da parede' },
+]
+
 export type RespostasRecarga = {
-  /** Metros até o ponto de conexão (quadro) — padrão do parâmetro */
+  /** Metros até o ponto de conexão (quadro) — padrão do parâmetro. Com trechos, é a soma deles. */
   distancia_m: number
   /** null = deduz pela potência do carregador */
   fases: FasesRede | null
@@ -43,6 +67,33 @@ export type RespostasRecarga = {
   aterramento: boolean
   /** km de ida até o cliente (o cálculo dobra pra ida + volta) */
   km_deslocamento: number
+  /** Metragem por tipo de intervenção (quando há, manda sobre distância e marcações acima) */
+  trechos?: TrechoRecarga[]
+}
+
+/**
+ * Trechos da resposta. Proposta antiga (sem trechos): um trecho com a
+ * distância, pelo tipo marcado — mesmo resultado de antes.
+ */
+export function trechosDaResposta(r: RespostasRecarga): TrechoRecarga[] {
+  if (r.trechos?.length) return r.trechos.filter((t) => Number(t.metros) > 0)
+  const m = Number(r.distancia_m) || 0
+  if (!(m > 0)) return []
+  const tipo: TipoTrecho | null = r.eletroduto_externo ? 'externo' : r.infra_embutida ? 'embutido' : r.alvenaria ? 'alvenaria' : null
+  return tipo ? [{ tipo, metros: m }] : []
+}
+
+/** Dimensionamento elétrico por circuito (o que a tela mostra) */
+export type CircuitoDimensionado = {
+  potencia_kw: number
+  qtd: number
+  corrente_a: number
+  bitola_mm2: number
+  disjuntor_a: number
+  polos: number
+  dps_un: number
+  condutores: number
+  metros_cabo: number
 }
 
 export type EntradaRecarga = {
@@ -69,6 +120,10 @@ export type ParametrosRecarga = {
   comissao_pct: number
   imposto_pct: number
   margem_minima_pct: number
+  /** Kalebe 2026-10-15 — trecho subterrâneo, custo por metro (0 = ainda não definido no painel) */
+  vala_m: number
+  tubo_subterraneo_m: number
+  concretagem_m: number
 }
 
 export type GrupoMaterial = 'protecao' | 'cabos' | 'infra' | 'aterramento'
@@ -79,7 +134,7 @@ export type LinhaMaterial = {
   qtd: number
   unidade: 'un' | 'm' | 'barra'
   preco_unitario: number
-  origem: 'catalogo' | 'referencia'
+  origem: 'catalogo' | 'referencia' | 'parametro'
 }
 export type LinhaServico = { chave: string; descricao: string; detalhe: string; valor: number }
 
@@ -113,6 +168,15 @@ export type PropostaRecarga = {
   /** Estação (pv_total) + seções — o que o cliente paga */
   total_geral: number
   avisos: string[]
+  /** Cabo, disjuntor e DPS de cada circuito, pela potência */
+  circuitos: CircuitoDimensionado[]
+  /** Disjuntor geral da estação (mais de um circuito) */
+  disjuntor_geral_a: number | null
+  /** Trechos considerados e a distância total */
+  trechos: TrechoRecarga[]
+  distancia_total_m: number
+  /** Custos que faltam definir no painel — sem eles não gera o PDF (preço sairia baixo) */
+  pendencias_custo: string[]
 }
 
 /**
@@ -164,15 +228,26 @@ export function calcularPropostaRecarga(
   precosCatalogo: Record<string, number> = {},
 ): PropostaRecarga {
   const avisos: string[] = []
+  const pendencias: string[] = []
   const r = e.respostas
-  const distancia = Math.max(1, Number(r.distancia_m) || p.distancia_padrao_m)
+  // Trechos por tipo de intervenção; a distância do cabo é a soma deles
+  const trechos = trechosDaResposta(r)
+  const somaTrechos = trechos.reduce((s, t) => s + Number(t.metros), 0)
+  const distancia = Math.max(1, somaTrechos || Number(r.distancia_m) || p.distancia_padrao_m)
+  const metrosDo = (tipo: TipoTrecho) => trechos.filter((t) => t.tipo === tipo).reduce((s, t) => s + Number(t.metros), 0)
+  const mExterno = metrosDo('externo')
+  const mSubterraneo = metrosDo('subterraneo')
+  const mConcreto = trechos.filter((t) => t.tipo === 'subterraneo' && t.concretagem).reduce((s, t) => s + Number(t.metros), 0)
+  const comTrechos = !!r.trechos?.length
+  const alvenaria = comTrechos ? metrosDo('alvenaria') > 0 : r.alvenaria
+  const embutida = comTrechos ? metrosDo('embutido') > 0 : r.infra_embutida
 
-  // ── 1. Equipamentos ──
+  // ── 1. Equipamentos ── (o do cliente não entra no preço)
   const equipamentos = e.equipamentos
     .filter((x) => x.qtd > 0)
-    .map((x) => ({ ...x, qtd: Math.round(x.qtd), subtotal: Math.max(0, x.preco_unitario) * Math.round(x.qtd) }))
+    .map((x) => ({ ...x, qtd: Math.round(x.qtd), preco_unitario: x.do_cliente ? 0 : x.preco_unitario, subtotal: x.do_cliente ? 0 : Math.max(0, x.preco_unitario) * Math.round(x.qtd) }))
   const subtotalEquip = equipamentos.reduce((s, x) => s + x.subtotal, 0)
-  for (const x of equipamentos) if (!(x.preco_unitario > 0)) avisos.push(`Falta o custo de ${x.modelo}`)
+  for (const x of equipamentos) if (!x.do_cliente && !(x.preco_unitario > 0)) avisos.push(`Falta o custo de ${x.modelo}`)
   const carregadores = equipamentos.filter((x) => x.tipo === 'carregador')
   const qtdCarregadores = carregadores.reduce((s, x) => s + x.qtd, 0)
   for (const x of carregadores) if (!(x.potencia_kw > 0)) avisos.push(`Falta a potência (kW) de ${x.modelo} — sem ela os materiais elétricos não são dimensionados`)
@@ -206,6 +281,7 @@ export function calcularPropostaRecarga(
   for (const x of comPotencia) porPotencia.set(x.potencia_kw, (porPotencia.get(x.potencia_kw) || 0) + x.qtd)
   const circuitos = Array.from(porPotencia.values()).reduce((s, q) => s + q, 0)
   let maiorBitola = 0
+  const dimensionados: CircuitoDimensionado[] = []
 
   for (const [kw, qtd] of Array.from(porPotencia.entries())) {
     const corrente = (kw * 1000) / (tensao * fatorFase)
@@ -220,27 +296,40 @@ export function calcularPropostaRecarga(
     if (bitola > 25) avisos.push(`Cabo de ${bitola} mm² sem preço de referência — confira o valor da linha de cabos`)
     add(`CABO-${bitola}MM2`, `Cabo ${bitola} mm² (${condutores} condutores × ${br(distancia)} m${qtd > 1 ? ` × ${qtd} circuitos` : ''})`, 'cabos',
       metros, 'm', REF.cabo_m_por_bitola[bitola] ?? REF.cabo_m_por_bitola[25])
+    dimensionados.push({ potencia_kw: kw, qtd, corrente_a: corrente, bitola_mm2: bitola, disjuntor_a: disj, polos: tri ? 3 : 2, dps_un: dpsPorCircuito * qtd, condutores, metros_cabo: metros })
   }
+  let disjGeral: number | null = null
   if (circuitos > 1) {
-    const disjGeral = disjuntorPara(correnteTotal * 1.25)
+    disjGeral = disjuntorPara(correnteTotal * 1.25)
     add(tri ? `MDWH-C${disjGeral}-3` : `MDWP-C${disjGeral}-2`, `Disjuntor geral ${tri ? 'tripolar' : 'bipolar'} ${disjGeral} A curva C — proteção da estação`,
       'protecao', 1, 'un', tri ? REF.disjuntor_tripolar : REF.disjuntor_bipolar)
   }
   if (circuitos > 0) add('QCA-VE', 'Quadro de proteção dedicado à estação', 'protecao', 1, 'un', REF.quadro_dedicado)
 
-  // Infraestrutura conforme as respostas
-  if (circuitos > 0 && r.eletroduto_externo) {
-    const pol = eletrodutoPara(maiorBitola)
-    const barrasPorCircuito = Math.ceil(distancia / 3)
+  // Infraestrutura por trecho (Kalebe 2026-10-15: metragem por tipo de intervenção)
+  const pol = eletrodutoPara(maiorBitola)
+  if (circuitos > 0 && mExterno > 0) {
+    const barrasPorCircuito = Math.ceil(mExterno / 3)
     const barras = barrasPorCircuito * circuitos
-    add(`ELETRODUTO-${pol}`, `Eletroduto rígido aparente ${pol} (barra 3 m)`, 'infra', barras, 'barra', REF.eletroduto_barra[pol])
+    add(`ELETRODUTO-${pol}`, `Eletroduto rígido aparente ${pol} (barra 3 m) — ${br(mExterno)} m externos`, 'infra', barras, 'barra', REF.eletroduto_barra[pol])
     add(`ABRACADEIRA-${pol}`, `Abraçadeira tipo D ${pol} com bucha e parafuso`, 'infra', barras * 3, 'un', REF.abracadeira[pol])
     add(`LUVA-${pol}`, `Luva para eletroduto ${pol}`, 'infra', Math.max(0, barrasPorCircuito - 1) * circuitos, 'un', REF.luva[pol])
     add(`CURVA-${pol}`, `Curva 90° para eletroduto ${pol}`, 'infra', 2 * circuitos, 'un', REF.curva[pol])
     add('CONDULETE', 'Condulete / caixa de passagem', 'infra', circuitos, 'un', REF.condulete)
   }
-  if (circuitos > 0 && !r.eletroduto_externo && !r.infra_embutida && !r.alvenaria) {
-    avisos.push('Diga por onde passa o cabo: eletroduto externo, infraestrutura embutida ou intervenção na alvenaria')
+  if (circuitos > 0 && mSubterraneo > 0) {
+    // Tubulação: uma por circuito, na vala compartilhada — custo por metro do painel
+    if (p.tubo_subterraneo_m > 0) {
+      materiais.push({
+        codigo: 'TUBO-SUBTERRANEO', descricao: `Tubulação subterrânea ${pol} — ${br(mSubterraneo)} m${circuitos > 1 ? ` × ${circuitos} circuitos` : ''}`,
+        grupo: 'infra', qtd: mSubterraneo * circuitos, unidade: 'm', preco_unitario: p.tubo_subterraneo_m, origem: 'parametro',
+      })
+    } else pendencias.push('custo do metro da tubulação subterrânea')
+    if (!(p.vala_m > 0)) pendencias.push('custo do metro de vala (abrir, passar a tubulação e fechar)')
+    if (mConcreto > 0 && !(p.concretagem_m > 0)) pendencias.push('custo do metro de recomposição em concreto')
+  }
+  if (circuitos > 0 && !trechos.length) {
+    avisos.push('Diga por onde passa o cabo: informe os trechos (eletroduto externo, subterrâneo, tubulação existente ou alvenaria)')
   }
 
   // Aterramento (Kalebe 2026-10-14: "tem que adicionar o aterramento")
@@ -271,16 +360,29 @@ export function calcularPropostaRecarga(
       valor: p.instaladores * horas * valorHora,
     })
   }
-  if (r.alvenaria) {
+  if (circuitos > 0 && mSubterraneo > 0) {
+    execucao.push({
+      chave: 'vala', descricao: 'Trecho subterrâneo (vala)',
+      detalhe: `${br(mSubterraneo)} m — abrir a vala, passar a tubulação e fechar`,
+      valor: mSubterraneo * p.vala_m,
+    })
+    if (mConcreto > 0) {
+      execucao.push({ chave: 'concretagem', descricao: 'Recomposição em concreto', detalhe: `${br(mConcreto)} m de piso refeito sobre a vala`, valor: mConcreto * p.concretagem_m })
+    }
+  }
+  if (alvenaria) {
+    const mAlv = metrosDo('alvenaria')
     execucao.push({
       chave: 'alvenaria', descricao: 'Intervenção na alvenaria',
-      detalhe: `${p.instaladores} instaladores × ${br(p.dias_extra_alvenaria, p.dias_extra_alvenaria % 1 ? 1 : 0)} dia${p.dias_extra_alvenaria === 1 ? '' : 's'}`,
+      detalhe: `${mAlv > 0 ? `${br(mAlv)} m · ` : ''}${p.instaladores} instaladores × ${br(p.dias_extra_alvenaria, p.dias_extra_alvenaria % 1 ? 1 : 0)} dia${p.dias_extra_alvenaria === 1 ? '' : 's'}`,
       valor: p.instaladores * p.dias_extra_alvenaria * p.diaria_eletrica,
     })
   }
-  if (r.infra_embutida) {
-    execucao.push({ chave: 'embutida', descricao: 'Passagem pela infraestrutura embutida', detalhe: 'usa a tubulação existente', valor: 0 })
+  if (embutida) {
+    const mEmb = metrosDo('embutido')
+    execucao.push({ chave: 'embutida', descricao: 'Passagem pela infraestrutura embutida', detalhe: `${mEmb > 0 ? `${br(mEmb)} m · ` : ''}usa a tubulação existente`, valor: 0 })
   }
+  if (pendencias.length) avisos.push(`Defina no ⚙️ Precificação (estação de recarga): ${pendencias.join('; ')} — sem isso o PDF não sai`)
   const km = Math.max(0, Number(r.km_deslocamento) || 0)
   if (km > 0) {
     execucao.push({ chave: 'deslocamento', descricao: 'Deslocamento', detalhe: `${br(km * 2)} km (ida + volta)`, valor: km * 2 * p.valor_km })
@@ -332,12 +434,17 @@ export function calcularPropostaRecarga(
     total_secoes: totalSecoes(e.secoes),
     total_geral: Math.round((pv + totalSecoes(e.secoes)) * 100) / 100,
     avisos,
+    circuitos: dimensionados,
+    disjuntor_geral_a: disjGeral,
+    trechos,
+    distancia_total_m: distancia,
+    pendencias_custo: pendencias,
   }
 }
 
 export const rotuloFases = (f: FasesRede) => ROTULO_FASES[f]
 
-/** Respostas iniciais: distância padrão, aterramento incluso. */
+/** Respostas iniciais: distância padrão em eletroduto externo, aterramento incluso. */
 export function respostasPadrao(p: Pick<ParametrosRecarga, 'distancia_padrao_m'>, km = 0): RespostasRecarga {
   return {
     distancia_m: p.distancia_padrao_m,
@@ -347,5 +454,6 @@ export function respostasPadrao(p: Pick<ParametrosRecarga, 'distancia_padrao_m'>
     infra_embutida: false,
     aterramento: true,
     km_deslocamento: km,
+    trechos: [{ tipo: 'externo', metros: p.distancia_padrao_m }],
   }
 }

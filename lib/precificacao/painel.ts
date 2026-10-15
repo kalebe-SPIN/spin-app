@@ -58,6 +58,10 @@ export const CONTEXTOS_PAINEL: Record<ContextoPainel, { titulo: string; parametr
       { chave: 've_dias_extra_alvenaria', rotulo: 'Dias a mais com alvenaria', unidade: 'dias' },
       { chave: 've_distancia_padrao_m', rotulo: 'Distância padrão até a conexão', unidade: 'm' },
       { chave: 'valor_km_rodado', rotulo: 'Deslocamento por km', unidade: 'R$/km' },
+      // Kalebe 2026-10-15: trecho subterrâneo (custo por metro; sem padrão — definir aqui)
+      { chave: 've_vala_m', rotulo: 'Vala: abrir, passar a tubulação e fechar (mão de obra)', unidade: 'R$/m', grupo: 've_recarga' },
+      { chave: 've_tubo_subterraneo_m', rotulo: 'Tubulação subterrânea (material)', unidade: 'R$/m', grupo: 've_recarga' },
+      { chave: 've_concretagem_m', rotulo: 'Recomposição em concreto', unidade: 'R$/m', grupo: 've_recarga' },
     ],
     servicos: [],
     itens: ITENS_SECOES,

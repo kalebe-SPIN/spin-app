@@ -106,7 +106,9 @@ export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
   // 1. Equipamentos
   titulo('1. Equipamentos')
   for (const e of p.equipamentos) {
-    linha(`${e.qtd} × ${e.modelo}`, e.tipo === 'carregador' && e.potencia_kw > 0 ? `${num(e.potencia_kw, e.potencia_kw % 1 ? 1 : 0)} kW` : 'opcional')
+    const kw = e.tipo === 'carregador' && e.potencia_kw > 0 ? `${num(e.potencia_kw, e.potencia_kw % 1 ? 1 : 0)} kW` : 'opcional'
+    // Kalebe 2026-10-15: carregador do cliente — a Spin faz projeto e execução
+    linha(e.do_cliente ? `${e.qtd} × carregador fornecido pelo cliente` : `${e.qtd} × ${e.modelo}`, kw)
   }
   if (p.potencia_total_kw > 0) linha('Potência total de recarga', `${num(p.potencia_total_kw, p.potencia_total_kw % 1 ? 1 : 0)} kW`)
   if (d.cidade) linha('Local da instalação', d.cidade)
@@ -121,8 +123,18 @@ export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
   // 3. Execução
   titulo('3. Execução')
   servico('Instalação e comissionamento', 'montagem, testes, energização e treinamento inicial de operação.')
-  if (d.respostas.alvenaria) servico('Alvenaria', 'furos, rasgos e recomposição para a passagem da infraestrutura.')
-  if (d.respostas.infra_embutida) servico('Infraestrutura embutida', 'passagem dos cabos pela tubulação existente.')
+  if (d.respostas.trechos?.length) {
+    // Kalebe 2026-10-15: caminho até o ponto de conexão, trecho a trecho
+    for (const t of p.trechos) {
+      if (t.tipo === 'externo') servico(`Eletroduto externo — ${num(t.metros)} m`, 'eletroduto rígido aparente fixado na parede, com abraçadeiras, luvas e curvas.')
+      if (t.tipo === 'subterraneo') servico(`Trecho subterrâneo — ${num(t.metros)} m`, `abertura de vala, passagem da tubulação e fechamento${t.concretagem ? ', com recomposição do piso em concreto' : ''}.`)
+      if (t.tipo === 'embutido') servico(`Tubulação existente — ${num(t.metros)} m`, 'passagem dos cabos pela infraestrutura embutida.')
+      if (t.tipo === 'alvenaria') servico(`Embutido na alvenaria — ${num(t.metros)} m`, 'rasgos e recomposição da parede para a passagem da infraestrutura.')
+    }
+  } else {
+    if (d.respostas.alvenaria) servico('Alvenaria', 'furos, rasgos e recomposição para a passagem da infraestrutura.')
+    if (d.respostas.infra_embutida) servico('Infraestrutura embutida', 'passagem dos cabos pela tubulação existente.')
+  }
   const km = Number(d.respostas.km_deslocamento) || 0
   if (km > 0) servico('Deslocamento', `${num(km * 2)} km rodados (ida + volta) da Spin Solar até o local do cliente.`)
   if (p.materiais.length) {

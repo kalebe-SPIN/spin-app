@@ -65,6 +65,10 @@ export async function carregarParametrosRecarga(admin: Admin): Promise<{ params:
       comissao_pct: getNum(rec, 'comissao_vendedor_perc', 5),
       imposto_pct: getNum(rec, 'aliquota_simples_perc', 15),
       margem_minima_pct: getNum(rec, 'margem_minima_negociacao_perc', 15),
+      // Kalebe 2026-10-15: trecho subterrâneo — sem valor padrão (não chutar); 0 = falta definir no painel
+      vala_m: getNum(rec, 've_vala_m', 0),
+      tubo_subterraneo_m: getNum(rec, 've_tubo_subterraneo_m', 0),
+      concretagem_m: getNum(rec, 've_concretagem_m', 0),
     },
   }
 }
@@ -250,9 +254,12 @@ export async function gerarPropostaRecarga(admin: Admin, a: {
   contatoId?: string | null
 }): Promise<{ url_pdf: string; proposta: PropostaRecarga } | { erro: string }> {
   const { proposta, params, record } = await calcularNoServidor(admin, a.entrada, a.ehAdmin)
-  if (!proposta.equipamentos.length) return { erro: 'Adicione pelo menos um equipamento' }
-  const semCusto = proposta.equipamentos.filter((e) => !(e.preco_unitario > 0))
+  if (!proposta.equipamentos.length) return { erro: 'Adicione pelo menos um equipamento (ou o carregador do cliente, com a potência)' }
+  const semCusto = proposta.equipamentos.filter((e) => !e.do_cliente && !(e.preco_unitario > 0))
   if (semCusto.length) return { erro: `Falta o custo de: ${semCusto.map((e) => e.modelo).join(', ')}` }
+  const semPotencia = proposta.equipamentos.filter((e) => e.tipo === 'carregador' && !(e.potencia_kw > 0))
+  if (semPotencia.length) return { erro: `Falta a potência (kW) de: ${semPotencia.map((e) => e.modelo).join(', ')}` }
+  if (proposta.pendencias_custo.length) return { erro: `Defina no ⚙️ Precificação (estação de recarga): ${proposta.pendencias_custo.join('; ')}` }
   if (!(proposta.pv_total > 0)) return { erro: proposta.avisos[0] || 'Não deu pra calcular o preço' }
 
   const { data: pj } = await admin.from('projetos')
