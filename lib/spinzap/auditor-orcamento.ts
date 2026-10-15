@@ -107,9 +107,12 @@ export function auditarOrcamentoLead(o: OrcamentoLead, p: PerfilLead): Auditoria
 
   // ── Coerência consumo × geração ──
   if (o.consumo_kwh_mes) {
-    const cobertura = o.geracao_kwh_mes / o.consumo_kwh_mes
+    // Kalebe 2026-10-15: com aumento extra de geração, a referência é o consumo + aumento
+    const aumento = Number(o.aumento_geracao_pct) || 0
+    const alvo = o.consumo_kwh_mes * (1 + aumento / 100)
+    const cobertura = o.geracao_kwh_mes / alvo
     add('Coerência', cobertura >= 0.85 && cobertura <= 1.3, false,
-      `Geração estimada ${br(o.geracao_kwh_mes, 0)} kWh/mês para consumo de ${br(o.consumo_kwh_mes, 0)} kWh/mês (${br(cobertura * 100, 0)}%)`)
+      `Geração estimada ${br(o.geracao_kwh_mes, 0)} kWh/mês para consumo de ${br(o.consumo_kwh_mes, 0)} kWh/mês${aumento ? ` + ${aumento}% de aumento previsto` : ''} (${br(cobertura * 100, 0)}%)`)
   }
   add('Coerência', o.pv_total > 0, true, o.pv_total > 0 ? 'Preço calculado pelo motor de precificação' : 'Preço zerado — conferir catálogo/parâmetros')
 

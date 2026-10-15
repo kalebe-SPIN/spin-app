@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import {
   dadosPropostaRapidaAction, calcularPropostaRapidaAction, prepararPdfOficialPropostaRapidaAction, registrarPdfPropostaRapidaAction,
@@ -18,8 +18,13 @@ import { SecoesProposta } from '@/components/propostas/SecoesProposta'
 import { PainelPrecificacao } from '@/components/precificacao/PainelPrecificacao'
 import { CadastroDatasheetModal } from '@/components/CadastroDatasheetModal'
 import type { CategoriaProduto } from '@/app/admin/catalogo/actions'
+import {
+  AUMENTO_GERACAO_MAX_PCT, FCI_MAX, FCI_MIN, inversorRecomendado, kwhPorKwpMes, kwpParaConsumo, opcoesDeInversor,
+} from '@/lib/spinzap/dimensionar-fv'
 
 const TELHADOS_AZ = [...TIPOS_TELHADO].sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR'))
+/** Atalhos do aumento extra de geração (% sobre o consumo) — escolha do consultor, não parâmetro comercial */
+const ATALHOS_AUMENTO = [0, 10, 20, 30, 50]
 
 /**
  * "Montar proposta" direto da conversa (Kalebe 2026-10-13): escolhe a base
@@ -46,6 +51,8 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   const [cadastroDatasheet, setCadastroDatasheet] = useState<CategoriaProduto | null>(null)
   // Telhado → estrutura do kit (+ cabo solar, MC4, disjuntor e DPS, como na proposta formal)
   const [telhado, setTelhado] = useState('')
+  // Kalebe 2026-10-15: aumento extra de geração (% sobre o consumo)
+  const [aumento, setAumento] = useState('0')
   const [carregando, setCarregando] = useState(true)
   const [modo, setModo] = useState<Modo>('consumo_kwh')
   const [valor, setValor] = useState('')
@@ -116,13 +123,61 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   }, [conversaId])
 
   // Qualquer mudança na entrada invalida o cálculo e o PDF
-  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, telhado, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes])
+  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, telhado, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes, aumento])
   // Trocou o sistema: o modelo escolhido não vale mais
   useEffect(() => { setInversorId(''); setInversorQtd('') }, [sistema])
 
   // Inversores do sistema escolhido que servem na rede (bifásica usa monofásico; micro é sempre mono)
   const fasesRede = rede === 'trifasico' ? 'tri' : 'mono'
   const inversoresDoSistema = (catalogo?.inversores[sistema] || []).filter((i) => sistema === 'micro' || !i.fases || i.fases === fasesRede)
+
+  // Kalebe 2026-10-15: potência do kit ao vivo (mesma conta do servidor) e só
+  // os inversores dentro da faixa técnica de CC/CA pra esse kit
+  const kit = useMemo(() => {
+    if (!catalogo) return null
+    const placas = catalogo.placas
+    const placa = placas.find((p) => p.id === placaId) || placas[placas.length - 1]
+    if (!placa?.potencia_wp) return null
+    const v = num(valor)
+    const aumentoPct = modo === 'qtd_placas' ? 0 : Math.min(Math.max(num(aumento), 0), AUMENTO_GERACAO_MAX_PCT)
+    let consumo: number | null = null
+    let qtdPlacas = 0
+    if (modo === 'qtd_placas') qtdPlacas = Math.max(0, Math.round(v))
+    else {
+      const tarifa = fatura?.tarifa_kwh || tarifaBase?.tarifa_kwh || 0
+      consumo = modo === 'consumo_kwh' ? v : tarifa > 0 ? v / tarifa : 0
+      if (consumo > 0) qtdPlacas = Math.ceil((kwpParaConsumo(consumo, cidade, aumentoPct) * 1000) / placa.potencia_wp)
+    }
+    if (!(qtdPlacas > 0)) return null
+    const kwp = (qtdPlacas * placa.potencia_wp) / 1000
+    const nFases = rede === 'trifasico' ? 3 : rede === 'bifasico' ? 2 : 1
+    const ops = opcoesDeInversor(inversoresDoSistema.map((i) => ({ ...i, preco_venda: i.peso })), { kwp, qtdPlacas, sistema, nFases })
+    // "Placas" com inversor desejado: o mais perto do kW pedido (como no servidor)
+    const alvoKw = modo === 'qtd_placas' ? num(inversorKw) : 0
+    const recomendado = alvoKw > 0 && sistema !== 'micro'
+      ? [...ops].sort((a, b) => Math.abs(a.inv.potencia_kw - alvoKw) - Math.abs(b.inv.potencia_kw - alvoKw))[0]
+      : inversorRecomendado(ops, sistema)
+    const escolhido = ops.find((o) => o.inv.id === inversorId) || recomendado
+    const qtdInv = escolhido ? (sistema !== 'micro' && num(inversorQtd) > 0 ? Math.round(num(inversorQtd)) : escolhido.qtd) : 0
+    const potCa = escolhido ? escolhido.inv.potencia_kw * qtdInv : 0
+    const geracao = Math.round(kwp * kwhPorKwpMes(cidade))
+    return { placa, qtdPlacas, kwp, consumo, aumentoPct, ops, recomendado, escolhido, qtdInv, potCa, fci: potCa > 0 ? kwp / potCa : 0, geracao }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogo, placaId, valor, modo, aumento, fatura, tarifaBase, cidade, rede, sistema, inversorId, inversorQtd, inversorKw])
+  const opcoesCompativeis = kit ? kit.ops.filter((o) => o.compativel) : []
+  // O kit mudou e o inversor escolhido saiu da faixa técnica: volta pro recomendado
+  useEffect(() => {
+    if (!kit || !inversorId) return
+    const atual = kit.ops.find((o) => o.inv.id === inversorId)
+    if (!atual || !atual.compativel) { setInversorId(''); setInversorQtd('') }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kit?.kwp, kit?.qtdPlacas])
+  function escolherInversor(id: string) {
+    setInversorId(id)
+    // A quantidade que o kit pede pra esse modelo
+    const op = kit?.ops.find((o) => o.inv.id === id)
+    setInversorQtd(op && sistema !== 'micro' ? String(op.qtd) : '')
+  }
   const itensDaCategoria = catalogo?.extras.find((g) => g.categoria === catExtra)?.itens || []
   function adicionarExtra() {
     const it = itensDaCategoria.find((i) => i.id === itemExtra)
@@ -144,6 +199,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
       inversor_qtd: sistema !== 'micro' && num(inversorQtd) > 0 ? Math.round(num(inversorQtd)) : null,
       extras: extras.map((x) => ({ produto_id: x.produto_id, qtd: x.qtd })),
       complementos_cc: { tipo_telhado: telhado || null },
+      aumento_geracao_pct: modo !== 'qtd_placas' ? Math.min(Math.max(Math.round(num(aumento)), 0), AUMENTO_GERACAO_MAX_PCT) : 0,
     },
     secoes,
   })
@@ -311,6 +367,27 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
               <p className="text-[11px] text-white/55">Estrutura de {telhado === 'solo' ? 'solo' : 'carport'} não sai por quantidade de placas: inclua o item em “Itens extras” (categoria Estrutura). Cabos, conectores e proteções entram automáticos.</p>
             )}
 
+            {/* Kalebe 2026-10-15: aumento extra de geração (cliente vai consumir mais) */}
+            {modo !== 'qtd_placas' && (
+              <div>
+                <span className="block text-[11px] font-bold text-white/60 mb-1">Aumento extra de geração (sobre o consumo)</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {ATALHOS_AUMENTO.map((p) => (
+                    <button key={p} type="button" onClick={() => setAumento(String(p))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${num(aumento) === p ? 'bg-weg-azul border-weg-azul text-white' : 'border-white/15 text-white/70 hover:text-white'}`}>
+                      {p === 0 ? 'Sem aumento' : `+${p}%`}
+                    </button>
+                  ))}
+                  <label className="flex items-center gap-1 text-xs text-white/60">
+                    outro:
+                    <input value={aumento} onChange={(e) => setAumento(e.target.value.replace(/[^\d]/g, '').slice(0, 3))} inputMode="numeric"
+                      aria-label="Aumento de geração em %" className="w-14 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs text-end focus:outline-none" />
+                    %
+                  </label>
+                </div>
+              </div>
+            )}
+
             {/* Kalebe 2026-10-13: sistema, modelos e itens extras */}
             <div className="space-y-3 rounded-2xl border border-white/10 p-3">
               <div>
@@ -324,6 +401,31 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
                   ))}
                 </div>
               </div>
+              {/* Potência do kit ao vivo — como na escolha de kit do projeto */}
+              {kit ? (
+                <div className={`rounded-xl border px-3 py-2 space-y-0.5 ${kit.escolhido && kit.fci >= FCI_MIN && kit.fci <= FCI_MAX[sistema] ? 'border-verde/45' : 'border-coral/50'}`}>
+                  <p className="text-[11px] font-bold text-white/60 uppercase tracking-wider">Potência do kit</p>
+                  <p className="text-lg font-black text-white tabular-nums">{fmtKwp(kit.kwp)}
+                    <span className="text-xs font-bold text-white/60"> · {kit.qtdPlacas} placas de {fmtNum(kit.placa.potencia_wp, 0)} Wp</span>
+                  </p>
+                  {kit.escolhido ? (
+                    <p className="text-[12px] text-white/80">
+                      {sistema === 'micro' ? 'Microinversores' : 'Inversor'}: {kit.qtdInv > 1 ? `${kit.qtdInv} × ` : ''}{kit.escolhido.inv.rotulo.split(' · ')[0]}
+                      {' '}({fmtNum(kit.potCa, 2)} kW) · CC/CA {fmtNum(kit.fci * 100, 0)}%
+                      {kit.fci < FCI_MIN || kit.fci > FCI_MAX[sistema] ? ` — fora da faixa (${fmtNum(FCI_MIN * 100, 0)}–${fmtNum(FCI_MAX[sistema] * 100, 0)}%)` : ''}
+                    </p>
+                  ) : <p className="text-[12px] text-coral">Nenhum {sistema === 'micro' ? 'microinversor' : 'inversor'} disponível pra essa rede</p>}
+                  <p className="text-[11px] text-white/55">
+                    Geração estimada ≈ {fmtNum(kit.geracao, 0)} kWh/mês
+                    {kit.consumo ? ` · ${fmtNum((kit.geracao / kit.consumo) * 100, 0)}% do consumo de ${fmtNum(kit.consumo, 0)} kWh/mês` : ''}
+                    {kit.aumentoPct > 0 ? ` (com +${fmtNum(kit.aumentoPct, 0)}% de aumento)` : ''}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-white/45 rounded-xl border border-white/10 px-3 py-2">
+                  {catalogo ? `Informe ${modo === 'consumo_kwh' ? 'o consumo' : modo === 'valor_mensal' ? 'o valor da conta' : 'a quantidade de placas'} pra ver a potência do kit.` : 'Carregando o catálogo…'}
+                </p>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Potência em ordem crescente (a ordem carrega sentido) */}
                 <label className="block">
@@ -333,14 +435,26 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
                     {(catalogo?.placas || []).map((p) => <option key={p.id} value={p.id} className="bg-noite">{p.rotulo}</option>)}
                   </select>
                 </label>
+                {/* Só os modelos dentro da faixa técnica de CC/CA pra este kit (com a quantidade que ele pede) */}
                 <label className="block">
-                  <span className="block text-[11px] font-bold text-white/60 mb-1">{sistema === 'micro' ? 'Microinversor' : 'Inversor'}</span>
-                  <select value={inversorId} onChange={(e) => setInversorId(e.target.value)} className={inputCls} disabled={!catalogo}>
-                    <option value="" className="bg-noite">Automático (recomendado)</option>
-                    {inversoresDoSistema.map((i) => <option key={i.id} value={i.id} className="bg-noite">{i.rotulo}</option>)}
+                  <span className="block text-[11px] font-bold text-white/60 mb-1">
+                    {sistema === 'micro' ? 'Microinversor' : 'Inversor'}{kit ? ` · ${opcoesCompativeis.length} compatíve${opcoesCompativeis.length === 1 ? 'l' : 'is'}` : ''}
+                  </span>
+                  <select value={inversorId} onChange={(e) => escolherInversor(e.target.value)} className={inputCls} disabled={!catalogo || !kit}>
+                    <option value="" className="bg-noite">
+                      {kit?.recomendado ? `Automático: ${kit.recomendado.qtd > 1 ? `${kit.recomendado.qtd} × ` : ''}${kit.recomendado.inv.rotulo.split(' · ')[0]}` : 'Automático (recomendado)'}
+                    </option>
+                    {opcoesCompativeis.map((o) => (
+                      <option key={o.inv.id} value={o.inv.id} className="bg-noite">
+                        {o.qtd > 1 ? `${o.qtd} × ` : ''}{o.inv.rotulo} · CC/CA {fmtNum(o.fci * 100, 0)}%
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
+              {kit && !opcoesCompativeis.length && (
+                <p className="text-[11px] text-coral">Nenhum modelo fica na faixa de CC/CA ({fmtNum(FCI_MIN * 100, 0)}–{fmtNum(FCI_MAX[sistema] * 100, 0)}%) pra {fmtKwp(kit.kwp)} — ajuste a quantidade de placas ou o sistema.</p>
+              )}
               {sistema !== 'micro' && inversorId && (
                 <label className="block max-w-[200px]">
                   <span className="block text-[11px] font-bold text-white/60 mb-1">Quantidade de inversores</span>

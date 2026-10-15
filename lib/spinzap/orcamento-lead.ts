@@ -1,5 +1,6 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
-import { PARAMETROS_DEFAULT, TIPOS_REDE_INFO, fatorSolPorCidade, type TipoRede } from '@/lib/orcamento-rapido/tipos'
+import { TIPOS_REDE_INFO, type TipoRede } from '@/lib/orcamento-rapido/tipos'
+import { AUMENTO_GERACAO_MAX_PCT, inversorRecomendado, kwhPorKwpMes, kwpParaConsumo, opcoesDeInversor } from '@/lib/spinzap/dimensionar-fv'
 import { calcularFormasPagamento, calcularProposta, paramsToRecord, type FormasPagamento, type ItemLista } from '@/lib/precificacao/calcular'
 import { ehTipoSecao, totalSecoes, type SecaoProposta } from '@/lib/propostas/secoes'
 import { filtroEstruturaDoTelhado, precificarComplementosCC, type ItemComplementoCC } from '@/lib/kit-auto/complementos-cc'
@@ -51,6 +52,8 @@ export type OpcoesKit = {
    * Sem isso (Laís), segue só placa + inversor + extras.
    */
   complementos_cc?: { tipo_telhado: string | null }
+  /** Kalebe 2026-10-15: gerar X% a mais que o consumo (aumento previsto) — consumo/valor da conta */
+  aumento_geracao_pct?: number | null
 }
 
 export type ComplementosOrcamento = { tipo_telhado: string | null; itens: ItemComplementoCC[]; total: number; avisos: string[] }
@@ -69,6 +72,8 @@ export type OrcamentoLead = {
   extras: ExtraOrcamento[]
   /** Estrutura + materiais CC (só quando pedido em opcoes.complementos_cc) */
   complementos?: ComplementosOrcamento | null
+  /** Aumento extra de geração aplicado (% sobre o consumo) */
+  aumento_geracao_pct?: number
   consumo_kwh_mes: number | null
   geracao_kwh_mes: number
   pv_total: number
@@ -102,8 +107,6 @@ export function tipoRedeDoPerfil(t: string | null | undefined): TipoRede {
   return 'mono_220'
 }
 
-/** kWh gerados por mês por kWp, pela irradiação da cidade (mesma conta do Orçamento Rápido). */
-const kwhPorKwpMes = (cidade: string | null) => fatorSolPorCidade(cidade, PARAMETROS_DEFAULT.fator_dimensionamento_sc) * 30 * 0.85
 
 // ── Catálogo ──
 
@@ -198,15 +201,17 @@ export async function montarOrcamentoLead(admin: Admin, e: {
       t.fonte === 'fatura' ? 'calculada da sua fatura' : `(referência de ${t.amostras || 'várias'} faturas reais)`}${
       t.subsidio && t.subsidio !== 'nenhum' ? `, com ${t.subsidio.replace('_', ' ')}` : ''}`
   let qtdPlacas = 0
+  // Kalebe 2026-10-15: aumento extra de geração (% sobre o consumo)
+  const aumento = Math.min(Math.max(Math.round(Number(op.aumento_geracao_pct) || 0), 0), AUMENTO_GERACAO_MAX_PCT)
   if (e.entrada.modo === 'consumo_kwh') {
     consumo = e.entrada.consumo_kwh
-    kwpAlvo = consumo / kwhPorKwpMes(e.cidade)
+    kwpAlvo = kwpParaConsumo(consumo, e.cidade, aumento)
     premissas.push(`Consumo médio de ${Math.round(consumo)} kWh/mês`)
     if (e.entrada.tarifa?.tarifa_kwh) premissas.push(rotuloTarifa(e.entrada.tarifa))
   } else if (e.entrada.modo === 'valor_mensal') {
     if (!(e.entrada.tarifa?.tarifa_kwh > 0)) return { erro: 'Sem tarifa pra converter o valor da conta em kWh (precisa da fatura ou da base de tarifas)' }
     consumo = e.entrada.valor_mensal / e.entrada.tarifa.tarifa_kwh
-    kwpAlvo = consumo / kwhPorKwpMes(e.cidade)
+    kwpAlvo = kwpParaConsumo(consumo, e.cidade, aumento)
     premissas.push(`Conta média de R$ ${e.entrada.valor_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (≈ ${Math.round(consumo)} kWh/mês)`)
     premissas.push(rotuloTarifa(e.entrada.tarifa))
   } else {
@@ -228,44 +233,28 @@ export async function montarOrcamentoLead(admin: Admin, e: {
   const inversores = catalogo.filter((p) => p.categoria === 'inversor' && p.subcategoria === subcat && p.potencia_kw && p.disponivel)
   let inversor: ProdutoCatalogo | undefined
   let invQtd = 1
+  // Mesmo dimensionamento da prévia da tela (lib/spinzap/dimensionar-fv.ts)
+  const kitDim = { kwp, qtdPlacas, sistema: tipoSistema, nFases }
   if (tipoSistema === 'micro') {
     // Micro é sempre monofásico 220 V; qtd = placas ÷ entradas, múltiplo do nº de fases (balanceado)
-    const micros = inversores.filter((p) => p.fases !== 'tri')
-    const qtdMicro = (p: ProdutoCatalogo) => {
-      let q = Math.ceil(qtdPlacas / (p.entradas || 1))
-      if (q % nFases) q += nFases - (q % nFases)
-      return q
-    }
-    const escolhido = op.inversor_id ? micros.find((p) => p.id === op.inversor_id) : undefined
-    if (escolhido) inversor = escolhido
-    else {
-      // O balanceamento pode forçar micros a mais (trifásico: múltiplo de 3) e
-      // derrubar o FCI — prefere o modelo que fica dentro de 80–145% e, entre
-      // esses, o de menor custo total; sem nenhum na faixa, o FCI mais perto dela.
-      const fciDe = (p: ProdutoCatalogo) => kwp / (p.potencia_kw! * qtdMicro(p))
-      const foraDaFaixa = (p: ProdutoCatalogo) => { const f = fciDe(p); return f < 0.8 ? 0.8 - f : f > 1.45 ? f - 1.45 : 0 }
-      inversor = [...micros].sort((a, b) =>
-        foraDaFaixa(a) - foraDaFaixa(b)
-        || a.preco_venda * qtdMicro(a) - b.preco_venda * qtdMicro(b)
-        || (b.entradas || 1) - (a.entradas || 1))[0]
-    }
-    if (!inversor) return { erro: 'Nenhum microinversor disponível no catálogo' }
-    invQtd = qtdMicro(inversor)
+    const ops = opcoesDeInversor(inversores.filter((p) => p.fases !== 'tri'), kitDim)
+    // Sem escolha: o que fica na faixa de 80–145% e, entre esses, o de menor custo total
+    const op1 = (op.inversor_id && ops.find((o) => o.inv.id === op.inversor_id)) || inversorRecomendado(ops, 'micro')
+    if (!op1) return { erro: 'Nenhum microinversor disponível no catálogo' }
+    inversor = op1.inv; invQtd = op1.qtd
   } else {
     const compat = inversores.filter((p) => (!fasesInv || p.fases === fasesInv) && (!tensaoInv || !p.tensao_v || p.tensao_v === tensaoInv))
-    const fciMax = tipoSistema === 'hibrido' ? 2.0 : 1.5
-    if (op.inversor_id) inversor = inversores.find((p) => p.id === op.inversor_id)
-    else if (e.entrada.modo === 'qtd_placas' && e.entrada.inversor_kw) {
+    if (op.inversor_id) {
+      inversor = inversores.find((p) => p.id === op.inversor_id)
+      // Escolhido sem quantidade: a que o kit pede
+      if (inversor) invQtd = opcoesDeInversor([inversor], kitDim)[0]?.qtd || 1
+    } else if (e.entrada.modo === 'qtd_placas' && e.entrada.inversor_kw) {
       const alvo = e.entrada.inversor_kw
       inversor = [...compat].sort((a, b) => Math.abs(a.potencia_kw! - alvo) - Math.abs(b.potencia_kw! - alvo))[0]
     } else {
-      // Menor que atende: potência entre kWp ÷ FCI máx e 1,5 × kWp
-      inversor = compat.filter((p) => p.potencia_kw! >= kwp / fciMax && p.potencia_kw! <= kwp * 1.5).sort((a, b) => a.potencia_kw! - b.potencia_kw!)[0]
-      if (!inversor && compat.length) {
-        // Sistema grande: vários do maior modelo (~130% CC/CA)
-        inversor = [...compat].sort((a, b) => b.potencia_kw! - a.potencia_kw!)[0]
-        invQtd = Math.max(1, Math.ceil(kwp / (inversor.potencia_kw! * 1.3)))
-      }
+      // O menor que atende sozinho; sistema grande → vários do maior modelo (~130% CC/CA)
+      const rec = inversorRecomendado(opcoesDeInversor(compat, kitDim), tipoSistema)
+      if (rec) { inversor = rec.inv; invQtd = rec.qtd }
     }
     if (!inversor) return { erro: `Nenhum ${tipoSistema === 'hibrido' ? 'inversor híbrido' : 'inversor string'} compatível com a rede ${rede.label} no catálogo` }
     if (op.inversor_qtd && op.inversor_qtd > 0) invQtd = Math.round(op.inversor_qtd)
@@ -314,6 +303,7 @@ export async function montarOrcamentoLead(admin: Admin, e: {
     subtotal_kit_weg_bruto_override: kitBruto,
   }, params)
 
+  if (aumento > 0 && consumo) premissas.push(`Geração dimensionada ${aumento}% acima do consumo atual (aumento previsto)`)
   premissas.push(`Rede ${rede.label}`)
   if (tipoSistema === 'micro') premissas.push('Sistema com microinversores (um por grupo de placas, distribuídos entre as fases)')
   if (tipoSistema === 'hibrido') premissas.push('Sistema híbrido (pronto pra baterias)')
@@ -335,6 +325,7 @@ export async function montarOrcamentoLead(admin: Admin, e: {
     inversor: { id: inversor.id, modelo: inversor.modelo, potencia_kw: inversor.potencia_kw!, fases: inversor.fases, qtd: invQtd, entradas: inversor.entradas },
     extras,
     complementos,
+    aumento_geracao_pct: consumo ? aumento : 0,
     consumo_kwh_mes: consumo,
     geracao_kwh_mes: Math.round(kwp * kwhPorKwpMes(e.cidade)),
     pv_total: Math.round(proposta.pv_total * 100) / 100,

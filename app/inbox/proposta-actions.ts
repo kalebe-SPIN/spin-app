@@ -348,8 +348,9 @@ const ROTULO_CATEGORIA: Record<string, string> = {
  * catálogo. Sem preço na tela — o preço sai só no total (dupla visão).
  */
 export async function opcoesKitPropostaAction(): Promise<{
-  placas: Array<{ id: string; rotulo: string }>
-  inversores: Record<TipoSistemaFv, Array<{ id: string; rotulo: string; fases: string | null }>>
+  placas: Array<{ id: string; rotulo: string; potencia_wp: number }>
+  /** potência/entradas pra prévia do kit na tela; `peso` = custo relativo (desempate de micro, sem expor preço) */
+  inversores: Record<TipoSistemaFv, Array<{ id: string; rotulo: string; fases: string | null; potencia_kw: number; entradas: number | null; peso: number }>>
   extras: Array<{ categoria: string; rotulo: string; itens: Array<{ id: string; rotulo: string; destino: 'kit' | 'lista_ca' }> }>
 } | { erro: string }> {
   const supabase = createClient()
@@ -360,15 +361,18 @@ export async function opcoesKitPropostaAction(): Promise<{
   // Potência em ordem crescente (a ordem carrega sentido)
   const placas = catalogo.filter((p) => p.categoria === 'placa' && p.potencia_wp && p.disponivel)
     .sort((a, b) => a.potencia_wp! - b.potencia_wp! || a.modelo.localeCompare(b.modelo, 'pt-BR'))
-    .map((p) => ({ id: p.id, rotulo: `${p.potencia_wp} Wp · ${p.descricao.replace(/^\d+\s*Wp\s*-\s*/i, '') || p.modelo}` }))
-  const inversores = Object.fromEntries(TIPOS_SISTEMA_FV.map((t) => [t.valor,
-    catalogo.filter((p) => p.categoria === 'inversor' && p.subcategoria === t.subcategoria && p.potencia_kw && p.disponivel)
+    .map((p) => ({ id: p.id, potencia_wp: p.potencia_wp!, rotulo: `${p.potencia_wp} Wp · ${p.descricao.replace(/^\d+\s*Wp\s*-\s*/i, '') || p.modelo}` }))
+  const inversores = Object.fromEntries(TIPOS_SISTEMA_FV.map((t) => {
+    const lista = catalogo.filter((p) => p.categoria === 'inversor' && p.subcategoria === t.subcategoria && p.potencia_kw && p.disponivel)
+    const menor = Math.min(...lista.map((p) => p.preco_venda).filter((v) => v > 0), Infinity)
+    return [t.valor, lista
       .sort((a, b) => a.potencia_kw! - b.potencia_kw! || a.modelo.localeCompare(b.modelo, 'pt-BR'))
       .map((p) => ({
-        id: p.id, fases: p.fases,
+        id: p.id, fases: p.fases, potencia_kw: p.potencia_kw!, entradas: p.entradas,
+        peso: Number.isFinite(menor) && p.preco_venda > 0 ? Math.round((p.preco_venda / menor) * 1000) / 1000 : 1,
         rotulo: `${p.modelo} · ${kw(p.potencia_kw)}${p.fases ? ` · ${p.fases === 'tri' ? 'trifásico' : p.fases === 'bi' ? 'bifásico' : 'monofásico'}` : ''}${t.valor === 'micro' && p.entradas ? ` · ${p.entradas} placas` : ''}`,
-      })),
-  ])) as Record<TipoSistemaFv, Array<{ id: string; rotulo: string; fases: string | null }>>
+      }))]
+  })) as Record<TipoSistemaFv, Array<{ id: string; rotulo: string; fases: string | null; potencia_kw: number; entradas: number | null; peso: number }>>
   // Extras: tudo com preço, menos placa, inversor (exceto otimizador) e frete (o motor calcula)
   const grupos = new Map<string, Array<{ id: string; rotulo: string; destino: 'kit' | 'lista_ca' }>>()
   for (const p of catalogo) {
