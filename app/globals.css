@@ -65,6 +65,21 @@ html, body {
   min-height: 100vh;
   font-family: 'Inter', system-ui, sans-serif;
 }
+
+/* Kalebe 2026-10-15: tela travada na largura do aparelho — nada de arrastar
+   pros lados. "clip" corta o que passar sem virar área de rolagem (não quebra
+   cabeçalho fixo nem as listas com rolagem própria, como a grade da agenda). */
+html {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  max-width: 100%;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+}
 * {
   box-sizing: border-box;
 }

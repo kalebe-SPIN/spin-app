@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { cookies } from 'next/headers'
 import './globals.css'
 // Kalebe 2026-10-09: visual minimalista por cima de todas as telas
@@ -25,6 +25,18 @@ export const metadata: Metadata = {
     ],
     shortcut: '/icon.png?v=2',
   },
+}
+
+/**
+ * Kalebe 2026-10-15: no celular a tela se ajusta à largura do aparelho e fica
+ * travada — sem zoom automático ao tocar num campo (o iPhone ampliava e a
+ * página "dançava" pros lados). Sem rolagem lateral: ver globals.css.
+ */
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 }
 
 export default function RootLayout({

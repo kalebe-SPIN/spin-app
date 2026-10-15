@@ -137,6 +137,8 @@ export function InboxClient({
   // Kalebe 2026-10-14: filtro só pelas 4 categorias principais
   const [fProduto, setFProduto] = useState('')
   const [fContato, setFContato] = useState<'' | 'clientes' | 'equipe' | 'fornecedores' | 'forn_equipamento' | 'forn_produtos' | 'forn_servico'>('')
+  // Kalebe 2026-10-15: filtro por atividades em aberto da agenda (tarefa, follow-up, lembrete, evento)
+  const [fAtividade, setFAtividade] = useState<'' | 'abertas' | 'atrasadas' | TipoPendencia>('')
   const [modalFornecedor, setModalFornecedor] = useState(false)
   const [verEncerradas, setVerEncerradas] = useState(false)
   const [fechadas, setFechadas] = useState<Set<string>>(new Set(['perdido']))   // grupos recolhidos
@@ -365,6 +367,12 @@ export function InboxClient({
     if (fContato.startsWith('forn_') && !(c.contato?.fornecedor?.tipos || []).includes(fContato.slice(5))) return false
     if (fCidade && semAcento(c.cidade || '') !== semAcento(fCidade)) return false
     if (fProduto && categoriaDoTipo(c.produto) !== fProduto) return false
+    if (fAtividade) {
+      const ps = c.pendencias || []
+      if (fAtividade === 'abertas' && !ps.length) return false
+      if (fAtividade === 'atrasadas' && !ps.some((p) => p.atrasada)) return false
+      if (fAtividade !== 'abertas' && fAtividade !== 'atrasadas' && !ps.some((p) => p.tipo === fAtividade)) return false
+    }
     return true
   }
   const base = conversas.filter(passaFiltros)
@@ -393,7 +401,7 @@ export function InboxClient({
   ].filter((g) => g.itens.length > 0)
   const cidadesDaLista = Array.from(new Set(conversas.map((c) => (c.cidade || '').trim()).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, 'pt-BR'))
-  const filtrosAtivos = [fPeriodo !== 'todos', !!fCidade, !!fProduto, !!fContato].filter(Boolean).length
+  const filtrosAtivos = [fPeriodo !== 'todos', !!fCidade, !!fProduto, !!fContato, !!fAtividade].filter(Boolean).length
   const chipsSetor = [
     { chave: 'todos', rotulo: 'Todos', qtd: abertas.length },
     { chave: 'lais', rotulo: '🤖 Laís', qtd: qtdSetor('lais') },
@@ -678,6 +686,19 @@ export function InboxClient({
                   {CATEGORIAS_PROPOSTA.map((c) => <option key={c.chave} value={c.chave} className="bg-noite">{c.emoji} {c.rotulo}</option>)}
                 </select>
               </label>
+              <label className="block">
+                <span className="block text-[10px] font-bold text-white/50 mb-0.5">Atividades</span>
+                {/* "Em aberto" e "atrasadas" primeiro (são o resumo); tipos em A→Z */}
+                <select value={fAtividade} onChange={(e) => setFAtividade(e.target.value as typeof fAtividade)} className={selCls}>
+                  <option value="" className="bg-noite">Qualquer</option>
+                  <option value="abertas" className="bg-noite">Com atividade em aberto</option>
+                  <option value="atrasadas" className="bg-noite">Com atividade atrasada</option>
+                  <option value="evento" className="bg-noite">📅 Eventos</option>
+                  <option value="followup" className="bg-noite">💬 Follow-ups</option>
+                  <option value="lembrete" className="bg-noite">🔔 Lembretes</option>
+                  <option value="tarefa" className="bg-noite">☐ Tarefas</option>
+                </select>
+              </label>
               <label className="block col-span-2">
                 <span className="block text-[10px] font-bold text-white/50 mb-0.5">Contato</span>
                 <select value={fContato} onChange={(e) => setFContato(e.target.value as typeof fContato)} className={selCls}>
@@ -692,7 +713,7 @@ export function InboxClient({
               </label>
               {filtrosAtivos > 0 && (
                 <button
-                  onClick={() => { setFPeriodo('todos'); setFDe(''); setFAte(''); setFCidade(''); setFProduto(''); setFContato('') }}
+                  onClick={() => { setFPeriodo('todos'); setFDe(''); setFAte(''); setFCidade(''); setFProduto(''); setFContato(''); setFAtividade('') }}
                   className="col-span-2 text-[11px] text-coral/80 hover:text-coral font-bold py-1"
                 >
                   ✕ Limpar filtros

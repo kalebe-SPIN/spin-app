@@ -21,11 +21,15 @@ import { TIPOS_EVENTO, rotuloTipoEvento, type TipoEvento } from '@/lib/agenda/ti
 export type ItemAgendaConversa = {
   id: string
   tipo: 'followup' | 'tarefa' | 'evento'
+  /** follow-up que é lembrete ao cliente (não cancela se ele responder) */
+  lembrete?: boolean
   titulo: string
   quando: string | null
   status: string
   detalhe: string | null
   responsavel: string | null
+  /** Kalebe 2026-10-15: valores crus pra editar na própria lista */
+  edicao: { titulo?: string; mensagem?: string; modo?: string; local?: string | null }
 }
 
 async function conversaAcessivel(conversaId: string) {
@@ -63,27 +67,34 @@ export async function listarAgendaConversaAction(conversaId: string): Promise<{ 
   // Itens podem ser de outras pessoas (responsável escolhido) — lê pelo service role
   const admin = createAdminClient()
   const [f, t, e] = await Promise.all([
-    admin.from('wa_followups').select('id, executar_em, status, modo, mensagem, texto_enviado, motivo, responsavel:responsavel_id(nome_completo)')
+    admin.from('wa_followups').select('id, executar_em, status, modo, mensagem, texto_enviado, motivo, cancelar_se_responder, responsavel:responsavel_id(nome_completo)')
       .eq('conversa_id', conversaId).order('executar_em', { ascending: false }).limit(20),
     admin.from('agenda_tarefas').select('id, titulo, data_prazo, status, usuario:usuario_id(nome_completo)')
       .eq('wa_conversa_id', conversaId).order('data_prazo', { ascending: false }).limit(20),
-    admin.from('agenda_eventos').select('id, titulo, data_hora_inicio, status, tipo, usuario:usuario_id(nome_completo)')
+    admin.from('agenda_eventos').select('id, titulo, data_hora_inicio, status, tipo, local, usuario:usuario_id(nome_completo)')
       .eq('wa_conversa_id', conversaId).order('data_hora_inicio', { ascending: false }).limit(20),
   ])
   const nome = (x: any) => String(x?.nome_completo || '').split(' ')[0] || null
   const itens: ItemAgendaConversa[] = [
-    ...(f.data || []).map((x: any) => ({
-      id: x.id, tipo: 'followup' as const,
-      titulo: x.modo === 'texto_exato' ? `Follow-up: "${x.mensagem}"` : `Follow-up (Bianca escreve): ${x.mensagem}`,
-      quando: x.executar_em, status: x.status,
-      detalhe: x.texto_enviado ? `Enviado: "${x.texto_enviado}"` : x.motivo,
-      responsavel: nome(x.responsavel),
-    })),
+    ...(f.data || []).map((x: any) => {
+      const lembrete = x.cancelar_se_responder === false
+      const assunto = String(x.mensagem || '').match(/^Lembrete ao cliente do compromisso: (.+?) — /)?.[1] || x.mensagem
+      return {
+        id: x.id, tipo: 'followup' as const, lembrete,
+        titulo: lembrete ? `Lembrete ao cliente: ${assunto}` : x.modo === 'texto_exato' ? `Follow-up: "${x.mensagem}"` : `Follow-up (Bianca escreve): ${x.mensagem}`,
+        quando: x.executar_em, status: x.status,
+        detalhe: x.texto_enviado ? `Enviado: "${x.texto_enviado}"` : x.motivo,
+        responsavel: nome(x.responsavel),
+        edicao: { mensagem: x.mensagem || '', modo: x.modo },
+      }
+    }),
     ...(t.data || []).map((x: any) => ({
       id: x.id, tipo: 'tarefa' as const, titulo: x.titulo, quando: x.data_prazo, status: x.status, detalhe: null, responsavel: nome(x.usuario),
+      edicao: { titulo: x.titulo || '' },
     })),
     ...(e.data || []).map((x: any) => ({
       id: x.id, tipo: 'evento' as const, titulo: `${rotuloTipoEvento(x.tipo)}: ${x.titulo}`, quando: x.data_hora_inicio, status: x.status, detalhe: null, responsavel: nome(x.usuario),
+      edicao: { titulo: x.titulo || '', local: x.local || null },
     })),
   ].sort((a, b) => String(b.quando || '').localeCompare(String(a.quando || '')))
   return { itens }
@@ -312,5 +323,153 @@ export async function cancelarFollowupAction(id: string): Promise<{ sucesso: tru
     .eq('id', id)
     .eq('status', 'agendado')
   if (error) return { erro: error.message }
+  return { sucesso: true }
+}
+
+/**
+ * Editar / excluir o que já foi agendado na conversa (Kalebe 2026-10-15).
+ * Só item DESTA conversa e com acesso à conversa (mesma regra de quem cria).
+ * Follow-up/lembrete só edita enquanto não saiu. Mudou a data: o aviso
+ * automático é reprogramado. Se o item é de outra pessoa, ela é avisada.
+ */
+type TipoItemConversa = 'followup' | 'tarefa' | 'evento'
+const TABELA_ITEM: Record<TipoItemConversa, { tabela: string; coluna: string; dono: string; rotulo: string }> = {
+  followup: { tabela: 'wa_followups', coluna: 'conversa_id', dono: 'responsavel_id', rotulo: 'follow-up' },
+  tarefa: { tabela: 'agenda_tarefas', coluna: 'wa_conversa_id', dono: 'usuario_id', rotulo: 'tarefa' },
+  evento: { tabela: 'agenda_eventos', coluna: 'wa_conversa_id', dono: 'usuario_id', rotulo: 'evento' },
+}
+
+async function itemDaConversa(conversaId: string, tipo: TipoItemConversa, id: string) {
+  const acesso = await conversaAcessivel(conversaId)
+  if (acesso.erro || !acesso.user || !acesso.conv) return { erro: acesso.erro || 'Sem acesso' }
+  const t = TABELA_ITEM[tipo]
+  if (!t) return { erro: 'Tipo inválido' }
+  const admin = createAdminClient()
+  const { data: item } = await admin.from(t.tabela).select('*').eq('id', id).eq(t.coluna, conversaId).maybeSingle()
+  if (!item) return { erro: 'Item não encontrado nesta conversa' }
+  return { admin, user: acesso.user, conv: acesso.conv, item: item as any, t }
+}
+
+/** Aviso ao responsável quando outra pessoa mexe no item dele (WhatsApp + sino). */
+async function avisarMudanca(a: { admin: ReturnType<typeof createAdminClient>; user: { id: string }; conv: any; item: any; t: { dono: string; rotulo: string } }, linhas: string[]) {
+  const dono = a.item[a.t.dono]
+  if (!dono || dono === a.user.id) return
+  const { data: eu } = await a.admin.from('profiles').select('nome_completo').eq('id', a.user.id).maybeSingle()
+  const quem = String(eu?.nome_completo || 'Alguém da equipe').split(' ')[0]
+  const { avisarUsuario } = await import('@/lib/agentes/diretorio')
+  await avisarUsuario({
+    destinatario_id: dono, agente: 'bianca', remetente_usuario_id: a.user.id,
+    titulo: `${quem} mexeu num ${a.t.rotulo} seu`,
+    mensagem: [...linhas.map((l) => l.replace('{quem}', quem)), `🔗 Conversa: ${URL_PORTAL}/spinzap?c=${a.conv.id}`].join('\n'),
+    conversa_id: a.conv.id, projeto_id: a.conv.contato?.projeto_id || null,
+  }).catch((e) => console.error('[agenda-conversa] aviso de mudança', e))
+}
+
+export async function editarItemAgendaConversaAction(input: {
+  conversa_id: string
+  tipo: TipoItemConversa
+  id: string
+  /** ISO (follow-up/evento) ou YYYY-MM-DD (tarefa) */
+  quando?: string | null
+  titulo?: string
+  mensagem?: string
+  local?: string | null
+}): Promise<{ sucesso: true } | { erro: string }> {
+  const a = await itemDaConversa(input.conversa_id, input.tipo, input.id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const { admin, item } = a
+  const patch: Record<string, any> = {}
+  let quandoTexto = ''
+
+  if (input.tipo === 'followup') {
+    if (item.status !== 'agendado') return { erro: 'Esse follow-up já saiu ou foi cancelado — não dá mais pra editar' }
+    if (input.quando) {
+      const d = new Date(input.quando)
+      if (isNaN(d.getTime())) return { erro: 'Data/hora inválida' }
+      if (d.getTime() < Date.now() - 60_000) return { erro: 'Escolha uma data/hora no futuro' }
+      patch.executar_em = d.toISOString()
+      quandoTexto = dataHora(patch.executar_em)
+    }
+    if (input.mensagem !== undefined) {
+      const m = String(input.mensagem).trim()
+      if (!m) return { erro: 'A mensagem não pode ficar vazia' }
+      patch.mensagem = m
+    }
+  } else if (input.tipo === 'tarefa') {
+    if (input.titulo !== undefined) {
+      const t = String(input.titulo).trim()
+      if (!t) return { erro: 'Dê um título pra tarefa' }
+      patch.titulo = t
+    }
+    if (input.quando !== undefined) {
+      const prazo = input.quando ? String(input.quando).slice(0, 10) : null
+      if (prazo && !/^\d{4}-\d{2}-\d{2}$/.test(prazo)) return { erro: 'Prazo inválido' }
+      patch.data_prazo = prazo
+      // Lembrete do prazo reprogramado (9h do dia, se ainda estiver no futuro)
+      const lembrar = prazo ? new Date(`${prazo}T09:00:00-03:00`) : null
+      patch.lembrar_em = lembrar && lembrar.getTime() > Date.now() ? lembrar.toISOString() : null
+      patch.lembrete_enviado_em = null
+      quandoTexto = prazo ? new Date(`${prazo}T12:00:00-03:00`).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'sem prazo'
+    }
+  } else {
+    if (input.titulo !== undefined) {
+      const t = String(input.titulo).trim()
+      if (!t) return { erro: 'Dê um título pro evento' }
+      patch.titulo = t
+    }
+    if (input.local !== undefined) {
+      const l = String(input.local || '').trim() || null
+      if (item.tipo === 'reuniao_externa' && !l) return { erro: 'Reunião externa: informe o endereço' }
+      patch.local = l
+    }
+    if (input.quando) {
+      const ini = new Date(input.quando)
+      if (isNaN(ini.getTime())) return { erro: 'Data/hora inválida' }
+      // Mantém a duração e reprograma o lembrete antes e o acompanhamento depois
+      const dur = item.data_hora_fim ? new Date(item.data_hora_fim).getTime() - new Date(item.data_hora_inicio).getTime() : 60 * 60_000
+      patch.data_hora_inicio = ini.toISOString()
+      patch.data_hora_fim = new Date(ini.getTime() + Math.max(dur, 15 * 60_000)).toISOString()
+      if (ini.getTime() > Date.now()) { patch.notificacao_enviada = false; patch.acompanhamento_enviado_em = null }
+      quandoTexto = dataHora(patch.data_hora_inicio)
+    }
+  }
+  if (!Object.keys(patch).length) return { sucesso: true }
+  let { error } = await admin.from(a.t.tabela).update(patch).eq('id', input.id)
+  // Banco sem as colunas de lembrete (migrations antigas): salva o resto
+  if (error && /lembrar_em|lembrete_enviado_em|acompanhamento_enviado_em/.test(error.message)) {
+    const { lembrar_em, lembrete_enviado_em, acompanhamento_enviado_em, ...resto } = patch
+    void lembrar_em; void lembrete_enviado_em; void acompanhamento_enviado_em
+    ;({ error } = await admin.from(a.t.tabela).update(resto).eq('id', input.id))
+  }
+  if (error) return { erro: error.message }
+  await avisarMudanca(a, [
+    `📝 {quem} alterou ${input.tipo === 'tarefa' ? 'a tarefa' : input.tipo === 'evento' ? 'o evento' : 'o follow-up'}: *${patch.titulo || item.titulo || String(item.mensagem || '').slice(0, 60)}*`,
+    ...(quandoTexto ? [`🕐 Agora: ${quandoTexto}`] : []),
+  ])
+  revalidatePath('/agenda')
+  return { sucesso: true }
+}
+
+export async function excluirItemAgendaConversaAction(conversa_id: string, tipo: TipoItemConversa, id: string): Promise<{ sucesso: true } | { erro: string }> {
+  const a = await itemDaConversa(conversa_id, tipo, id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const item = a.item
+  let { error } = await a.admin.from(a.t.tabela).delete().eq('id', id)
+  // Ligado a outro registro (ex.: OS de campo): em vez de apagar, cancela
+  if (error?.code === '23503') {
+    const cancelado = tipo === 'tarefa' ? { status: 'cancelada' } : tipo === 'evento' ? { status: 'cancelado' } : { status: 'cancelado', motivo: 'Excluído pelo usuário' }
+    ;({ error } = await a.admin.from(a.t.tabela).update(cancelado).eq('id', id))
+  }
+  if (error) return { erro: error.message }
+  // Só avisa o responsável se ainda estava valendo
+  const aberto = tipo === 'followup' ? item.status === 'agendado'
+    : tipo === 'tarefa' ? !['concluida', 'cancelada'].includes(item.status)
+    : !['realizado', 'cancelado'].includes(item.status) && new Date(item.data_hora_inicio).getTime() > Date.now()
+  if (aberto) {
+    await avisarMudanca(a, [
+      `🗑 {quem} excluiu ${tipo === 'tarefa' ? 'a tarefa' : tipo === 'evento' ? 'o evento' : 'o follow-up'}: *${item.titulo || String(item.mensagem || '').slice(0, 60)}*`,
+    ])
+  }
+  revalidatePath('/agenda')
   return { sucesso: true }
 }

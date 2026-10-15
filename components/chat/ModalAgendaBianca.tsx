@@ -5,7 +5,8 @@ import {
   listarAgendaConversaAction,
   listarResponsaveisAction,
   agendarNaConversaAction,
-  cancelarFollowupAction,
+  editarItemAgendaConversaAction,
+  excluirItemAgendaConversaAction,
   type ItemAgendaConversa,
 } from '@/app/inbox/agenda-actions'
 import { TIPOS_EVENTO, type TipoEvento } from '@/lib/agenda/tipos-evento'
@@ -35,6 +36,13 @@ function amanhaAs9(): string {
   d.setHours(9, 0, 0, 0)
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T09:00`
+}
+
+/** ISO → valor do <input type="datetime-local"> no horário local */
+function paraInputLocal(iso: string): string {
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 const ROTULO_STATUS: Record<string, string> = {
@@ -125,10 +133,46 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
     } finally { setSalvando(false) }
   }
 
-  async function cancelar(id: string) {
-    const r = await cancelarFollowupAction(id)
-    if ('erro' in r) setErro(r.erro)
-    carregar()
+  // Kalebe 2026-10-15: editar ou excluir o que já foi registrado
+  const [editando, setEditando] = useState<null | { item: ItemAgendaConversa; quando: string; titulo: string; mensagem: string; local: string }>(null)
+  const [mexendo, setMexendo] = useState<string | null>(null)
+  const podeEditar = (i: ItemAgendaConversa) =>
+    i.tipo === 'followup' ? i.status === 'agendado'
+      : i.tipo === 'tarefa' ? !['concluida', 'cancelada'].includes(i.status)
+      : !['realizado', 'cancelado'].includes(i.status)
+  function abrirEdicao(i: ItemAgendaConversa) {
+    setErro(null); setOk(null)
+    setEditando({
+      item: i,
+      quando: i.quando ? (i.tipo === 'tarefa' ? i.quando.slice(0, 10) : paraInputLocal(i.quando)) : '',
+      titulo: i.edicao.titulo || '', mensagem: i.edicao.mensagem || '', local: i.edicao.local || '',
+    })
+  }
+  async function salvarEdicao() {
+    if (!editando) return
+    const { item: i } = editando
+    setMexendo(i.id); setErro(null)
+    try {
+      const r = await editarItemAgendaConversaAction({
+        conversa_id: conversaId, tipo: i.tipo, id: i.id,
+        quando: i.tipo === 'tarefa' ? (editando.quando || null) : (editando.quando ? new Date(editando.quando).toISOString() : null),
+        ...(i.tipo === 'followup' ? { mensagem: editando.mensagem } : { titulo: editando.titulo }),
+        ...(i.tipo === 'evento' ? { local: editando.local } : {}),
+      })
+      if ('erro' in r) { setErro(r.erro); return }
+      setEditando(null); setOk('✓ Alterado.')
+      carregar()
+    } finally { setMexendo(null) }
+  }
+  async function excluir(i: ItemAgendaConversa) {
+    if (!confirm(`Excluir ${i.tipo === 'followup' ? (i.lembrete ? 'o lembrete' : 'o follow-up') : i.tipo === 'tarefa' ? 'a tarefa' : 'o evento'} "${(i.edicao.titulo || i.titulo).slice(0, 80)}"?`)) return
+    setMexendo(i.id); setErro(null); setOk(null)
+    try {
+      const r = await excluirItemAgendaConversaAction(conversaId, i.tipo, i.id)
+      if ('erro' in r) { setErro(r.erro); return }
+      if (editando?.item.id === i.id) setEditando(null)
+      carregar()
+    } finally { setMexendo(null) }
   }
 
   return (
@@ -330,10 +374,15 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
               {itens.map((i) => (
                 <li key={`${i.tipo}-${i.id}`} className="text-xs bg-white/[0.03] border border-white/5 rounded-lg p-2">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-white/85">{i.tipo === 'followup' ? '💬' : i.tipo === 'tarefa' ? '✅' : '📅'} {i.titulo}</span>
-                    {i.tipo === 'followup' && i.status === 'agendado' && (
-                      <button onClick={() => cancelar(i.id)} className="text-coral/80 hover:text-coral shrink-0">cancelar</button>
-                    )}
+                    <span className="text-white/85">{i.tipo === 'followup' ? (i.lembrete ? '🔔' : '💬') : i.tipo === 'tarefa' ? '✅' : '📅'} {i.titulo}</span>
+                    <span className="flex items-center gap-2 shrink-0">
+                      {podeEditar(i) && editando?.item.id !== i.id && (
+                        <button type="button" onClick={() => abrirEdicao(i)} disabled={!!mexendo} className="text-white/70 hover:text-white font-bold disabled:opacity-40">✏ editar</button>
+                      )}
+                      <button type="button" onClick={() => excluir(i)} disabled={!!mexendo} className="text-coral/80 hover:text-coral font-bold disabled:opacity-40">
+                        {mexendo === i.id && editando?.item.id !== i.id ? '…' : '🗑 excluir'}
+                      </button>
+                    </span>
                   </div>
                   <p className="text-[10px] text-white/45 mt-0.5">
                     {i.quando ? new Date(i.quando.length === 10 ? `${i.quando}T12:00` : i.quando).toLocaleString('pt-BR', {
@@ -342,6 +391,36 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
                     {i.responsavel ? ` · 👤 ${i.responsavel}` : ''}
                     {i.detalhe ? ` · ${i.detalhe}` : ''}
                   </p>
+                  {editando?.item.id === i.id && (
+                    <div className="mt-2 pt-2 border-t border-white/10 space-y-2">
+                      {i.tipo !== 'followup' && (
+                        <Campo rotulo="Título">
+                          <input value={editando.titulo} onChange={(e) => setEditando({ ...editando, titulo: e.target.value })} className={inputCls} />
+                        </Campo>
+                      )}
+                      <Campo rotulo={i.tipo === 'tarefa' ? 'Prazo' : i.tipo === 'evento' ? 'Início' : 'Quando a Bianca envia'}>
+                        <input type={i.tipo === 'tarefa' ? 'date' : 'datetime-local'} value={editando.quando}
+                          onChange={(e) => setEditando({ ...editando, quando: e.target.value })} className={inputCls} />
+                      </Campo>
+                      {i.tipo === 'evento' && (
+                        <Campo rotulo="Local (opcional)">
+                          <input value={editando.local} onChange={(e) => setEditando({ ...editando, local: e.target.value })} className={inputCls} />
+                        </Campo>
+                      )}
+                      {i.tipo === 'followup' && (
+                        <Campo rotulo={i.edicao.modo === 'texto_exato' ? 'Mensagem (texto exato)' : 'Objetivo (o que a Bianca deve dizer)'}>
+                          <textarea value={editando.mensagem} onChange={(e) => setEditando({ ...editando, mensagem: e.target.value })} rows={3} className={`${inputCls} resize-none`} />
+                        </Campo>
+                      )}
+                      {erro && <p className="text-[11px] text-white/85 border border-coral/40 rounded-lg p-1.5">⚠ {erro}</p>}
+                      <div className="flex justify-end gap-2">
+                        <button type="button" onClick={() => setEditando(null)} className="px-3 py-1.5 rounded-lg border border-white/15 text-white/70 text-xs font-bold">Cancelar</button>
+                        <button type="button" onClick={salvarEdicao} disabled={mexendo === i.id} className="px-3 py-1.5 rounded-lg bg-verde text-white text-xs font-bold disabled:opacity-40">
+                          {mexendo === i.id ? 'Salvando…' : 'Salvar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
