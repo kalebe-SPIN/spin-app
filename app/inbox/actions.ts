@@ -1126,6 +1126,8 @@ export async function enviarPropostaPeloCanalAction(entrada: {
   url_pdf: string
   nome_arquivo: string
   legenda: string
+  /** Kalebe 2026-10-16: proposta final de venda fechada — não volta pra negociação nem cria follow-up */
+  pos_venda?: boolean
 }): Promise<
   | { sucesso: true; conversa_id: string }
   | { erro: string; janela_fechada?: boolean; conversa_id?: string; telefone?: string | null }
@@ -1169,7 +1171,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
           origem_agente_nome: (await rotuloRemetente(check.user!.id, check.perfil?.nome_completo)) || 'Spin',
         })
         if ('sucesso' in r) {
-          await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp')
+          if (!entrada.pos_venda) await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp')
           revalidatePath('/spinzap')
           return { sucesso: true, conversa_id: canal.conversa_id }
         }
@@ -1228,7 +1230,7 @@ export async function enviarPropostaPeloCanalAction(entrada: {
     .eq('id', canal.conversa_id)
     .in('status', ['nova', 'em_qualificacao', 'aguardando_representante'])
 
-  await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp')
+  if (!entrada.pos_venda) await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp')
   revalidatePath('/spinzap')
   return { sucesso: true, conversa_id: canal.conversa_id }
 }

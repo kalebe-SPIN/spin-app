@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import { linhasInvestimentoFinal, type FechamentoVenda } from './fechamento'
 
 /**
  * PDF de proposta das categorias montadas no Spinzap (Kalebe 2026-10-14):
@@ -37,6 +38,8 @@ export type DadosPdfCategoria = {
   assinatura?: string | null
   logo?: string | null
   emitido_em?: Date
+  /** Kalebe 2026-10-16: proposta FINAL — desconto, valor final e pagamento acordados */
+  fechamento?: FechamentoVenda | null
 }
 
 const reais = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -66,7 +69,7 @@ export function gerarPdfPropostaCategoria(d: DadosPdfCategoria): ArrayBuffer {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
   doc.text(d.subtitulo, xTitulo, 23)
   doc.setFontSize(8)
-  if (d.codigo_projeto) doc.text(`Proposta ${d.codigo_projeto}`, R, 16, { align: 'right' })
+  if (d.codigo_projeto || d.fechamento) doc.text(`${d.fechamento ? 'Proposta final' : 'Proposta'}${d.codigo_projeto ? ` ${d.codigo_projeto}` : ''}`, R, 16, { align: 'right' })
   doc.text(`Emitida em ${data(emitido)} · Válida até ${data(validade)}`, R, 23, { align: 'right' })
 
   let y = 46
@@ -117,11 +120,17 @@ export function gerarPdfPropostaCategoria(d: DadosPdfCategoria): ArrayBuffer {
     y += 3
   }
 
-  titulo('Investimento')
-  linha(d.rotulo_total || 'Valor total', reais(d.total), true)
-  const f = d.formas_pagamento
-  linha(`À vista no PIX (${num(f.a_vista_pix.desconto_pct, 0)}% de desconto)`, reais(f.a_vista_pix.valor))
-  linha('Cartão de crédito', `${f.parcelado_cartao.parcelas}× de ${reais(f.parcelado_cartao.valor_parcela)}`)
+  if (d.fechamento) {
+    // Proposta final: o que foi acordado com o cliente
+    titulo('Investimento — condições acordadas')
+    for (const l of linhasInvestimentoFinal(d.fechamento)) linha(l.rotulo, l.valor, !!l.destaque)
+  } else {
+    titulo('Investimento')
+    linha(d.rotulo_total || 'Valor total', reais(d.total), true)
+    const f = d.formas_pagamento
+    linha(`À vista no PIX (${num(f.a_vista_pix.desconto_pct, 0)}% de desconto)`, reais(f.a_vista_pix.valor))
+    linha('Cartão de crédito', `${f.parcelado_cartao.parcelas}× de ${reais(f.parcelado_cartao.valor_parcela)}`)
+  }
   y += 4
 
   // Garantias + observação + assinatura juntas
@@ -132,7 +141,9 @@ export function gerarPdfPropostaCategoria(d: DadosPdfCategoria): ArrayBuffer {
     y += 2
   }
   doc.setTextColor(120, 120, 120); doc.setFontSize(8); doc.setFont('helvetica', 'normal')
-  const obs = doc.splitTextToSize(d.observacao || 'Proposta feita com as informações passadas pelo cliente; valores confirmados após a visita técnica.', W) as string[]
+  const obs = doc.splitTextToSize(d.observacao || (d.fechamento
+    ? 'Proposta final com as condições acordadas com o cliente.'
+    : 'Proposta feita com as informações passadas pelo cliente; valores confirmados após a visita técnica.'), W) as string[]
   doc.text(obs, L, y); y += 4 * obs.length + 8
 
   const yAss = y + 16

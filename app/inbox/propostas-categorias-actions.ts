@@ -11,6 +11,7 @@ import { finalizarPropostaCategoria } from '@/lib/propostas/finalizar-proposta'
 import { normalizarKitBess, type KitBess } from '@/lib/propostas/bess'
 import type { CategoriaProposta } from '@/lib/propostas/categorias'
 import type { FaixaSecao, SecaoProposta } from '@/lib/propostas/secoes'
+import type { FechamentoVenda } from '@/lib/propostas/fechamento'
 import {
   carregarParams, carregarCatalogoBess, calcularEntradaBess, semInternoBess, blocosPdfBess,
   carregarParamsOM, calcularEntradaOM, blocosPdfOM, TIPO_DO_SERVICO_OM,
@@ -72,17 +73,20 @@ export async function dadosBessAction(conversa_id: string): Promise<(Base & {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
   const proj = await projetoAberto(a, 'bess')
-  const [catalogo, faixas, secoes, params, pj] = await Promise.all([
+  const [catalogo, faixas, secoes, params, pj, it] = await Promise.all([
     carregarCatalogoBess(a.admin), carregarFaixasSecoes(a.admin), secoesDoProjeto(a.admin, proj?.id || null), carregarParams(a.admin),
     proj ? a.admin.from('projetos').select('kit_selecionado').eq('id', proj.id).maybeSingle() : Promise.resolve({ data: null }),
+    proj ? a.admin.from('projeto_itens').select('dados').eq('projeto_id', proj.id).eq('tipo', 'bess').neq('status', 'removido').limit(1).maybeSingle() : Promise.resolve({ data: null }),
   ])
   const k = (pj as any)?.data?.kit_selecionado
+  // Kalebe 2026-10-16: reabrir a proposta com a margem/comissão que o admin usou
+  const salva = (it as any)?.data?.dados?.entrada_spinzap || {}
   const { getNum } = await import('@/lib/precificacao/calcular')
   return {
     eh_admin: a.ehAdmin, faixas, secoes, projeto_id: proj?.id || null, projeto_codigo: proj?.codigo || null,
     catalogo, kit: k?.modo === 'bess_puro' ? normalizarKitBess(k) : null,
-    margem_padrao_pct: a.ehAdmin ? getNum(params, 'margem_contribuicao_perc', 20) : null,
-    comissao_padrao_pct: a.ehAdmin ? getNum(params, 'comissao_vendedor_perc', 5) : null,
+    margem_padrao_pct: a.ehAdmin ? (salva.margem_pct ?? getNum(params, 'margem_contribuicao_perc', 20)) : null,
+    comissao_padrao_pct: a.ehAdmin ? (salva.comissao_pct ?? getNum(params, 'comissao_vendedor_perc', 5)) : null,
   }
 }
 
@@ -93,7 +97,7 @@ export async function calcularBessAction(conversa_id: string, e: EntradaBess): P
   return { r: semInternoBess(r, a.ehAdmin) }
 }
 
-export async function gerarBessAction(conversa_id: string, e: EntradaBess): Promise<{ url_pdf: string; projeto_id: string } | { erro: string }> {
+export async function gerarBessAction(conversa_id: string, e: EntradaBess, fechamento?: FechamentoVenda | null): Promise<{ url_pdf: string; projeto_id: string } | { erro: string }> {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
   const params = await carregarParams(a.admin)
@@ -105,7 +109,7 @@ export async function gerarBessAction(conversa_id: string, e: EntradaBess): Prom
   const kit = normalizarKitBess(e.kit)
   const f = await finalizarPropostaCategoria(a.admin, {
     projetoId: proj.projeto_id, usuarioId: a.user.id, contatoId: a.contato.id,
-    item: { tipo: 'bess', titulo: 'BESS standalone', dados: { kit, calculo: r.calculo }, valor: r.calculo.pv_total },
+    item: { tipo: 'bess', titulo: 'BESS standalone', dados: { kit, calculo: r.calculo, entrada_spinzap: { margem_pct: a.ehAdmin ? e.margem_pct ?? null : null, comissao_pct: a.ehAdmin ? e.comissao_pct ?? null : null } }, valor: r.calculo.pv_total },
     secoes: e.secoes || [],
     pdf: {
       subtitulo: 'Proposta de sistema de armazenamento (BESS)',
@@ -115,7 +119,7 @@ export async function gerarBessAction(conversa_id: string, e: EntradaBess): Prom
     },
     total: r.total,
     memoria: { ...r.calculo, total_secoes: r.total_secoes },
-    modo: 'bess_spinzap', prefixoArquivo: 'proposta-bess',
+    modo: 'bess_spinzap', prefixoArquivo: 'proposta-bess', fechamento,
     // Mesmo formato do /kit → a tela /bess/proposta continua abrindo o projeto
     extraProjeto: { kit_selecionado: { modo: 'bess_puro', ...kit, preco_total_estimado: r.calculo.kit_bess_bruto, salvo_em: new Date().toISOString() }, tipo_projeto: 'bess' },
   })
@@ -147,7 +151,7 @@ export async function dadosOMAction(conversa_id: string): Promise<(Base & {
   }
 }
 
-export async function gerarOMAction(conversa_id: string, e: EntradaOM): Promise<{ url_pdf: string; projeto_id: string } | { erro: string }> {
+export async function gerarOMAction(conversa_id: string, e: EntradaOM, fechamento?: FechamentoVenda | null): Promise<{ url_pdf: string; projeto_id: string } | { erro: string }> {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
   const { params } = await carregarParamsOM(a.admin)
@@ -171,7 +175,7 @@ export async function gerarOMAction(conversa_id: string, e: EntradaOM): Promise<
     },
     total: r.total,
     memoria: { servico: e.servico, subtotal: r.subtotal, ajuste: e.ajuste, valor_servico: r.valor_servico, total_secoes: r.total_secoes, memoria: r.memoria },
-    modo: 'om_spinzap', prefixoArquivo: 'proposta-om',
+    modo: 'om_spinzap', prefixoArquivo: 'proposta-om', fechamento,
   })
   if ('erro' in f) return f
   revalidatePath('/spinzap')
@@ -211,7 +215,7 @@ export async function calcularTecnicoAction(conversa_id: string, e: EntradaTecni
   return { r: semInternoTecnico(calcularEntradaTecnico(e, params, faixas, a.ehAdmin), a.ehAdmin) }
 }
 
-export async function gerarTecnicoAction(conversa_id: string, e: EntradaTecnico): Promise<{ url_pdf: string; projeto_id: string } | { erro: string }> {
+export async function gerarTecnicoAction(conversa_id: string, e: EntradaTecnico, fechamento?: FechamentoVenda | null): Promise<{ url_pdf: string; projeto_id: string } | { erro: string }> {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
   const [params, faixas] = await Promise.all([carregarParams(a.admin), carregarFaixasTecnico(a.admin)])
@@ -235,7 +239,7 @@ export async function gerarTecnicoAction(conversa_id: string, e: EntradaTecnico)
     },
     total: r.total,
     memoria: { linhas: r.linhas, custo: r.custo, pv_custos: r.pv_custos, tabela: r.tabela, margem_pct: r.margem_pct, comissao_pct: r.comissao_pct, imposto_pct: r.imposto_pct, total_secoes: r.total_secoes },
-    modo: 'tecnico_spinzap', prefixoArquivo: 'proposta-tecnica',
+    modo: 'tecnico_spinzap', prefixoArquivo: 'proposta-tecnica', fechamento,
   })
   if ('erro' in f) return f
   revalidatePath('/spinzap')

@@ -53,6 +53,9 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   const [telhado, setTelhado] = useState('')
   // Kalebe 2026-10-15: aumento extra de geração (% sobre o consumo)
   const [aumento, setAumento] = useState('0')
+  // Kalebe 2026-10-16: reabrindo a última proposta (data em que foi montada)
+  const [editandoDe, setEditandoDe] = useState<string | null>(null)
+  const pularResetSistema = useRef(false)
   const [carregando, setCarregando] = useState(true)
   const [modo, setModo] = useState<Modo>('consumo_kwh')
   const [valor, setValor] = useState('')
@@ -118,14 +121,32 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
       setCidade(r.cidade || '')
       setFatura(r.fatura); setTarifaBase(r.tarifa_base); setProjetoId(r.projeto_id)
       if (r.fatura?.consumo_kwh) { setModo('consumo_kwh'); setValor(String(Math.round(r.fatura.consumo_kwh))) }
+      // Kalebe 2026-10-16: reabre a última proposta como foi montada (editar e reenviar)
+      if (r.salva?.entrada) {
+        const s = r.salva.entrada
+        const op = s.opcoes || {}
+        setModo(s.modo); setValor(String(s.valor || '')); setInversorKw(s.inversor_kw ? String(s.inversor_kw) : '')
+        if (['monofasico', 'bifasico', 'trifasico'].includes(s.tipo_rede)) setRede(s.tipo_rede)
+        setCidade(s.cidade || r.cidade || '')
+        if (op.tipo_sistema && op.tipo_sistema !== 'string') pularResetSistema.current = true
+        setSistema(op.tipo_sistema || 'string')
+        setPlacaId(op.placa_id || ''); setInversorId(op.inversor_id || ''); setInversorQtd(op.inversor_qtd ? String(op.inversor_qtd) : '')
+        setExtras(r.salva.extras || [])
+        setTelhado(op.complementos_cc?.tipo_telhado ?? r.tipo_telhado ?? '')
+        setAumento(String(op.aumento_geracao_pct || 0))
+        setEditandoDe(r.salva.salvo_em)
+      }
     })
     opcoesKitPropostaAction().then((r) => { if (!('erro' in r)) setCatalogo(r) })
   }, [conversaId])
 
   // Qualquer mudança na entrada invalida o cálculo e o PDF
   useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, telhado, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes, aumento])
-  // Trocou o sistema: o modelo escolhido não vale mais
-  useEffect(() => { setInversorId(''); setInversorQtd('') }, [sistema])
+  // Trocou o sistema: o modelo escolhido não vale mais (menos ao restaurar a proposta salva)
+  useEffect(() => {
+    if (pularResetSistema.current) { pularResetSistema.current = false; return }
+    setInversorId(''); setInversorQtd('')
+  }, [sistema])
 
   // Inversores do sistema escolhido que servem na rede (bifásica usa monofásico; micro é sempre mono)
   const fasesRede = rede === 'trifasico' ? 'tri' : 'mono'
@@ -287,6 +308,11 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
           </div>
         ) : (
           <>
+            {editandoDe && (
+              <p className="text-[11px] text-white/80 rounded-xl border border-weg-azul/50 px-3 py-2">
+                ✏ Reaberta a proposta montada em {new Date(editandoDe).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} — ajuste o que precisar e gere o PDF de novo (vira a versão atual).
+              </p>
+            )}
             {pendentes.length > 0 && (
               <div className="rounded-xl border border-sol/45 px-3 py-2 space-y-1.5">
                 <p className="text-[11px] font-bold text-white/80">📄 Arquivo do cliente que pode ser a fatura — ler e preencher os campos:</p>

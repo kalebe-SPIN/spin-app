@@ -8,6 +8,7 @@ import {
 import { gerarPdfPropostaRecarga } from './pdf-proposta-recarga'
 import { carregarFaixasSecoes, salvarSecoesNoProjeto, secoesDoProjeto } from '@/lib/propostas/secoes-servidor'
 import type { FaixaSecao, SecaoProposta } from '@/lib/propostas/secoes'
+import type { FechamentoVenda } from '@/lib/propostas/fechamento'
 
 /**
  * Lado servidor da proposta de estação de recarga (Kalebe 2026-10-14):
@@ -252,6 +253,8 @@ export async function gerarPropostaRecarga(admin: Admin, a: {
   ehAdmin: boolean
   usuarioId: string
   contatoId?: string | null
+  /** Kalebe 2026-10-16: proposta FINAL (desconto + pagamento acordados) */
+  fechamento?: FechamentoVenda | null
 }): Promise<{ url_pdf: string; proposta: PropostaRecarga } | { erro: string }> {
   const { proposta, params, record } = await calcularNoServidor(admin, a.entrada, a.ehAdmin)
   if (!proposta.equipamentos.length) return { erro: 'Adicione pelo menos um equipamento (ou o carregador do cliente, com a potência)' }
@@ -294,8 +297,9 @@ export async function gerarPropostaRecarga(admin: Admin, a: {
     validade_dias: getNum(record, 'prazo_validade_orcamento_dias', 15),
     empresa: (empresa as any) || {},
     assinatura, logo,
+    fechamento: a.fechamento || null,
   })
-  const caminho = `${a.projetoId}/proposta-recarga-${Date.now()}.pdf`
+  const caminho = `${a.projetoId}/proposta-recarga${a.fechamento ? '-final' : ''}-${Date.now()}.pdf`
   const up = await admin.storage.from('propostas-pdf').upload(caminho, Buffer.from(pdf), { contentType: 'application/pdf', upsert: false })
   if (up.error) return { erro: `Falha ao guardar o PDF: ${up.error.message}` }
   const url = admin.storage.from('propostas-pdf').getPublicUrl(caminho).data.publicUrl
@@ -349,13 +353,17 @@ export async function gerarPropostaRecarga(admin: Admin, a: {
     .eq('projeto_id', a.projetoId).eq('tipo', 've_recarga').neq('status', 'removido')
   await salvarSecoesNoProjeto(admin, a.projetoId, a.entrada.secoes || [], a.usuarioId)
   await admin.from('projeto_propostas_historico').insert({
-    projeto_id: a.projetoId, url_pdf: url, pv_total: p.total_geral, potencia_ca_kw: p.potencia_total_kw,
-    modo_composicao: 'estacao_recarga', gerado_por: a.usuarioId,
+    projeto_id: a.projetoId, url_pdf: url,
+    pv_total: a.fechamento ? a.fechamento.valor_final : p.total_geral,
+    ...(a.fechamento ? { pv_bruto: a.fechamento.valor_proposta, desconto_valor: a.fechamento.desconto } : {}),
+    potencia_ca_kw: p.potencia_total_kw,
+    modo_composicao: a.fechamento ? 'estacao_recarga_final' : 'estacao_recarga', gerado_por: a.usuarioId,
     memoria_calculo: {
       margem_pct: p.margem_pct, comissao_pct: p.comissao_pct, impostos_pct: p.imposto_pct,
       equipamentos: p.subtotal_equipamentos, projeto: p.subtotal_projeto, materiais: p.subtotal_materiais,
       servicos_execucao: p.subtotal_servicos_execucao, custo_total: p.custo_total, desconto_max: p.desconto_max,
       estacao: p.pv_total, secoes: p.total_secoes,
+      ...(a.fechamento ? { fechamento: a.fechamento } : {}),
     },
   })
 
@@ -367,7 +375,7 @@ export async function gerarPropostaRecarga(admin: Admin, a: {
   }
   if (contatoId) {
     await admin.from('spinzap_arquivos').insert({
-      contato_id: contatoId, categoria: 'orcamento', url, nome: 'Proposta estação de recarga', mime: 'application/pdf',
+      contato_id: contatoId, categoria: 'orcamento', url, nome: a.fechamento ? 'Proposta final — estação de recarga' : 'Proposta estação de recarga', mime: 'application/pdf',
       origem: 'gerado', projeto_id: a.projetoId, criado_por: a.usuarioId,
     })
   }

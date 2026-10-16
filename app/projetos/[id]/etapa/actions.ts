@@ -182,11 +182,22 @@ async function disparoAutomacoes(
     }
 
     // 2. Cria a homologação REAL se ainda não existir
-    const { data: existente } = await supabase
+    // Kalebe 2026-10-16: só pra quem passa pela concessionária (fotovoltaico e
+    // BESS) — limpeza, estação de recarga, projeto técnico e venda de
+    // equipamento não abrem homologação CELESC.
+    const { data: itensCat } = await createAdminClient().from('projeto_itens')
+      .select('tipo').eq('projeto_id', projeto.id).neq('status', 'removido').order('ordem')
+    const { data: tipoPj } = await createAdminClient().from('projetos').select('tipo_projeto').eq('id', projeto.id).maybeSingle()
+    const { categoriaDoProjeto } = await import('@/lib/propostas/categorias')
+    const categoria = categoriaDoProjeto(((itensCat || []) as any[]).map((i) => String(i.tipo)), (tipoPj as any)?.tipo_projeto)
+    // Sem categoria conhecida (projeto antigo): mantém o comportamento de antes
+    const precisaHomologar = !categoria || categoria === 'fotovoltaico' || categoria === 'bess'
+
+    const { data: existente } = precisaHomologar ? await supabase
       .from('homologacoes')
       .select('id')
       .eq('projeto_id', projeto.id)
-      .maybeSingle()
+      .maybeSingle() : { data: { id: 'nao-se-aplica' } }
 
     if (!existente) {
       // Busca admins pra atribuir (o primeiro admin ou eletrotecnico)

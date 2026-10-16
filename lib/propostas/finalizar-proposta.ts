@@ -4,6 +4,7 @@ import { imagemComoDataUrl } from '@/lib/spinzap/orcamento-lais'
 import { salvarSecoesNoProjeto } from './secoes-servidor'
 import type { SecaoProposta } from './secoes'
 import { gerarPdfPropostaCategoria, type DadosPdfCategoria } from './pdf-proposta-categoria'
+import type { FechamentoVenda } from './fechamento'
 
 /**
  * Fecha uma proposta de categoria montada no Spinzap (Kalebe 2026-10-14):
@@ -29,6 +30,8 @@ export async function finalizarPropostaCategoria(admin: Admin, a: {
   prefixoArquivo: string
   /** Campos extras do projeto (ex.: kit_selecionado do BESS) */
   extraProjeto?: Record<string, any>
+  /** Kalebe 2026-10-16: proposta FINAL (desconto + pagamento acordados) */
+  fechamento?: FechamentoVenda | null
 }): Promise<{ url_pdf: string } | { erro: string }> {
   const { data: pj } = await admin.from('projetos')
     .select('codigo, cliente_id, cliente_razao_social, cliente_cpf_cnpj, wa_contato_id').eq('id', a.projetoId).maybeSingle()
@@ -60,8 +63,9 @@ export async function finalizarPropostaCategoria(admin: Admin, a: {
     validade_dias: getNum(record, 'prazo_validade_orcamento_dias', 15),
     empresa: (empresa as any) || {},
     assinatura, logo,
+    fechamento: a.fechamento || null,
   })
-  const caminho = `${a.projetoId}/${a.prefixoArquivo}-${Date.now()}.pdf`
+  const caminho = `${a.projetoId}/${a.prefixoArquivo}${a.fechamento ? '-final' : ''}-${Date.now()}.pdf`
   const up = await admin.storage.from('propostas-pdf').upload(caminho, Buffer.from(pdf), { contentType: 'application/pdf', upsert: false })
   if (up.error) return { erro: `Falha ao guardar o PDF: ${up.error.message}` }
   const url = admin.storage.from('propostas-pdf').getPublicUrl(caminho).data.publicUrl
@@ -81,9 +85,13 @@ export async function finalizarPropostaCategoria(admin: Admin, a: {
   else await admin.from('projeto_itens').insert({ ...payload, projeto_id: a.projetoId, ordem: 0 })
   await salvarSecoesNoProjeto(admin, a.projetoId, a.secoes || [], a.usuarioId)
 
+  // Proposta final: o histórico guarda o valor acordado e o fechamento
   await admin.from('projeto_propostas_historico').insert({
-    projeto_id: a.projetoId, url_pdf: url, pv_total: Math.round(a.total * 100) / 100,
-    modo_composicao: a.modo, gerado_por: a.usuarioId, memoria_calculo: a.memoria,
+    projeto_id: a.projetoId, url_pdf: url,
+    pv_total: Math.round((a.fechamento ? a.fechamento.valor_final : a.total) * 100) / 100,
+    ...(a.fechamento ? { pv_bruto: a.fechamento.valor_proposta, desconto_valor: a.fechamento.desconto } : {}),
+    modo_composicao: a.fechamento ? `${a.modo}_final` : a.modo, gerado_por: a.usuarioId,
+    memoria_calculo: a.fechamento ? { ...a.memoria, fechamento: a.fechamento } : a.memoria,
   })
 
   let contatoId = a.contatoId || projeto.wa_contato_id || null
@@ -93,7 +101,7 @@ export async function finalizarPropostaCategoria(admin: Admin, a: {
   }
   if (contatoId) {
     await admin.from('spinzap_arquivos').insert({
-      contato_id: contatoId, categoria: 'orcamento', url, nome: a.pdf.subtitulo, mime: 'application/pdf',
+      contato_id: contatoId, categoria: 'orcamento', url, nome: a.fechamento ? `Proposta final — ${a.pdf.subtitulo.replace(/^Proposta de\s*/i, '')}` : a.pdf.subtitulo, mime: 'application/pdf',
       origem: 'gerado', projeto_id: a.projetoId, criado_por: a.usuarioId,
     })
   }

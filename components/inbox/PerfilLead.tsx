@@ -11,6 +11,7 @@ import {
   type ArquivoPerfil, type PerfilLead, type Secao, type SecaoDados,
 } from '@/lib/spinzap/perfil'
 import { fmtKwp, formatarMoedaBRL } from '@/lib/formatters'
+import { INFO_CATEGORIA, type CategoriaProposta } from '@/lib/propostas/categorias'
 
 /**
  * Kalebe 2026-10-10: linha do perfil do lead no Spinzap — cada sessão de
@@ -46,23 +47,26 @@ export function usePerfilLead(conversaId: string | null) {
 
 export type SecaoPerfilAberta = Secao | 'pendencias'
 
-export function ModalPerfil({ secao, conversaId, dados, onFechar, onSalvo }: {
+/** Kalebe 2026-10-16: a partir da proposta enviada — editar (reabre o formulário) ou fechar a venda */
+type AcoesProposta = { onEditarProposta?: (categoria: string) => void; onFecharVenda?: (projetoId: string) => void }
+
+export function ModalPerfil({ secao, conversaId, dados, onFechar, onSalvo, onEditarProposta, onFecharVenda }: {
   secao: SecaoPerfilAberta
   conversaId: string
   dados: Carregado
   onFechar: () => void
   onSalvo: () => Promise<void>
-}) {
-  return <ModalSecao secao={secao} conversaId={conversaId} dados={dados} onFechar={onFechar} onSalvo={onSalvo} />
+} & AcoesProposta) {
+  return <ModalSecao secao={secao} conversaId={conversaId} dados={dados} onFechar={onFechar} onSalvo={onSalvo} onEditarProposta={onEditarProposta} onFecharVenda={onFecharVenda} />
 }
 
-function ModalSecao({ secao, conversaId, dados, onFechar, onSalvo }: {
+function ModalSecao({ secao, conversaId, dados, onFechar, onSalvo, onEditarProposta, onFecharVenda }: {
   secao: Secao | 'pendencias'
   conversaId: string
   dados: Carregado
   onFechar: () => void
   onSalvo: () => Promise<void>
-}) {
+} & AcoesProposta) {
   const info = SECOES.find((s) => s.chave === secao)
   const titulo = secao === 'pendencias' ? '⚠ Pendências' : `${info?.emoji} ${info?.rotulo}`
   return (
@@ -77,7 +81,7 @@ function ModalSecao({ secao, conversaId, dados, onFechar, onSalvo }: {
           <FormDados secao={secao} conversaId={conversaId} perfil={dados.perfil} onSalvo={async () => { await onSalvo(); onFechar() }} />
         )}
         {(secao === 'imagens' || secao === 'arquivos') && (
-          <Arquivos secao={secao} conversaId={conversaId} dados={dados} onSalvo={onSalvo} />
+          <Arquivos secao={secao} conversaId={conversaId} dados={dados} onSalvo={onSalvo} onEditarProposta={onEditarProposta} onFecharVenda={onFecharVenda} />
         )}
       </div>
     </div>
@@ -225,12 +229,12 @@ function FormDados({ secao, conversaId, perfil, onSalvo }: {
   )
 }
 
-function Arquivos({ secao, conversaId, dados, onSalvo }: {
+function Arquivos({ secao, conversaId, dados, onSalvo, onEditarProposta, onFecharVenda }: {
   secao: 'imagens' | 'arquivos'
   conversaId: string
   dados: Carregado
   onSalvo: () => Promise<void>
-}) {
+} & AcoesProposta) {
   const categorias = secao === 'imagens' ? CATEGORIAS_IMAGEM : CATEGORIAS_ARQUIVO
   const [escolhendo, setEscolhendo] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
@@ -315,12 +319,36 @@ function Arquivos({ secao, conversaId, dados, onSalvo }: {
         <>
           <div className="rounded-lg border border-white/10 p-3 space-y-1.5">
             <p className="text-sm font-semibold text-white">Orçamentos gerados</p>
-            {dados.propostas.length === 0 ? <p className="text-[11px] text-white/40">Nenhuma proposta gerada ainda.</p> : dados.propostas.map((p) => (
-              <a key={p.id} href={p.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-2 text-[12px] text-white/80 hover:text-white">
-                <span>📄 {new Date(p.criada_em).toLocaleDateString('pt-BR')}{p.potencia_cc_kwp ? ` · ${fmtKwp(p.potencia_cc_kwp)}` : ''}</span>
-                {p.pv_total != null && <span className="font-mono text-white/60">{formatarMoedaBRL(p.pv_total)}</span>}
-              </a>
-            ))}
+            {dados.propostas.length === 0 ? <p className="text-[11px] text-white/40">Nenhuma proposta gerada ainda.</p> : dados.propostas.map((p) => {
+              const cat = p.categoria ? INFO_CATEGORIA[p.categoria as CategoriaProposta] : null
+              return (
+                <div key={p.id} className={`space-y-1 ${p.ultima_do_projeto ? 'rounded-lg border border-white/10 p-2' : 'pl-2'}`}>
+                  <a href={p.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-2 text-[12px] text-white/80 hover:text-white">
+                    <span className="truncate">
+                      📄 {new Date(p.criada_em).toLocaleDateString('pt-BR')}
+                      {cat ? ` · ${cat.emoji} ${cat.rotulo}` : ''}{p.potencia_cc_kwp ? ` · ${fmtKwp(p.potencia_cc_kwp)}` : ''}
+                      {p.final && <span data-etiqueta className="ml-1.5 text-[10px] font-bold px-1 py-0.5 rounded border border-verde/60 text-white/80">final</span>}
+                    </span>
+                    {p.pv_total != null && <span className="font-mono text-white/60 shrink-0">{formatarMoedaBRL(p.pv_total)}</span>}
+                  </a>
+                  {/* Só na versão mais recente de cada projeto */}
+                  {p.ultima_do_projeto && (p.vendido ? (
+                    <p className="text-[11px] text-white/70">✅ Venda fechada{p.projeto_codigo ? ` · ${p.projeto_codigo}` : ''}</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {onEditarProposta && p.categoria && (
+                        <button type="button" onClick={() => onEditarProposta(p.categoria!)}
+                          className="px-2.5 py-1 rounded-lg bg-weg-azul text-white text-[11px] font-bold">✏ Editar proposta</button>
+                      )}
+                      {onFecharVenda && (
+                        <button type="button" onClick={() => onFecharVenda(p.projeto_id)}
+                          className="px-2.5 py-1 rounded-lg bg-verde text-white text-[11px] font-bold">🤝 Fechar venda</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
           </div>
           <div className="rounded-lg border border-white/10 p-3 space-y-1.5">
             <p className="text-sm font-semibold text-white">Tudo que passou pela conversa</p>

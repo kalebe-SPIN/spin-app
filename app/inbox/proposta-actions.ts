@@ -12,6 +12,7 @@ import { rotuloSecao, type FaixaSecao, type SecaoProposta } from '@/lib/proposta
 import { auditarOrcamentoLead, type Auditoria } from '@/lib/spinzap/auditor-orcamento'
 import { carregarPerfil } from '@/lib/spinzap/orcamento-lais'
 import { nomearProposta } from '@/lib/downloads'
+import { entradaFvDoProjeto, salvarEntradaFv, type EntradaFvSalva } from '@/lib/spinzap/entrada-fv'
 import { garantirProjetoDaCategoria } from '@/lib/propostas/projetos-contato'
 import { tarifaDeReferencia } from '@/lib/fatura/tarifa'
 import { enviarPropostaPeloCanalAction } from '@/app/inbox/actions'
@@ -95,6 +96,8 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
   titular: string | null
   /** PDFs/fotos do cliente ainda não lidos como fatura (botão "Ler fatura") */
   faturas_pendentes: Array<{ mensagem_id: string; nome: string; mime: string | null; criada_em: string; status: string | null }>
+  /** Kalebe 2026-10-16: o que foi montado na última proposta (reabrir e editar) */
+  salva: EntradaFvSalva | null
 } | { erro: string }> {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
@@ -104,10 +107,12 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
   const { projetosDoContato } = await import('@/lib/propostas/projetos-contato')
   const projetoFv = (await projetosDoContato(a.admin, a.contato)).find((p) => p.aberto && p.categoria === 'fotovoltaico')
   const { faturasNaoLidas } = await import('@/lib/spinzap/fatura-conversa')
-  const [faixas, secoes, pendentes] = await Promise.all([
+  const [faixas, secoes, pendentes, salva] = await Promise.all([
     carregarFaixasSecoes(a.admin), secoesDoProjeto(a.admin, projetoFv?.id || null), faturasNaoLidas(a.admin, conversa_id),
+    entradaFvDoProjeto(a.admin, projetoFv?.id || null),
   ])
   return {
+    salva,
     faixas,
     secoes,
     titular: fatura?.razao_social || null,
@@ -305,6 +310,8 @@ export async function registrarPdfPropostaRapidaAction(conversa_id: string, proj
   if ('erro' in r) return r
   const o = r.orc
   await salvarSecoesNoProjeto(a.admin, projeto_id, o.secoes || [], a.user.id)
+  // Kalebe 2026-10-16: guarda o que foi montado pra reabrir/editar e fechar a venda
+  await salvarEntradaFv(a.admin, projeto_id, e, o)
   await a.admin.from('projeto_propostas_historico').insert({
     projeto_id, url_pdf, pv_total: o.pv_total, pv_bruto: o.pv_total, potencia_cc_kwp: o.kwp,
     potencia_ca_kw: Math.round(o.inversor.potencia_kw * o.inversor.qtd * 100) / 100, modo_composicao: 'orcamento_spinzap',
@@ -319,7 +326,7 @@ export async function registrarPdfPropostaRapidaAction(conversa_id: string, proj
 }
 
 /** Envia no WhatsApp o PDF já gerado (mesmo envio de proposta do Spinzap: CRM, follow-up, modelo fora da janela). */
-export async function enviarPdfPropostaRapidaAction(conversa_id: string, projeto_id: string, url_pdf: string, legenda: string, nome_arquivo?: string): Promise<
+export async function enviarPdfPropostaRapidaAction(conversa_id: string, projeto_id: string, url_pdf: string, legenda: string, nome_arquivo?: string, pos_venda?: boolean): Promise<
   { sucesso: true } | { erro: string }
 > {
   const a = await acesso(conversa_id)
@@ -331,6 +338,7 @@ export async function enviarPdfPropostaRapidaAction(conversa_id: string, projeto
   const r = await enviarPropostaPeloCanalAction({
     projeto_id, url_pdf, nome_arquivo: nome_arquivo && /^[\w .-]+\.pdf$/i.test(nome_arquivo) ? nome_arquivo : 'Orcamento-Spin-Solar.pdf',
     legenda: String(legenda || '').trim().slice(0, 900) || 'Segue o seu orçamento de energia solar ☀️',
+    pos_venda: !!pos_venda,
   })
   if ('erro' in r) return { erro: r.erro }
   return { sucesso: true }

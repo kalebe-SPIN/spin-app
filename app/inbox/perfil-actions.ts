@@ -98,7 +98,11 @@ export async function carregarPerfilAction(conversa_id: string): Promise<{
   perfil: PerfilLead
   arquivos: ArquivoPerfil[]
   midias: Array<{ id: string; tipo: string; texto: string | null; url: string; mime: string | null; direcao: string; criada_em: string }>
-  propostas: Array<{ id: string; url: string; criada_em: string; pv_total: number | null; potencia_cc_kwp: number | null }>
+  /** Kalebe 2026-10-16: com projeto e categoria — editar e fechar a venda dali */
+  propostas: Array<{
+    id: string; url: string; criada_em: string; pv_total: number | null; potencia_cc_kwp: number | null
+    projeto_id: string; projeto_codigo: string | null; categoria: string | null; final: boolean; vendido: boolean; ultima_do_projeto: boolean
+  }>
   sem_migracao: boolean
 } | { erro: string }> {
   const a = await acesso(conversa_id)
@@ -137,16 +141,17 @@ export async function carregarPerfilAction(conversa_id: string): Promise<{
         .in('conversa_id', ids).not('midia_url', 'is', null).order('criada_em', { ascending: false }).limit(80)
     : { data: [] as any[] }
 
-  // Orçamentos gerados nos projetos do contato/cliente
-  let projetoIds: string[] = contato.projeto_id ? [contato.projeto_id] : []
-  if (contato.cliente_id) {
-    const { data: doCliente } = await admin.from('projetos').select('id').eq('cliente_id', contato.cliente_id)
-    projetoIds = Array.from(new Set([...projetoIds, ...((doCliente || []) as any[]).map((x) => x.id as string)]))
-  }
-  const { data: props } = projetoIds.length
-    ? await admin.from('projeto_propostas_historico').select('id, url_pdf, gerado_em, pv_total, potencia_cc_kwp')
-        .in('projeto_id', projetoIds).order('gerado_em', { ascending: false }).limit(20)
+  // Orçamentos gerados nos projetos do contato/cliente (inclui os de categoria do Spinzap)
+  const { projetosDoContato } = await import('@/lib/propostas/projetos-contato')
+  const projetos = await projetosDoContato(admin, { ...contato, telefone: (contato as any).telefone || '' })
+  const porId = new Map(projetos.map((x) => [x.id, x]))
+  const projetoIds = projetos.map((x) => x.id)
+  const { data: propsBrutas } = projetoIds.length
+    ? await admin.from('projeto_propostas_historico').select('id, projeto_id, url_pdf, gerado_em, pv_total, potencia_cc_kwp, modo_composicao, excluida_em')
+        .in('projeto_id', projetoIds).order('gerado_em', { ascending: false }).limit(30)
     : { data: [] as any[] }
+  const props = ((propsBrutas || []) as any[]).filter((x) => !x.excluida_em).slice(0, 20)
+  const jaMarcado = new Set<string>()
 
   return {
     perfil: p,
@@ -154,9 +159,19 @@ export async function carregarPerfilAction(conversa_id: string): Promise<{
     midias: ((msgs || []) as any[]).map((m) => ({
       id: m.id, tipo: m.tipo, texto: m.texto, url: m.midia_url, mime: m.midia_mime, direcao: m.direcao, criada_em: m.criada_em,
     })),
-    propostas: ((props || []) as any[]).map((x) => ({
-      id: x.id, url: x.url_pdf, criada_em: x.gerado_em, pv_total: x.pv_total ?? null, potencia_cc_kwp: x.potencia_cc_kwp ?? null,
-    })),
+    propostas: props.map((x) => {
+      const pj = porId.get(x.projeto_id)
+      // A mais recente de cada projeto é a que abre pra editar / fechar
+      const ultima = !jaMarcado.has(x.projeto_id)
+      jaMarcado.add(x.projeto_id)
+      return {
+        id: x.id, url: x.url_pdf, criada_em: x.gerado_em, pv_total: x.pv_total ?? null, potencia_cc_kwp: x.potencia_cc_kwp ?? null,
+        projeto_id: x.projeto_id, projeto_codigo: pj?.codigo || null, categoria: pj?.categoria || null,
+        final: String(x.modo_composicao || '').endsWith('_final'),
+        vendido: !!pj && !pj.aberto && ['vendido', 'aceito', 'em_homologacao', 'em_execucao', 'instalado', 'ativo_pos_venda'].includes(pj.status),
+        ultima_do_projeto: ultima,
+      }
+    }),
     sem_migracao: !!ePerfil,
   }
 }

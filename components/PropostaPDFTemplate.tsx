@@ -33,6 +33,12 @@ type Props = {
     condicao_especial: string
     vigente_ate?: string | null
   } | null
+  /**
+   * Kalebe 2026-10-16: proposta FINAL (fechamento pelo Spinzap) — a forma de
+   * pagamento acordada substitui as 3 opções; o desconto negociado vem em
+   * projeto.desconto_admin_valor/motivo (mesmo bloco do ajuste do admin).
+   */
+  condicaoAcordada?: { titulo: string; valor: string; sub?: string } | null
 }
 
 /**
@@ -50,7 +56,7 @@ type Props = {
  * Dimensões A4 em px @ 96 DPI: 794 × 1123.
  */
 export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
-  ({ projeto, proposta, configEmpresa, modoComposicao, propostasPorUc, campanhaAplicada }, ref) => {
+  ({ projeto, proposta, configEmpresa, modoComposicao, propostasPorUc, campanhaAplicada, condicaoAcordada }, ref) => {
     const ehPorUc = modoComposicao === 'por_uc' && !!propostasPorUc?.length
     const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     const fmtInt = (v: number) => Math.round(v).toLocaleString('pt-BR')
@@ -213,7 +219,7 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <p style={E.rotuloDourado}>Proposta</p>
+                <p style={E.rotuloDourado}>{condicaoAcordada ? 'Proposta final' : 'Proposta'}</p>
                 <p style={E.codigoProposta}>{projeto.codigo}</p>
               </div>
             </div>
@@ -468,8 +474,11 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               )}
             </div>
 
-            {/* Formas de pagamento */}
-            <h3 style={E.subtituloSecao}>Formas de pagamento</h3>
+            {/* Formas de pagamento (proposta final: só a condição acordada) */}
+            <h3 style={E.subtituloSecao}>{condicaoAcordada ? 'Condição de pagamento acordada' : 'Formas de pagamento'}</h3>
+            {condicaoAcordada ? (
+              <CardPgto titulo={condicaoAcordada.titulo} valor={condicaoAcordada.valor} sub={condicaoAcordada.sub || ''} destaque />
+            ) : (
             <div style={E.grid3}>
               <CardPgto
                 titulo="À vista PIX"
@@ -488,6 +497,7 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
                 sub={`até R$ ${fmt(formasPgto.financiado_estimado.valor_parcela_max)}/mês · sujeito à análise`}
               />
             </div>
+            )}
 
             {/* Garantias — barra dourada minimalista */}
             <div style={E.blocoGarantias}>

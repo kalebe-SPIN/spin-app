@@ -8,6 +8,7 @@ import { MenuConversa, type GrupoMenu } from './MenuConversa'
 import { ModalPropostaRapida } from './ModalPropostaRapida'
 import { ModalPropostaRecarga } from './ModalPropostaRecarga'
 import { ModalPropostaCategoria } from './ModalPropostaCategoria'
+import { ModalFecharVenda } from './ModalFecharVenda'
 import { TextoFormatado } from '@/components/chat/TextoFormatado'
 import { SeletorCidade } from './SeletorCidade'
 import { ModalAgendaBianca } from '@/components/chat/ModalAgendaBianca'
@@ -145,6 +146,8 @@ export function InboxClient({
   const [modalConcluir, setModalConcluir] = useState(false)
   // Kalebe 2026-10-13: atalhos do menu flutuante da conversa
   const [secaoPerfil, setSecaoPerfil] = useState<SecaoPerfilAberta | null>(null)
+  // Kalebe 2026-10-16: fechar a venda a partir da proposta enviada (Arquivos)
+  const [fecharVendaProjeto, setFecharVendaProjeto] = useState<string | null>(null)
   const [modalDemanda, setModalDemanda] = useState(false)
   const [modalAgenda, setModalAgenda] = useState(false)
   const [modalProposta, setModalProposta] = useState(false)
@@ -1008,6 +1011,19 @@ export function InboxClient({
           dados={perfilLead.dados}
           onFechar={() => setSecaoPerfil(null)}
           onSalvo={async () => { await perfilLead.recarregar(); refreshConversas() }}
+          // Kalebe 2026-10-16: da proposta enviada → editar ou fechar a venda
+          onEditarProposta={(cat) => { setSecaoPerfil(null); abrirCategoria(cat as CategoriaProposta) }}
+          onFecharVenda={(projetoId) => { setSecaoPerfil(null); setFecharVendaProjeto(projetoId) }}
+        />
+      )}
+      {fecharVendaProjeto && selecionada && (
+        <ModalFecharVenda
+          conversaId={selecionada.id}
+          projetoId={fecharVendaProjeto}
+          nomeCliente={selecionada.contato?.nome_exibicao || ''}
+          onFechar={() => setFecharVendaProjeto(null)}
+          onConcluida={() => { perfilLead.recarregar(); refreshConversas() }}
+          onEditarProposta={(cat) => { setFecharVendaProjeto(null); abrirCategoria(cat as CategoriaProposta) }}
         />
       )}
       {modalProposta && selecionada && (
