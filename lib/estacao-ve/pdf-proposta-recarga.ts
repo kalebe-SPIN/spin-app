@@ -39,7 +39,11 @@ function documentoFormatado(d: string | null | undefined): string | null {
   return null
 }
 const tipoImagem = (dataUrl: string) => (/^data:image\/png/i.test(dataUrl) ? 'PNG' : 'JPEG')
-const UNIDADE: Record<string, [string, string]> = { un: ['un.', 'un.'], m: ['m', 'm'], barra: ['barra', 'barras'] }
+const UNIDADE: Record<string, [string, string]> = {
+  un: ['un.', 'un.'], m: ['m', 'm'], barra: ['barra', 'barras'],
+  // Itens adicionados à mão (Kalebe 2026-10-15)
+  'm²': ['m²', 'm²'], 'm³': ['m³', 'm³'], kg: ['kg', 'kg'], saco: ['saco', 'sacos'], 'lata': ['lata', 'latas'], vb: ['vb', 'vb'],
+}
 
 export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })

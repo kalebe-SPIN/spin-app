@@ -96,9 +96,31 @@ export type CircuitoDimensionado = {
   metros_cabo: number
 }
 
+/**
+ * Kalebe 2026-10-15: ajustes à mão na lista de materiais — excluir, mudar
+ * quantidade/valor e adicionar item novo (elétrico ou de alvenaria).
+ * A chave é estável (código + potência do circuito), então o ajuste segue
+ * valendo quando a distância muda; a tela mostra o valor calculado ao lado.
+ */
+export type GrupoAdicionado = 'eletrico' | 'alvenaria'
+export type MaterialAdicionado = {
+  id: string
+  grupo: GrupoAdicionado
+  descricao: string
+  qtd: number
+  unidade: string
+  preco_unitario: number
+}
+export type AjustesMateriais = {
+  removidos?: string[]
+  alterados?: Record<string, { qtd?: number; preco_unitario?: number }>
+  adicionados?: MaterialAdicionado[]
+}
+
 export type EntradaRecarga = {
   equipamentos: EquipamentoRecarga[]
   respostas: RespostasRecarga
+  ajustes_materiais?: AjustesMateriais
   /** Só admin: ajuste de margem/comissão (null = parâmetro) */
   margem_pct?: number | null
   comissao_pct?: number | null
@@ -126,15 +148,19 @@ export type ParametrosRecarga = {
   concretagem_m: number
 }
 
-export type GrupoMaterial = 'protecao' | 'cabos' | 'infra' | 'aterramento'
+export type GrupoMaterial = 'protecao' | 'cabos' | 'infra' | 'aterramento' | 'eletrico' | 'alvenaria'
 export type LinhaMaterial = {
   codigo: string
+  /** Identifica a linha pros ajustes (código + potência do circuito; item adicionado: manual:<id>) */
+  chave: string
   descricao: string
   grupo: GrupoMaterial
   qtd: number
-  unidade: 'un' | 'm' | 'barra'
+  unidade: string
   preco_unitario: number
-  origem: 'catalogo' | 'referencia' | 'parametro'
+  origem: 'catalogo' | 'referencia' | 'parametro' | 'manual'
+  /** Quantidade/valor mudados à mão — com o que o sistema tinha calculado */
+  editado?: { qtd: number; preco_unitario: number }
 }
 export type LinhaServico = { chave: string; descricao: string; detalhe: string; valor: number }
 
@@ -177,6 +203,8 @@ export type PropostaRecarga = {
   distancia_total_m: number
   /** Custos que faltam definir no painel — sem eles não gera o PDF (preço sairia baixo) */
   pendencias_custo: string[]
+  /** Materiais calculados que foram excluídos à mão (a tela permite restaurar) */
+  materiais_removidos: LinhaMaterial[]
 }
 
 /**
@@ -270,10 +298,10 @@ export function calcularPropostaRecarga(
     const c = precosCatalogo[codigo.toUpperCase()]
     return c && c > 0 ? { v: c, origem: 'catalogo' as const } : { v: ref, origem: 'referencia' as const }
   }
-  const add = (codigo: string, descricao: string, grupo: GrupoMaterial, qtd: number, unidade: LinhaMaterial['unidade'], ref: number) => {
+  const add = (codigo: string, descricao: string, grupo: GrupoMaterial, qtd: number, unidade: LinhaMaterial['unidade'], ref: number, chave = codigo) => {
     if (!(qtd > 0)) return
     const pr = preco(codigo, ref)
-    materiais.push({ codigo, descricao, grupo, qtd, unidade, preco_unitario: pr.v, origem: pr.origem })
+    materiais.push({ codigo, chave, descricao, grupo, qtd, unidade, preco_unitario: pr.v, origem: pr.origem })
   }
 
   // Agrupa carregadores de mesma potência (cada um tem circuito próprio)
@@ -289,20 +317,21 @@ export function calcularPropostaRecarga(
     const bitola = bitolaPara(corrente)
     maiorBitola = Math.max(maiorBitola, bitola)
     const codDisj = tri ? `MDWH-C${disj}-3` : `MDWP-C${disj}-2`
+    // Chave por circuito (potência): o ajuste à mão segue valendo se a distância mudar
     add(codDisj, `Disjuntor ${tri ? 'tripolar' : 'bipolar'} ${disj} A curva C — carregador ${br(kw, 1)} kW`, 'protecao', qtd,
-      'un', tri ? REF.disjuntor_tripolar : REF.disjuntor_bipolar)
-    add('DPS-CL2-275V-20KA', `DPS classe II 275 V 20 kA — carregador ${br(kw, 1)} kW`, 'protecao', dpsPorCircuito * qtd, 'un', REF.dps_classe2)
+      'un', tri ? REF.disjuntor_tripolar : REF.disjuntor_bipolar, `DISJUNTOR@${kw}`)
+    add('DPS-CL2-275V-20KA', `DPS classe II 275 V 20 kA — carregador ${br(kw, 1)} kW`, 'protecao', dpsPorCircuito * qtd, 'un', REF.dps_classe2, `DPS@${kw}`)
     const metros = Math.ceil(distancia * condutores * 1.15) * qtd
     if (bitola > 25) avisos.push(`Cabo de ${bitola} mm² sem preço de referência — confira o valor da linha de cabos`)
     add(`CABO-${bitola}MM2`, `Cabo ${bitola} mm² (${condutores} condutores × ${br(distancia)} m${qtd > 1 ? ` × ${qtd} circuitos` : ''})`, 'cabos',
-      metros, 'm', REF.cabo_m_por_bitola[bitola] ?? REF.cabo_m_por_bitola[25])
+      metros, 'm', REF.cabo_m_por_bitola[bitola] ?? REF.cabo_m_por_bitola[25], `CABO@${kw}`)
     dimensionados.push({ potencia_kw: kw, qtd, corrente_a: corrente, bitola_mm2: bitola, disjuntor_a: disj, polos: tri ? 3 : 2, dps_un: dpsPorCircuito * qtd, condutores, metros_cabo: metros })
   }
   let disjGeral: number | null = null
   if (circuitos > 1) {
     disjGeral = disjuntorPara(correnteTotal * 1.25)
     add(tri ? `MDWH-C${disjGeral}-3` : `MDWP-C${disjGeral}-2`, `Disjuntor geral ${tri ? 'tripolar' : 'bipolar'} ${disjGeral} A curva C — proteção da estação`,
-      'protecao', 1, 'un', tri ? REF.disjuntor_tripolar : REF.disjuntor_bipolar)
+      'protecao', 1, 'un', tri ? REF.disjuntor_tripolar : REF.disjuntor_bipolar, 'DISJUNTOR-GERAL')
   }
   if (circuitos > 0) add('QCA-VE', 'Quadro de proteção dedicado à estação', 'protecao', 1, 'un', REF.quadro_dedicado)
 
@@ -321,7 +350,7 @@ export function calcularPropostaRecarga(
     // Tubulação: uma por circuito, na vala compartilhada — custo por metro do painel
     if (p.tubo_subterraneo_m > 0) {
       materiais.push({
-        codigo: 'TUBO-SUBTERRANEO', descricao: `Tubulação subterrânea ${pol} — ${br(mSubterraneo)} m${circuitos > 1 ? ` × ${circuitos} circuitos` : ''}`,
+        codigo: 'TUBO-SUBTERRANEO', chave: 'TUBO-SUBTERRANEO', descricao: `Tubulação subterrânea ${pol} — ${br(mSubterraneo)} m${circuitos > 1 ? ` × ${circuitos} circuitos` : ''}`,
         grupo: 'infra', qtd: mSubterraneo * circuitos, unidade: 'm', preco_unitario: p.tubo_subterraneo_m, origem: 'parametro',
       })
     } else pendencias.push('custo do metro da tubulação subterrânea')
@@ -338,6 +367,30 @@ export function calcularPropostaRecarga(
     add('CONECTOR-GAR', 'Conector grampo para haste (GAR)', 'aterramento', 1, 'un', REF.conector_terra)
     add('CAIXA-INSPECAO', 'Caixa de inspeção do aterramento', 'aterramento', 1, 'un', REF.caixa_inspecao)
     add('CABO-NU-16MM2', 'Cabo de cobre nu 16 mm² (haste até o quadro)', 'aterramento', 3, 'm', REF.cabo_nu_16_m)
+  }
+
+  // Ajustes à mão (Kalebe 2026-10-15): excluir, mudar quantidade/valor, adicionar
+  const aj = e.ajustes_materiais || {}
+  const removidosSet = new Set(aj.removidos || [])
+  const materiaisRemovidos = materiais.filter((m) => removidosSet.has(m.chave))
+  const mantidos = materiais.filter((m) => !removidosSet.has(m.chave))
+  materiais.length = 0
+  for (const m of mantidos) {
+    const alt = aj.alterados?.[m.chave]
+    const qtd = alt?.qtd != null && Number(alt.qtd) >= 0 ? Number(alt.qtd) : m.qtd
+    const pu = alt?.preco_unitario != null && Number(alt.preco_unitario) >= 0 ? Number(alt.preco_unitario) : m.preco_unitario
+    materiais.push(qtd !== m.qtd || pu !== m.preco_unitario
+      ? { ...m, qtd, preco_unitario: pu, editado: { qtd: m.qtd, preco_unitario: m.preco_unitario } }
+      : m)
+  }
+  for (const x of aj.adicionados || []) {
+    const descricao = String(x.descricao || '').trim()
+    if (!descricao || !(Number(x.qtd) > 0)) continue
+    if (!(Number(x.preco_unitario) > 0)) avisos.push(`Falta o valor de "${descricao}"`)
+    materiais.push({
+      codigo: 'MANUAL', chave: `manual:${x.id}`, descricao, grupo: x.grupo === 'alvenaria' ? 'alvenaria' : 'eletrico',
+      qtd: Number(x.qtd), unidade: String(x.unidade || 'un'), preco_unitario: Math.max(0, Number(x.preco_unitario) || 0), origem: 'manual',
+    })
   }
   const subtotalMateriais = materiais.reduce((s, m) => s + m.qtd * m.preco_unitario, 0)
 
@@ -439,6 +492,7 @@ export function calcularPropostaRecarga(
     trechos,
     distancia_total_m: distancia,
     pendencias_custo: pendencias,
+    materiais_removidos: materiaisRemovidos,
   }
 }
 

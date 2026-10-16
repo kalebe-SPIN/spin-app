@@ -5,8 +5,14 @@ import { formatarMoedaBRL, fmtNum } from '@/lib/formatters'
 import {
   respostasPadrao, rotuloFases, trechosDaResposta, TIPOS_TRECHO,
   type EntradaRecarga, type EquipamentoRecarga, type PropostaRecarga, type RespostasRecarga, type TipoEquipamentoRecarga,
-  type TipoTrecho, type TrechoRecarga,
+  type TipoTrecho, type TrechoRecarga, type AjustesMateriais, type GrupoAdicionado, type LinhaMaterial,
 } from '@/lib/estacao-ve/proposta-recarga'
+
+/** Unidades do item adicionado à mão (A→Z) */
+const UNIDADES_MATERIAL = [
+  { valor: 'barra', rotulo: 'barra' }, { valor: 'kg', rotulo: 'kg' }, { valor: 'lata', rotulo: 'lata' }, { valor: 'm', rotulo: 'm' },
+  { valor: 'm²', rotulo: 'm²' }, { valor: 'm³', rotulo: 'm³' }, { valor: 'saco', rotulo: 'saco' }, { valor: 'un', rotulo: 'un.' }, { valor: 'vb', rotulo: 'verba' },
+]
 import type { DadosRecarga, EquipamentoCatalogoRecarga, NovoEquipamentoRecarga } from '@/lib/estacao-ve/proposta-recarga-servidor'
 import type { FasesRede } from '@/lib/estacao-ve/montar-lista-ca'
 import type { SecaoProposta } from '@/lib/propostas/secoes'
@@ -72,6 +78,10 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
   const [margem, setMargem] = useState<number | null>(null)
   const [comissao, setComissao] = useState<number | null>(null)
   const [secoes, setSecoes] = useState<SecaoProposta[]>([])
+  // Kalebe 2026-10-15: excluir, editar (quantidade e valor) e adicionar materiais
+  const [ajustes, setAjustes] = useState<AjustesMateriais>({})
+  const [verMateriais, setVerMateriais] = useState(false)
+  const [novoMat, setNovoMat] = useState<null | { grupo: GrupoAdicionado; descricao: string; qtd: number; unidade: string; preco: number }>(null)
   const [escolhido, setEscolhido] = useState('')
   const [qtdNova, setQtdNova] = useState(1)
   // Kalebe 2026-10-14: equipamento novo com datasheet (a IA lê, admin) e valores
@@ -93,6 +103,7 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
       if (r.url_pdf && r.projeto_id) setPdf({ url_pdf: r.url_pdf, projeto_id: r.projeto_id })
       if (r.salva) {
         setEquipamentos(r.salva.equipamentos || [])
+        setAjustes(r.salva.ajustes_materiais || {})
         // Proposta antiga (sem trechos): vira um trecho com a distância e o tipo marcado
         const salvas = { ...respostasPadrao({ distancia_padrao_m: r.distancia_padrao_m }, r.km_deslocamento), ...r.salva.respostas }
         const legados = r.salva.respostas?.trechos?.length ? salvas.trechos! : trechosDaResposta({ ...salvas, trechos: undefined })
@@ -107,10 +118,10 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
   }, [])
 
   const entrada = useMemo<EntradaRecarga | null>(() => respostas && ({
-    equipamentos, respostas, secoes,
+    equipamentos, respostas, secoes, ajustes_materiais: ajustes,
     margem_pct: dados?.eh_admin ? margem : null,
     comissao_pct: dados?.eh_admin ? comissao : null,
-  }), [equipamentos, respostas, secoes, margem, comissao, dados?.eh_admin])
+  }), [equipamentos, respostas, secoes, ajustes, margem, comissao, dados?.eh_admin])
 
   // Recalcula no servidor a cada mudança (com folga pra digitação)
   const pedido = useRef(0)
@@ -165,6 +176,34 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
   }
   const trechosAtuais = respostas?.trechos || []
   const mudarTrecho = (i: number, patch: Partial<TrechoRecarga>) => mudarTrechos(trechosAtuais.map((t, j) => (j === i ? { ...t, ...patch } : t)))
+  // Ajustes na lista de materiais (item calculado: por chave; item adicionado: na própria lista)
+  const ehManual = (m: LinhaMaterial) => m.chave.startsWith('manual:')
+  const idManual = (m: LinhaMaterial) => m.chave.slice('manual:'.length)
+  function editarMaterial(m: LinhaMaterial, patch: { qtd?: number; preco_unitario?: number }) {
+    setAjustes((a) => ehManual(m)
+      ? { ...a, adicionados: (a.adicionados || []).map((x) => (x.id === idManual(m) ? { ...x, ...patch } : x)) }
+      : { ...a, alterados: { ...(a.alterados || {}), [m.chave]: { ...(a.alterados?.[m.chave] || {}), ...patch } } })
+  }
+  function voltarAoCalculado(m: LinhaMaterial) {
+    setAjustes((a) => { const alt = { ...(a.alterados || {}) }; delete alt[m.chave]; return { ...a, alterados: alt } })
+  }
+  function excluirMaterial(m: LinhaMaterial) {
+    setAjustes((a) => {
+      if (ehManual(m)) return { ...a, adicionados: (a.adicionados || []).filter((x) => x.id !== idManual(m)) }
+      const alt = { ...(a.alterados || {}) }; delete alt[m.chave]
+      return { ...a, alterados: alt, removidos: Array.from(new Set([...(a.removidos || []), m.chave])) }
+    })
+  }
+  const restaurarMaterial = (chave: string) => setAjustes((a) => ({ ...a, removidos: (a.removidos || []).filter((c) => c !== chave) }))
+  function adicionarMaterial() {
+    if (!novoMat || !novoMat.descricao.trim() || !(novoMat.qtd > 0)) return
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+    setAjustes((a) => ({ ...a, adicionados: [...(a.adicionados || []), {
+      id, grupo: novoMat.grupo, descricao: novoMat.descricao.trim(), qtd: novoMat.qtd, unidade: novoMat.unidade, preco_unitario: novoMat.preco,
+    }] }))
+    setNovoMat(null)
+  }
+
   function adicionarCarregadorDoCliente() {
     // Sem equipamento: só a potência do carregador do cliente (dimensiona cabo, disjuntor e DPS)
     setEquipamentos((xs) => [...xs, { produto_id: null, modelo: 'Carregador do cliente', tipo: 'carregador', potencia_kw: 0, qtd: 1, preco_unitario: 0, do_cliente: true }])
@@ -448,21 +487,81 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
               {p.execucao.map((s) => (
                 <li key={s.chave} className="flex justify-between gap-2"><span>{s.descricao} <span className="text-white/45">· {s.detalhe}</span></span><span className="tabular-nums shrink-0">{reais(s.valor)}</span></li>
               ))}
-              <li className="flex justify-between gap-2"><span>Materiais elétricos <span className="text-white/45">· {p.materiais.length} itens</span></span><span className="tabular-nums shrink-0">{reais(p.subtotal_materiais)}</span></li>
+              <li className="flex justify-between gap-2"><span>Materiais <span className="text-white/45">· {p.materiais.length} itens</span></span><span className="tabular-nums shrink-0">{reais(p.subtotal_materiais)}</span></li>
             </ul>
-            {p.materiais.length > 0 && (
-              <details className="rounded-xl border border-white/10 px-3 py-2">
-                <summary className="text-[11px] font-bold text-white/70 cursor-pointer">Ver materiais (proteção, cabos, infraestrutura e aterramento)</summary>
-                <ul className="mt-2 space-y-1">
-                  {p.materiais.map((m, i) => (
-                    <li key={i} className="text-[11px] text-white/70 flex justify-between gap-2">
-                      <span>{m.descricao}{m.origem === 'referencia' ? <span className="text-white/35"> · ref.</span> : null}</span>
-                      <span className="tabular-nums shrink-0">{fmtNum(m.qtd, 0)} {m.unidade} · {reais(m.qtd * m.preco_unitario)}</span>
-                    </li>
+            {/* Kalebe 2026-10-15: excluir, editar quantidade e valor, adicionar item (elétrico ou alvenaria) */}
+            <details className="rounded-xl border border-white/10 px-3 py-2" open={verMateriais} onToggle={(e) => setVerMateriais((e.target as HTMLDetailsElement).open)}>
+              <summary className="text-[11px] font-bold text-white/70 cursor-pointer">Ver e editar materiais (proteção, cabos, infraestrutura, aterramento e extras)</summary>
+              <ul className="mt-2 space-y-2">
+                {p.materiais.map((m) => (
+                  <li key={m.chave} className={`rounded-lg border px-2 py-1.5 space-y-1 ${m.editado ? 'border-sol/50' : m.origem === 'manual' ? 'border-weg-azul/50' : 'border-white/10'}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-[11px] text-white/80">
+                        {m.descricao}
+                        {m.origem === 'referencia' && <span className="text-white/35"> · ref.</span>}
+                        {m.origem === 'manual' && <span className="text-white/45"> · {m.grupo === 'alvenaria' ? 'alvenaria' : 'elétrico'} (adicionado)</span>}
+                      </span>
+                      <button type="button" onClick={() => excluirMaterial(m)} aria-label="Excluir material" title="Excluir"
+                        className="w-6 h-6 rounded-full bg-white/[0.06] text-white/60 hover:text-white shrink-0 text-[11px]">✕</button>
+                    </div>
+                    <div className="grid grid-cols-[72px_auto_1fr_auto] gap-1.5 items-center">
+                      <CampoNumero valor={m.qtd} onChange={(n) => editarMaterial(m, { qtd: Math.max(0, n) })} casas={m.unidade === 'm' || m.unidade === 'un' || m.unidade === 'barra' ? 0 : 2}
+                        aria-label="Quantidade" className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-end" />
+                      <span className="text-[10px] text-white/50">{m.unidade} ×</span>
+                      <CampoNumero valor={m.preco_unitario} onChange={(n) => editarMaterial(m, { preco_unitario: Math.max(0, n) })} casas={2}
+                        aria-label="Valor unitário (R$)" className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-end" />
+                      <span className="text-[11px] text-white/80 tabular-nums text-end min-w-[80px]">{reais(m.qtd * m.preco_unitario)}</span>
+                    </div>
+                    {m.editado && (
+                      <p className="text-[10px] text-white/50">
+                        Editado — o sistema calculou {fmtNum(m.editado.qtd, 0)} {m.unidade} × {reais(m.editado.preco_unitario)}
+                        {' '}<button type="button" onClick={() => voltarAoCalculado(m)} className="font-bold text-white/80 hover:text-white">↺ voltar ao calculado</button>
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {p.materiais_removidos.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-[10px] font-bold text-white/45 uppercase tracking-wider">Excluídos</p>
+                  {p.materiais_removidos.map((m) => (
+                    <p key={m.chave} className="text-[11px] text-white/45 flex justify-between gap-2">
+                      <span className="line-through">{m.descricao}</span>
+                      <button type="button" onClick={() => restaurarMaterial(m.chave)} className="font-bold text-white/75 hover:text-white shrink-0">↺ restaurar</button>
+                    </p>
                   ))}
-                </ul>
-              </details>
-            )}
+                </div>
+              )}
+              {!novoMat ? (
+                <button type="button" onClick={() => setNovoMat({ grupo: 'eletrico', descricao: '', qtd: 1, unidade: 'un', preco: 0 })}
+                  className="mt-2 px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start">＋ Adicionar item (elétrico ou alvenaria)</button>
+              ) : (
+                <div className="mt-2 rounded-xl border border-sol/40 p-2 space-y-2">
+                  <div className="flex gap-2">
+                    <Opcao ativo={novoMat.grupo === 'eletrico'} onClick={() => setNovoMat({ ...novoMat, grupo: 'eletrico' })}>⚡ Elétrico</Opcao>
+                    <Opcao ativo={novoMat.grupo === 'alvenaria'} onClick={() => setNovoMat({ ...novoMat, grupo: 'alvenaria' })}>🧱 Alvenaria</Opcao>
+                  </div>
+                  <input value={novoMat.descricao} onChange={(e) => setNovoMat({ ...novoMat, descricao: e.target.value })} className={inputCls}
+                    placeholder={novoMat.grupo === 'alvenaria' ? 'Ex.: cimento, areia, reboco da parede…' : 'Ex.: tomada industrial, caixa de passagem…'} />
+                  <div className="grid grid-cols-3 gap-2">
+                    <label className="block"><span className="block text-[10px] text-white/50">Qtd</span>
+                      <CampoNumero valor={novoMat.qtd} onChange={(n) => setNovoMat({ ...novoMat, qtd: Math.max(0, n) })} casas={2} /></label>
+                    <label className="block"><span className="block text-[10px] text-white/50">Unidade</span>
+                      <select value={novoMat.unidade} onChange={(e) => setNovoMat({ ...novoMat, unidade: e.target.value })} className={inputCls}>
+                        {UNIDADES_MATERIAL.map((u) => <option key={u.valor} value={u.valor} className="bg-noite">{u.rotulo}</option>)}
+                      </select></label>
+                    <label className="block"><span className="block text-[10px] text-white/50">Valor un. (R$)</span>
+                      <CampoNumero valor={novoMat.preco} onChange={(n) => setNovoMat({ ...novoMat, preco: Math.max(0, n) })} casas={2}
+                        className={`${inputCls} ${novoMat.preco > 0 ? '' : 'border-coral/60'}`} /></label>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setNovoMat(null)} className="px-3 py-1.5 rounded-lg border border-white/15 text-white/70 text-xs font-bold">Cancelar</button>
+                    <button type="button" onClick={adicionarMaterial} disabled={!novoMat.descricao.trim() || !(novoMat.qtd > 0)}
+                      className="px-3 py-1.5 rounded-lg bg-verde text-white text-xs font-bold disabled:opacity-40">Adicionar</button>
+                  </div>
+                </div>
+              )}
+            </details>
           </>
         )}
       </Bloco>
