@@ -99,7 +99,12 @@ export async function prepararOrcamentoDoLead(admin: Admin, e: {
   const { data: conv } = await admin.from('wa_conversas').select('cidade, uf').eq('id', e.conversa_id).maybeSingle()
   const cidade = perfil.contato.endereco?.cidade || (conv as any)?.cidade || e.contexto.cidade || null
 
-  const orc = await montarOrcamentoLead(admin, { entrada: e.entrada, tipo_rede_perfil: perfil.infra_eletrica.tipo_rede || null, cidade })
+  // Kalebe 2026-10-16: a Laís também inclui estrutura (pelo telhado do perfil),
+  // cabo solar, conectores e proteções — mesmo preço do "Montar proposta"
+  const orc = await montarOrcamentoLead(admin, {
+    entrada: e.entrada, tipo_rede_perfil: perfil.infra_eletrica.tipo_rede || null, cidade,
+    opcoes: { complementos_cc: { tipo_telhado: perfil.infra_civil.tipo_telhado || null } },
+  })
   if ('erro' in orc) return orc
   const auditoria = auditarOrcamentoLead(orc, perfil)
 
