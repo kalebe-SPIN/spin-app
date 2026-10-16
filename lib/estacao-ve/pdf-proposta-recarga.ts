@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf'
 import type { PropostaRecarga, RespostasRecarga } from './proposta-recarga'
 import { rotuloSecao } from '@/lib/propostas/secoes'
 import { linhasInvestimentoFinal, type FechamentoVenda } from '@/lib/propostas/fechamento'
+import { ALTURA_ASSINATURA_DIGITAL, desenharAssinaturaDigital } from '@/lib/pdf/assinatura-digital'
 
 /**
  * PDF da proposta de estação de recarga (Kalebe 2026-10-14), gerado no
@@ -193,14 +194,9 @@ export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
   espaco(4 * obs.length + 30)
   doc.text(obs, L, y); y += 4 * obs.length + 8
 
-  // Assinatura (Kalebe)
-  const yAss = y + 16
-  if (d.assinatura) { try { doc.addImage(d.assinatura, tipoImagem(d.assinatura), L, yAss - 16, 50, 16) } catch { /* sem imagem */ } }
-  doc.setDrawColor(180, 180, 180); doc.line(L, yAss + 1, L + 70, yAss + 1)
-  doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
-  doc.text(d.empresa.rt_nome || 'Spin Solar', L, yAss + 6)
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(90, 90, 90)
-  doc.text(`${d.empresa.razao_social || 'Spin Solar'}${d.empresa.cnpj ? ` · CNPJ ${documentoFormatado(d.empresa.cnpj) || d.empresa.cnpj}` : ''}`, L, yAss + 11)
+  // Assinatura digital (Kalebe 2026-10-16: a do modelo oficial, não a escaneada)
+  espaco(ALTURA_ASSINATURA_DIGITAL)
+  desenharAssinaturaDigital(doc, { x: L, y, nome: d.empresa.rt_nome, empresa: d.empresa, chave: d.codigo_projeto || 'estacao-recarga', emitido: d.emitido_em })
 
   // Rodapé em todas as páginas
   const paginas = doc.getNumberOfPages()

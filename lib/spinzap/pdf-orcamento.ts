@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import { ALTURA_ASSINATURA_DIGITAL, desenharAssinaturaDigital } from '@/lib/pdf/assinatura-digital'
 
 /**
  * PDF do orçamento resumido que a Laís envia (Kalebe 2026-10-10) — gerado no
@@ -139,14 +140,11 @@ export function gerarPdfOrcamento(d: DadosPdfOrcamento): ArrayBuffer {
   doc.setTextColor(120, 120, 120); doc.setFontSize(8)
   doc.text(obs, L, y); y += 4 * obs.length + 8
 
-  // Assinatura (Kalebe)
-  const yAss = Math.max(y, 232)
-  if (d.assinatura) { try { doc.addImage(d.assinatura, tipoImagem(d.assinatura), L, yAss - 16, 50, 16) } catch { /* sem imagem */ } }
-  doc.setDrawColor(180, 180, 180); doc.line(L, yAss + 1, L + 70, yAss + 1)
-  doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
-  doc.text(d.empresa.rt_nome || 'Spin Solar', L, yAss + 6)
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(90, 90, 90)
-  doc.text(`${d.empresa.razao_social || 'Spin Solar'}${d.empresa.cnpj ? ` · CNPJ ${documentoFormatado(d.empresa.cnpj) || d.empresa.cnpj}` : ''}`, L, yAss + 11)
+  // Assinatura digital (Kalebe 2026-10-16: a do modelo oficial, não a escaneada)
+  // Embaixo da página; se o conteúdo passou, vai pra uma página nova
+  let yAss = Math.max(y, 280 - ALTURA_ASSINATURA_DIGITAL - 4)
+  if (yAss + ALTURA_ASSINATURA_DIGITAL > 282) { doc.addPage(); yAss = 20 }
+  desenharAssinaturaDigital(doc, { x: L, y: yAss, nome: d.empresa.rt_nome, empresa: d.empresa, chave: `${d.cliente_nome}-${d.kwp}`, emitido })
 
   // Rodapé
   doc.setFontSize(8); doc.setTextColor(120, 120, 120)

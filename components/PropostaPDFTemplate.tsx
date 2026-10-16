@@ -5,6 +5,7 @@ import { calcularFormasPagamento, type PropostaCalculada } from '@/lib/precifica
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
 import { estimarGeracaoMensal } from '@/lib/geracao-mensal'
 import { consolidarKitComExtras } from '@/lib/proposta/kit-consolidado'
+import { hashAssinatura } from '@/lib/pdf/assinatura-digital'
 
 type Props = {
   projeto: any
@@ -643,22 +644,8 @@ function AssinaturaDigital({
   )
 }
 
-/** Hash curto determinístico pra "verificação" visual (não é
- *  criptograficamente seguro — só simula o UX de ClickSign no PDF).
- *  Assinatura de valor jurídico virá pelo fluxo real quando implementado.
- *  DJB2 hash — determinístico por input, sem side effects (safe pra SSR). */
-function gerarHash(input: string): string {
-  let h1 = 5381, h2 = 52711
-  for (let i = 0; i < input.length; i++) {
-    const c = input.charCodeAt(i)
-    h1 = ((h1 << 5) + h1) ^ c
-    h2 = ((h2 << 5) + h2) ^ c
-  }
-  const p1 = (h1 >>> 0).toString(16).padStart(8, '0').slice(0, 4)
-  const p2 = (h2 >>> 0).toString(16).padStart(8, '0').slice(0, 4)
-  const p3 = ((h1 ^ h2) >>> 0).toString(16).padStart(4, '0').slice(0, 4)
-  return `${p1}-${p2}-${p3}`
-}
+/** Código de verificação: o mesmo dos PDFs do servidor (lib/pdf/assinatura-digital.ts) */
+const gerarHash = hashAssinatura
 
 /**
  * Bloco "Perfil de consumo × geração" — Kalebe 2026-09-08.

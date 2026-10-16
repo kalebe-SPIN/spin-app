@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { linhasInvestimentoFinal, type FechamentoVenda } from './fechamento'
+import { ALTURA_ASSINATURA_DIGITAL, desenharAssinaturaDigital } from '@/lib/pdf/assinatura-digital'
 
 /**
  * PDF de proposta das categorias montadas no Spinzap (Kalebe 2026-10-14):
@@ -146,13 +147,9 @@ export function gerarPdfPropostaCategoria(d: DadosPdfCategoria): ArrayBuffer {
     : 'Proposta feita com as informações passadas pelo cliente; valores confirmados após a visita técnica.'), W) as string[]
   doc.text(obs, L, y); y += 4 * obs.length + 8
 
-  const yAss = y + 16
-  if (d.assinatura) { try { doc.addImage(d.assinatura, tipoImagem(d.assinatura), L, yAss - 16, 50, 16) } catch { /* sem imagem */ } }
-  doc.setDrawColor(180, 180, 180); doc.line(L, yAss + 1, L + 70, yAss + 1)
-  doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
-  doc.text(d.empresa.rt_nome || 'Spin Solar', L, yAss + 6)
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(90, 90, 90)
-  doc.text(`${d.empresa.razao_social || 'Spin Solar'}${d.empresa.cnpj ? ` · CNPJ ${documentoFormatado(d.empresa.cnpj) || d.empresa.cnpj}` : ''}`, L, yAss + 11)
+  // Assinatura digital (Kalebe 2026-10-16: a do modelo oficial, não a escaneada)
+  espaco(ALTURA_ASSINATURA_DIGITAL)
+  desenharAssinaturaDigital(doc, { x: L, y, nome: d.empresa.rt_nome, empresa: d.empresa, chave: d.codigo_projeto || d.subtitulo, emitido })
 
   const paginas = doc.getNumberOfPages()
   for (let i = 1; i <= paginas; i++) {
