@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import {
-  dadosFechamentoAction, gerarPdfFinalServidorAction, prepararPdfFinalFvAction, registrarPdfFinalFvAction, fecharVendaConversaAction,
+  dadosFechamentoAction, gerarPdfFinalServidorAction, prepararPdfFinalFvAction, prepararPdfFinalVendaAction, registrarPdfFinalAction, fecharVendaConversaAction,
   type DadosFechamento,
 } from '@/app/inbox/fechamento-actions'
 import type { DadosPdfOficial } from '@/app/inbox/proposta-actions'
@@ -11,6 +11,7 @@ import { CONDICOES_VENDA, normalizarFechamento, type ClienteVenda, type Fechamen
 import { INFO_CATEGORIA } from '@/lib/propostas/categorias'
 import { formatarCpfCnpj, formatarMoedaBRL, fmtNum } from '@/lib/formatters'
 import { PropostaPDFTemplate } from '@/components/PropostaPDFTemplate'
+import { PropostaVendaDiretaPDF } from '@/components/venda-direta/PropostaVendaDiretaPDF'
 import { esperarImagens, pdfDoTemplate, subirPdfProposta } from '@/lib/propostas/pdf-oficial-cliente'
 import type { PropostaCalculada } from '@/lib/precificacao/calcular'
 import { CampoNumero } from '@/components/propostas/CampoNumero'
@@ -63,6 +64,8 @@ export function ModalFecharVenda({ conversaId, projetoId, nomeCliente, onFechar,
   const [concluido, setConcluido] = useState<null | { enviado: boolean }>(null)
   // FV: modelo oficial desenhado no navegador
   const [oficial, setOficial] = useState<{ dados: DadosPdfOficial; condicao: { titulo: string; valor: string; sub?: string } } | null>(null)
+  // Venda de equipamento: modelo da venda direta
+  const [modeloVenda, setModeloVenda] = useState<{ projeto: any; dados: any; calculo: any; config_empresa: any; fechamento: FechamentoVenda } | null>(null)
   const templateRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -107,7 +110,22 @@ export function ModalFecharVenda({ conversaId, projetoId, nomeCliente, onFechar,
         const blob = await pdfDoTemplate(el)
         const url = await subirPdfProposta(projetoId, blob, 'proposta-final')
         if (typeof url !== 'string') { setErro(url.erro); return null }
-        const reg = await registrarPdfFinalFvAction(conversaId, projetoId, url, fechamento)
+        const reg = await registrarPdfFinalAction(conversaId, projetoId, url, fechamento)
+        if ('erro' in reg) { setErro(reg.erro); return null }
+        const x = { url, nome_arquivo: r.nome_arquivo }
+        setPdf(x); return x
+      }
+      if (d.projeto.categoria === 'venda') {
+        const r = await prepararPdfFinalVendaAction(conversaId, projetoId, fechamento, cliente)
+        if ('erro' in r) { setErro(r.erro); return null }
+        flushSync(() => setModeloVenda({ projeto: r.projeto, dados: r.dados, calculo: r.calculo, config_empresa: r.config_empresa, fechamento: r.fechamento }))
+        const el = templateRef.current
+        if (!el) { setErro('Não consegui montar o PDF'); return null }
+        await esperarImagens(el)
+        const blob = await pdfDoTemplate(el, '#050B16')
+        const url = await subirPdfProposta(projetoId, blob, 'equipamentos-final')
+        if (typeof url !== 'string') { setErro(url.erro); return null }
+        const reg = await registrarPdfFinalAction(conversaId, projetoId, url, fechamento)
         if ('erro' in reg) { setErro(reg.erro); return null }
         const x = { url, nome_arquivo: r.nome_arquivo }
         setPdf(x); return x
@@ -119,7 +137,7 @@ export function ModalFecharVenda({ conversaId, projetoId, nomeCliente, onFechar,
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao gerar a proposta final')
       return null
-    } finally { setOcupado(null); setOficial(null) }
+    } finally { setOcupado(null); setOficial(null); setModeloVenda(null) }
   }
 
   async function verFinal() {
@@ -302,6 +320,13 @@ export function ModalFecharVenda({ conversaId, projetoId, nomeCliente, onFechar,
           </>
         )}
       </div>
+      {/* Venda de equipamento: modelo da venda direta fora da tela (com largura — o html2canvas precisa do layout) */}
+      {modeloVenda && (
+        <div className="tema-fixo" style={{ position: 'fixed', left: -10000, top: 0, width: 794, pointerEvents: 'none' }} aria-hidden>
+          <PropostaVendaDiretaPDF ref={templateRef} projeto={modeloVenda.projeto} dados={modeloVenda.dados} calculo={modeloVenda.calculo}
+            configEmpresa={modeloVenda.config_empresa} fechamento={modeloVenda.fechamento} />
+        </div>
+      )}
       {/* FV: modelo oficial fora da tela, só enquanto gera o PDF */}
       {oficial && (
         <div className="tema-fixo" style={{ position: 'absolute', left: '-99999px', top: 0, zIndex: -1 }} aria-hidden>

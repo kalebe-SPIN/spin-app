@@ -45,7 +45,7 @@ async function acesso(conversa_id: string, projeto_id: string) {
 type Acesso = Exclude<Awaited<ReturnType<typeof acesso>>, { erro: any }>
 
 /** Categorias que geram a proposta final no próprio Spinzap */
-const COM_PROPOSTA_FINAL: CategoriaProposta[] = ['fotovoltaico', 'recarga', 'bess', 'om', 'projetos']
+const COM_PROPOSTA_FINAL: CategoriaProposta[] = ['fotovoltaico', 'recarga', 'bess', 'om', 'projetos', 'venda']
 
 /** Última proposta enviada (não a final) e o desconto máximo que o motor calculou pra ela. */
 async function ultimaProposta(a: Acesso) {
@@ -126,6 +126,13 @@ export async function dadosFechamentoAction(conversa_id: string, projeto_id: str
   // FV: a proposta final sai do que foi montado no Montar proposta (guardado desde 2026-10-16)
   let podeFinal = !!a.projeto.categoria && COM_PROPOSTA_FINAL.includes(a.projeto.categoria)
   let avisoFinal: string | null = podeFinal ? null : 'Esta categoria ainda não gera a proposta final por aqui — vai a última proposta enviada.'
+  if (a.projeto.categoria === 'venda') {
+    const { data: it } = await a.admin.from('projeto_itens').select('dados').eq('projeto_id', projeto_id).eq('tipo', 'venda_equipamentos').neq('status', 'removido').limit(1).maybeSingle()
+    if (!(it as any)?.dados?.itens?.length || !(it as any)?.dados?.calculo) {
+      podeFinal = false
+      avisoFinal = 'Abra a venda, salve os equipamentos e gere o PDF antes — sem isso vai a última proposta enviada.'
+    }
+  }
   if (a.projeto.categoria === 'fotovoltaico' && !(await entradaFvDoProjeto(a.admin, projeto_id))) {
     podeFinal = false
     avisoFinal = 'Esta proposta foi montada antes (ou pela tela do projeto) e não dá pra gerar a final com o desconto por aqui. Pra sair a proposta final, use “Editar proposta”, gere o PDF de novo e volte; ou feche assim e vai a última proposta enviada.'
@@ -235,24 +242,49 @@ export async function prepararPdfFinalFvAction(conversa_id: string, projeto_id: 
   }
 }
 
-/** FV: registra o PDF final que o navegador desenhou e subiu. */
-export async function registrarPdfFinalFvAction(conversa_id: string, projeto_id: string, url_pdf: string, f: FechamentoVenda): Promise<{ sucesso: true } | { erro: string }> {
+/** FV e venda de equipamento: registra o PDF final que o navegador desenhou e subiu. */
+export async function registrarPdfFinalAction(conversa_id: string, projeto_id: string, url_pdf: string, f: FechamentoVenda): Promise<{ sucesso: true } | { erro: string }> {
   const a = await acesso(conversa_id, projeto_id)
   if ('erro' in a) return { erro: a.erro as string }
   if (!url_pdf.includes(`/propostas-pdf/${projeto_id}/`)) return { erro: 'PDF inválido' }
   const v = await validarFechamento(a, f)
   if ('erro' in v) return v
   const fe = v.fechamento
+  const venda = a.projeto.categoria === 'venda'
   await a.admin.from('projeto_propostas_historico').insert({
     projeto_id, url_pdf, pv_total: fe.valor_final, pv_bruto: fe.valor_proposta, desconto_valor: fe.desconto,
-    modo_composicao: 'orcamento_spinzap_final', gerado_por: a.user.id, memoria_calculo: { fechamento: fe },
+    modo_composicao: venda ? 'venda_direta_final' : 'orcamento_spinzap_final', gerado_por: a.user.id, memoria_calculo: { fechamento: fe },
   })
   await a.admin.from('spinzap_arquivos').insert({
-    contato_id: a.contato.id, categoria: 'orcamento', url: url_pdf, nome: 'Proposta final — fotovoltaico', mime: 'application/pdf',
+    contato_id: a.contato.id, categoria: 'orcamento', url: url_pdf, nome: venda ? 'Proposta final — equipamentos' : 'Proposta final — fotovoltaico', mime: 'application/pdf',
     origem: 'gerado', projeto_id, criado_por: a.user.id,
   })
   revalidatePath('/spinzap')
   return { sucesso: true }
+}
+
+/** Venda de equipamento: dados do modelo da venda direta com o fechamento (o navegador desenha). */
+export async function prepararPdfFinalVendaAction(conversa_id: string, projeto_id: string, f: FechamentoVenda, cliente: ClienteVenda): Promise<
+  { projeto: any; dados: any; calculo: any; config_empresa: any; nome_arquivo: string; fechamento: FechamentoVenda } | { erro: string }
+> {
+  const a = await acesso(conversa_id, projeto_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  if (a.projeto.categoria !== 'venda') return { erro: 'Projeto não é de venda de equipamento' }
+  const v = await validarFechamento(a, f)
+  if ('erro' in v) return v
+  const erroCli = validarCliente(cliente)
+  if (erroCli) return { erro: erroCli }
+  const [{ data: pj }, { data: item }, { data: emp }] = await Promise.all([
+    a.admin.from('projetos').select('*').eq('id', projeto_id).maybeSingle(),
+    a.admin.from('projeto_itens').select('dados').eq('projeto_id', projeto_id).eq('tipo', 'venda_equipamentos').neq('status', 'removido').limit(1).maybeSingle(),
+    a.admin.from('configuracoes_empresa').select('*').eq('singleton', true).maybeSingle(),
+  ])
+  const dados = (item as any)?.dados
+  if (!pj || !dados?.itens?.length || !dados?.calculo) return { erro: 'Abra a venda, salve os equipamentos e gere o PDF de novo antes de fechar' }
+  // Nome e CPF/CNPJ do fechamento no bloco do cliente
+  const nf = { ...(dados.nf || {}), nome: cliente.nome.trim(), documento: cliente.cpf_cnpj.replace(/\D/g, '') }
+  const nome = cliente.nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '')
+  return { projeto: pj, dados: { ...dados, nf }, calculo: dados.calculo, config_empresa: emp || {}, nome_arquivo: `PROPOSTA-FINAL_EQUIPAMENTOS_${nome || 'CLIENTE'}.pdf`, fechamento: v.fechamento }
 }
 
 // ─────────────────────────── Fechar a venda ───────────────────────────

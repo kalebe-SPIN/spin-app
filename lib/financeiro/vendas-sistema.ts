@@ -98,8 +98,11 @@ export function vendaDoProjeto(
   primeiroFechamento?: Map<string, string>,
   calculoVendaDireta?: any,
 ): VendaPendente {
-  const valor = calculoVendaDireta ? (num(calculoVendaDireta.pv_total) || valorVendaProjeto(p)) : valorVendaProjeto(p)
   const vf = p.orcamento_consolidado?.venda_fechada || {}
+  // Kalebe 2026-10-16: preço fechado (com desconto negociado) manda sobre o calculado da venda direta
+  const valor = calculoVendaDireta
+    ? (num(vf.preco_final) || num(calculoVendaDireta.pv_total) || valorVendaProjeto(p))
+    : valorVendaProjeto(p)
 
   // Kalebe 2026-10-01: venda de equipamentos JUNTO com orçamento solar no mesmo
   // projeto → soma as duas partes. Preço final acordado no fechamento vale pelo
@@ -144,9 +147,11 @@ export function vendaDoProjeto(
       condicao_vendedor: vf.condicao_pagamento || null,
       parcelas_vendedor: vf.parcelas || null,
       observacoes_vendedor: vf.observacoes || null,
-      custos: custosVendaDireta(calculoVendaDireta),
+      // Comissão e imposto acompanham o valor fechado (desconto negociado)
+      custos: custosNaVenda(custosVendaDireta(calculoVendaDireta), num(calculoVendaDireta.pv_total), valor),
       vendedor_nome: nomes.get(p.consultor_id) || null,
       kit_sempre_caixa: true,
+      entrada_vendedor: num(vf.entrada_valor) || null,
     }
   }
   // Kalebe 2026-10-16: venda fechada pelo Spinzap (sem orcamento_final) → custos guardados no fechamento

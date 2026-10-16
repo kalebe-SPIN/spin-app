@@ -16,13 +16,14 @@ export async function esperarImagens(el: HTMLElement, limiteMs = 5000): Promise<
   ])
 }
 
-export async function pdfDoTemplate(el: HTMLElement): Promise<Blob> {
+/** `fundo`: cor de fundo da captura (venda direta usa o escuro do próprio modelo) */
+export async function pdfDoTemplate(el: HTMLElement, fundo = '#ffffff'): Promise<Blob> {
   const html2canvas = (await import('html2canvas')).default
   const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF('p', 'mm', 'a4')
   const paginas = Array.from(el.querySelectorAll('section'))
   for (let i = 0; i < paginas.length; i++) {
-    const canvas = await html2canvas(paginas[i] as HTMLElement, { scale: 2, useCORS: true, allowTaint: false, logging: false, backgroundColor: '#ffffff' })
+    const canvas = await html2canvas(paginas[i] as HTMLElement, { scale: 2, useCORS: true, allowTaint: false, logging: false, backgroundColor: fundo })
     if (i > 0) pdf.addPage()
     // A4 = 210 × 297 mm
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297)

@@ -1,6 +1,7 @@
 'use client'
 
 import { forwardRef } from 'react'
+import { textoCondicao, type FechamentoVenda } from '@/lib/propostas/fechamento'
 import { E } from '@/components/PropostaVEPDFTemplate'
 import { formatarCpfCnpj, fmtNum } from '@/lib/formatters'
 import type { CalculoVendaDireta } from '@/lib/precificacao/venda-direta'
@@ -27,10 +28,12 @@ type Props = {
   dados: ItemDadosVendaDireta
   calculo: CalculoVendaDireta
   configEmpresa: any
+  /** Kalebe 2026-10-16: proposta FINAL (fechamento pelo Spinzap) — desconto e pagamento acordados */
+  fechamento?: FechamentoVenda | null
 }
 
 export const PropostaVendaDiretaPDF = forwardRef<HTMLDivElement, Props>(
-  ({ projeto, dados, calculo, configEmpresa }, ref) => {
+  ({ projeto, dados, calculo, configEmpresa, fechamento }, ref) => {
     const empresa = configEmpresa || {}
     const brl = (v: number) => `R$ ${fmtNum(v, 2)}`
     const hoje = new Date()
@@ -59,7 +62,7 @@ export const PropostaVendaDiretaPDF = forwardRef<HTMLDivElement, Props>(
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <p style={E.rotuloDourado}>Venda de equipamentos</p>
+          <p style={E.rotuloDourado}>{fechamento ? 'Proposta final' : 'Venda de equipamentos'}</p>
           <p style={E.codigoProposta}>{projeto.codigo}</p>
         </div>
       </div>
@@ -112,7 +115,7 @@ export const PropostaVendaDiretaPDF = forwardRef<HTMLDivElement, Props>(
               <Cabecalho />
               {idx === 0 ? (
                 <>
-                  <p style={{ ...E.rotuloDourado, fontSize: 11, letterSpacing: 4, marginBottom: 12 }}>Proposta comercial</p>
+                  <p style={{ ...E.rotuloDourado, fontSize: 11, letterSpacing: 4, marginBottom: 12 }}>{fechamento ? 'Proposta final' : 'Proposta comercial'}</p>
                   <h1 style={{ ...E.tituloManifesto, fontSize: 40 }}>Fornecimento de<br />equipamentos</h1>
                   <div style={{ ...E.blocoDados, marginTop: 36, marginBottom: 32 }}>
                     <div>
@@ -143,8 +146,34 @@ export const PropostaVendaDiretaPDF = forwardRef<HTMLDivElement, Props>(
             <Cabecalho />
             <div style={E.headerSecao}>
               <p style={E.rotuloDourado}>Investimento</p>
-              <h2 style={E.tituloSecao}>Valor e formas de pagamento</h2>
+              <h2 style={E.tituloSecao}>{fechamento ? 'Condições acordadas' : 'Valor e formas de pagamento'}</h2>
             </div>
+            {fechamento ? (
+              <>
+                <div style={E.blocoValor}>
+                  <p style={E.rotuloValorTotal}>Valor final</p>
+                  {fechamento.desconto > 0 && (
+                    <p style={{ fontSize: 13, color: 'rgba(245,245,240,.5)', textDecoration: 'line-through', margin: '4px 0 0' }}>
+                      de {brl(fechamento.valor_proposta)}
+                    </p>
+                  )}
+                  <p style={E.valorTotal}>{brl(fechamento.valor_final)}</p>
+                  {fechamento.desconto > 0 && (
+                    <p style={{ fontSize: 12, color: '#22c55e', fontWeight: 700, margin: '2px 0 6px' }}>Desconto negociado: {brl(fechamento.desconto)}</p>
+                  )}
+                  <p style={E.subValor}>Equipamentos{calculo.frete > 0 ? ' + frete' : ''} · nota fiscal emitida pela Spin Solar</p>
+                </div>
+                <table style={E.tabela}>
+                  <tbody>
+                    <tr>
+                      <td style={E.td}>Forma de pagamento</td>
+                      <td style={{ ...E.td, textAlign: 'right' as const, fontWeight: 700 }}>{textoCondicao(fechamento)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </>
+            ) : (
+            <>
             <div style={E.blocoValor}>
               <p style={E.rotuloValorTotal}>Total à vista</p>
               {/* Kalebe 2026-09-30: cupom de desconto aparece como "de/por" */}
@@ -184,6 +213,8 @@ export const PropostaVendaDiretaPDF = forwardRef<HTMLDivElement, Props>(
                 </tr>
               </tbody>
             </table>
+            </>
+            )}
 
             <p style={E.subtituloSecao}>Condições</p>
             <ul style={E.listaServ}>
