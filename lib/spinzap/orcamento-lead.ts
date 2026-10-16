@@ -79,7 +79,11 @@ export type OrcamentoLead = {
   pv_total: number
   formas_pagamento: FormasPagamento
   /** Interno (dupla visão): não vai pro cliente */
-  interno: { margem_pct: number; desconto_max_negociacao: number }
+  interno: {
+    margem_pct: number; desconto_max_negociacao: number
+    /** Kalebe 2026-10-16: custos da proposta (fluxo de caixa da venda fechada pelo Spinzap) */
+    custos?: { kit: number; comissao: number; imposto: number; instalacao: number; frete: number; projeto_art: number; materiais: number }
+  }
   premissas: string[]
   /** Seções incorporadas (aluguel, alvenaria…) — já somadas em pv_total */
   secoes?: SecaoProposta[]
@@ -330,7 +334,13 @@ export async function montarOrcamentoLead(admin: Admin, e: {
     geracao_kwh_mes: Math.round(kwp * kwhPorKwpMes(e.cidade)),
     pv_total: Math.round(proposta.pv_total * 100) / 100,
     formas_pagamento: proposta.formas_pagamento,
-    interno: { margem_pct: proposta.memoria_calculo.margem_pct, desconto_max_negociacao: proposta.desconto_max_negociacao },
+    interno: {
+      margem_pct: proposta.memoria_calculo.margem_pct, desconto_max_negociacao: proposta.desconto_max_negociacao,
+      custos: {
+        kit: proposta.kit_weg_com_fator, comissao: proposta.comissao_vendedor, imposto: proposta.impostos_simples,
+        instalacao: proposta.instalacao, frete: proposta.frete, projeto_art: proposta.projeto_art, materiais: proposta.subtotal_lista_ca,
+      },
+    },
     premissas,
   }
 }

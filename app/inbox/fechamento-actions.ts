@@ -11,6 +11,7 @@ import type { CategoriaProposta } from '@/lib/propostas/categorias'
 import { validarCnpj, validarCpf } from '@/lib/formatters'
 import { entradaFvDoProjeto } from '@/lib/spinzap/entrada-fv'
 import type { DadosPdfOficial } from './proposta-actions'
+import { custosDaPropostaSpinzap } from '@/lib/financeiro/custos-spinzap'
 
 /**
  * Fechar a venda pelo Spinzap (Kalebe 2026-10-16): da proposta que foi
@@ -58,6 +59,8 @@ async function ultimaProposta(a: Acesso) {
   const descontoMax = Number(m.desconto_max_negociacao ?? m.desconto_max)
   return {
     base: base ? { valor: Number(base.pv_total) || 0, url_pdf: base.url_pdf as string | null, gerado_em: base.gerado_em as string } : null,
+    /** Custos da proposta enviada (fluxo de caixa) */
+    custos: base ? custosDaPropostaSpinzap(base.modo_composicao, base.memoria_calculo) : null,
     final: final ? { valor: Number(final.pv_total) || 0, url_pdf: final.url_pdf as string | null, gerado_em: final.gerado_em as string } : null,
     desconto_max: Number.isFinite(descontoMax) && descontoMax > 0 ? Math.round(descontoMax * 100) / 100 : null,
   }
@@ -67,7 +70,7 @@ const hojeBRT = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Americ
 const dataValida = (d: any) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null)
 
 /** Confere o fechamento no servidor: valor vem da proposta, desconto respeita o limite. */
-async function validarFechamento(a: Acesso, f: FechamentoVenda): Promise<{ fechamento: FechamentoVenda } | { erro: string }> {
+async function validarFechamento(a: Acesso, f: FechamentoVenda): Promise<{ fechamento: FechamentoVenda; custos: ReturnType<typeof custosDaPropostaSpinzap> } | { erro: string }> {
   const up = await ultimaProposta(a)
   if (!up.base || !(up.base.valor > 0)) return { erro: 'Gere e envie a proposta antes de fechar a venda' }
   const n = normalizarFechamento({ ...f, valor_proposta: up.base.valor })
@@ -78,7 +81,7 @@ async function validarFechamento(a: Acesso, f: FechamentoVenda): Promise<{ fecha
     if (up.desconto_max == null) return { erro: 'Desconto nesta proposta só com o admin' }
     if (n.desconto > up.desconto_max + 0.01) return { erro: `Desconto acima do máximo desta proposta (R$ ${up.desconto_max.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) — só o admin libera` }
   }
-  return { fechamento: { ...n, data_venda: dataValida(n.data_venda) || hojeBRT(), data_pagamento: dataValida(n.data_pagamento) } }
+  return { fechamento: { ...n, data_venda: dataValida(n.data_venda) || hojeBRT(), data_pagamento: dataValida(n.data_pagamento) }, custos: up.custos }
 }
 
 function validarCliente(c: ClienteVenda): string | null {
@@ -339,6 +342,8 @@ export async function fecharVendaConversaAction(entrada: {
       entrada_valor: fe.entrada_valor || null,
       url_pdf_final: entrada.url_pdf_final || null,
       origem: 'spinzap',
+      // Custos da proposta (no valor da proposta) — o fluxo de caixa ajusta ao valor vendido
+      custos_proposta: v.custos || null,
       ...(vfAntes ? { alteracoes: [...(Array.isArray(vfAntes.alteracoes) ? vfAntes.alteracoes : []), { ...vfAntes, alteracoes: undefined, alterada_em: new Date().toISOString(), alterada_por: a.user.id }].slice(-20) } : {}),
     },
   }

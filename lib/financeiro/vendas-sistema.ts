@@ -4,6 +4,7 @@
  * automática (lib/financeiro/sync-vendas.ts). Sem imports de servidor.
  */
 import type { VendaPendente } from './fluxo'
+import { custosNaVenda } from './custos-spinzap'
 
 // Mesmo critério do painel da equipe (app/admin/equipe/actions.ts)
 export const STATUS_FECHADOS = ['vendido', 'aceito', 'em_homologacao', 'em_execucao', 'instalado', 'ativo_pos_venda']
@@ -148,19 +149,24 @@ export function vendaDoProjeto(
       kit_sempre_caixa: true,
     }
   }
+  // Kalebe 2026-10-16: venda fechada pelo Spinzap (sem orcamento_final) → custos guardados no fechamento
+  const custos = num(p.pv_orcamento) <= 0 && vf.custos_proposta
+    ? custosNaVenda(vf.custos_proposta, num(vf.valor_proposta), valor)
+    : custosProjeto(p, valor)
   return {
     origem: 'projeto',
     origem_id: p.id,
     projeto_id: p.id,
     cliente: p.cliente_razao_social || 'Cliente sem nome',
     data_venda: dataFechamento(p, primeiroFechamento),
-      data_pagamento: dataPagamento(p),
+    data_pagamento: dataPagamento(p),
     valor_venda: valor,
     condicao_vendedor: vf.condicao_pagamento || null,
     parcelas_vendedor: vf.parcelas || null,
     observacoes_vendedor: vf.observacoes || null,
-    custos: custosProjeto(p, valor),
+    custos,
     vendedor_nome: nomes.get(p.consultor_id) || null,
+    entrada_vendedor: num(vf.entrada_valor) || null,
   }
 }
 

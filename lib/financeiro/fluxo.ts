@@ -140,6 +140,8 @@ export type VendaPendente = {
   vendedor_nome: string | null
   /** Venda direta: a Spin fatura tudo → equipamentos sempre passam pelo caixa */
   kit_sempre_caixa?: boolean
+  /** Kalebe 2026-10-16: entrada informada no fechamento (entrada + saldo; vazio = 50%) */
+  entrada_vendedor?: number | null
 }
 
 // ─── Catálogos do cadastro dinâmico ─────────────────────────────────────────

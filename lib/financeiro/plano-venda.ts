@@ -139,6 +139,8 @@ export function planoAutomatico(venda: VendaPendente, cfg: { regime_imposto: 'co
   const recebimentos = gerarRecebimentos({
     cliente: venda.cliente, baseReceber, modelo, data1: dataReceber, n: m.n,
     dataSaldo: addMeses(dataReceber, 1), forma: m.forma || null,
+    // Kalebe 2026-10-16: entrada digitada no fechamento (senão 50%)
+    entrada: venda.entrada_vendedor && venda.entrada_vendedor > 0 ? venda.entrada_vendedor : null,
   })
   const custos = gerarCustos({ venda, kitPassa, data1: venda.data_venda, regime: cfg.regime_imposto, recebimentos })
   return {
@@ -161,5 +163,7 @@ export function planoAutomatico(venda: VendaPendente, cfg: { regime_imposto: 'co
 export function assinaturaVenda(v: VendaPendente): string {
   const c = v.custos
   const custos = arred(c.kit + c.comissao + c.imposto + c.instalacao + c.frete + c.projeto_art + c.custo_estimado)
-  return [arred(v.valor_venda), v.data_venda, v.data_pagamento || '', v.condicao_vendedor || '', v.parcelas_vendedor || '', custos].join('|')
+  // Entrada só entra na assinatura quando informada (programações antigas não refazem à toa)
+  return [arred(v.valor_venda), v.data_venda, v.data_pagamento || '', v.condicao_vendedor || '', v.parcelas_vendedor || '', custos,
+    ...(v.entrada_vendedor ? [arred(v.entrada_vendedor)] : [])].join('|')
 }
