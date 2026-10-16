@@ -1046,7 +1046,8 @@ export function InboxClient({
         />
       )}
       {modalAgenda && selecionada && (
-        <ModalAgendaBianca conversaId={selecionada.id} onFechar={() => setModalAgenda(false)} />
+        // Fechou o Agendar: recarrega a lista pros ícones de pendência refletirem o que foi criado/editado/excluído
+        <ModalAgendaBianca conversaId={selecionada.id} onFechar={() => { setModalAgenda(false); refreshConversas() }} />
       )}
 
       {modalFornecedor && selecionada && (
