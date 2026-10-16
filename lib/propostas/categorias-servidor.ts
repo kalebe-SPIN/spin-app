@@ -125,17 +125,26 @@ export type ServicoOM = 'limpeza' | 'revisao' | 'retirada'
 export const TIPO_DO_SERVICO_OM: Record<ServicoOM, string> = { limpeza: 'srv_limpeza', revisao: 'srv_manutencao', retirada: 'srv_retirada_recolocacao' }
 const CHAVE_PARAM_OM: Record<ServicoOM, string> = { limpeza: 'limpeza_fotovoltaica', revisao: 'revisao_manutencao', retirada: 'retirada_recolocacao' }
 
-export type ParamsOM = { limpeza: ParametrosLimpeza | null; revisao: ParametrosRevisao | null; retirada: ParametrosRetiradaRecolocacao | null }
+export type ParamsOM = {
+  limpeza: ParametrosLimpeza | null; revisao: ParametrosRevisao | null; retirada: ParametrosRetiradaRecolocacao | null
+  /** Kalebe 2026-10-16: limpeza em empresa custa mais — % sobre o calculado e/ou R$ fixo (0 = sem acréscimo) */
+  acrescimo_empresa?: { pct: number; valor: number }
+}
 
 export async function carregarParamsOM(admin: Admin): Promise<{ params: ParamsOM; faixas: FaixaSecao[] }> {
   const chaves = Object.values(CHAVE_PARAM_OM)
-  const [{ data: ps }, { data: fs }] = await Promise.all([
+  const [{ data: ps }, { data: fs }, { data: acr }] = await Promise.all([
     admin.from('parametros_precificacao_servicos').select('chave, parametros').in('chave', chaves),
     admin.from('faixas_precificacao_servicos').select('chave_servico, faixa_min, faixa_max, valor, descricao, ordem').in('chave_servico', chaves).eq('ativo', true).order('ordem'),
+    admin.from('parametros_precificacao').select('chave, valor_numero').in('chave', ['limpeza_acrescimo_empresa_pct', 'limpeza_acrescimo_empresa_valor']).is('vigente_ate', null).eq('ativo', true),
   ])
   const de = (c: string) => ((ps || []) as any[]).find((p) => p.chave === c)?.parametros || null
+  const acrescimo = (c: string) => Math.max(0, Number(((acr || []) as any[]).find((x) => x.chave === c)?.valor_numero) || 0)
   return {
-    params: { limpeza: de(CHAVE_PARAM_OM.limpeza), revisao: de(CHAVE_PARAM_OM.revisao), retirada: de(CHAVE_PARAM_OM.retirada) },
+    params: {
+      limpeza: de(CHAVE_PARAM_OM.limpeza), revisao: de(CHAVE_PARAM_OM.revisao), retirada: de(CHAVE_PARAM_OM.retirada),
+      acrescimo_empresa: { pct: acrescimo('limpeza_acrescimo_empresa_pct'), valor: acrescimo('limpeza_acrescimo_empresa_valor') },
+    },
     faixas: ((fs || []) as any[]).map((f) => ({ ...f, faixa_min: Number(f.faixa_min) || 0, faixa_max: f.faixa_max == null ? null : Number(f.faixa_max), valor: Number(f.valor) || 0 })),
   }
 }
@@ -152,7 +161,7 @@ export type EntradaOM = {
   local?: { cidade: string; uf: string } | null
   tipo_instalacao?: 'residencial' | 'empresa' | null
 }
-export type ResultadoOM = { subtotal: number; valor_servico: number; total_secoes: number; total: number; resultado: any; memoria: string[]; erro: string | null }
+export type ResultadoOM = { subtotal: number; valor_servico: number; total_secoes: number; total: number; resultado: any; memoria: string[]; erro: string | null; acrescimo_empresa?: number }
 
 export function calcularEntradaOM(e: EntradaOM, p: ParamsOM): ResultadoOM {
   let resultado: any = null
@@ -170,10 +179,20 @@ export function calcularEntradaOM(e: EntradaOM, p: ParamsOM): ResultadoOM {
     else if (!e.retirada || !(e.retirada.qtd_modulos > 0)) erro = 'Informe a quantidade de placas'
     else resultado = calcularRetiradaRecolocacao(e.retirada, p.retirada)
   }
-  const subtotal = Number(resultado?.subtotal) || 0
+  const calculado = Number(resultado?.subtotal) || 0
+  // Kalebe 2026-10-16: limpeza em empresa tem acréscimo (parâmetros do painel; 0 = sem acréscimo)
+  const memoria: string[] = [...(resultado?.memoria_calculo || [])]
+  let acrescimo = 0
+  if (e.servico === 'limpeza' && e.tipo_instalacao === 'empresa' && resultado) {
+    const a = p.acrescimo_empresa || { pct: 0, valor: 0 }
+    acrescimo = Math.round((calculado * a.pct / 100 + a.valor) * 100) / 100
+    const rs = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    if (acrescimo > 0) memoria.push(`Acréscimo empresa = ${a.pct ? `${a.pct.toLocaleString('pt-BR')}% de ${rs(calculado)}` : ''}${a.pct && a.valor ? ' + ' : ''}${a.valor ? rs(a.valor) : ''} = ${rs(acrescimo)}`)
+  }
+  const subtotal = Math.round((calculado + acrescimo) * 100) / 100
   const valor = Math.max(0, Math.round((subtotal + (Number(e.ajuste) || 0)) * 100) / 100)
   const ts = totalSecoes(e.secoes)
-  return { subtotal, valor_servico: valor, total_secoes: ts, total: Math.round((valor + ts) * 100) / 100, resultado, memoria: resultado?.memoria_calculo || [], erro }
+  return { subtotal, valor_servico: valor, total_secoes: ts, total: Math.round((valor + ts) * 100) / 100, resultado, memoria, erro, acrescimo_empresa: acrescimo }
 }
 
 const br = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 })

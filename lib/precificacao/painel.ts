@@ -81,7 +81,12 @@ export const CONTEXTOS_PAINEL: Record<ContextoPainel, { titulo: string; parametr
   },
   om: {
     titulo: 'O&M',
-    parametros: [COMUNS[4], COMUNS[5], COMUNS[6]],
+    parametros: [
+      COMUNS[4], COMUNS[5], COMUNS[6],
+      // Kalebe 2026-10-16: limpeza em empresa (sem padrão — vazio/0 = sem acréscimo)
+      { chave: 'limpeza_acrescimo_empresa_pct', rotulo: 'Limpeza em empresa: acréscimo percentual', unidade: '%', grupo: 'om' },
+      { chave: 'limpeza_acrescimo_empresa_valor', rotulo: 'Limpeza em empresa: acréscimo fixo', unidade: 'R$', grupo: 'om' },
+    ],
     servicos: ['limpeza_fotovoltaica', 'revisao_manutencao', 'retirada_recolocacao'],
     itens: [
       { chave: 'limpeza_fotovoltaica', rotulo: '🧹 Limpeza (faixa de referência)' },

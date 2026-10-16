@@ -214,6 +214,12 @@ export function ComposicaoOM({ api, nomeCliente, onEnviada }: { api: ApiOM; nome
       <section className="rounded-2xl border border-sol/40 p-3 space-y-2">
         <div className="text-[11px] text-white/60 space-y-0.5">
           <p className="flex justify-between"><span>Calculado{r?.resultado?.aplicou_visita_minima ? ' (visita mínima)' : ''}</span><span className="tabular-nums">{reais(r?.subtotal || 0)}</span></p>
+          {/* Kalebe 2026-10-16: limpeza em empresa */}
+          {servico === 'limpeza' && tipoInstalacao === 'empresa' && (
+            r?.acrescimo_empresa
+              ? <p className="flex justify-between"><span>Inclui acréscimo para empresa</span><span className="tabular-nums">{reais(r.acrescimo_empresa)}</span></p>
+              : <p className="text-white/45">Acréscimo para empresa ainda não definido no ⚙️ Precificação (O&M)</p>
+          )}
           {faixaRef && <p className="flex justify-between"><span>Faixa de referência · {faixaRef.descricao}</span><span className="tabular-nums">{reais(faixaRef.valor)}</span></p>}
         </div>
         <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
