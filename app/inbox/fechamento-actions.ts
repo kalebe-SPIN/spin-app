@@ -56,7 +56,12 @@ async function ultimaProposta(a: Acesso) {
   const base = linhas.find((h) => !String(h.modo_composicao || '').endsWith('_final')) || null
   const final = linhas.find((h) => String(h.modo_composicao || '').endsWith('_final')) || null
   const m = (base?.memoria_calculo || {}) as Record<string, any>
-  const descontoMax = Number(m.desconto_max_negociacao ?? m.desconto_max)
+  let descontoMax = Number(m.desconto_max_negociacao ?? m.desconto_max)
+  if (!(descontoMax > 0) && base) {
+    // Proposta da tela do projeto: o motor guardou o desconto máximo no orcamento_final
+    const { data: pj } = await a.admin.from('projetos').select('orcamento_final').eq('id', a.projeto.id).maybeSingle()
+    descontoMax = Number((pj as any)?.orcamento_final?.desconto_max_negociacao)
+  }
   return {
     base: base ? { valor: Number(base.pv_total) || 0, url_pdf: base.url_pdf as string | null, gerado_em: base.gerado_em as string } : null,
     /** Custos da proposta enviada (fluxo de caixa) */
@@ -111,7 +116,7 @@ export async function dadosFechamentoAction(conversa_id: string, projeto_id: str
   const a = await acesso(conversa_id, projeto_id)
   if ('erro' in a) return { erro: a.erro as string }
   const [{ data: pj }, up] = await Promise.all([
-    a.admin.from('projetos').select('codigo, status, cliente_id, cliente_razao_social, cliente_cpf_cnpj, cliente_email, cliente_telefone, cliente_endereco, endereco_instalacao, orcamento_consolidado')
+    a.admin.from('projetos').select('codigo, status, cliente_id, cliente_razao_social, cliente_cpf_cnpj, cliente_email, cliente_telefone, cliente_endereco, endereco_instalacao, orcamento_consolidado, kit_selecionado')
       .eq('id', projeto_id).maybeSingle(),
     ultimaProposta(a),
   ])
@@ -134,8 +139,15 @@ export async function dadosFechamentoAction(conversa_id: string, projeto_id: str
     }
   }
   if (a.projeto.categoria === 'fotovoltaico' && !(await entradaFvDoProjeto(a.admin, projeto_id))) {
-    podeFinal = false
-    avisoFinal = 'Esta proposta foi montada antes (ou pela tela do projeto) e não dá pra gerar a final com o desconto por aqui. Pra sair a proposta final, use “Editar proposta”, gere o PDF de novo e volte; ou feche assim e vai a última proposta enviada.'
+    // Proposta da tela do projeto: sai do kit salvo (menos por UC)
+    const k = p.kit_selecionado
+    const porUc = p.orcamento_consolidado?.modo_composicao === 'por_uc'
+    if (!k?.qtd_placas || porUc) {
+      podeFinal = false
+      avisoFinal = porUc
+        ? 'Proposta por unidade consumidora: a final com desconto sai pela tela do projeto. Fechando aqui, vai a última proposta enviada.'
+        : 'O projeto não tem kit salvo. Use “Editar proposta”, gere o PDF de novo e volte; ou feche assim e vai a última proposta enviada.'
+    }
   }
   return {
     projeto: { id: projeto_id, codigo: p.codigo || null, categoria: a.projeto.categoria, status: String(p.status || ''), vendido: FECHADOS.includes(String(p.status)) },
@@ -201,6 +213,75 @@ export async function gerarPdfFinalServidorAction(conversa_id: string, projeto_i
   return { erro: 'Esta categoria ainda não gera a proposta final por aqui — feche a venda e envie o PDF da proposta' }
 }
 
+/**
+ * FV feito na tela do projeto (Kalebe 2026-10-16): dados do modelo oficial
+ * direto do projeto — só os campos que o PDF usa (sem custos internos).
+ */
+async function dadosOficiaisDoProjeto(a: Acesso, projeto_id: string): Promise<DadosPdfOficial | { erro: string }> {
+  const { data } = await a.admin.from('projetos')
+    .select('id, codigo, cliente_razao_social, cliente_cpf_cnpj, cliente_endereco, kit_selecionado, extras_proposta, analise_fatura, campanha_aplicada_id, orcamento_consolidado')
+    .eq('id', projeto_id).maybeSingle()
+  const p = data as any
+  const k = p?.kit_selecionado
+  if (!k?.qtd_placas) return { erro: 'O projeto não tem kit salvo — gere a proposta de novo antes de fechar' }
+  if (p.orcamento_consolidado?.modo_composicao === 'por_uc') return { erro: 'Proposta por unidade consumidora: gere a final pela tela do projeto' }
+  const [{ data: emp }, camp] = await Promise.all([
+    a.admin.from('configuracoes_empresa').select('logo_url, razao_social, cnpj, rt_nome').limit(1).maybeSingle(),
+    p.campanha_aplicada_id ? a.admin.from('campanhas_mes').select('titulo, subtitulo, condicao_especial, vigente_ate').eq('id', p.campanha_aplicada_id).maybeSingle() : Promise.resolve({ data: null }),
+  ])
+  const inv = (i: any) => ({ modelo: i?.modelo || null, potencia_kw: i?.potencia_kw ?? null, qtd: i?.qtd ?? null })
+  const end = p.cliente_endereco || {}
+  const af = p.analise_fatura || null
+  return {
+    projeto: {
+      id: p.id, codigo: p.codigo || '',
+      cliente_razao_social: p.cliente_razao_social, cliente_cpf_cnpj: p.cliente_cpf_cnpj,
+      cliente_endereco: { cidade: end.cidade || null, uf: end.uf || 'SC' }, uf: end.uf || 'SC',
+      kit_selecionado: {
+        placa: { modelo: k.placa?.modelo || null, potencia_wp: k.placa?.potencia_wp ?? null }, qtd_placas: k.qtd_placas,
+        inversor: k.inversor ? inv(k.inversor) : null, inversores: Array.isArray(k.inversores) ? k.inversores.map(inv) : undefined,
+        qtd_inversores: k.qtd_inversores ?? null, potencia_cc_kwp: k.potencia_cc_kwp ?? null, potencia_ca_kw: k.potencia_ca_kw ?? null, fci_pct: k.fci_pct ?? null,
+      },
+      // Tudo já está no valor fechado: extras aparecem como "incluso", sem preço
+      extras_proposta: (Array.isArray(p.extras_proposta) ? p.extras_proposta : []).map((e: any) => ({
+        secao: e?.secao === 'kit_weg' || e?.secao === 'lista_ca' ? e.secao : 'incluso',
+        descricao: e?.descricao || e?.modelo || 'Item', qtd: e?.qtd ?? 1, modelo: e?.modelo || null, categoria: e?.categoria || null,
+        potencia_wp: e?.potencia_wp ?? null, potencia_kw: e?.potencia_kw ?? null, valor: 0,
+      })),
+      analise_fatura: af ? { historico_12_meses: af.historico_12_meses || [], consumo_medio_kwh: af.consumo_medio_kwh ?? null } : null,
+      desconto_admin_pct: 0, desconto_admin_valor: 0, assinatura_cliente: null,
+    },
+    pv_total: 0,
+    config_empresa: (emp as any) || { logo_url: null, razao_social: null, cnpj: null, rt_nome: null },
+    campanha: ((camp as any)?.data as any) || null,
+  }
+}
+
+/** Aplica o fechamento (valor, desconto, cliente) nos dados do modelo oficial. */
+async function montarFinalFv(base: DadosPdfOficial, fe: FechamentoVenda, cliente: ClienteVenda) {
+  const dados: DadosPdfOficial = {
+    ...base,
+    // Valor da proposta enviada + desconto negociado no bloco de ajuste do modelo oficial
+    pv_total: fe.valor_proposta,
+    projeto: {
+      ...base.projeto,
+      cliente_razao_social: cliente.nome.trim(),
+      cliente_cpf_cnpj: cliente.cpf_cnpj.replace(/\D/g, ''),
+      cliente_endereco: { ...(base.projeto.cliente_endereco || {}), cidade: cliente.endereco.cidade || base.projeto.cliente_endereco?.cidade, uf: cliente.endereco.uf || base.projeto.cliente_endereco?.uf },
+      desconto_admin_pct: 0,
+      desconto_admin_valor: fe.desconto,
+      desconto_admin_motivo: fe.desconto > 0 ? 'desconto negociado' : null,
+    },
+  }
+  const { nomearProposta } = await import('@/lib/downloads')
+  const k = base.projeto.kit_selecionado || {}
+  return {
+    dados, fechamento: fe,
+    nome_arquivo: nomearProposta({ cliente: cliente.nome, potenciaCcKwp: k.potencia_cc_kwp, potenciaCaKw: k.potencia_ca_kw }).replace(/^PROPOSTA_/, 'PROPOSTA-FINAL_'),
+    condicao: { titulo: 'Forma de pagamento', valor: textoCondicao(fe), sub: `Valor final R$ ${fe.valor_final.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` },
+  }
+}
+
 /** FV: dados do modelo oficial com desconto e pagamento acordados (o navegador desenha, como no projeto). */
 export async function prepararPdfFinalFvAction(conversa_id: string, projeto_id: string, f: FechamentoVenda, cliente: ClienteVenda): Promise<
   { dados: DadosPdfOficial; nome_arquivo: string; fechamento: FechamentoVenda; condicao: { titulo: string; valor: string; sub?: string } } | { erro: string }
@@ -213,33 +294,17 @@ export async function prepararPdfFinalFvAction(conversa_id: string, projeto_id: 
   const erroCli = validarCliente(cliente)
   if (erroCli) return { erro: erroCli }
   const salva = await entradaFvDoProjeto(a.admin, projeto_id)
-  if (!salva?.entrada) return { erro: 'Esta proposta é de antes de o sistema guardar o que foi montado — abra o Montar proposta, gere o PDF de novo e depois feche a venda' }
+  if (!salva?.entrada) {
+    // Proposta feita na tela do projeto: o modelo oficial sai do kit salvo no projeto
+    const formal = await dadosOficiaisDoProjeto(a, projeto_id)
+    if ('erro' in formal) return formal
+    return montarFinalFv(formal, v.fechamento, cliente)
+  }
   const { prepararPdfOficialPropostaRapidaAction } = await import('./proposta-actions')
   const r = await prepararPdfOficialPropostaRapidaAction(conversa_id, salva.entrada)
   if ('erro' in r) return r
   if (r.projeto_id !== projeto_id) return { erro: 'A proposta aberta do cliente é de outro projeto' }
-  const fe = v.fechamento
-  const dados: DadosPdfOficial = {
-    ...r.dados,
-    // Valor da proposta enviada + desconto negociado no bloco de ajuste do modelo oficial
-    pv_total: fe.valor_proposta,
-    projeto: {
-      ...r.dados.projeto,
-      cliente_razao_social: cliente.nome.trim(),
-      cliente_cpf_cnpj: cliente.cpf_cnpj.replace(/\D/g, ''),
-      cliente_endereco: { ...(r.dados.projeto.cliente_endereco || {}), cidade: cliente.endereco.cidade || r.dados.projeto.cliente_endereco?.cidade, uf: cliente.endereco.uf || r.dados.projeto.cliente_endereco?.uf },
-      desconto_admin_pct: 0,
-      desconto_admin_valor: fe.desconto,
-      desconto_admin_motivo: fe.desconto > 0 ? 'desconto negociado' : null,
-    },
-  }
-  const { nomearProposta } = await import('@/lib/downloads')
-  const k = r.dados.projeto.kit_selecionado || {}
-  return {
-    dados, fechamento: fe,
-    nome_arquivo: nomearProposta({ cliente: cliente.nome, potenciaCcKwp: k.potencia_cc_kwp, potenciaCaKw: k.potencia_ca_kw }).replace(/^PROPOSTA_/, 'PROPOSTA-FINAL_'),
-    condicao: { titulo: 'Forma de pagamento', valor: textoCondicao(fe), sub: `Valor final R$ ${fe.valor_final.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` },
-  }
+  return montarFinalFv(r.dados, v.fechamento, cliente)
 }
 
 /** FV e venda de equipamento: registra o PDF final que o navegador desenhou e subiu. */
