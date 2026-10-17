@@ -84,6 +84,11 @@ export async function finalizarPropostaCategoria(admin: Admin, a: {
   if (ja) await admin.from('projeto_itens').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', (ja as any).id)
   else await admin.from('projeto_itens').insert({ ...payload, projeto_id: a.projetoId, ordem: 0 })
   await salvarSecoesNoProjeto(admin, a.projetoId, a.secoes || [], a.usuarioId)
+  // Valor da proposta no projeto (dashboard); a proposta final não mexe (a venda grava o dela)
+  if (!a.fechamento) {
+    const { registrarPropostaNoProjeto } = await import('./registrar-no-projeto')
+    await registrarPropostaNoProjeto(admin, a.projetoId, { valor: a.total, url_pdf: url })
+  }
 
   // Proposta final: o histórico guarda o valor acordado e o fechamento
   await admin.from('projeto_propostas_historico').insert({

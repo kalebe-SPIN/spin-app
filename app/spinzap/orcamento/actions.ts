@@ -53,6 +53,9 @@ export async function aprovarOrcamentoLaisAction(id: string): Promise<{ sucesso:
     potencia_ca_kw: (o.orcamento as any)?.inversor?.potencia_kw ?? null, modo_composicao: 'orcamento_lais_whatsapp',
     memoria_calculo: (o.orcamento as any)?.interno || null,
   })
+  // Valor da proposta no projeto (dashboard: "em negociação", funil)
+  const { registrarPropostaNoProjeto } = await import('@/lib/propostas/registrar-no-projeto')
+  await registrarPropostaNoProjeto(admin, o.projeto_id, { valor: Number(o.pv_total) || 0, url_pdf: o.url_pdf })
   // Roteiro da Laís: orçamento entregue → o consultor/equipe segue a negociação
   const { data: conv } = await admin.from('wa_conversas').select('contexto_qualificacao').eq('id', o.conversa_id).maybeSingle()
   const ctx = ((conv as any)?.contexto_qualificacao || {}) as Record<string, any>

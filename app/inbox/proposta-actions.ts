@@ -343,6 +343,9 @@ export async function registrarPdfPropostaRapidaAction(conversa_id: string, proj
   await salvarEntradaFv(a.admin, projeto_id, e, o)
   // Kalebe 2026-10-17: beneficiárias no projeto (mesmo formato da fatura do projeto)
   if (Array.isArray(e.beneficiarias)) await salvarBeneficiariasNoProjeto(a.admin, projeto_id, e.beneficiarias)
+  // Valor da proposta no projeto (dashboard: "em negociação", funil)
+  const { registrarPropostaNoProjeto } = await import('@/lib/propostas/registrar-no-projeto')
+  await registrarPropostaNoProjeto(a.admin, projeto_id, { valor: o.pv_total, url_pdf })
   await a.admin.from('projeto_propostas_historico').insert({
     projeto_id, url_pdf, pv_total: o.pv_total, pv_bruto: o.pv_total, potencia_cc_kwp: o.kwp,
     potencia_ca_kw: Math.round(o.inversor.potencia_kw * o.inversor.qtd * 100) / 100, modo_composicao: 'orcamento_spinzap',

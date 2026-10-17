@@ -1076,7 +1076,7 @@ const ANTES_DA_NEGOCIACAO = [
   'rascunho', 'fatura_analisada', 'telhado_preenchido', 'dimensionado', 'kit_selecionado',
   'lista_ca_confirmada', 'orcamento_gerado', 'proposta_enviada',
 ]
-async function depoisDeEnviarProposta(projetoId: string, userId: string, conversaId: string | null, como: string) {
+async function depoisDeEnviarProposta(projetoId: string, userId: string, conversaId: string | null, como: string, followupCliente = true) {
   try {
     const admin = createAdminClient()
     const { data: p } = await admin.from('projetos')
@@ -1087,9 +1087,16 @@ async function depoisDeEnviarProposta(projetoId: string, userId: string, convers
       const { mudarEtapaProjetoAction } = await import('@/app/projetos/[id]/etapa/actions')
       await mudarEtapaProjetoAction(projetoId, 'negociando', `Proposta enviada ao cliente ${como}`)
     }
-    // Reenvio (já em negociação) ou etapa que não mudou: follow-up mesmo assim (sem duplicar)
-    const { criarFollowupProposta } = await import('@/lib/bianca/followup-proposta')
+    // Reenvio (já em negociação) ou etapa que não mudou: follow-up mesmo assim (sem duplicar).
+    // Kalebe 2026-10-17: lembrete ao responsável em 1 dia com o link da negociação
+    const { criarFollowupProposta, agendarFollowupClienteProposta } = await import('@/lib/bianca/followup-proposta')
     await criarFollowupProposta({ projeto: p, usuarioId: userId, conversaId, como })
+    // ...e 50 min depois a Bianca pergunta ao cliente se já analisou a proposta.
+    // Só quando saiu pelo número da Spin com a janela aberta (pelo app do celular, quem chama é o consultor)
+    if (conversaId && followupCliente) {
+      await agendarFollowupClienteProposta({ projetoId, conversaId, responsavelId: p.consultor_id || userId })
+      revalidatePath('/spinzap')
+    }
     // Spinzap: a conversa do cliente vai pra "Negócio em andamento"
     const { moverEtapaPeloProjeto } = await import('@/lib/spinzap/etapas')
     await moverEtapaPeloProjeto(projetoId, 'negocio_andamento', { soAvancar: true })
@@ -1171,7 +1178,9 @@ export async function enviarPropostaPeloCanalAction(entrada: {
           origem_agente_nome: (await rotuloRemetente(check.user!.id, check.perfil?.nome_completo)) || 'Spin',
         })
         if ('sucesso' in r) {
-          if (!entrada.pos_venda) await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp')
+          // Foi por modelo (janela fechada): sem o follow-up de 50 min — seria um 2º modelo
+          // sem o cliente ter respondido; fica o lembrete de 1 dia pro responsável
+          if (!entrada.pos_venda) await depoisDeEnviarProposta(entrada.projeto_id, check.user.id, canal.conversa_id, 'pelo WhatsApp', false)
           revalidatePath('/spinzap')
           return { sucesso: true, conversa_id: canal.conversa_id }
         }

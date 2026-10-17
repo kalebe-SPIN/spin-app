@@ -352,6 +352,11 @@ export async function gerarPropostaRecarga(admin: Admin, a: {
   await admin.from('projeto_itens').update({ valor_estimado: p.pv_total })
     .eq('projeto_id', a.projetoId).eq('tipo', 've_recarga').neq('status', 'removido')
   await salvarSecoesNoProjeto(admin, a.projetoId, a.entrada.secoes || [], a.usuarioId)
+  // Valor da proposta no projeto (dashboard); a proposta final não mexe (a venda grava o dela)
+  if (!a.fechamento) {
+    const { registrarPropostaNoProjeto } = await import('@/lib/propostas/registrar-no-projeto')
+    await registrarPropostaNoProjeto(admin, a.projetoId, { valor: p.total_geral, url_pdf: url })
+  }
   await admin.from('projeto_propostas_historico').insert({
     projeto_id: a.projetoId, url_pdf: url,
     pv_total: a.fechamento ? a.fechamento.valor_final : p.total_geral,
