@@ -35,6 +35,20 @@ export type EntradaPropostaRapida = {
   opcoes?: OpcoesKit
   /** Seções incorporadas (aluguel, alvenaria, elétrica predial…) */
   secoes?: SecaoProposta[]
+  /** Kalebe 2026-10-17: unidades beneficiárias (consumo + fatura) */
+  beneficiarias?: BeneficiariaProposta[]
+}
+
+/** UC beneficiária no Montar proposta (Kalebe 2026-10-17) */
+export type BeneficiariaProposta = {
+  uc: string
+  titular: string
+  consumo_kwh: number
+  arquivo_url?: string | null
+  arquivo_nome?: string | null
+  arquivo_tipo?: string | null
+  /** Mensagem da conversa de onde veio a fatura (a análise completa fica nela) */
+  mensagem_id?: string | null
 }
 
 async function acesso(conversa_id: string) {
@@ -98,6 +112,8 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
   faturas_pendentes: Array<{ mensagem_id: string; nome: string; mime: string | null; criada_em: string; status: string | null }>
   /** Kalebe 2026-10-16: o que foi montado na última proposta (reabrir e editar) */
   salva: EntradaFvSalva | null
+  /** Kalebe 2026-10-17: unidades beneficiárias já cadastradas (proposta salva ou fatura do projeto) */
+  beneficiarias: BeneficiariaProposta[]
 } | { erro: string }> {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
@@ -111,7 +127,17 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
     carregarFaixasSecoes(a.admin), secoesDoProjeto(a.admin, projetoFv?.id || null), faturasNaoLidas(a.admin, conversa_id),
     entradaFvDoProjeto(a.admin, projetoFv?.id || null),
   ])
+  let beneficiarias: BeneficiariaProposta[] = salva?.entrada?.beneficiarias || []
+  if (!salva?.entrada?.beneficiarias && projetoFv?.id) {
+    const { data: pjb } = await a.admin.from('projetos').select('beneficiarias').eq('id', projetoFv.id).maybeSingle()
+    beneficiarias = (((pjb as any)?.beneficiarias || []) as any[]).map((b) => ({
+      uc: b.uc || '', titular: b.titular || '',
+      consumo_kwh: Math.round(Number(b.analise?.consumo_medio_12m_kwh || b.analise?.consumo_mes_kwh || b.analise?.consumo_medio_kwh || 0)),
+      arquivo_url: b.arquivo_url || null, arquivo_nome: b.arquivo_nome || null, arquivo_tipo: b.arquivo_tipo || null, mensagem_id: null,
+    })).filter((b) => b.consumo_kwh > 0)
+  }
   return {
+    beneficiarias,
     salva,
     faixas,
     secoes,
@@ -174,7 +200,10 @@ async function calcular(a: Exclude<Awaited<ReturnType<typeof acesso>>, { erro: a
   if (telhado) perfil.infra_civil = { ...perfil.infra_civil, tipo_telhado: telhado }
   const cidade = e.cidade?.trim() || null
   if (cidade) perfil.contato = { ...perfil.contato, endereco: { ...(perfil.contato.endereco || {}), cidade } }
-  const montado = await montarOrcamentoLead(a.admin, { entrada, tipo_rede_perfil: e.tipo_rede, cidade, opcoes: e.opcoes })
+  // Beneficiárias: o consumo delas soma no dimensionamento
+  const bens = (e.beneficiarias || []).filter((b) => Number(b.consumo_kwh) > 0)
+  const opcoes = { ...(e.opcoes || {}), beneficiarias: bens.length ? { qtd: bens.length, consumo_kwh: bens.reduce((s, b) => s + Number(b.consumo_kwh), 0) } : null }
+  const montado = await montarOrcamentoLead(a.admin, { entrada, tipo_rede_perfil: e.tipo_rede, cidade, opcoes })
   if ('erro' in montado) return montado
   const orc = await aplicarSecoes(a.admin, montado, e.secoes)
   return { orc, auditoria: auditarOrcamentoLead(orc, perfil), perfil, cidade }
@@ -312,6 +341,8 @@ export async function registrarPdfPropostaRapidaAction(conversa_id: string, proj
   await salvarSecoesNoProjeto(a.admin, projeto_id, o.secoes || [], a.user.id)
   // Kalebe 2026-10-16: guarda o que foi montado pra reabrir/editar e fechar a venda
   await salvarEntradaFv(a.admin, projeto_id, e, o)
+  // Kalebe 2026-10-17: beneficiárias no projeto (mesmo formato da fatura do projeto)
+  if (Array.isArray(e.beneficiarias)) await salvarBeneficiariasNoProjeto(a.admin, projeto_id, e.beneficiarias)
   await a.admin.from('projeto_propostas_historico').insert({
     projeto_id, url_pdf, pv_total: o.pv_total, pv_bruto: o.pv_total, potencia_cc_kwp: o.kwp,
     potencia_ca_kw: Math.round(o.inversor.potencia_kw * o.inversor.qtd * 100) / 100, modo_composicao: 'orcamento_spinzap',
@@ -399,4 +430,88 @@ export async function opcoesKitPropostaAction(): Promise<{
     }))
     .sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR'))
   return { placas, inversores, extras }
+}
+
+// ─────────────────────── Unidades beneficiárias (Kalebe 2026-10-17) ───────────────────────
+
+const CORES_UC = ['#587FFF', '#5FCF80', '#F17A5C', '#B78BFF', '#4EC5C9', '#F5A623', '#EC4899', '#14B8A6']
+
+/** Grava em projetos.beneficiarias no formato da tela de fatura do projeto (o dimensionamento de lá lê daqui). */
+async function salvarBeneficiariasNoProjeto(admin: ReturnType<typeof createAdminClient>, projetoId: string, lista: BeneficiariaProposta[]) {
+  const validas = lista.filter((b) => Number(b.consumo_kwh) > 0)
+  const ids = validas.map((b) => b.mensagem_id).filter(Boolean) as string[]
+  const { data: msgs } = ids.length ? await admin.from('wa_mensagens').select('id, dados').in('id', ids) : { data: [] as any[] }
+  const analiseDe = (id?: string | null) => (msgs || []).find((m: any) => m.id === id)?.dados?.fatura_lida?.analise || null
+  const beneficiarias = validas.map((b, i) => {
+    const lida = analiseDe(b.mensagem_id)
+    const consumo = Math.round(Number(b.consumo_kwh))
+    return {
+      ordem: i + 1, uc: b.uc || '', titular: b.titular || '',
+      // Consumo informado na tela manda (pode ter sido ajustado à mão)
+      analise: { ...(lida || {}), uc: b.uc || lida?.uc || null, razao_social: b.titular || lida?.razao_social || null, consumo_medio_kwh: consumo, consumo_medio_12m_kwh: consumo },
+      cor_grafico: CORES_UC[(i + 1) % CORES_UC.length],
+      arquivo_url: b.arquivo_url || undefined, arquivo_nome: b.arquivo_nome || undefined, arquivo_tipo: b.arquivo_tipo || undefined,
+      status: 'ok',
+    }
+  })
+  await admin.from('projetos').update({
+    beneficiarias, ucs_beneficiarias: beneficiarias.map((b) => b.uc).filter(Boolean),
+  }).eq('id', projetoId)
+}
+
+/** Arquivos (PDF/foto) da conversa pra escolher a fatura de uma beneficiária. */
+export async function arquivosFaturaConversaAction(conversa_id: string): Promise<
+  { arquivos: Array<{ mensagem_id: string; nome: string; mime: string | null; criada_em: string; direcao: string; lida_uc: string | null; lida_consumo: number | null }> } | { erro: string }
+> {
+  const a = await acesso(conversa_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const { data } = await a.admin.from('wa_mensagens').select('id, texto, midia_mime, criada_em, direcao, dados')
+    .eq('conversa_id', conversa_id).not('midia_url', 'is', null).order('criada_em', { ascending: false }).limit(40)
+  const arquivos = ((data || []) as any[])
+    .filter((m) => /pdf|image\//i.test(String(m.midia_mime || '')))
+    .map((m) => ({
+      mensagem_id: m.id, nome: m.texto || (/pdf/i.test(m.midia_mime || '') ? 'PDF' : 'Foto'), mime: m.midia_mime || null,
+      criada_em: m.criada_em, direcao: m.direcao,
+      lida_uc: m.dados?.fatura_lida?.resumo?.uc || null, lida_consumo: m.dados?.fatura_lida?.resumo?.consumo_kwh ?? null,
+    }))
+  return { arquivos }
+}
+
+/**
+ * Lê a fatura de uma UC beneficiária (Kalebe 2026-10-17). Diferente do "Ler
+ * fatura" da UC principal: não mexe no contexto da conversa nem no cadastro
+ * do cliente — só devolve UC, titular e consumo e guarda o arquivo no perfil.
+ */
+export async function lerFaturaBeneficiariaAction(conversa_id: string, mensagem_id: string): Promise<
+  (Required<Pick<BeneficiariaProposta, 'uc' | 'titular' | 'consumo_kwh'>> & { arquivo_url: string; arquivo_nome: string; arquivo_tipo: string | null; mensagem_id: string; meses: number }) | { erro: string }
+> {
+  const a = await acesso(conversa_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const { data: m } = await a.admin.from('wa_mensagens').select('id, conversa_id, texto, midia_url, midia_mime, dados').eq('id', mensagem_id).maybeSingle()
+  const msg = m as any
+  if (!msg || msg.conversa_id !== conversa_id) return { erro: 'Arquivo não é desta conversa' }
+  if (!msg.midia_url) return { erro: 'Mensagem sem arquivo' }
+  const dados = (msg.dados || {}) as Record<string, any>
+  let resumo = dados.fatura_lida?.status === 'ok' ? dados.fatura_lida.resumo : null
+  let analise = dados.fatura_lida?.analise || null
+  if (!resumo) {
+    const { analisarFaturaPorUrl } = await import('@/lib/fatura/analisar')
+    const r = await analisarFaturaPorUrl(msg.midia_url, msg.midia_mime)
+    if ('erro' in r) return { erro: r.erro }
+    const f = r.dados
+    const consumo = Number(f.consumo_medio_12m_kwh) || Number(f.consumo_mes_kwh) || 0
+    if (!consumo && !f.uc) return { erro: 'O arquivo não parece uma fatura de energia' }
+    resumo = { consumo_kwh: Math.round(consumo), meses: Number(f.meses_com_dados) || 1, uc: f.uc || null, razao_social: f.razao_social || null }
+    analise = f
+    await a.admin.from('wa_mensagens').update({ dados: { ...dados, fatura_lida: { status: 'ok', resumo, analise, beneficiaria: true, em: new Date().toISOString() } } }).eq('id', msg.id)
+  }
+  const { anexarArquivoPerfil } = await import('@/lib/spinzap/perfil-servidor')
+  await anexarArquivoPerfil(a.admin, {
+    contato_id: a.contato.id, categoria: 'fatura', url: msg.midia_url, nome: `Fatura UC ${resumo.uc || ''} (beneficiária)`.replace('UC  ', ''),
+    mime: msg.midia_mime, origem: 'cliente', wa_mensagem_id: msg.id, projeto_id: a.contato.projeto_id,
+  })
+  return {
+    uc: String(resumo.uc || ''), titular: String(resumo.razao_social || ''), consumo_kwh: Number(resumo.consumo_kwh) || 0, meses: Number(resumo.meses) || 1,
+    arquivo_url: msg.midia_url, arquivo_nome: msg.texto || 'Fatura', arquivo_tipo: msg.midia_mime || null, mensagem_id: msg.id,
+  }
 }

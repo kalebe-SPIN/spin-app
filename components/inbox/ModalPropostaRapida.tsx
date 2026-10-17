@@ -4,7 +4,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import {
   dadosPropostaRapidaAction, calcularPropostaRapidaAction, prepararPdfOficialPropostaRapidaAction, registrarPdfPropostaRapidaAction,
-  enviarPdfPropostaRapidaAction, opcoesKitPropostaAction, lerFaturaPropostaAction, type EntradaPropostaRapida, type DadosPdfOficial,
+  enviarPdfPropostaRapidaAction, opcoesKitPropostaAction, lerFaturaPropostaAction, arquivosFaturaConversaAction, lerFaturaBeneficiariaAction,
+  type EntradaPropostaRapida, type DadosPdfOficial, type BeneficiariaProposta,
 } from '@/app/inbox/proposta-actions'
 import { PropostaPDFTemplate } from '@/components/PropostaPDFTemplate'
 import { esperarImagens, pdfDoTemplate, subirPdfProposta } from '@/lib/propostas/pdf-oficial-cliente'
@@ -55,6 +56,12 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   const [aumento, setAumento] = useState('0')
   // Kalebe 2026-10-16: reabrindo a última proposta (data em que foi montada)
   const [editandoDe, setEditandoDe] = useState<string | null>(null)
+  // Kalebe 2026-10-17: unidades beneficiárias (consumo + fatura)
+  const [beneficiarias, setBeneficiarias] = useState<BeneficiariaProposta[]>([])
+  const [painelBenef, setPainelBenef] = useState(false)
+  const [arquivosConv, setArquivosConv] = useState<Array<{ mensagem_id: string; nome: string; mime: string | null; criada_em: string; direcao: string; lida_uc: string | null; lida_consumo: number | null }> | null>(null)
+  const [lendoBenef, setLendoBenef] = useState<string | null>(null)
+  const [benefManual, setBenefManual] = useState({ uc: '', titular: '', consumo: '' })
   const pularResetSistema = useRef(false)
   const [carregando, setCarregando] = useState(true)
   const [modo, setModo] = useState<Modo>('consumo_kwh')
@@ -115,6 +122,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
       setCarregando(false)
       if ('erro' in r) { setErro(r.erro); return }
       setFaixas(r.faixas || []); setSecoes(r.secoes || [])
+      setBeneficiarias(r.beneficiarias || [])
       setPendentes(r.faturas_pendentes || []); setTitular(r.titular || null)
       if (r.tipo_rede && ['monofasico', 'bifasico', 'trifasico'].includes(r.tipo_rede)) setRede(r.tipo_rede as any)
       setTelhado(r.tipo_telhado || '')
@@ -141,7 +149,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   }, [conversaId])
 
   // Qualquer mudança na entrada invalida o cálculo e o PDF
-  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, telhado, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes, aumento])
+  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, telhado, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes, aumento, beneficiarias])
   // Trocou o sistema: o modelo escolhido não vale mais (menos ao restaurar a proposta salva)
   useEffect(() => {
     if (pularResetSistema.current) { pularResetSistema.current = false; return }
@@ -152,6 +160,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   const fasesRede = rede === 'trifasico' ? 'tri' : 'mono'
   const inversoresDoSistema = (catalogo?.inversores[sistema] || []).filter((i) => sistema === 'micro' || !i.fases || i.fases === fasesRede)
 
+  const consumoBenef = beneficiarias.reduce((s, b) => s + (Number(b.consumo_kwh) || 0), 0)
   // Kalebe 2026-10-15: potência do kit ao vivo (mesma conta do servidor) e só
   // os inversores dentro da faixa técnica de CC/CA pra esse kit
   const kit = useMemo(() => {
@@ -167,6 +176,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
     else {
       const tarifa = fatura?.tarifa_kwh || tarifaBase?.tarifa_kwh || 0
       consumo = modo === 'consumo_kwh' ? v : tarifa > 0 ? v / tarifa : 0
+      if (consumo > 0) consumo += consumoBenef
       if (consumo > 0) qtdPlacas = Math.ceil((kwpParaConsumo(consumo, cidade, aumentoPct) * 1000) / placa.potencia_wp)
     }
     if (!(qtdPlacas > 0)) return null
@@ -184,7 +194,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
     const geracao = Math.round(kwp * kwhPorKwpMes(cidade))
     return { placa, qtdPlacas, kwp, consumo, aumentoPct, ops, recomendado, escolhido, qtdInv, potCa, fci: potCa > 0 ? kwp / potCa : 0, geracao }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogo, placaId, valor, modo, aumento, fatura, tarifaBase, cidade, rede, sistema, inversorId, inversorQtd, inversorKw])
+  }, [catalogo, placaId, valor, modo, aumento, fatura, tarifaBase, cidade, rede, sistema, inversorId, inversorQtd, inversorKw, consumoBenef])
   const opcoesCompativeis = kit ? kit.ops.filter((o) => o.compativel) : []
   // O kit mudou e o inversor escolhido saiu da faixa técnica: volta pro recomendado
   useEffect(() => {
@@ -223,7 +233,34 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
       aumento_geracao_pct: modo !== 'qtd_placas' ? Math.min(Math.max(Math.round(num(aumento)), 0), AUMENTO_GERACAO_MAX_PCT) : 0,
     },
     secoes,
+    beneficiarias,
   })
+
+  // ── Unidades beneficiárias ──
+  async function abrirPainelBenef() {
+    setPainelBenef(true)
+    if (!arquivosConv) {
+      const r = await arquivosFaturaConversaAction(conversaId)
+      setArquivosConv('erro' in r ? [] : r.arquivos)
+    }
+  }
+  async function lerBenef(mensagemId: string) {
+    setErro(null); setLendoBenef(mensagemId)
+    try {
+      const r = await lerFaturaBeneficiariaAction(conversaId, mensagemId)
+      if ('erro' in r) { setErro(r.erro); return }
+      setBeneficiarias((bs) => [...bs.filter((b) => b.mensagem_id !== r.mensagem_id), {
+        uc: r.uc, titular: r.titular, consumo_kwh: r.consumo_kwh, arquivo_url: r.arquivo_url, arquivo_nome: r.arquivo_nome, arquivo_tipo: r.arquivo_tipo, mensagem_id: r.mensagem_id,
+      }])
+    } finally { setLendoBenef(null) }
+  }
+  function adicionarBenefManual() {
+    const c = num(benefManual.consumo)
+    if (!(c > 0)) return
+    setBeneficiarias((bs) => [...bs, { uc: benefManual.uc.trim(), titular: benefManual.titular.trim(), consumo_kwh: Math.round(c) }])
+    setBenefManual({ uc: '', titular: '', consumo: '' })
+  }
+  const mudarBenef = (i: number, patch: Partial<BeneficiariaProposta>) => setBeneficiarias((bs) => bs.map((b, j) => (j === i ? { ...b, ...patch } : b)))
 
   async function calcular() {
     setErro(null); setOcupado('calculando')
@@ -411,6 +448,70 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
                     %
                   </label>
                 </div>
+              </div>
+            )}
+
+            {/* Kalebe 2026-10-17: unidades beneficiárias — consumo soma no dimensionamento */}
+            {modo !== 'qtd_placas' && (
+              <div className="space-y-2 rounded-2xl border border-white/10 p-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[11px] font-bold text-white/60">Unidades beneficiárias</span>
+                  {beneficiarias.length > 0 && (
+                    <span className="text-[11px] text-white/70 tabular-nums">+{fmtNum(consumoBenef, 0)} kWh/mês</span>
+                  )}
+                </div>
+                {beneficiarias.map((b, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_92px_auto] gap-2 items-center rounded-lg border border-white/10 px-2 py-1.5">
+                    <span className="text-[12px] text-white/85 truncate">
+                      {b.uc ? `UC ${b.uc}` : `Beneficiária ${i + 1}`}{b.titular ? ` · ${b.titular}` : ''}
+                      {b.arquivo_url && <a href={b.arquivo_url} target="_blank" rel="noreferrer" className="ml-1.5 text-white/60 hover:text-white">📄</a>}
+                    </span>
+                    <input value={String(b.consumo_kwh || '')} onChange={(e) => mudarBenef(i, { consumo_kwh: Math.round(num(e.target.value)) })} inputMode="numeric"
+                      aria-label="Consumo kWh/mês" className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-end" />
+                    <button type="button" onClick={() => setBeneficiarias((bs) => bs.filter((_, j) => j !== i))} aria-label="Tirar"
+                      className="w-6 h-6 rounded-full bg-white/[0.06] text-white/60 hover:text-white text-[11px]">✕</button>
+                  </div>
+                ))}
+                {beneficiarias.length > 0 && num(valor) > 0 && (
+                  <p className="text-[11px] text-white/55">
+                    Consumo total: {fmtNum(modo === 'consumo_kwh' ? num(valor) : kit?.consumo ? kit.consumo - consumoBenef : 0, 0)} (principal) + {fmtNum(consumoBenef, 0)} (beneficiárias) = {fmtNum((modo === 'consumo_kwh' ? num(valor) : kit?.consumo ? kit.consumo - consumoBenef : 0) + consumoBenef, 0)} kWh/mês
+                  </p>
+                )}
+                {!painelBenef ? (
+                  <button type="button" onClick={abrirPainelBenef} className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold text-start">＋ Adicionar UC beneficiária</button>
+                ) : (
+                  <div className="rounded-xl border border-sol/40 p-2 space-y-2">
+                    <p className="text-[11px] font-bold text-white/70">Fatura da conversa — ler e adicionar:</p>
+                    {arquivosConv === null ? <p className="text-[11px] text-white/45">Carregando os arquivos…</p>
+                      : arquivosConv.length === 0 ? <p className="text-[11px] text-white/45">Nenhum PDF ou foto nesta conversa — adicione à mão abaixo.</p>
+                      : (
+                        <div className="max-h-40 overflow-y-auto space-y-1">
+                          {arquivosConv.map((f) => (
+                            <div key={f.mensagem_id} className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-white/70 truncate">
+                                {/pdf/i.test(f.mime || '') ? '📄' : '🖼️'} {f.nome} · {new Date(f.criada_em).toLocaleDateString('pt-BR')}
+                                {f.lida_uc ? ` · UC ${f.lida_uc}` : ''}{f.lida_consumo ? ` · ${fmtNum(f.lida_consumo, 0)} kWh` : ''}
+                              </span>
+                              <button type="button" onClick={() => lerBenef(f.mensagem_id)} disabled={!!lendoBenef || beneficiarias.some((b) => b.mensagem_id === f.mensagem_id)}
+                                className="shrink-0 px-2.5 py-1 rounded-lg bg-weg-azul text-white text-[11px] font-bold disabled:opacity-40">
+                                {lendoBenef === f.mensagem_id ? 'Lendo…' : beneficiarias.some((b) => b.mensagem_id === f.mensagem_id) ? 'Adicionada' : 'Ler e adicionar'}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    <p className="text-[11px] font-bold text-white/70 pt-1">Ou à mão:</p>
+                    <div className="grid grid-cols-[1fr_1fr_88px_auto] gap-1.5">
+                      <input value={benefManual.uc} onChange={(e) => setBenefManual({ ...benefManual, uc: e.target.value })} placeholder="UC" className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs" />
+                      <input value={benefManual.titular} onChange={(e) => setBenefManual({ ...benefManual, titular: e.target.value })} placeholder="Titular" className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs" />
+                      <input value={benefManual.consumo} onChange={(e) => setBenefManual({ ...benefManual, consumo: e.target.value })} inputMode="numeric" placeholder="kWh/mês" className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs text-end" />
+                      <button type="button" onClick={adicionarBenefManual} disabled={!(num(benefManual.consumo) > 0)} className="px-2.5 rounded-lg bg-weg-azul text-white text-[11px] font-bold disabled:opacity-40">Adicionar</button>
+                    </div>
+                    <div className="flex justify-end">
+                      <button type="button" onClick={() => setPainelBenef(false)} className="text-[11px] text-white/60 hover:text-white">Fechar</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

@@ -54,6 +54,8 @@ export type OpcoesKit = {
   complementos_cc?: { tipo_telhado: string | null }
   /** Kalebe 2026-10-15: gerar X% a mais que o consumo (aumento previsto) — consumo/valor da conta */
   aumento_geracao_pct?: number | null
+  /** Kalebe 2026-10-17: unidades beneficiárias (o consumo delas soma no dimensionamento) */
+  beneficiarias?: { qtd: number; consumo_kwh: number } | null
 }
 
 export type ComplementosOrcamento = { tipo_telhado: string | null; itens: ItemComplementoCC[]; total: number; avisos: string[] }
@@ -207,16 +209,24 @@ export async function montarOrcamentoLead(admin: Admin, e: {
   let qtdPlacas = 0
   // Kalebe 2026-10-15: aumento extra de geração (% sobre o consumo)
   const aumento = Math.min(Math.max(Math.round(Number(op.aumento_geracao_pct) || 0), 0), AUMENTO_GERACAO_MAX_PCT)
+  // Kalebe 2026-10-17: unidades beneficiárias somam no consumo
+  const benef = op.beneficiarias && op.beneficiarias.consumo_kwh > 0 ? op.beneficiarias : null
+  const premissaBenef = () => {
+    if (benef) premissas.push(`Inclui ${benef.qtd} unidade${benef.qtd === 1 ? '' : 's'} beneficiária${benef.qtd === 1 ? '' : 's'}: +${Math.round(benef.consumo_kwh)} kWh/mês`)
+  }
   if (e.entrada.modo === 'consumo_kwh') {
-    consumo = e.entrada.consumo_kwh
+    consumo = e.entrada.consumo_kwh + (benef?.consumo_kwh || 0)
     kwpAlvo = kwpParaConsumo(consumo, e.cidade, aumento)
-    premissas.push(`Consumo médio de ${Math.round(consumo)} kWh/mês`)
+    premissas.push(`Consumo médio de ${Math.round(e.entrada.consumo_kwh)} kWh/mês`)
+    premissaBenef()
     if (e.entrada.tarifa?.tarifa_kwh) premissas.push(rotuloTarifa(e.entrada.tarifa))
   } else if (e.entrada.modo === 'valor_mensal') {
     if (!(e.entrada.tarifa?.tarifa_kwh > 0)) return { erro: 'Sem tarifa pra converter o valor da conta em kWh (precisa da fatura ou da base de tarifas)' }
-    consumo = e.entrada.valor_mensal / e.entrada.tarifa.tarifa_kwh
+    const doValor = e.entrada.valor_mensal / e.entrada.tarifa.tarifa_kwh
+    consumo = doValor + (benef?.consumo_kwh || 0)
     kwpAlvo = kwpParaConsumo(consumo, e.cidade, aumento)
-    premissas.push(`Conta média de R$ ${e.entrada.valor_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (≈ ${Math.round(consumo)} kWh/mês)`)
+    premissas.push(`Conta média de R$ ${e.entrada.valor_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (≈ ${Math.round(doValor)} kWh/mês)`)
+    premissaBenef()
     premissas.push(rotuloTarifa(e.entrada.tarifa))
   } else {
     qtdPlacas = Math.max(1, Math.round(e.entrada.qtd_placas))
