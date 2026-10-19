@@ -8,6 +8,7 @@ import {
   type DadosRecarga, type EquipamentoCatalogoRecarga, type NovoEquipamentoRecarga,
 } from '@/lib/estacao-ve/proposta-recarga-servidor'
 import type { EntradaRecarga, PropostaRecarga } from '@/lib/estacao-ve/proposta-recarga'
+import { gerarPdfMemorialIN23 } from '@/lib/estacao-ve/pdf-memorial-in23'
 import { enviarPropostaPeloCanalAction } from '@/app/inbox/actions'
 
 /**
@@ -71,4 +72,44 @@ export async function enviarPdfProjetoRecargaAction(projeto_id: string, url_pdf:
   })
   if ('erro' in r) return { erro: r.erro }
   return { sucesso: true }
+}
+
+/**
+ * Kalebe 2026-10-17: memorial técnico da IN 23 do CBMSC (sem preços), a partir
+ * da proposta salva — dimensionamento, enquadramento, requisitos a conferir na
+ * obra e os campos do relatório do e-SCI (Anexo A ou B).
+ */
+export async function gerarMemorialIN23Action(projeto_id: string): Promise<{ url_pdf: string } | { erro: string }> {
+  const a = await acesso(projeto_id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const { data: pj } = await a.admin.from('projetos')
+    .select('codigo, cliente_id, cliente_razao_social, endereco_instalacao, cliente_endereco, ve_recarga_selecionada').eq('id', projeto_id).maybeSingle()
+  const projeto = pj as any
+  const sel = projeto?.ve_recarga_selecionada
+  if (!projeto || !(sel?.versao === 2 && sel.entrada)) return { erro: 'Gere a proposta da estação primeiro — o memorial usa a proposta salva' }
+  const entrada = sel.entrada as EntradaRecarga
+  if (!entrada.respostas?.in23?.tipo_local) return { erro: 'Responda o bloco "Segurança contra incêndio (IN 23)" e gere a proposta de novo' }
+  const { proposta } = await calcularNoServidor(a.admin, entrada, true)
+
+  let nome = projeto.cliente_razao_social || null
+  if (!nome && projeto.cliente_id) {
+    const { data: c } = await a.admin.from('clientes').select('razao_social').eq('id', projeto.cliente_id).maybeSingle()
+    nome = (c as any)?.razao_social || null
+  }
+  const end = projeto.endereco_instalacao && Object.keys(projeto.endereco_instalacao).length ? projeto.endereco_instalacao : projeto.cliente_endereco || null
+  const { data: empresa } = await a.admin.from('configuracoes_empresa').select('*').limit(1).maybeSingle()
+  const emp = (empresa as any) || {}
+  const pdf = gerarPdfMemorialIN23({
+    codigo_projeto: projeto.codigo || null,
+    cliente_nome: nome || 'Cliente',
+    endereco: end ? { ...end, logradouro: end.logradouro || end.rua || null, cidade: end.cidade || end.municipio || null } : null,
+    rt: { nome: emp.rt_nome, titulo: emp.rt_titulo, registro: emp.rt_crea, telefone: emp.rt_telefone, email: emp.rt_email },
+    empresa: { razao_social: emp.razao_social, telefone: emp.telefone, email: emp.email },
+    proposta,
+    respostas: entrada.respostas,
+  })
+  const caminho = `${projeto_id}/memorial-in23-${Date.now()}.pdf`
+  const up = await a.admin.storage.from('propostas-pdf').upload(caminho, Buffer.from(pdf), { contentType: 'application/pdf', upsert: false })
+  if (up.error) return { erro: `Falha ao guardar o PDF: ${up.error.message}` }
+  return { url_pdf: a.admin.storage.from('propostas-pdf').getPublicUrl(caminho).data.publicUrl }
 }

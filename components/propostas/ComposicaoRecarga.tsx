@@ -15,6 +15,7 @@ const UNIDADES_MATERIAL = [
 ]
 import type { DadosRecarga, EquipamentoCatalogoRecarga, NovoEquipamentoRecarga } from '@/lib/estacao-ve/proposta-recarga-servidor'
 import type { FasesRede } from '@/lib/estacao-ve/montar-lista-ca'
+import { AMBIENTES, TIPOS_LOCAL, in23Padrao, type AmbienteRecarga, type RespostasIN23, type TipoLocalRecarga } from '@/lib/estacao-ve/in23'
 import type { SecaoProposta } from '@/lib/propostas/secoes'
 import { lerDatasheet, subirDatasheet, ehFabricanteWeg, FATOR_CUSTO_WEG } from '@/lib/catalogo/datasheet-cliente'
 import { CampoNumero, inputCls } from './CampoNumero'
@@ -175,6 +176,11 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
     })
   }
   const trechosAtuais = respostas?.trechos || []
+  // Kalebe 2026-10-17: segurança contra incêndio — IN 23 do CBMSC
+  const in23 = respostas?.in23 || in23Padrao()
+  const responderIN23 = (patch: Partial<RespostasIN23>) => responder({ in23: { ...(respostas?.in23 || in23Padrao()), ...patch } })
+  const aplicaIN23 = !!in23.tipo_local && (in23.tipo_local !== 'residencia' || !!in23.aplicar_mesmo_assim)
+  const localFechado = in23.ambiente !== 'externo_descoberto' && in23.ambiente !== 'cobertura_leve'
   const mudarTrecho = (i: number, patch: Partial<TrechoRecarga>) => mudarTrechos(trechosAtuais.map((t, j) => (j === i ? { ...t, ...patch } : t)))
   // Ajustes na lista de materiais (item calculado: por chave; item adicionado: na própria lista)
   const ehManual = (m: LinhaMaterial) => m.chave.startsWith('manual:')
@@ -491,14 +497,15 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
             </ul>
             {/* Kalebe 2026-10-15: excluir, editar quantidade e valor, adicionar item (elétrico ou alvenaria) */}
             <details className="rounded-xl border border-white/10 px-3 py-2" open={verMateriais} onToggle={(e) => setVerMateriais((e.target as HTMLDetailsElement).open)}>
-              <summary className="text-[11px] font-bold text-white/70 cursor-pointer">Ver e editar materiais (proteção, cabos, infraestrutura, aterramento e extras)</summary>
+              <summary className="text-[11px] font-bold text-white/70 cursor-pointer">Ver e editar materiais (proteção, cabos, infraestrutura, aterramento, segurança e extras)</summary>
               <ul className="mt-2 space-y-2">
                 {p.materiais.map((m) => (
-                  <li key={m.chave} className={`rounded-lg border px-2 py-1.5 space-y-1 ${m.editado ? 'border-sol/50' : m.origem === 'manual' ? 'border-weg-azul/50' : 'border-white/10'}`}>
+                  <li key={m.chave} className={`rounded-lg border px-2 py-1.5 space-y-1 ${m.origem === 'parametro' && !(m.preco_unitario > 0) ? 'border-coral/60' : m.editado ? 'border-sol/50' : m.origem === 'manual' ? 'border-weg-azul/50' : 'border-white/10'}`}>
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-[11px] text-white/80">
                         {m.descricao}
                         {m.origem === 'referencia' && <span className="text-white/35"> · ref.</span>}
+                        {m.origem === 'parametro' && !(m.preco_unitario > 0) && <span className="text-white/50"> · falta o valor (painel de precificação ou digite aqui)</span>}
                         {m.origem === 'manual' && <span className="text-white/45"> · {m.grupo === 'alvenaria' ? 'alvenaria' : 'elétrico'} (adicionado)</span>}
                       </span>
                       <button type="button" onClick={() => excluirMaterial(m)} aria-label="Excluir material" title="Excluir"
@@ -566,8 +573,94 @@ export function ComposicaoRecarga({ api, nomeCliente, onEnviada }: {
         )}
       </Bloco>
 
-      {/* 4. Seções incorporadas (aluguel, alvenaria, elétrica predial…) */}
-      <Bloco n="4" titulo="Serviços adicionais" valor={secoes.length ? reais(secoes.reduce((s, x) => s + (x.valor > 0 ? x.valor : 0), 0)) : null}>
+      {/* 4. Segurança contra incêndio — IN 23 do CBMSC (Kalebe 2026-10-17) */}
+      <Bloco n="4" titulo="Segurança contra incêndio (IN 23 CBMSC)">
+        <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Tipo de local</span>
+          <select value={in23.tipo_local || ''} onChange={(e) => responderIN23({ tipo_local: (e.target.value || null) as TipoLocalRecarga | null })}
+            className={`${inputCls} ${in23.tipo_local ? '' : 'border-coral/60'}`}>
+            <option value="" className="bg-noite">Escolha o tipo de local…</option>
+            {TIPOS_LOCAL.map((t) => <option key={t.tipo} value={t.tipo} className="bg-noite">{t.rotulo}</option>)}
+          </select></label>
+        {in23.tipo_local === 'residencia' && (
+          <div className="space-y-1.5">
+            <p className="text-[11px] text-white/55">Casa não é fiscalizada pelo CBMSC (Lei 16.157/2013): a IN 23 não se aplica. Continua o DR 30 mA por carregador (NBR 17019).</p>
+            <Opcao ativo={!!in23.aplicar_mesmo_assim} onClick={() => responderIN23({ aplicar_mesmo_assim: !in23.aplicar_mesmo_assim })}>Aplicar a IN 23 mesmo assim (casa em condomínio com PPCI)</Opcao>
+          </div>
+        )}
+        {aplicaIN23 && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Onde fica a vaga</span>
+                {/* Do mais aberto ao mais fechado: a ordem carrega sentido */}
+                <select value={in23.ambiente} onChange={(e) => responderIN23({ ambiente: e.target.value as AmbienteRecarga })} className={inputCls}>
+                  {AMBIENTES.map((a) => <option key={a.tipo} value={a.tipo} className="bg-noite">{a.rotulo}</option>)}
+                </select></label>
+              <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Pavimentos com recarga</span>
+                <CampoNumero valor={in23.pavimentos} onChange={(n) => responderIN23({ pavimentos: Math.max(1, Math.round(n)) })} /></label>
+            </div>
+            <p className="text-[10px] text-white/45">{AMBIENTES.find((a) => a.tipo === in23.ambiente)?.detalhe}</p>
+            <div className="flex flex-wrap gap-2">
+              <Opcao ativo={in23.preexistente} onClick={() => responderIN23({ preexistente: !in23.preexistente })}>Edificação pronta ou com PPCI aprovado até 25/06/2026</Opcao>
+            </div>
+            {localFechado && (
+              <div className="space-y-1.5">
+                <span className="block text-[11px] font-bold text-white/60">O que o local já tem (PPCI da edificação)</span>
+                <div className="flex flex-wrap gap-2">
+                  <Opcao ativo={in23.deteccao} onClick={() => responderIN23({ deteccao: !in23.deteccao })}>Detecção automática</Opcao>
+                  <Opcao ativo={in23.sprinklers} onClick={() => responderIN23({ sprinklers: !in23.sprinklers })}>Chuveiros automáticos</Opcao>
+                  <Opcao ativo={in23.extracao_fumaca} onClick={() => responderIN23({ extracao_fumaca: !in23.extracao_fumaca })}>Extração mecânica de fumaça</Opcao>
+                  <Opcao ativo={in23.ventilacao_natural} onClick={() => responderIN23({ ventilacao_natural: !in23.ventilacao_natural })}>Ventilação natural (aberturas em 2 lados: 20% das fachadas e 40% do perímetro)</Opcao>
+                  <Opcao ativo={in23.compartimentacao} onClick={() => responderIN23({ compartimentacao: !in23.compartimentacao })}>Compartimentação das saídas</Opcao>
+                  <Opcao ativo={in23.ocupacao_art6} onClick={() => responderIN23({ ocupacao_art6: !in23.ocupacao_art6 })}>Ocupação A-1, A-2, C-1, C-2, D ou H-4</Opcao>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Área do local (m²)</span>
+                    <CampoNumero valor={in23.area_total_m2} onChange={(n) => responderIN23({ area_total_m2: Math.max(0, n) })} /></label>
+                  <label className="block"><span className="block text-[11px] font-bold text-white/60 mb-1">Maior pavimento (m²)</span>
+                    <CampoNumero valor={in23.area_pavimento_m2} onChange={(n) => responderIN23({ area_pavimento_m2: Math.max(0, n) })} /></label>
+                </div>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <span className="block text-[11px] font-bold text-white/60">Desligamento de emergência</span>
+              {in23.preexistente && (
+                <div className="flex flex-wrap gap-2">
+                  <Opcao ativo={in23.desligamento_por_estacao} onClick={() => responderIN23({ desligamento_por_estacao: !in23.desligamento_por_estacao })}>Em cada estação, em vez do ponto único</Opcao>
+                  {in23.desligamento_por_estacao && (
+                    <Opcao ativo={in23.botao_no_equipamento} onClick={() => responderIN23({ botao_no_equipamento: !in23.botao_no_equipamento })}>O carregador tem botão de emergência</Opcao>
+                  )}
+                </div>
+              )}
+              <label className="block max-w-[260px]"><span className="block text-[11px] font-bold text-white/60 mb-1">Do ponto de desligamento até o quadro (m)</span>
+                <CampoNumero valor={in23.distancia_desligamento_m} onChange={(n) => responderIN23({ distancia_desligamento_m: Math.max(0, n) })} /></label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Opcao ativo={in23.rota_unica} onClick={() => responderIN23({ rota_unica: !in23.rota_unica })}>A edificação tem uma só rota de saída</Opcao>
+              {in23.rota_unica && (
+                <Opcao ativo={in23.afastamento_saida_ok} onClick={() => responderIN23({ afastamento_saida_ok: !in23.afastamento_saida_ok })}>Vaga a 5 m ou mais de portas, elevadores e saídas</Opcao>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {p?.in23 && !p.in23.dispensa_pbd && (
+                <Opcao ativo={in23.pbd_pelo_cliente} onClick={() => responderIN23({ pbd_pelo_cliente: !in23.pbd_pelo_cliente })}>PBD por conta do cliente</Opcao>
+              )}
+              <Opcao ativo={in23.regularizacao_pelo_cliente} onClick={() => responderIN23({ regularizacao_pelo_cliente: !in23.regularizacao_pelo_cliente })}>Regularização no e-SCI por conta do cliente</Opcao>
+            </div>
+          </>
+        )}
+        {p?.in23?.aplica && (
+          <div className={`rounded-xl border px-3 py-2 space-y-1 ${p.in23.dispensa_pbd ? 'border-verde/45' : 'border-sol/50'}`}>
+            <p className="text-[11px] font-bold text-white/85">{p.in23.dispensa_pbd ? '✓ Dispensa do PBD — regulariza com o Anexo B' : 'Exige PBD — regulariza com o Anexo A'}</p>
+            {p.in23.hipotese && <p className="text-[11px] text-white/60">{p.in23.hipotese}</p>}
+            <p className="text-[11px] text-white/60">
+              {p.in23.pontos_desligamento} ponto{p.in23.pontos_desligamento === 1 ? '' : 's'} de desligamento · {p.in23.placas_desligamento} placa{p.in23.placas_desligamento === 1 ? '' : 's'} · {p.in23.vagas} vaga{p.in23.vagas === 1 ? '' : 's'} sinalizada{p.in23.vagas === 1 ? '' : 's'}
+            </p>
+          </div>
+        )}
+      </Bloco>
+
+      {/* 5. Seções incorporadas (aluguel, alvenaria, elétrica predial…) */}
+      <Bloco n="5" titulo="Serviços adicionais" valor={secoes.length ? reais(secoes.reduce((s, x) => s + (x.valor > 0 ? x.valor : 0), 0)) : null}>
         <SecoesProposta faixas={dados.faixas || []} secoes={secoes} onChange={setSecoes} />
       </Bloco>
 

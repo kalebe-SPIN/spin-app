@@ -9,7 +9,7 @@ import {
   calcularNoServidor, visaoDoUsuario, dadosBaseRecarga, cadastrarEquipamentoRecarga, gerarPropostaRecarga,
   type DadosRecarga, type EquipamentoCatalogoRecarga, type NovoEquipamentoRecarga,
 } from '@/lib/estacao-ve/proposta-recarga-servidor'
-import type { EntradaRecarga, PropostaRecarga } from '@/lib/estacao-ve/proposta-recarga'
+import { conferirParaPdf, type EntradaRecarga, type PropostaRecarga } from '@/lib/estacao-ve/proposta-recarga'
 
 /**
  * Proposta de estação de recarga montada dentro do Spinzap (Kalebe
@@ -70,13 +70,9 @@ export async function gerarPdfPropostaRecargaAction(conversa_id: string, entrada
   if ('erro' in a) return { erro: a.erro as string }
   // Valida antes de criar projeto (não deixa projeto vazio pra trás)
   const { proposta: previa } = await calcularNoServidor(a.admin, entrada, a.ehAdmin)
-  if (!previa.equipamentos.length) return { erro: 'Adicione pelo menos um equipamento (ou o carregador do cliente, com a potência)' }
-  // Carregador do cliente (sem equipamento) não tem custo — só a potência
-  const semCusto = previa.equipamentos.filter((e) => !e.do_cliente && !(e.preco_unitario > 0))
-  if (semCusto.length) return { erro: `Falta o custo de: ${semCusto.map((e) => e.modelo).join(', ')}` }
-  const semPotencia = previa.equipamentos.filter((e) => e.tipo === 'carregador' && !(e.potencia_kw > 0))
-  if (semPotencia.length) return { erro: `Falta a potência (kW) de: ${semPotencia.map((e) => e.modelo).join(', ')}` }
-  if (previa.pendencias_custo.length) return { erro: `Defina no ⚙️ Precificação (estação de recarga): ${previa.pendencias_custo.join('; ')}` }
+  // Mesma conferência do servidor (equipamento, custo, potência, IN 23, painel)
+  const falta = conferirParaPdf(previa)
+  if (falta) return { erro: falta }
 
   const proj = await garantirProjetoDaCategoria(a.admin, {
     contato: a.contato, categoria: 'recarga', tipo: 've_recarga', usuario_id: a.user.id,

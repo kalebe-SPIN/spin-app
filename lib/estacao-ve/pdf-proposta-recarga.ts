@@ -47,6 +47,8 @@ const UNIDADE: Record<string, [string, string]> = {
   un: ['un.', 'un.'], m: ['m', 'm'], barra: ['barra', 'barras'],
   // Itens adicionados à mão (Kalebe 2026-10-15)
   'm²': ['m²', 'm²'], 'm³': ['m³', 'm³'], kg: ['kg', 'kg'], saco: ['saco', 'sacos'], 'lata': ['lata', 'latas'], vb: ['vb', 'vb'],
+  // IN 23 (Kalebe 2026-10-17)
+  vaga: ['vaga', 'vagas'],
 }
 
 export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
@@ -95,13 +97,19 @@ export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
     espaco(4.6 * partes.length + 1)
     doc.text(partes, L, y); y += 4.6 * partes.length + 1.5
   }
-  const servico = (nome: string, texto: string) => {
+  const servico = (nome: string, texto: string) => item(`${nome}: ${texto}`)
+  function item(texto: string) {
     doc.setFontSize(9)
-    const partes = doc.splitTextToSize(`${nome}: ${texto}`, W - 4) as string[]
+    const partes = doc.splitTextToSize(texto, W - 4) as string[]
     espaco(4.6 * partes.length + 1)
     doc.setFont('helvetica', 'normal'); doc.setTextColor(60, 60, 60)
     doc.text('•', L, y)
     doc.text(partes, L + 4, y); y += 4.6 * partes.length + 1.5
+  }
+  const subtitulo = (t: string) => {
+    espaco(8)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(40, 40, 40)
+    doc.text(t, L, y); y += 5
   }
 
   // Cliente: só nome + CPF/CNPJ
@@ -126,6 +134,13 @@ export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
   titulo('2. Projeto')
   servico('Diagrama unifilar', 'elaboração do documento técnico da instalação, assinado por RT habilitado.')
   servico('Diagrama trifilar', 'detalhamento das fases, neutros e proteções, assinado por RT habilitado.')
+  // IN 23 do CBMSC (Kalebe 2026-10-17): o que a Spin faz junto ao Corpo de Bombeiros
+  if (p.projeto.some((x) => x.chave === 'regularizacao_cbmsc')) {
+    servico('Regularização no CBMSC (e-SCI)', `relatório do Anexo ${p.in23?.anexo || 'B'} da IN 23, croqui das estações e ART, protocolados após a execução completa.`)
+  }
+  if (p.projeto.some((x) => x.chave === 'pbd')) {
+    servico('Projeto Baseado em Desempenho (PBD)', 'estudo de segurança contra incêndio exigido pela IN 23 para este local, assinado por responsável técnico.')
+  }
   y += 3
 
   // 3. Execução
@@ -147,7 +162,11 @@ export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
   if (km > 0) servico('Deslocamento', `${num(km * 2)} km rodados (ida + volta) da Spin Solar até o local do cliente.`)
   if (p.materiais.length) {
     y += 2
-    paragrafo('Materiais elétricos complementares para instalação em conformidade com a NBR 5410 e requisitos da concessionária:')
+    paragrafo(p.in23?.aplica
+      ? 'Materiais elétricos e de segurança para instalação em conformidade com a NBR 5410, a NBR 17019, a IN 23 do CBMSC e os requisitos da concessionária:'
+      : p.in23
+        ? 'Materiais elétricos complementares para instalação em conformidade com a NBR 5410, a NBR 17019 e os requisitos da concessionária:'
+        : 'Materiais elétricos complementares para instalação em conformidade com a NBR 5410 e requisitos da concessionária:')
     for (const m of p.materiais) {
       const [um, varios] = UNIDADE[m.unidade] || ['un.', 'un.']
       linha(m.descricao, `${num(m.qtd)} ${m.qtd === 1 ? um : varios}`)
@@ -155,9 +174,27 @@ export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
   }
   y += 4
 
+  // Segurança contra incêndio — IN 23 do CBMSC (Kalebe 2026-10-17)
+  let n = 4
+  if (p.in23) {
+    titulo(`${n++}. Segurança contra incêndio — IN 23 do CBMSC`)
+    if (!p.in23.aplica) {
+      paragrafo(`${p.in23.motivo}. A instalação segue a NBR 5410 e a NBR 17019: circuito dedicado por carregador, com disjuntor, DR 30 mA e DPS.`)
+    } else {
+      paragrafo(p.in23.hipotese
+        ? `Enquadramento: dispensa do Projeto Baseado em Desempenho (PBD) — ${p.in23.hipotese}.`
+        : 'Enquadramento: o local não se enquadra nas dispensas do art. 6º e exige Projeto Baseado em Desempenho (PBD), conforme os arts. 19 a 37.')
+      subtitulo('Incluso nesta proposta')
+      for (const t of p.in23.exigencias) item(`${t}.`)
+      subtitulo('Por conta do cliente ou do condomínio')
+      for (const t of p.in23.cliente) item(`${t}.`)
+    }
+    y += 3
+  }
+
   // Seções incorporadas (aluguel, alvenaria, elétrica predial…): escopo, sem preço
   if (p.secoes.length) {
-    titulo('4. Serviços adicionais')
+    titulo(`${n}. Serviços adicionais`)
     for (const s of p.secoes) {
       const r = rotuloSecao(s)
       servico(r.titulo, r.detalhe || 'incluso')
@@ -171,6 +208,7 @@ export function gerarPdfPropostaRecarga(d: DadosPdfRecarga): ArrayBuffer {
     titulo('Investimento — condições acordadas')
     for (const l of linhasInvestimentoFinal(d.fechamento)) linha(l.rotulo, l.valor, !!l.destaque)
   } else {
+    espaco(36)   // total e formas de pagamento na mesma página
     titulo('Investimento')
     linha(p.secoes.length ? 'Valor total (estação e serviços adicionais)' : 'Valor total (equipamentos, projeto e execução)', reais(p.total_geral), true)
     const f = d.formas_pagamento

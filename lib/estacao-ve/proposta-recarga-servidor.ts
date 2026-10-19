@@ -2,7 +2,7 @@ import type { createAdminClient } from '@/lib/supabase/admin'
 import { calcularFormasPagamento, getNum, paramsToRecord, type ParametrosVigentes } from '@/lib/precificacao/calcular'
 import { imagemComoDataUrl } from '@/lib/spinzap/orcamento-lais'
 import {
-  calcularPropostaRecarga, respostasPadrao,
+  calcularPropostaRecarga, conferirParaPdf, respostasPadrao,
   type EntradaRecarga, type ParametrosRecarga, type PropostaRecarga, type TipoEquipamentoRecarga,
 } from './proposta-recarga'
 import { gerarPdfPropostaRecarga } from './pdf-proposta-recarga'
@@ -70,6 +70,15 @@ export async function carregarParametrosRecarga(admin: Admin): Promise<{ params:
       vala_m: getNum(rec, 've_vala_m', 0),
       tubo_subterraneo_m: getNum(rec, 've_tubo_subterraneo_m', 0),
       concretagem_m: getNum(rec, 've_concretagem_m', 0),
+      // Kalebe 2026-10-17: NBR 17019 / IN 23 do CBMSC — sem valor padrão (não chutar)
+      dr_bipolar: getNum(rec, 've_dr_bipolar', 0),
+      dr_tetrapolar: getNum(rec, 've_dr_tetrapolar', 0),
+      desligamento_emergencia: getNum(rec, 've_desligamento_emergencia', 0),
+      cabo_comando_m: getNum(rec, 've_cabo_comando_m', 0),
+      placa_in23: getNum(rec, 've_placa_in23', 0),
+      sinalizacao_vaga: getNum(rec, 've_sinalizacao_vaga', 0),
+      regularizacao_cbmsc: getNum(rec, 've_regularizacao_cbmsc', 0),
+      pbd: getNum(rec, 've_pbd', 0),
     },
   }
 }
@@ -257,13 +266,8 @@ export async function gerarPropostaRecarga(admin: Admin, a: {
   fechamento?: FechamentoVenda | null
 }): Promise<{ url_pdf: string; proposta: PropostaRecarga } | { erro: string }> {
   const { proposta, params, record } = await calcularNoServidor(admin, a.entrada, a.ehAdmin)
-  if (!proposta.equipamentos.length) return { erro: 'Adicione pelo menos um equipamento (ou o carregador do cliente, com a potência)' }
-  const semCusto = proposta.equipamentos.filter((e) => !e.do_cliente && !(e.preco_unitario > 0))
-  if (semCusto.length) return { erro: `Falta o custo de: ${semCusto.map((e) => e.modelo).join(', ')}` }
-  const semPotencia = proposta.equipamentos.filter((e) => e.tipo === 'carregador' && !(e.potencia_kw > 0))
-  if (semPotencia.length) return { erro: `Falta a potência (kW) de: ${semPotencia.map((e) => e.modelo).join(', ')}` }
-  if (proposta.pendencias_custo.length) return { erro: `Defina no ⚙️ Precificação (estação de recarga): ${proposta.pendencias_custo.join('; ')}` }
-  if (!(proposta.pv_total > 0)) return { erro: proposta.avisos[0] || 'Não deu pra calcular o preço' }
+  const falta = conferirParaPdf(proposta, { final: !!a.fechamento })
+  if (falta) return { erro: falta }
 
   const { data: pj } = await admin.from('projetos')
     .select('codigo, cliente_id, cliente_razao_social, cliente_cpf_cnpj, endereco_instalacao, cliente_endereco, wa_contato_id, ve_recarga_selecionada')

@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { ComposicaoRecargaProjeto } from '@/components/propostas/ComposicaoRecargaProjeto'
+import { BotaoMemorialIN23 } from '@/components/propostas/BotaoMemorialIN23'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -38,6 +39,8 @@ export default async function VeRecargaPage({ params }: { params: { id: string }
           </div>
           <h1 className="text-2xl md:text-3xl font-black text-white">⚡ Proposta da estação de recarga</h1>
           <p className="text-white/60 mt-1 text-sm">{projeto.cliente_razao_social} · equipamentos → projeto → execução</p>
+          {/* Kalebe 2026-10-17: memorial técnico da IN 23 do CBMSC, pro RT */}
+          <div className="mt-3"><BotaoMemorialIN23 projetoId={projeto.id} /></div>
         </header>
         <ComposicaoRecargaProjeto projetoId={projeto.id} nomeCliente={projeto.cliente_razao_social || ''} />
       </div>

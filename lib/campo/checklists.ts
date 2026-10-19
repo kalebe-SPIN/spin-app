@@ -1,4 +1,5 @@
 import type { ItemChecklist } from './comum'
+import { checklistRecargaIN23, type RespostasIN23 } from '@/lib/estacao-ve/in23'
 
 /**
  * Checklist da ordem de serviço por tipo (Kalebe 2026-10-05). RASCUNHO pra
@@ -58,17 +59,19 @@ const POR_TIPO: Record<string, string[]> = {
     'Executar o serviço descrito na demanda',
     'Teste de funcionamento e identificação dos circuitos',
   ],
-  ve_recarga: [
-    'Conferir circuito dedicado e proteção (disjuntor/DR) da estação',
-    'Fixação da estação de recarga',
-    'Teste de recarga com o veículo ou simulador',
-    'Configurar app/estação com o cliente',
-  ],
+  // Kalebe 2026-10-17: NBR 17019 + IN 23 do CBMSC (lib/estacao-ve/in23.ts)
+  ve_recarga: checklistRecargaIN23(null, 0),
 }
 POR_TIPO.fv_ongrid = POR_TIPO.srv_instalacao_placas
 POR_TIPO.fv_hibrido = [...POR_TIPO.srv_instalacao_placas, 'Baterias instaladas, ligadas e reconhecidas pelo inversor híbrido']
 
-export function checklistPadrao(tipo: string): ItemChecklist[] {
-  const meio = POR_TIPO[tipo] || ['Executar o serviço descrito na demanda']
+/**
+ * Estação de recarga: com as respostas da IN 23 da proposta, o checklist
+ * traz o desligamento de emergência, placas, vagas e a regularização.
+ */
+export function checklistPadrao(tipo: string, recarga?: { in23?: RespostasIN23 | null; qtd_carregadores?: number } | null): ItemChecklist[] {
+  const meio = tipo === 've_recarga' && recarga
+    ? checklistRecargaIN23(recarga.in23 || null, recarga.qtd_carregadores || 0)
+    : POR_TIPO[tipo] || ['Executar o serviço descrito na demanda']
   return [...INICIO, ...meio, ...FIM].map((item) => ({ item, feito: false, obs: null }))
 }

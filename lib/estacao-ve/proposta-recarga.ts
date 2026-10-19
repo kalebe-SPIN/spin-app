@@ -1,5 +1,6 @@
 import { deduzirFasesPorPotencia, type FasesRede } from './montar-lista-ca'
 import { totalSecoes, type SecaoProposta } from '@/lib/propostas/secoes'
+import { enquadrarIN23, in23Padrao, type EnquadramentoIN23, type RespostasIN23 } from './in23'
 
 /**
  * Proposta da estação de recarga (Kalebe 2026-10-14) — composição na ordem
@@ -69,6 +70,12 @@ export type RespostasRecarga = {
   km_deslocamento: number
   /** Metragem por tipo de intervenção (quando há, manda sobre distância e marcações acima) */
   trechos?: TrechoRecarga[]
+  /**
+   * Kalebe 2026-10-17: segurança contra incêndio — IN 23 do CBMSC (lib/estacao-ve/in23.ts).
+   * Com este bloco entram o DR por circuito (NBR 17019) e as exigências da IN.
+   * Proposta antiga (sem ele) calcula como antes.
+   */
+  in23?: RespostasIN23
 }
 
 /**
@@ -146,9 +153,18 @@ export type ParametrosRecarga = {
   vala_m: number
   tubo_subterraneo_m: number
   concretagem_m: number
+  /** Kalebe 2026-10-17 — NBR 17019 e IN 23 do CBMSC (0 = falta definir no painel) */
+  dr_bipolar: number
+  dr_tetrapolar: number
+  desligamento_emergencia: number
+  cabo_comando_m: number
+  placa_in23: number
+  sinalizacao_vaga: number
+  regularizacao_cbmsc: number
+  pbd: number
 }
 
-export type GrupoMaterial = 'protecao' | 'cabos' | 'infra' | 'aterramento' | 'eletrico' | 'alvenaria'
+export type GrupoMaterial = 'protecao' | 'cabos' | 'infra' | 'aterramento' | 'seguranca' | 'eletrico' | 'alvenaria'
 export type LinhaMaterial = {
   codigo: string
   /** Identifica a linha pros ajustes (código + potência do circuito; item adicionado: manual:<id>) */
@@ -203,6 +219,10 @@ export type PropostaRecarga = {
   distancia_total_m: number
   /** Custos que faltam definir no painel — sem eles não gera o PDF (preço sairia baixo) */
   pendencias_custo: string[]
+  /** Dados que faltam responder (ex.: tipo de local da IN 23) — sem eles não gera o PDF */
+  pendencias_dados: string[]
+  /** Enquadramento na IN 23 do CBMSC (null = proposta antiga, sem o bloco) */
+  in23: EnquadramentoIN23 | null
   /** Materiais calculados que foram excluídos à mão (a tela permite restaurar) */
   materiais_removidos: LinhaMaterial[]
 }
@@ -303,6 +323,15 @@ export function calcularPropostaRecarga(
     const pr = preco(codigo, ref)
     materiais.push({ codigo, chave, descricao, grupo, qtd, unidade, preco_unitario: pr.v, origem: pr.origem })
   }
+  // Itens sem preço de referência (NBR 17019 / IN 23): valor do painel; 0 = falta definir (não chutar)
+  const comValorDoPainel = new Map<string, string>()
+  const addParametro = (codigo: string, descricao: string, grupo: GrupoMaterial, qtd: number, unidade: string, valor: number, falta: string, chave = codigo) => {
+    if (!(qtd > 0)) return
+    materiais.push({ codigo, chave, descricao, grupo, qtd, unidade, preco_unitario: Math.max(0, Number(valor) || 0), origem: 'parametro' })
+    comValorDoPainel.set(chave, falta)
+  }
+  // Kalebe 2026-10-17: IN 23 do CBMSC (só nas propostas com o bloco de segurança)
+  const in23 = r.in23 ? enquadrarIN23(r.in23, qtdCarregadores) : null
 
   // Agrupa carregadores de mesma potência (cada um tem circuito próprio)
   const porPotencia = new Map<number, number>()
@@ -321,6 +350,12 @@ export function calcularPropostaRecarga(
     add(codDisj, `Disjuntor ${tri ? 'tripolar' : 'bipolar'} ${disj} A curva C — carregador ${br(kw, 1)} kW`, 'protecao', qtd,
       'un', tri ? REF.disjuntor_tripolar : REF.disjuntor_bipolar, `DISJUNTOR@${kw}`)
     add('DPS-CL2-275V-20KA', `DPS classe II 275 V 20 kA — carregador ${br(kw, 1)} kW`, 'protecao', dpsPorCircuito * qtd, 'un', REF.dps_classe2, `DPS@${kw}`)
+    // NBR 17019: DR 30 mA em cada ponto de recarga (IN 23 art. 7º)
+    if (r.in23) {
+      addParametro(tri ? 'DR-30MA-4P' : 'DR-30MA-2P',
+        `Interruptor DR 30 mA ${tri ? 'tetrapolar' : 'bipolar'} de ${disj} A ou mais (tipo A com detecção CC 6 mA no carregador, ou tipo B) — carregador ${br(kw, 1)} kW`,
+        'protecao', qtd, 'un', tri ? p.dr_tetrapolar : p.dr_bipolar, `valor do DR 30 mA ${tri ? 'tetrapolar' : 'bipolar'}`, `DR@${kw}`)
+    }
     const metros = Math.ceil(distancia * condutores * 1.15) * qtd
     if (bitola > 25) avisos.push(`Cabo de ${bitola} mm² sem preço de referência — confira o valor da linha de cabos`)
     add(`CABO-${bitola}MM2`, `Cabo ${bitola} mm² (${condutores} condutores × ${br(distancia)} m${qtd > 1 ? ` × ${qtd} circuitos` : ''})`, 'cabos',
@@ -369,6 +404,28 @@ export function calcularPropostaRecarga(
     add('CABO-NU-16MM2', 'Cabo de cobre nu 16 mm² (haste até o quadro)', 'aterramento', 3, 'm', REF.cabo_nu_16_m)
   }
 
+  // Segurança contra incêndio — IN 23 do CBMSC (Kalebe 2026-10-17)
+  if (in23?.aplica && circuitos > 0) {
+    const ri = r.in23!
+    const porEstacao = ri.desligamento_por_estacao && ri.preexistente
+    addParametro('DESLIGAMENTO-EMERGENCIA',
+      `Desligamento de emergência — botoeira com trava que desliga ${porEstacao ? 'a estação' : 'todas as estações do pavimento'} (contator ou bobina de disparo), entre 0,90 m e 1,35 m do piso (IN 23 art. 9º)`,
+      'seguranca', in23.pontos_desligamento, 'un', p.desligamento_emergencia, 'valor do desligamento de emergência (por ponto)')
+    const mComando = Math.max(0, Number(ri.distancia_desligamento_m) || 0)
+    if (in23.pontos_desligamento > 0 && mComando > 0) {
+      addParametro('CABO-COMANDO',
+        `Cabo e eletroduto de comando do desligamento até o quadro — ${br(mComando)} m${in23.pontos_desligamento > 1 ? ` × ${in23.pontos_desligamento} pontos` : ''}`,
+        'seguranca', mComando * in23.pontos_desligamento, 'm', p.cabo_comando_m, 'valor do metro do cabo de comando do desligamento')
+    } else if (in23.pontos_desligamento > 0) {
+      avisos.push('IN 23: informe a distância do ponto de desligamento até o quadro (cabo de comando)')
+    }
+    addParametro('PLACA-IN23',
+      'Placa fotoluminescente "VEÍCULOS ELÉTRICOS — EMERGÊNCIA — DESLIGUE OS CARREGADORES", branco sobre vermelho, com a base a 1,80 m (IN 23 art. 10)',
+      'seguranca', in23.placas_desligamento, 'un', p.placa_in23, 'valor da placa fotoluminescente da IN 23')
+    addParametro('SINALIZACAO-VAGA', 'Sinalização de vaga com recarga de veículo elétrico (IN 23 art. 11)',
+      'seguranca', in23.vagas, 'vaga', p.sinalizacao_vaga, 'valor da sinalização de vaga')
+  }
+
   // Ajustes à mão (Kalebe 2026-10-15): excluir, mudar quantidade/valor, adicionar
   const aj = e.ajustes_materiais || {}
   const removidosSet = new Set(aj.removidos || [])
@@ -392,6 +449,13 @@ export function calcularPropostaRecarga(
       qtd: Number(x.qtd), unidade: String(x.unidade || 'un'), preco_unitario: Math.max(0, Number(x.preco_unitario) || 0), origem: 'manual',
     })
   }
+  // Valor do painel ainda zerado e não digitado na linha: o PDF espera (item excluído não cobra)
+  const faltaValor = new Set<string>()
+  for (const m of materiais) {
+    const falta = comValorDoPainel.get(m.chave)
+    if (falta && !(m.preco_unitario > 0)) faltaValor.add(`${falta} (ou digite na linha do material)`)
+  }
+  pendencias.push(...Array.from(faltaValor))
   const subtotalMateriais = materiais.reduce((s, m) => s + m.qtd * m.preco_unitario, 0)
 
   // ── 2. Projeto ──
@@ -399,6 +463,22 @@ export function calcularPropostaRecarga(
     { chave: 'unifilar', descricao: 'Diagrama unifilar', detalhe: 'documento técnico da instalação', valor: p.diagrama_unifilar },
     { chave: 'trifilar', descricao: 'Diagrama trifilar', detalhe: 'fases, neutros e proteções', valor: p.diagrama_trifilar },
   ]
+  // IN 23: regularização no e-SCI e PBD, quando a Spin faz
+  if (in23?.aplica && circuitos > 0) {
+    const ri = r.in23!
+    if (!ri.regularizacao_pelo_cliente) {
+      projeto.push({ chave: 'regularizacao_cbmsc', descricao: 'Regularização no CBMSC (e-SCI)', detalhe: `Anexo ${in23.anexo}, croqui e ART, após a execução`, valor: p.regularizacao_cbmsc })
+      if (!(p.regularizacao_cbmsc > 0)) pendencias.push('valor da regularização no CBMSC (e-SCI) — ou marque "regularização por conta do cliente"')
+    }
+    if (!in23.dispensa_pbd && !ri.pbd_pelo_cliente) {
+      projeto.push({ chave: 'pbd', descricao: 'Projeto Baseado em Desempenho (PBD)', detalhe: 'IN 23, arts. 19 a 37', valor: p.pbd })
+      if (!(p.pbd > 0)) pendencias.push('valor do Projeto Baseado em Desempenho (PBD) — ou marque "PBD por conta do cliente"')
+    }
+  }
+  const pendenciasDados: string[] = []
+  if (r.in23 && !r.in23.tipo_local) pendenciasDados.push('tipo de local (residência, condomínio ou comércio)')
+  if (pendenciasDados.length) avisos.push(`Segurança contra incêndio (IN 23): falta ${pendenciasDados.join('; ')} — sem isso o PDF não sai`)
+  for (const a of in23?.alertas || []) avisos.push(`IN 23: ${a}`)
   const subtotalProjeto = projeto.reduce((s, x) => s + x.valor, 0)
 
   // ── 3b. Mão de obra e deslocamento ──
@@ -492,13 +572,33 @@ export function calcularPropostaRecarga(
     trechos,
     distancia_total_m: distancia,
     pendencias_custo: pendencias,
+    pendencias_dados: pendenciasDados,
+    in23,
     materiais_removidos: materiaisRemovidos,
   }
 }
 
+/**
+ * Conferência antes de gerar o PDF — a mesma no Spinzap e no projeto.
+ * Proposta final (venda fechada) não cobra os dados novos da IN 23: ela
+ * repete a proposta aceita.
+ */
+export function conferirParaPdf(p: PropostaRecarga, opcoes: { final?: boolean } = {}): string | null {
+  if (!p.equipamentos.length) return 'Adicione pelo menos um equipamento (ou o carregador do cliente, com a potência)'
+  // Carregador do cliente (sem equipamento) não tem custo — só a potência
+  const semCusto = p.equipamentos.filter((e) => !e.do_cliente && !(e.preco_unitario > 0))
+  if (semCusto.length) return `Falta o custo de: ${semCusto.map((e) => e.modelo).join(', ')}`
+  const semPotencia = p.equipamentos.filter((e) => e.tipo === 'carregador' && !(e.potencia_kw > 0))
+  if (semPotencia.length) return `Falta a potência (kW) de: ${semPotencia.map((e) => e.modelo).join(', ')}`
+  if (!opcoes.final && p.pendencias_dados.length) return `Segurança contra incêndio (IN 23): falta ${p.pendencias_dados.join('; ')}`
+  if (p.pendencias_custo.length) return `Defina no ⚙️ Precificação (estação de recarga): ${p.pendencias_custo.join('; ')}`
+  if (!(p.pv_total > 0)) return p.avisos[0] || 'Não deu pra calcular o preço'
+  return null
+}
+
 export const rotuloFases = (f: FasesRede) => ROTULO_FASES[f]
 
-/** Respostas iniciais: distância padrão em eletroduto externo, aterramento incluso. */
+/** Respostas iniciais: distância padrão em eletroduto externo, aterramento incluso, IN 23 a responder. */
 export function respostasPadrao(p: Pick<ParametrosRecarga, 'distancia_padrao_m'>, km = 0): RespostasRecarga {
   return {
     distancia_m: p.distancia_padrao_m,
@@ -509,5 +609,6 @@ export function respostasPadrao(p: Pick<ParametrosRecarga, 'distancia_padrao_m'>
     aterramento: true,
     km_deslocamento: km,
     trechos: [{ tipo: 'externo', metros: p.distancia_padrao_m }],
+    in23: in23Padrao(),
   }
 }

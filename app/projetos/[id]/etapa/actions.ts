@@ -18,7 +18,7 @@ export async function mudarEtapaProjetoAction(
 
   const { data: projeto } = await supabase
     .from('projetos')
-    .select('id, codigo, status, cliente_id, consultor_id, cliente_razao_social, cliente_telefone, endereco_instalacao, cliente_endereco')
+    .select('id, codigo, status, cliente_id, consultor_id, cliente_razao_social, cliente_telefone, endereco_instalacao, cliente_endereco, ve_recarga_selecionada')
     .eq('id', projetoId)
     .single()
 
@@ -143,6 +143,12 @@ async function disparoAutomacoes(
 
       const end = projeto.endereco_instalacao && Object.keys(projeto.endereco_instalacao).length
         ? projeto.endereco_instalacao : projeto.cliente_endereco || null
+      // Kalebe 2026-10-17: checklist da recarga com a IN 23 da proposta vendida
+      const entradaVe = (projeto as any).ve_recarga_selecionada?.entrada
+      const recarga = entradaVe ? {
+        in23: entradaVe.respostas?.in23 || null,
+        qtd_carregadores: (entradaVe.equipamentos || []).filter((e: any) => e.tipo === 'carregador').reduce((s: number, e: any) => s + (Number(e.qtd) || 0), 0),
+      } : null
       for (const item of itensProjeto || []) {
         if (item.tipo === 'venda_equipamentos') continue
         const { data: jaTem } = await admin
@@ -171,7 +177,7 @@ async function disparoAutomacoes(
             endereco: end,
             cidade: end?.cidade || null,
             bairro: end?.bairro || null,
-            checklist: checklistPadrao(item.tipo),
+            checklist: checklistPadrao(item.tipo, recarga),
           })
           // Migration 137 ainda não rodada → grava só o básico
           if (error && /column/.test(error.message)) await admin.from('execucoes_servicos').insert(base)
