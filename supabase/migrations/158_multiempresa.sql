@@ -101,11 +101,12 @@ INSERT INTO public.empresas (
   nome, razao_social, cnpj, catalogo_fornecedor_id, endereco, telefone, email, site, logo_url, papel_timbrado_url,
   rt_nome, rt_titulo, rt_crea, rt_art_padrao, rt_telefone, rt_email, rt_assinatura_url, padrao
 )
-SELECT 'Spin Solar', c.razao_social, COALESCE(NULLIF(c.cnpj, ''), 'SEM-CNPJ'),
+-- Lido via jsonb: coluna que não existe no banco (ex.: papel_timbrado_url, mig 056) vira NULL em vez de erro
+SELECT 'Spin Solar', COALESCE(j->>'razao_social', 'Spin Solar'), COALESCE(NULLIF(j->>'cnpj', ''), 'SEM-CNPJ'),
        (SELECT id FROM public.catalogo_fornecedores WHERE nome = 'WEG'),
-       c.endereco, c.telefone, c.email, c.site, c.logo_url, c.papel_timbrado_url,
-       c.rt_nome, c.rt_titulo, c.rt_crea, c.rt_art_padrao, c.rt_telefone, c.rt_email, c.rt_assinatura_url, true
-  FROM public.configuracoes_empresa c
+       j->>'endereco', j->>'telefone', j->>'email', j->>'site', j->>'logo_url', j->>'papel_timbrado_url',
+       j->>'rt_nome', j->>'rt_titulo', j->>'rt_crea', j->>'rt_art_padrao', j->>'rt_telefone', j->>'rt_email', j->>'rt_assinatura_url', true
+  FROM (SELECT to_jsonb(c) AS j FROM public.configuracoes_empresa c) x
  WHERE NOT EXISTS (SELECT 1 FROM public.empresas WHERE padrao)
  LIMIT 1;
 
