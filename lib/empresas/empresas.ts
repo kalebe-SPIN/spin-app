@@ -89,7 +89,11 @@ export function configEmpresaDoPdf(e: Empresa) {
     nome: e.nome,
     // A Spin assina como "Diretor comercial" (modelo oficial); outra empresa, pelo título do responsável
     papel_assinatura: e.padrao ? 'Diretor comercial' : (e.rt_titulo || 'Responsável'),
-    razao_social: e.razao_social, cnpj: e.cnpj, endereco: e.endereco, telefone: e.telefone, email: e.email, site: e.site,
+    // CNPJ guardado só com números → 00.000.000/0000-00 no PDF
+    razao_social: e.razao_social,
+    cnpj: e.cnpj && /^\d{14}$/.test(e.cnpj.replace(/\D/g, ''))
+      ? e.cnpj.replace(/\D/g, '').replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+      : e.cnpj, endereco: e.endereco, telefone: e.telefone, email: e.email, site: e.site,
     logo_url: e.logo_url, papel_timbrado_url: e.papel_timbrado_url,
     rt_nome: e.rt_nome, rt_titulo: e.rt_titulo, rt_crea: e.rt_crea, rt_art_padrao: e.rt_art_padrao,
     rt_telefone: e.rt_telefone, rt_email: e.rt_email, rt_assinatura_url: e.rt_assinatura_url,
