@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 /** Peças de formulário do financeiro (mesmo visual dos modais do portal). */
 
@@ -41,6 +41,86 @@ export function Selecao({ valor, onChange, opcoes, vazio }: {
       {vazio !== undefined && <option value="" className="bg-noite">{vazio}</option>}
       {opcoes.map((o) => <option key={o.valor} value={o.valor} className="bg-noite">{o.rotulo}</option>)}
     </select>
+  )
+}
+
+const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const MAX_RESULTADOS = 50
+
+/**
+ * Lista longa com busca (Kalebe 2026-10-20: "preciso de um filtro pra achar
+ * mais fácil um projeto"): digita parte do código ou do nome — vale qualquer
+ * pedaço, sem acento e em qualquer ordem ("0126", "reichert vanildo").
+ * Setas + Enter escolhem; Esc fecha; ✕ limpa.
+ */
+export function SelecaoComBusca({ valor, onChange, opcoes, vazio, placeholder = 'Digite pra buscar…' }: {
+  valor: string; onChange: (v: string) => void; opcoes: Array<{ valor: string; rotulo: string }>; vazio?: string; placeholder?: string
+}) {
+  const [aberto, setAberto] = useState(false)
+  const [busca, setBusca] = useState('')
+  const [ativo, setAtivo] = useState(0)
+  const caixaRef = useRef<HTMLDivElement>(null)
+  const selecionada = opcoes.find((o) => o.valor === valor) || null
+
+  // Clique fora fecha
+  useEffect(() => {
+    if (!aberto) return
+    const fora = (e: MouseEvent) => { if (caixaRef.current && !caixaRef.current.contains(e.target as Node)) { setAberto(false); setBusca('') } }
+    document.addEventListener('mousedown', fora)
+    return () => document.removeEventListener('mousedown', fora)
+  }, [aberto])
+
+  const termos = semAcento(busca).split(/\s+/).filter(Boolean)
+  const filtradas = termos.length ? opcoes.filter((o) => { const r = semAcento(o.rotulo); return termos.every((t) => r.includes(t)) }) : opcoes
+  const lista = filtradas.slice(0, MAX_RESULTADOS)
+  const comVazio = vazio !== undefined && !termos.length
+  const itens: Array<{ valor: string; rotulo: string }> = [...(comVazio ? [{ valor: '', rotulo: vazio! }] : []), ...lista]
+
+  function escolher(v: string) { onChange(v); setBusca(''); setAberto(false) }
+  function teclas(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setAberto(true); setAtivo((i) => Math.min(i + 1, itens.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setAtivo((i) => Math.max(i - 1, 0)) }
+    else if (e.key === 'Enter') { if (aberto && itens[ativo]) { e.preventDefault(); escolher(itens[ativo].valor) } }
+    else if (e.key === 'Escape') { setAberto(false); setBusca('') }
+  }
+
+  return (
+    <div ref={caixaRef} className="relative">
+      <div className="relative">
+        <input
+          className={`${classeInput} pr-8`}
+          value={aberto ? busca : selecionada?.rotulo || ''}
+          placeholder={selecionada ? selecionada.rotulo : placeholder}
+          onFocus={() => { setAberto(true); setBusca(''); setAtivo(0) }}
+          onChange={(e) => { setBusca(e.target.value); setAberto(true); setAtivo(0) }}
+          onKeyDown={teclas}
+          role="combobox" aria-expanded={aberto} aria-autocomplete="list" autoComplete="off"
+        />
+        {valor ? (
+          <button type="button" onClick={() => escolher('')} aria-label="Limpar"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-white/50 hover:text-white text-xs">✕</button>
+        ) : (
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 text-xs pointer-events-none">🔍</span>
+        )}
+      </div>
+      {aberto && (
+        <ul role="listbox" className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto rounded-md border border-white/15 bg-noite shadow-2xl py-1">
+          {itens.map((o, i) => (
+            <li key={o.valor || '__vazio'}>
+              <button type="button" role="option" aria-selected={o.valor === valor}
+                onMouseDown={(e) => e.preventDefault()} onClick={() => escolher(o.valor)} onMouseEnter={() => setAtivo(i)}
+                className={`w-full text-start px-3 py-2 text-sm ${i === ativo ? 'bg-white/10' : ''} ${o.valor === valor ? 'font-bold text-white' : 'text-white/80'}`}>
+                {o.rotulo}
+              </button>
+            </li>
+          ))}
+          {!itens.length && <li className="px-3 py-2 text-xs text-white/50">Nada encontrado com “{busca}”</li>}
+          {filtradas.length > MAX_RESULTADOS && (
+            <li className="px-3 py-1.5 text-[10px] text-white/40">Mostrando {MAX_RESULTADOS} de {filtradas.length} — digite mais pra afinar</li>
+          )}
+        </ul>
+      )}
+    </div>
   )
 }
 

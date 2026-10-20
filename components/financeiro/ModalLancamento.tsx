@@ -9,7 +9,7 @@ import {
   hojeBR, lerValor, brl, dividirEmParcelas, addMeses, dataBR, rotuloConta, datasNoCartao,
   type Categoria, type ContaFluxo, type Direcao, type Fornecedor, type Grupo, type Lancamento,
 } from '@/lib/financeiro/fluxo'
-import { Campo, InputValor, Selecao, Modal, Aviso, Botoes, classeInput } from './ui'
+import { Campo, InputValor, Selecao, SelecaoComBusca, Modal, Aviso, Botoes, classeInput } from './ui'
 import { PreencherPorVozOuFoto, type ResultadoIA } from './PreencherPorVozOuFoto'
 import { urlComprovanteAction } from '@/app/financeiro/fluxo-caixa/actions'
 import type { OpcaoServico } from '@/lib/financeiro/opcoes-lancamento'
@@ -403,7 +403,9 @@ export function ModalLancamento({
             um projeto e, dentro dele, a um serviço (solar, limpeza, venda...) */}
         {tipo !== 'capital_giro' && (
           <Campo rotulo={tipo === 'custos_projeto' ? 'Projeto' : 'Projeto (opcional)'}>
-            <Selecao valor={projetoId} onChange={(v) => { setProjetoId(v); setServicoId('') }} vazio="—" opcoes={opcoesProjetos} />
+            {/* Kalebe 2026-10-20: lista longa → busca por código ou nome do cliente */}
+            <SelecaoComBusca valor={projetoId} onChange={(v) => { setProjetoId(v); setServicoId('') }} vazio="— Nenhum projeto" opcoes={opcoesProjetos}
+              placeholder="Digite o código (ex.: 0126) ou o nome do cliente" />
           </Campo>
         )}
         {tipo !== 'capital_giro' && projetoId && servicosDoProjeto.length > 0 && (
