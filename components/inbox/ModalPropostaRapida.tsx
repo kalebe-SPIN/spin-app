@@ -59,7 +59,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   // Kalebe 2026-10-17: unidades beneficiárias (consumo + fatura)
   const [beneficiarias, setBeneficiarias] = useState<BeneficiariaProposta[]>([])
   const [painelBenef, setPainelBenef] = useState(false)
-  const [arquivosConv, setArquivosConv] = useState<Array<{ mensagem_id: string; nome: string; mime: string | null; criada_em: string; direcao: string; lida_uc: string | null; lida_consumo: number | null }> | null>(null)
+  const [arquivosConv, setArquivosConv] = useState<Array<{ mensagem_id: string; nome: string; mime: string | null; criada_em: string; direcao: string; lida_uc: string | null; lida_consumo: number | null; principal: boolean }> | null>(null)
   const [lendoBenef, setLendoBenef] = useState<string | null>(null)
   const [benefManual, setBenefManual] = useState({ uc: '', titular: '', consumo: '' })
   const pularResetSistema = useRef(false)
@@ -251,6 +251,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
       if ('erro' in r) { setErro(r.erro); return }
       setBeneficiarias((bs) => [...bs.filter((b) => b.mensagem_id !== r.mensagem_id), {
         uc: r.uc, titular: r.titular, consumo_kwh: r.consumo_kwh, arquivo_url: r.arquivo_url, arquivo_nome: r.arquivo_nome, arquivo_tipo: r.arquivo_tipo, mensagem_id: r.mensagem_id,
+        meses: r.meses,
       }])
     } finally { setLendoBenef(null) }
   }
@@ -461,10 +462,18 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
                   )}
                 </div>
                 {beneficiarias.map((b, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_92px_auto] gap-2 items-center rounded-lg border border-white/10 px-2 py-1.5">
-                    <span className="text-[12px] text-white/85 truncate">
-                      {b.uc ? `UC ${b.uc}` : `Beneficiária ${i + 1}`}{b.titular ? ` · ${b.titular}` : ''}
-                      {b.arquivo_url && <a href={b.arquivo_url} target="_blank" rel="noreferrer" className="ml-1.5 text-white/60 hover:text-white">📄</a>}
+                  <div key={i} className={`grid grid-cols-[1fr_92px_auto] gap-2 items-center rounded-lg border px-2 py-1.5 ${b.meses != null && b.meses < 12 ? 'border-sol/50' : 'border-white/10'}`}>
+                    <span className="text-[12px] text-white/85 min-w-0">
+                      <span className="block truncate">
+                        {b.uc ? `UC ${b.uc}` : `Beneficiária ${i + 1}`}{b.titular ? ` · ${b.titular}` : ''}
+                        {b.arquivo_url && <a href={b.arquivo_url} target="_blank" rel="noreferrer" className="ml-1.5 text-white/60 hover:text-white">📄</a>}
+                      </span>
+                      {/* Kalebe 2026-10-19: foto sem o histórico → consumo de um mês só, não a média */}
+                      {b.meses != null && b.meses < 12 && (
+                        <span className="block text-[10px] text-white/55">
+                          Lido de {b.meses} {b.meses === 1 ? 'mês só' : 'meses'} — confira a média de 12 meses na fatura e corrija aqui
+                        </span>
+                      )}
                     </span>
                     <input value={String(b.consumo_kwh || '')} onChange={(e) => mudarBenef(i, { consumo_kwh: Math.round(num(e.target.value)) })} inputMode="numeric"
                       aria-label="Consumo kWh/mês" className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-end" />
@@ -492,9 +501,10 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
                                 {/pdf/i.test(f.mime || '') ? '📄' : '🖼️'} {f.nome} · {new Date(f.criada_em).toLocaleDateString('pt-BR')}
                                 {f.lida_uc ? ` · UC ${f.lida_uc}` : ''}{f.lida_consumo ? ` · ${fmtNum(f.lida_consumo, 0)} kWh` : ''}
                               </span>
-                              <button type="button" onClick={() => lerBenef(f.mensagem_id)} disabled={!!lendoBenef || beneficiarias.some((b) => b.mensagem_id === f.mensagem_id)}
+                              <button type="button" onClick={() => lerBenef(f.mensagem_id)} disabled={!!lendoBenef || f.principal || beneficiarias.some((b) => b.mensagem_id === f.mensagem_id)}
+                                title={f.principal ? 'Fatura da UC principal — o consumo dela já está no campo de consumo' : undefined}
                                 className="shrink-0 px-2.5 py-1 rounded-lg bg-weg-azul text-white text-[11px] font-bold disabled:opacity-40">
-                                {lendoBenef === f.mensagem_id ? 'Lendo…' : beneficiarias.some((b) => b.mensagem_id === f.mensagem_id) ? 'Adicionada' : 'Ler e adicionar'}
+                                {lendoBenef === f.mensagem_id ? 'Lendo… (até 1 min)' : f.principal ? 'UC principal' : beneficiarias.some((b) => b.mensagem_id === f.mensagem_id) ? 'Adicionada' : 'Ler e adicionar'}
                               </button>
                             </div>
                           ))}

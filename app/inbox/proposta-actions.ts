@@ -49,6 +49,8 @@ export type BeneficiariaProposta = {
   arquivo_tipo?: string | null
   /** Mensagem da conversa de onde veio a fatura (a análise completa fica nela) */
   mensagem_id?: string | null
+  /** Meses de histórico lidos na fatura — 1 = só o consumo do mês, não a média (Kalebe 2026-10-19) */
+  meses?: number | null
 }
 
 async function acesso(conversa_id: string) {
@@ -464,7 +466,7 @@ async function salvarBeneficiariasNoProjeto(admin: ReturnType<typeof createAdmin
 
 /** Arquivos (PDF/foto) da conversa pra escolher a fatura de uma beneficiária. */
 export async function arquivosFaturaConversaAction(conversa_id: string): Promise<
-  { arquivos: Array<{ mensagem_id: string; nome: string; mime: string | null; criada_em: string; direcao: string; lida_uc: string | null; lida_consumo: number | null }> } | { erro: string }
+  { arquivos: Array<{ mensagem_id: string; nome: string; mime: string | null; criada_em: string; direcao: string; lida_uc: string | null; lida_consumo: number | null; principal: boolean }> } | { erro: string }
 > {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
@@ -476,6 +478,8 @@ export async function arquivosFaturaConversaAction(conversa_id: string): Promise
       mensagem_id: m.id, nome: m.texto || (/pdf/i.test(m.midia_mime || '') ? 'PDF' : 'Foto'), mime: m.midia_mime || null,
       criada_em: m.criada_em, direcao: m.direcao,
       lida_uc: m.dados?.fatura_lida?.resumo?.uc || null, lida_consumo: m.dados?.fatura_lida?.resumo?.consumo_kwh ?? null,
+      // Lida pelo "Ler fatura" da UC principal: não entra de novo como beneficiária
+      principal: m.dados?.fatura_lida?.status === 'ok' && !m.dados?.fatura_lida?.beneficiaria,
     }))
   return { arquivos }
 }
@@ -495,6 +499,10 @@ export async function lerFaturaBeneficiariaAction(conversa_id: string, mensagem_
   if (!msg || msg.conversa_id !== conversa_id) return { erro: 'Arquivo não é desta conversa' }
   if (!msg.midia_url) return { erro: 'Mensagem sem arquivo' }
   const dados = (msg.dados || {}) as Record<string, any>
+  // A fatura da UC principal já está no consumo: somar de novo dobraria o sistema
+  if (dados.fatura_lida?.status === 'ok' && !dados.fatura_lida.beneficiaria) {
+    return { erro: 'Essa é a fatura da UC principal — o consumo dela já está no campo "Consumo médio"' }
+  }
   let resumo = dados.fatura_lida?.status === 'ok' ? dados.fatura_lida.resumo : null
   let analise = dados.fatura_lida?.analise || null
   if (!resumo) {
