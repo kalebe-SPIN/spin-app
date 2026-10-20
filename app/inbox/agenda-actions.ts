@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { URL_PORTAL } from '@/lib/agentes/nomes'
 import { TIPOS_EVENTO, rotuloTipoEvento, type TipoEvento } from '@/lib/agenda/tipos-evento'
+import { primeiroNomePerfil, registrarAgendaNaConversa, type RegistroAgenda } from '@/lib/spinzap/registro-agenda'
 
 /**
  * Agenda a partir da conversa (Kalebe 2026-09-29): tarefa, evento ou
@@ -304,6 +305,7 @@ export async function agendarNaConversaAction(input: {
   }
 
   revalidatePath('/agenda')
+  revalidatePath('/spinzap')
   return { sucesso: true, responsavel: String(resp.nome_completo || '').split(' ')[0], link_sala: linkSala }
 }
 
@@ -313,16 +315,25 @@ export async function cancelarFollowupAction(id: string): Promise<{ sucesso: tru
   if (!user) return { erro: 'Não autenticado' }
   // Follow-up pode estar no nome de outra pessoa: confere o acesso à conversa e cancela pelo service role
   const admin = createAdminClient()
-  const { data: f } = await admin.from('wa_followups').select('conversa_id').eq('id', id).maybeSingle()
+  const { data: f } = await admin.from('wa_followups').select('conversa_id, mensagem, executar_em, responsavel_id, cancelar_se_responder').eq('id', id).maybeSingle()
   if (!f) return { erro: 'Follow-up não encontrado' }
   const { erro } = await conversaAcessivel(f.conversa_id)
   if (erro) return { erro }
-  const { error } = await admin
+  const { data: cancelados, error } = await admin
     .from('wa_followups')
     .update({ status: 'cancelado', motivo: 'Cancelado pelo usuário', executado_em: new Date().toISOString() })
     .eq('id', id)
     .eq('status', 'agendado')
+    .select('id')
   if (error) return { erro: error.message }
+  if (cancelados?.length) {
+    await registrarAgendaNaConversa(admin, f.conversa_id, {
+      acao: 'cancelado', tipo: (f as any).cancelar_se_responder === false ? 'lembrete' : 'followup',
+      titulo: String((f as any).mensagem || ''), quando: (f as any).executar_em ? dataHora((f as any).executar_em) : null,
+      responsavel: await primeiroNomePerfil(admin, (f as any).responsavel_id), por: await primeiroNomePerfil(admin, user.id),
+      item_id: id, item_tipo: 'followup',
+    }, user.id)
+  }
   return { sucesso: true }
 }
 
@@ -338,6 +349,10 @@ const TABELA_ITEM: Record<TipoItemConversa, { tabela: string; coluna: string; do
   tarefa: { tabela: 'agenda_tarefas', coluna: 'wa_conversa_id', dono: 'usuario_id', rotulo: 'tarefa' },
   evento: { tabela: 'agenda_eventos', coluna: 'wa_conversa_id', dono: 'usuario_id', rotulo: 'evento' },
 }
+
+/** Follow-up que não cancela com resposta é lembrete ao cliente */
+const tipoDoRegistro = (tipo: TipoItemConversa, item: any): RegistroAgenda['tipo'] =>
+  tipo === 'followup' && item?.cancelar_se_responder === false ? 'lembrete' : tipo
 
 async function itemDaConversa(conversaId: string, tipo: TipoItemConversa, id: string) {
   const acesso = await conversaAcessivel(conversaId)
@@ -461,6 +476,15 @@ export async function excluirItemAgendaConversaAction(conversa_id: string, tipo:
     ;({ error } = await a.admin.from(a.t.tabela).update(cancelado).eq('id', id))
   }
   if (error) return { erro: error.message }
+  await registrarAgendaNaConversa(a.admin, a.conv.id, {
+    acao: 'excluido', tipo: tipoDoRegistro(tipo, item),
+    titulo: String(item.titulo || item.mensagem || ''),
+    quando: tipo === 'followup' && item.executar_em ? dataHora(item.executar_em)
+      : tipo === 'evento' && item.data_hora_inicio ? dataHora(item.data_hora_inicio)
+      : tipo === 'tarefa' && item.data_prazo ? `prazo ${new Date(`${item.data_prazo}T12:00:00-03:00`).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : null,
+    responsavel: await primeiroNomePerfil(a.admin, item[a.t.dono]), por: await primeiroNomePerfil(a.admin, a.user.id),
+    item_id: id, item_tipo: tipo,
+  }, a.user.id)
   // Só avisa o responsável se ainda estava valendo
   const aberto = tipo === 'followup' ? item.status === 'agendado'
     : tipo === 'tarefa' ? !['concluida', 'cancelada'].includes(item.status)
@@ -470,6 +494,145 @@ export async function excluirItemAgendaConversaAction(conversa_id: string, tipo:
       `🗑 {quem} excluiu ${tipo === 'tarefa' ? 'a tarefa' : tipo === 'evento' ? 'o evento' : 'o follow-up'}: *${item.titulo || String(item.mensagem || '').slice(0, 60)}*`,
     ])
   }
+  revalidatePath('/agenda')
+  return { sucesso: true }
+}
+
+// ─── Cartão móvel: o que está em aberto na conversa (Kalebe 2026-10-19) ───
+
+export type AbertoAgendaConversa = {
+  id: string
+  tipo: TipoItemConversa
+  /** follow-up que é lembrete ao cliente */
+  lembrete: boolean
+  titulo: string
+  /** Data/hora no padrão brasileiro */
+  quando: string | null
+  /** O que está acontecendo com ele agora */
+  situacao: string
+  /** Passou da hora, falhou ou precisa de alguém */
+  atencao: boolean
+  /** Já aconteceu (Bianca enviou, evento passou): falta só clicar em Concluído */
+  executado: boolean
+  responsavel: string | null
+  /** Pra ordenar (ISO ou data) */
+  ordem: string
+}
+
+/** Antes disso não existia o cartão: follow-up já enviado e evento passado não voltam a aparecer */
+const INICIO_CARTOES = '2026-10-19T00:00:00-03:00'
+
+export async function agendaAbertaConversaAction(conversaId: string): Promise<{ itens: AbertoAgendaConversa[] } | { erro: string }> {
+  const { erro } = await conversaAcessivel(conversaId)
+  if (erro) return { erro }
+  const admin = createAdminClient()
+  const agora = Date.now()
+  const hoje = new Date(agora).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+  const inicioHoje = new Date(`${hoje}T00:00:00-03:00`).getTime()
+  const inicioCartoes = new Date(INICIO_CARTOES).getTime()
+  const [f, t, e, regs] = await Promise.all([
+    admin.from('wa_followups').select('id, executar_em, executado_em, status, modo, mensagem, motivo, cancelar_se_responder, criado_em, responsavel:responsavel_id(nome_completo)')
+      .eq('conversa_id', conversaId).in('status', ['agendado', 'aguardando_cliente', 'aguardando_humano', 'enviado', 'falhou']).order('executar_em').limit(40),
+    admin.from('agenda_tarefas').select('id, titulo, data_prazo, status, usuario:usuario_id(nome_completo)')
+      .eq('wa_conversa_id', conversaId).in('status', ['pendente', 'em_andamento']).limit(40),
+    admin.from('agenda_eventos').select('id, titulo, tipo, data_hora_inicio, status, created_at, usuario:usuario_id(nome_completo)')
+      .eq('wa_conversa_id', conversaId).not('status', 'in', '(cancelado,realizado,adiado)').limit(40),
+    admin.from('wa_mensagens').select('agenda:dados->agenda').eq('conversa_id', conversaId).eq('tipo', 'system').limit(300),
+  ])
+  // Já fixados (concluídos, cancelados, excluídos) não voltam a acompanhar a conversa
+  const fixados = new Set(((regs.data || []) as any[]).map((r) => r.agenda?.item_id).filter(Boolean))
+  const nome = (x: any) => String(x?.nome_completo || '').split(' ')[0] || null
+  const itens: AbertoAgendaConversa[] = []
+
+  for (const x of (f.data || []) as any[]) {
+    if (fixados.has(x.id)) continue
+    const feito = x.status === 'enviado' || x.status === 'falhou'
+    if (feito && new Date(x.criado_em).getTime() < inicioCartoes) continue
+    if (x.status === 'falhou' && x.motivo === 'processando') continue
+    const lembrete = x.cancelar_se_responder === false
+    const msg = String(x.mensagem || '')
+    const titulo = lembrete ? (msg.match(/^Lembrete ao cliente do compromisso: (.+?) — /)?.[1] || msg) : x.modo === 'texto_exato' ? `"${msg}"` : msg
+    const quando = x.executar_em ? dataHora(x.executar_em) : null
+    const passou = x.executar_em && new Date(x.executar_em).getTime() < agora - 10 * 60_000
+    const situacao = x.status === 'enviado' ? `A Bianca enviou${x.executado_em ? ` em ${dataHora(x.executado_em)}` : ''} — clique em Concluído quando resolver`
+      : x.status === 'aguardando_cliente' ? 'Janela de 24h fechada: a Bianca mandou o modelo de retomada e espera o cliente responder'
+      : x.status === 'aguardando_humano' ? 'A Bianca não conseguiu enviar — chame o cliente'
+      : x.status === 'falhou' ? 'O envio falhou — chame o cliente'
+      : passou ? 'Passou da hora e ainda não saiu' : `A Bianca envia ${quando}`
+    itens.push({
+      id: x.id, tipo: 'followup', lembrete, titulo, quando, situacao,
+      atencao: x.status === 'aguardando_humano' || x.status === 'falhou' || (x.status === 'agendado' && !!passou),
+      executado: x.status === 'enviado', responsavel: nome(x.responsavel), ordem: x.executar_em || '',
+    })
+  }
+  for (const x of (t.data || []) as any[]) {
+    if (fixados.has(x.id)) continue
+    const atrasada = !!x.data_prazo && x.data_prazo < hoje
+    const prazo = x.data_prazo ? new Date(`${x.data_prazo}T12:00:00-03:00`).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : null
+    itens.push({
+      id: x.id, tipo: 'tarefa', lembrete: false, titulo: String(x.titulo || 'Tarefa'), quando: prazo ? `prazo ${prazo}` : 'sem prazo',
+      situacao: atrasada ? 'Atrasada' : x.data_prazo === hoje ? 'Vence hoje' : x.status === 'em_andamento' ? 'Em andamento' : 'A fazer',
+      atencao: atrasada, executado: false, responsavel: nome(x.usuario), ordem: x.data_prazo || '9999',
+    })
+  }
+  for (const x of (e.data || []) as any[]) {
+    if (fixados.has(x.id)) continue
+    const ini = new Date(x.data_hora_inicio).getTime()
+    // Evento antigo (antes do cartão) que ninguém marcou: não volta
+    if (ini < inicioHoje && new Date(x.created_at || x.data_hora_inicio).getTime() < inicioCartoes) continue
+    const passou = ini < agora
+    itens.push({
+      id: x.id, tipo: 'evento', lembrete: false, titulo: `${rotuloTipoEvento(x.tipo)} — ${String(x.titulo || '')}`, quando: dataHora(x.data_hora_inicio),
+      situacao: passou ? 'Já passou — clique em Concluído se aconteceu' : ini - agora < 3_600_000 ? 'Começa em menos de 1 hora' : 'Marcado',
+      atencao: false, executado: passou, responsavel: nome(x.usuario), ordem: x.data_hora_inicio,
+    })
+  }
+  itens.sort((a, b) => String(a.ordem).localeCompare(String(b.ordem)))
+  return { itens }
+}
+
+/**
+ * "Concluído" no cartão móvel: o item fecha na agenda e o cartão se fixa na
+ * conversa. Tarefa → concluída; evento → realizado; follow-up que ainda não
+ * saiu → cancelado (a Bianca não manda mais).
+ */
+export async function concluirItemAgendaConversaAction(conversa_id: string, tipo: TipoItemConversa, id: string): Promise<{ sucesso: true } | { erro: string }> {
+  const a = await itemDaConversa(conversa_id, tipo, id)
+  if ('erro' in a) return { erro: a.erro as string }
+  const { admin, item } = a
+  const agoraIso = new Date().toISOString()
+  let detalhe: string | null = null
+  let quando: string | null = null
+  let error: { message: string } | null = null
+  if (tipo === 'tarefa') {
+    ;({ error } = await admin.from('agenda_tarefas').update({ status: 'concluida', concluida_em: agoraIso }).eq('id', id))
+    quando = item.data_prazo ? `prazo ${new Date(`${item.data_prazo}T12:00:00-03:00`).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : null
+    detalhe = item.descricao ? String(item.descricao).split('\n\n— criado a partir')[0] : null
+  } else if (tipo === 'evento') {
+    ;({ error } = await admin.from('agenda_eventos').update({ status: 'realizado' }).eq('id', id))
+    quando = item.data_hora_inicio ? dataHora(item.data_hora_inicio) : null
+    detalhe = [item.local ? `Local: ${item.local}` : null, item.url_reuniao ? `Sala: ${item.url_reuniao}` : null].filter(Boolean).join(' · ') || null
+  } else {
+    quando = item.executar_em ? dataHora(item.executar_em) : null
+    if (['agendado', 'aguardando_cliente', 'aguardando_humano'].includes(item.status)) {
+      ;({ error } = await admin.from('wa_followups').update({ status: 'cancelado', motivo: 'Concluído pelo usuário antes do envio', executado_em: agoraIso }).eq('id', id))
+      detalhe = 'Concluído antes do envio — a Bianca não manda mais'
+    } else if (item.texto_enviado) {
+      detalhe = `A Bianca enviou: "${String(item.texto_enviado).slice(0, 300)}"`
+    }
+  }
+  if (error) return { erro: error.message }
+  const msg = String(item.mensagem || '')
+  await registrarAgendaNaConversa(admin, a.conv.id, {
+    acao: 'concluido', tipo: tipoDoRegistro(tipo, item),
+    titulo: tipo === 'evento' ? `${rotuloTipoEvento(item.tipo)} — ${item.titulo || ''}`
+      : tipo === 'tarefa' ? String(item.titulo || '')
+      : item.cancelar_se_responder === false ? (msg.match(/^Lembrete ao cliente do compromisso: (.+?) — /)?.[1] || msg) : msg,
+    quando, detalhe,
+    responsavel: await primeiroNomePerfil(admin, item[a.t.dono]), por: await primeiroNomePerfil(admin, a.user.id),
+    item_id: id, item_tipo: tipo,
+  }, a.user.id)
+  await avisarMudanca(a, [`✅ {quem} concluiu ${tipo === 'tarefa' ? 'a tarefa' : tipo === 'evento' ? 'o evento' : 'o follow-up'}: *${item.titulo || msg.slice(0, 60)}*`])
   revalidatePath('/agenda')
   return { sucesso: true }
 }

@@ -12,6 +12,7 @@ import { ModalFecharVenda } from './ModalFecharVenda'
 import { TextoFormatado } from '@/components/chat/TextoFormatado'
 import { SeletorCidade } from './SeletorCidade'
 import { ModalAgendaBianca } from '@/components/chat/ModalAgendaBianca'
+import { AgendaAbertaConversa, CartaoAgendaFixo, agendaDaMensagem } from './AgendaAbertaConversa'
 import { SECOES } from '@/lib/spinzap/perfil'
 import { propostasDoContatoAction } from '@/app/inbox/propostas-actions'
 import { CATEGORIAS_PROPOSTA, INFO_CATEGORIA, categoriaDoTipo, type CategoriaProposta } from '@/lib/propostas/categorias'
@@ -944,18 +945,23 @@ export function InboxClient({
               {mensagens.length === 0 ? (
                 <p className="text-xs text-white/40 italic text-center py-8">Sem mensagens ainda.</p>
               ) : (
-                mensagens.map((m) => (
-                  <BolhaMensagem
-                    key={m.id}
-                    m={m}
-                    contatos={{
-                      temProjeto: !!contatosProj.projeto_id,
-                      telefonesSalvos: contatosProj.telefones,
-                      telefoneDaConversa: selecionada?.contato?.telefone || null,
-                      onSalvar: (c) => setContatoPraSalvar(c),
-                    }}
-                  />
-                ))
+                mensagens.map((m) => {
+                  // Kalebe 2026-10-19: item da agenda concluído/cancelado/excluído fica fixo na conversa
+                  const agendaFixa = agendaDaMensagem(m as any)
+                  if (agendaFixa) return <CartaoAgendaFixo key={m.id} r={agendaFixa} criadaEm={m.criada_em} />
+                  return (
+                    <BolhaMensagem
+                      key={m.id}
+                      m={m}
+                      contatos={{
+                        temProjeto: !!contatosProj.projeto_id,
+                        telefonesSalvos: contatosProj.telefones,
+                        telefoneDaConversa: selecionada?.contato?.telefone || null,
+                        onSalvar: (c) => setContatoPraSalvar(c),
+                      }}
+                    />
+                  )
+                })
               )}
             </div>
             {/* Kalebe 2026-10-13: ícone flutuante → menu com fundo desfocado */}
@@ -966,6 +972,15 @@ export function InboxClient({
               grupos={gruposMenu}
             />
             </div>
+
+            {/* Kalebe 2026-10-19: o que está em aberto na agenda acompanha a conversa
+                até alguém clicar em Concluído (aí o cartão se fixa na linha do tempo) */}
+            <AgendaAbertaConversa
+              key={`agenda-${selecionada.id}`}
+              conversaId={selecionada.id}
+              gatilho={mensagens.length}
+              onConcluido={() => { refreshMensagens(selecionada.id); refreshConversas() }}
+            />
 
             {/* Composição — Kalebe 2026-09-14: botões arquivo + chamada + vídeo */}
             {/* shrink-0: nunca é empurrada pra fora da tela. No celular (lista e

@@ -291,7 +291,8 @@ export async function listarMensagensAction(conversa_id: string): Promise<
       remetente_id, remetente_agente, origem_agente_nome,
       status_entrega, erro,
       criada_em, entregue_em, lida_em,
-      remetente:remetente_id(nome_completo)
+      remetente:remetente_id(nome_completo),
+      agenda:dados->agenda
     `)
     .eq('conversa_id', conversa_id)
     .order('criada_em', { ascending: true })

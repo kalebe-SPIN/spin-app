@@ -10,6 +10,7 @@ import {
   type ItemAgendaConversa,
 } from '@/app/inbox/agenda-actions'
 import { TIPOS_EVENTO, type TipoEvento } from '@/lib/agenda/tipos-evento'
+import { EVENTO_AGENDA_MUDOU } from '@/components/inbox/AgendaAbertaConversa'
 
 /**
  * Agenda a partir da conversa (Kalebe 2026-09-29):
@@ -77,6 +78,8 @@ export function ModalAgendaBianca({ conversaId, onFechar }: { conversaId: string
     const r = await listarAgendaConversaAction(conversaId)
     if (!('erro' in r)) setItens(r.itens)
   }
+  // Ao fechar: o cartão móvel da conversa recarrega (Kalebe 2026-10-19)
+  useEffect(() => () => { window.dispatchEvent(new Event(EVENTO_AGENDA_MUDOU)) }, [])
   useEffect(() => {
     carregar()
     listarResponsaveisAction().then((r) => {
