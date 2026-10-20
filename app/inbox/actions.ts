@@ -102,11 +102,15 @@ export async function listarConversasAction(): Promise<
   // Kalebe 2026-10-15: pendências abertas da agenda (ícones na lista)
   const { pendenciasDasConversas } = await import('@/lib/spinzap/pendencias-conversa')
   const pendencias = await pendenciasDasConversas(admin, new Set((data || []).map((c: any) => c.id as string)))
+  // Kalebe 2026-10-19 (multiempresa): etiqueta da empresa que atende o cliente
+  const { empresasDasConversas } = await import('@/lib/empresas/empresas-das-conversas')
+  const empresasConv = await empresasDasConversas(admin, (data || []) as any[])
 
   return {
     conversas: (data || []).map((c: any) => ({
       ...c,
       pendencias: pendencias.get(c.id) || [],
+      empresas: empresasConv.get(c.id) || [],
       lais_cobrindo_desde: cobertura.get(c.id)?.lais_cobrindo_desde || null,
       lais_cobrindo_por: cobertura.get(c.id)?.lais_cobrindo_por || null,
       nao_lidas: qtd.get(c.id) || 0,

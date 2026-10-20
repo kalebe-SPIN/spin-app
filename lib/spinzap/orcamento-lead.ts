@@ -1,3 +1,4 @@
+import type { FiltroCatalogo } from '@/lib/empresas/empresas'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { TIPOS_REDE_INFO, type TipoRede } from '@/lib/orcamento-rapido/tipos'
 import { AUMENTO_GERACAO_MAX_PCT, inversorRecomendado, kwhPorKwpMes, kwpParaConsumo, opcoesDeInversor } from '@/lib/spinzap/dimensionar-fv'
@@ -56,6 +57,11 @@ export type OpcoesKit = {
   aumento_geracao_pct?: number | null
   /** Kalebe 2026-10-17: unidades beneficiárias (o consumo delas soma no dimensionamento) */
   beneficiarias?: { qtd: number; consumo_kwh: number } | null
+  /**
+   * Kalebe 2026-10-19 (multiempresa): catálogo do fornecedor da empresa da
+   * proposta. O servidor preenche pela empresa escolhida (a tela não manda).
+   */
+  catalogo?: FiltroCatalogo | null
 }
 
 export type ComplementosOrcamento = { tipo_telhado: string | null; itens: ItemComplementoCC[]; total: number; avisos: string[] }
@@ -145,12 +151,21 @@ function deduzirFases(tipoDesc: string): { fases: 'mono' | 'bi' | 'tri' | null; 
   }
 }
 
-/** Produtos ativos com preço vigente (> 0), já com potência/fases/entradas. */
-export async function carregarCatalogoProposta(admin: Admin): Promise<ProdutoCatalogo[]> {
-  const { data } = await admin.from('produtos')
+/**
+ * Produtos ativos com preço vigente (> 0), já com potência/fases/entradas.
+ * Com filtro (multiempresa): fornecedor de API → só os produtos dele; empresa
+ * de planilha → o catálogo atual (produtos sem fornecedor de API).
+ */
+export async function carregarCatalogoProposta(admin: Admin, filtro?: FiltroCatalogo | null): Promise<ProdutoCatalogo[]> {
+  const consulta = () => admin.from('produtos')
     .select('id, modelo, descricao_curta, categoria, subcategoria, specs, disponivel_estoque, sob_cotacao, precos_produtos!inner(preco_venda, vigente_ate)')
     .eq('ativo', true)
     .is('precos_produtos.vigente_ate', null)
+  // Sem filtro (Laís, telas antigas) = catálogo da Spin: produto de fornecedor de API não entra
+  let res = await (filtro?.api ? consulta().eq('catalogo_fornecedor_id', filtro.fornecedor_id!) : consulta().is('catalogo_fornecedor_id', null))
+  // Banco sem a coluna (migration 158): o catálogo de sempre — o de API fica vazio
+  if (res.error && !filtro?.api) res = await consulta()
+  const data = res.error ? [] : res.data
   return ((data || []) as any[])
     .map((p) => {
       const s = (p.specs || {}) as Record<string, any>
@@ -192,7 +207,11 @@ export async function montarOrcamentoLead(admin: Admin, e: {
   const op = e.opcoes || {}
   const tipoSistema: TipoSistemaFv = op.tipo_sistema || 'string'
   const premissas: string[] = []
-  const catalogo = await carregarCatalogoProposta(admin)
+  // Fornecedor de API sem fator definido: o preço sairia errado (não chutar)
+  if (op.catalogo?.api && !(Number(op.catalogo.fator_preco) > 0)) {
+    return { erro: `Defina o fator de preço do fornecedor ${op.catalogo.fornecedor_nome || ''} em Admin → Empresas e fornecedores — sem ele o preço do kit sairia errado`.replace('  ', ' ') }
+  }
+  const catalogo = await carregarCatalogoProposta(admin, op.catalogo)
 
   // ── Placa ──
   const placas = catalogo.filter((p) => p.categoria === 'placa' && p.potencia_wp && p.disponivel).sort((a, b) => a.potencia_wp! - b.potencia_wp!)
@@ -291,7 +310,13 @@ export async function montarOrcamentoLead(admin: Admin, e: {
   // ── Complementos CC (estrutura do telhado, cabo solar, MC4, disjuntor, DPS) ──
   // Mesma conta da proposta formal: entram no kit WEG bruto.
   let complementos: ComplementosOrcamento | null = null
-  if (op.complementos_cc) {
+  if (op.complementos_cc && op.catalogo?.api) {
+    // Fornecedor de API: estrutura, cabos e proteções vêm do catálogo/kit dele (integração)
+    complementos = {
+      tipo_telhado: op.complementos_cc.tipo_telhado, itens: [], total: 0,
+      avisos: [`Estrutura, cabos, conectores e proteções do fornecedor ${op.catalogo.fornecedor_nome || ''} ainda não entram sozinhos — adicione nos itens extras`],
+    }
+  } else if (op.complementos_cc) {
     const fasesKit = { mono: 'monofasico', bi: 'bifasico', tri: 'trifasico' } as const
     const r = await precificarComplementosCC(admin, {
       qtd_placas: qtdPlacas,
@@ -306,6 +331,10 @@ export async function montarOrcamentoLead(admin: Admin, e: {
   const { data: linhas } = await admin.from('parametros_precificacao')
     .select('chave, valor_numero, valor_json, unidade').is('vigente_ate', null).eq('ativo', true)
   const params = paramsToRecord(linhas || [])
+  // Fornecedor de API: o fator dele no lugar do fator WEG (mesmos margem, comissão e imposto)
+  if (op.catalogo?.api && op.catalogo.fator_preco) {
+    params.fator_kit_weg_preco_cliente = { valor_numero: op.catalogo.fator_preco, valor_json: null, unidade: '×' }
+  }
   const kitBruto = placa.preco_venda * qtdPlacas + inversor.preco_venda * invQtd + kitExtras + (complementos?.total || 0)
   const proposta = calcularProposta({
     placa: { qtd: qtdPlacas, preco_venda_unitario: placa.preco_venda, modelo: placa.modelo, potencia_wp: placa.potencia_wp! },

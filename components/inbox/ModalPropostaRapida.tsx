@@ -63,6 +63,9 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
   const [lendoBenef, setLendoBenef] = useState<string | null>(null)
   const [benefManual, setBenefManual] = useState({ uc: '', titular: '', consumo: '' })
   const pularResetSistema = useRef(false)
+  // Kalebe 2026-10-19 (multiempresa): CNPJ da proposta — define fornecedor, catálogo e marca do PDF
+  const [empresas, setEmpresas] = useState<Array<{ id: string; nome: string; cnpj: string | null; fornecedor: string | null }>>([])
+  const [empresaId, setEmpresaId] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [modo, setModo] = useState<Modo>('consumo_kwh')
   const [valor, setValor] = useState('')
@@ -123,6 +126,9 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
       if ('erro' in r) { setErro(r.erro); return }
       setFaixas(r.faixas || []); setSecoes(r.secoes || [])
       setBeneficiarias(r.beneficiarias || [])
+      setEmpresas(r.empresas || []); setEmpresaId(r.empresa_id || null)
+      // Catálogo do fornecedor da empresa da proposta
+      opcoesKitPropostaAction(r.empresa_id || null).then((c) => { if (!('erro' in c)) setCatalogo(c) })
       setPendentes(r.faturas_pendentes || []); setTitular(r.titular || null)
       if (r.tipo_rede && ['monofasico', 'bifasico', 'trifasico'].includes(r.tipo_rede)) setRede(r.tipo_rede as any)
       setTelhado(r.tipo_telhado || '')
@@ -145,11 +151,18 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
         setEditandoDe(r.salva.salvo_em)
       }
     })
-    opcoesKitPropostaAction().then((r) => { if (!('erro' in r)) setCatalogo(r) })
   }, [conversaId])
 
+  // Trocou a empresa: outro fornecedor → outro catálogo; placa, inversor e extras escolhidos não valem mais
+  function trocarEmpresa(id: string) {
+    if (id === empresaId) return
+    setEmpresaId(id || null)
+    setPlacaId(''); setInversorId(''); setInversorQtd(''); setExtras([]); setCatalogo(null)
+    opcoesKitPropostaAction(id || null).then((c) => { if (!('erro' in c)) setCatalogo(c); else setErro(c.erro) })
+  }
+
   // Qualquer mudança na entrada invalida o cálculo e o PDF
-  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, telhado, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes, aumento, beneficiarias])
+  useEffect(() => { setResultado(null); setPdf(null) }, [modo, valor, inversorKw, rede, telhado, cidade, sistema, placaId, inversorId, inversorQtd, extras, secoes, aumento, beneficiarias, empresaId])
   // Trocou o sistema: o modelo escolhido não vale mais (menos ao restaurar a proposta salva)
   useEffect(() => {
     if (pularResetSistema.current) { pularResetSistema.current = false; return }
@@ -234,6 +247,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
     },
     secoes,
     beneficiarias,
+    empresa_id: empresaId,
   })
 
   // ── Unidades beneficiárias ──
@@ -527,6 +541,19 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
 
             {/* Kalebe 2026-10-13: sistema, modelos e itens extras */}
             <div className="space-y-3 rounded-2xl border border-white/10 p-3">
+              {/* Kalebe 2026-10-19: de qual CNPJ é a proposta (só aparece com mais de uma empresa) */}
+              {empresas.length > 1 && (
+                <label className="block">
+                  <span className="block text-[11px] font-bold text-white/60 mb-1">Empresa da proposta (CNPJ)</span>
+                  <select value={empresaId || ''} onChange={(e) => trocarEmpresa(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm">
+                    {empresas.map((x) => (
+                      <option key={x.id} value={x.id} className="bg-noite">{x.nome}{x.cnpj ? ` · CNPJ ${x.cnpj}` : ''}{x.fornecedor ? ` · ${x.fornecedor}` : ''}</option>
+                    ))}
+                  </select>
+                  <span className="block text-[10px] text-white/45 mt-1">Define o fornecedor (placas, inversores e itens) e a marca do PDF.</span>
+                </label>
+              )}
               <div>
                 <span className="block text-[11px] font-bold text-white/60 mb-1">Sistema</span>
                 <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/10">
@@ -774,7 +801,7 @@ export function ModalPropostaRapida({ conversaId, nomeCliente, ehAdmin, onFechar
         <CadastroDatasheetModal categoriaInicial={cadastroDatasheet}
           subcategoriaInversor={TIPOS_SISTEMA_FV.find((t) => t.valor === sistema)?.subcategoria}
           onClose={() => setCadastroDatasheet(null)}
-          onCreated={() => { opcoesKitPropostaAction().then((r) => { if (!('erro' in r)) setCatalogo(r) }) }} />
+          onCreated={() => { opcoesKitPropostaAction(empresaId).then((r) => { if (!('erro' in r)) setCatalogo(r) }) }} />
       )}
     </div>
   )

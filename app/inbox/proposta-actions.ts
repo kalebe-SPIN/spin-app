@@ -37,6 +37,8 @@ export type EntradaPropostaRapida = {
   secoes?: SecaoProposta[]
   /** Kalebe 2026-10-17: unidades beneficiárias (consumo + fatura) */
   beneficiarias?: BeneficiariaProposta[]
+  /** Kalebe 2026-10-19 (multiempresa): CNPJ da proposta — define fornecedor, catálogo e marca do PDF (vazio = padrão) */
+  empresa_id?: string | null
 }
 
 /** UC beneficiária no Montar proposta (Kalebe 2026-10-17) */
@@ -116,6 +118,9 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
   salva: EntradaFvSalva | null
   /** Kalebe 2026-10-17: unidades beneficiárias já cadastradas (proposta salva ou fatura do projeto) */
   beneficiarias: BeneficiariaProposta[]
+  /** Kalebe 2026-10-19: empresas que emitem proposta (só aparece o seletor com mais de uma) e a escolhida */
+  empresas: Array<{ id: string; nome: string; cnpj: string | null; fornecedor: string | null }>
+  empresa_id: string | null
 } | { erro: string }> {
   const a = await acesso(conversa_id)
   if ('erro' in a) return { erro: a.erro as string }
@@ -138,7 +143,18 @@ export async function dadosPropostaRapidaAction(conversa_id: string): Promise<{
       arquivo_url: b.arquivo_url || null, arquivo_nome: b.arquivo_nome || null, arquivo_tipo: b.arquivo_tipo || null, mensagem_id: null,
     })).filter((b) => b.consumo_kwh > 0)
   }
+  // Multiempresa: a da proposta salva, senão a do projeto, senão a padrão
+  const { empresasAtivas } = await import('@/lib/empresas/empresas')
+  const lista = (await empresasAtivas(a.admin)).filter((x) => x.id)
+  let empresaId: string | null = (salva?.entrada as any)?.empresa_id || null
+  if (!empresaId && projetoFv?.id) {
+    const { data: pje } = await a.admin.from('projetos').select('empresa_id').eq('id', projetoFv.id).maybeSingle()
+    empresaId = (pje as any)?.empresa_id || null
+  }
+  if (!empresaId || !lista.some((x) => x.id === empresaId)) empresaId = lista.find((x) => x.padrao)?.id || lista[0]?.id || null
   return {
+    empresas: lista.map((x) => ({ id: x.id!, nome: x.nome, cnpj: x.cnpj, fornecedor: x.fornecedor_nome })),
+    empresa_id: empresaId,
     beneficiarias,
     salva,
     faixas,
@@ -204,11 +220,17 @@ async function calcular(a: Exclude<Awaited<ReturnType<typeof acesso>>, { erro: a
   if (cidade) perfil.contato = { ...perfil.contato, endereco: { ...(perfil.contato.endereco || {}), cidade } }
   // Beneficiárias: o consumo delas soma no dimensionamento
   const bens = (e.beneficiarias || []).filter((b) => Number(b.consumo_kwh) > 0)
-  const opcoes = { ...(e.opcoes || {}), beneficiarias: bens.length ? { qtd: bens.length, consumo_kwh: bens.reduce((s, b) => s + Number(b.consumo_kwh), 0) } : null }
+  // Multiempresa: a empresa escolhida define o catálogo (fornecedor) — o servidor decide, não a tela
+  const { empresaPorId, filtroCatalogoDaEmpresa } = await import('@/lib/empresas/empresas')
+  const empresa = await empresaPorId(a.admin, e.empresa_id || null)
+  const opcoes = {
+    ...(e.opcoes || {}), catalogo: filtroCatalogoDaEmpresa(empresa),
+    beneficiarias: bens.length ? { qtd: bens.length, consumo_kwh: bens.reduce((s, b) => s + Number(b.consumo_kwh), 0) } : null,
+  }
   const montado = await montarOrcamentoLead(a.admin, { entrada, tipo_rede_perfil: e.tipo_rede, cidade, opcoes })
   if ('erro' in montado) return montado
   const orc = await aplicarSecoes(a.admin, montado, e.secoes)
-  return { orc, auditoria: auditarOrcamentoLead(orc, perfil), perfil, cidade }
+  return { orc, auditoria: auditarOrcamentoLead(orc, perfil), perfil, cidade, empresa }
 }
 
 // Dupla visão: fora do admin, nada de margem nem preço de item (só o total ao cliente)
@@ -256,7 +278,8 @@ async function projetoFvDoContato(a: Acesso, r: Calculado): Promise<{ projeto_id
 export type DadosPdfOficial = {
   projeto: Record<string, any>
   pv_total: number
-  config_empresa: { logo_url: string | null; razao_social: string | null; cnpj: string | null; rt_nome: string | null }
+  /** Kalebe 2026-10-19: dados da empresa escolhida (marca, CNPJ, logo, quem assina) */
+  config_empresa: Record<string, any> & { logo_url: string | null; razao_social: string | null; cnpj: string | null; rt_nome: string | null }
   campanha: { titulo: string; subtitulo?: string | null; condicao_especial: string; vigente_ate?: string | null } | null
 }
 
@@ -270,11 +293,13 @@ export async function prepararPdfOficialPropostaRapidaAction(conversa_id: string
   const proj = await projetoFvDoContato(a, r)
   if ('erro' in proj) return proj
   const o = r.orc
-  const [{ data: pj }, { data: emp }, fatura] = await Promise.all([
+  const [{ data: pj }, fatura] = await Promise.all([
     a.admin.from('projetos').select('id, codigo, cliente_razao_social, cliente_cpf_cnpj, analise_fatura, campanha_aplicada_id').eq('id', proj.projeto_id).maybeSingle(),
-    a.admin.from('configuracoes_empresa').select('logo_url, razao_social, cnpj, rt_nome').limit(1).maybeSingle(),
     faturaConhecida(a.admin, a.conv, a.contato),
   ])
+  // Marca do PDF = empresa escolhida no kit (sem a migration 158: a de configuracoes_empresa)
+  const { configEmpresaDoPdf } = await import('@/lib/empresas/empresas')
+  const emp = configEmpresaDoPdf(r.empresa)
   const p = (pj || {}) as any
   // Histórico de consumo da fatura (gráfico consumo × geração): do projeto FV ou do projeto principal do contato
   let analise = p.analise_fatura || null
@@ -320,7 +345,7 @@ export async function prepararPdfOficialPropostaRapidaAction(conversa_id: string
   return {
     projeto_id: proj.projeto_id,
     nome_arquivo: nomearProposta({ cliente, potenciaCcKwp: o.kwp, potenciaCaKw: potenciaCa }),
-    dados: { projeto, pv_total: o.pv_total, config_empresa: (emp as any) || { logo_url: null, razao_social: null, cnpj: null, rt_nome: null }, campanha },
+    dados: { projeto, pv_total: o.pv_total, config_empresa: emp, campanha },
   }
 }
 
@@ -340,6 +365,7 @@ export async function registrarPdfPropostaRapidaAction(conversa_id: string, proj
   const r = await calcular(a, e)
   if ('erro' in r) return r
   const o = r.orc
+  if (r.empresa.id) await a.admin.from('projetos').update({ empresa_id: r.empresa.id }).eq('id', projeto_id)
   await salvarSecoesNoProjeto(a.admin, projeto_id, o.secoes || [], a.user.id)
   // Kalebe 2026-10-16: guarda o que foi montado pra reabrir/editar e fechar a venda
   await salvarEntradaFv(a.admin, projeto_id, e, o)
@@ -391,7 +417,7 @@ const ROTULO_CATEGORIA: Record<string, string> = {
  * sistema (string, micro, híbrido) e itens extras agrupados por categoria do
  * catálogo. Sem preço na tela — o preço sai só no total (dupla visão).
  */
-export async function opcoesKitPropostaAction(): Promise<{
+export async function opcoesKitPropostaAction(empresa_id?: string | null): Promise<{
   placas: Array<{ id: string; rotulo: string; potencia_wp: number }>
   /** potência/entradas pra prévia do kit na tela; `peso` = custo relativo (desempate de micro, sem expor preço) */
   inversores: Record<TipoSistemaFv, Array<{ id: string; rotulo: string; fases: string | null; potencia_kw: number; entradas: number | null; peso: number }>>
@@ -400,7 +426,10 @@ export async function opcoesKitPropostaAction(): Promise<{
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { erro: 'Não autenticado' }
-  const catalogo = await carregarCatalogoProposta(createAdminClient())
+  const admin = createAdminClient()
+  // Kalebe 2026-10-19: catálogo do fornecedor da empresa escolhida
+  const { empresaPorId, filtroCatalogoDaEmpresa } = await import('@/lib/empresas/empresas')
+  const catalogo = await carregarCatalogoProposta(admin, filtroCatalogoDaEmpresa(await empresaPorId(admin, empresa_id || null)))
   const kw = (n: number | null) => (n ? `${String(n).replace('.', ',')} kW` : '')
   // Potência em ordem crescente (a ordem carrega sentido)
   const placas = catalogo.filter((p) => p.categoria === 'placa' && p.potencia_wp && p.disponivel)

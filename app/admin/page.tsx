@@ -60,6 +60,12 @@ export default async function AdminHomePage() {
             desc="Razão social, CNPJ, endereço, telefone. Dados do responsável técnico (RT/CREA/ART) usados nos diagramas e propostas."
           />
           <AdminCard
+            href="/admin/empresas"
+            icon="🏬"
+            titulo="Empresas e fornecedores"
+            desc="Outros CNPJs/marcas que emitem proposta e o fornecedor de cada um (planilha WEG ou API com chave). A escolha no kit define catálogo, PDF e etiqueta no Spinzap."
+          />
+          <AdminCard
             href="/admin/usuarios"
             icon="👥"
             titulo="Usuários e permissões"

@@ -13,6 +13,7 @@ import { TextoFormatado } from '@/components/chat/TextoFormatado'
 import { SeletorCidade } from './SeletorCidade'
 import { ModalAgendaBianca } from '@/components/chat/ModalAgendaBianca'
 import { AgendaAbertaConversa, CartaoAgendaFixo, agendaDaMensagem } from './AgendaAbertaConversa'
+import { classeEtiquetaEmpresa } from '@/lib/empresas/etiqueta'
 import { SECOES } from '@/lib/spinzap/perfil'
 import { propostasDoContatoAction } from '@/app/inbox/propostas-actions'
 import { CATEGORIAS_PROPOSTA, INFO_CATEGORIA, categoriaDoTipo, type CategoriaProposta } from '@/lib/propostas/categorias'
@@ -75,6 +76,8 @@ type Conversa = {
   nao_lidas?: number
   /** Kalebe 2026-10-15: tarefas, follow-ups, lembretes e eventos abertos desta conversa */
   pendencias?: PendenciaConversa[]
+  /** Kalebe 2026-10-19: empresa(s) que atendem o cliente (projetos com CNPJ escolhido) */
+  empresas?: Array<{ id: string; nome: string; cor: string | null }>
   // Kalebe 2026-10-09 — Spinzap (mig 145)
   etapa?: string | null
   etapa_em?: string | null
@@ -1387,6 +1390,11 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
   if (ehEquipe) return null
   return (
     <div className="shrink-0 px-2 lg:px-4 py-1.5 border-b border-white/10 flex flex-wrap items-center gap-1.5">
+      {/* Kalebe 2026-10-19: empresa (CNPJ) que atende o cliente — cor só na borda */}
+      {(c.empresas || []).map((e) => (
+        <span key={e.id} data-etiqueta title={`Atendido pela empresa ${e.nome}`}
+          className={`${chip} ${classeEtiquetaEmpresa(e.cor)} text-white/80`}>🏢 {e.nome}</span>
+      ))}
       {/* Kalebe 2026-10-09: contato também pode ser fornecedor (equipamento, produtos, serviço) */}
       {fornec ? (
         <button data-etiqueta onClick={onFornecedor} title={`Fornecedor: ${fornec.nome_fantasia || fornec.razao_social} — clique pra ver ou ajustar`}
@@ -1778,6 +1786,12 @@ function ItemConversa({ c, selecionada, onClick }: {
             👥 Equipe
           </span>
         )}
+        {(c.empresas || []).map((e) => (
+          <span key={e.id} data-etiqueta className={`text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded border ${classeEtiquetaEmpresa(e.cor)} text-white/75 shrink-0 max-w-[90px] truncate`}
+            title={`Empresa: ${e.nome}`}>
+            {e.nome}
+          </span>
+        ))}
         {c.contato?.fornecedor && (
           <span className="text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded bg-[#f59e0b]/15 text-[#f59e0b] shrink-0"
             title={`Fornecedor: ${rotuloTiposFornecedor(c.contato.fornecedor.tipos) || '—'}`}>

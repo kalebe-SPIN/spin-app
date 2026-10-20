@@ -67,6 +67,9 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
     const kitC = consolidarKitComExtras(kitBase, Array.isArray(projeto.extras_proposta) ? projeto.extras_proposta : [])
     const kit = { ...kitBase, potencia_cc_kwp: kitC.potencia_cc_kwp, potencia_ca_kw: kitC.potencia_ca_kw, fci_pct: kitC.fci_pct }
     const empresa = configEmpresa || {}
+    // Kalebe 2026-10-19 (multiempresa): marca da empresa escolhida no kit; sem ela, Spin Solar
+    const marca: string = empresa.nome || 'Spin Solar'
+    const cnpjEmpresa: string = empresa.cnpj || (empresa.nome ? '' : '22.279.642/0001-04')
     const dataHoje = new Date().toLocaleDateString('pt-BR')
     const validade = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')
 
@@ -207,15 +210,15 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {empresa.logo_url ? (
-                  <img src={empresa.logo_url} alt="Spin" style={{ height: 40, objectFit: 'contain' }} crossOrigin="anonymous" />
+                  <img src={empresa.logo_url} alt={marca} style={{ height: 40, objectFit: 'contain' }} crossOrigin="anonymous" />
                 ) : (
-                  <div style={E.logoBox}>S</div>
+                  <div style={E.logoBox}>{marca.slice(0, 1).toUpperCase()}</div>
                 )}
                 <div>
-                  <p style={E.tituloEmpresa}>SPIN SOLAR</p>
+                  <p style={E.tituloEmpresa}>{marca.toUpperCase()}</p>
                   <p style={E.subEmpresa}>
                     {empresa.razao_social || 'Energias Renováveis Ltda'}
-                    {empresa.cnpj ? ` · CNPJ ${empresa.cnpj}` : ' · CNPJ 22.279.642/0001-04'}
+                    {cnpjEmpresa ? ` · CNPJ ${cnpjEmpresa}` : ''}
                   </p>
                 </div>
               </div>
@@ -376,7 +379,7 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
 
             <div style={E.rodapeManifesto}>
               <span>Página 2 de 3</span>
-              <span>Spin Solar · Proposta {projeto.codigo}</span>
+              <span>{marca} · Proposta {projeto.codigo}</span>
             </div>
           </div>
         </section>
@@ -528,9 +531,9 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               <div style={E.gridAssinaturas}>
                 {/* SPIN — Kalebe (assinatura DIGITAL gerada) */}
                 <AssinaturaDigital
-                  nome={empresa.rt_nome || 'Kalebe Grün'}
-                  papel="Diretor comercial · Spin Solar"
-                  documento="CNPJ 22.279.642/0001-04"
+                  nome={empresa.rt_nome || (empresa.nome ? '—' : 'Kalebe Grün')}
+                  papel={`${empresa.papel_assinatura || 'Diretor comercial'} · ${marca}`}
+                  documento={cnpjEmpresa ? `CNPJ ${cnpjEmpresa}` : 'CNPJ'}
                   assinadoEm={dataHoje}
                   hash={gerarHash(`spin-${projeto?.id || 'x'}-${dataHoje}`)}
                   jaAssinou={true}
@@ -550,7 +553,7 @@ export const PropostaPDFTemplate = forwardRef<HTMLDivElement, Props>(
               </div>
 
               <div style={E.rodapeAceite}>
-                🔒 Assinaturas digitais verificáveis · Documento gerado por Spin Solar em {dataHoje}
+                🔒 Assinaturas digitais verificáveis · Documento gerado por {marca} em {dataHoje}
               </div>
             </div>
 

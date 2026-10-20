@@ -225,8 +225,10 @@ async function dadosOficiaisDoProjeto(a: Acesso, projeto_id: string): Promise<Da
   const k = p?.kit_selecionado
   if (!k?.qtd_placas) return { erro: 'O projeto não tem kit salvo — gere a proposta de novo antes de fechar' }
   if (p.orcamento_consolidado?.modo_composicao === 'por_uc') return { erro: 'Proposta por unidade consumidora: gere a final pela tela do projeto' }
-  const [{ data: emp }, camp] = await Promise.all([
-    a.admin.from('configuracoes_empresa').select('logo_url, razao_social, cnpj, rt_nome').limit(1).maybeSingle(),
+  // Kalebe 2026-10-19 (multiempresa): proposta final com a marca da empresa do projeto
+  const { empresaDoProjeto, configEmpresaDoPdf } = await import('@/lib/empresas/empresas')
+  const [emp, camp] = await Promise.all([
+    empresaDoProjeto(a.admin, projeto_id).then(configEmpresaDoPdf),
     p.campanha_aplicada_id ? a.admin.from('campanhas_mes').select('titulo, subtitulo, condicao_especial, vigente_ate').eq('id', p.campanha_aplicada_id).maybeSingle() : Promise.resolve({ data: null }),
   ])
   const inv = (i: any) => ({ modelo: i?.modelo || null, potencia_kw: i?.potencia_kw ?? null, qtd: i?.qtd ?? null })
@@ -252,7 +254,7 @@ async function dadosOficiaisDoProjeto(a: Acesso, projeto_id: string): Promise<Da
       desconto_admin_pct: 0, desconto_admin_valor: 0, assinatura_cliente: null,
     },
     pv_total: 0,
-    config_empresa: (emp as any) || { logo_url: null, razao_social: null, cnpj: null, rt_nome: null },
+    config_empresa: emp,
     campanha: ((camp as any)?.data as any) || null,
   }
 }
