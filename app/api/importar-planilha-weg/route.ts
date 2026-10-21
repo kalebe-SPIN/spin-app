@@ -251,6 +251,7 @@ export async function POST(req: NextRequest) {
       .select('id, codigo_weg, modelo, disponivel_estoque')
       .in('categoria', ['placa', 'inversor'])
       .eq('ativo', true)
+      .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     const sairam = ((weg || []) as Array<{ id: string; codigo_weg: string; modelo: string; disponivel_estoque: boolean }>)
       .filter((p) => /^\d{7,8}$/.test(String(p.codigo_weg || '')) && !codigosDaPlanilha.has(p.codigo_weg) && p.disponivel_estoque)
     if (sairam.length) {

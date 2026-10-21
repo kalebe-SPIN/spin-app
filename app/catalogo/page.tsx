@@ -53,6 +53,7 @@ export default async function CatalogoBrowsePage({
     .from('produtos')
     .select('id, modelo, marca, categoria, subcategoria, potencia_wp, potencia_kw, preco_venda, disponivel_estoque, descricao_publica, imagem_url')
     .eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .order('categoria')
     .order('modelo')
     .limit(200)

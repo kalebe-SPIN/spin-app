@@ -102,6 +102,7 @@ const ehOpcional = (modelo: string, subcategoria: string | null) =>
 export async function carregarEquipamentosRecarga(admin: Admin): Promise<EquipamentoCatalogoRecarga[]> {
   const { data } = await admin.from('produtos').select('id, modelo, fabricante, subcategoria, specs, sob_cotacao')
     .in('subcategoria', ['ve_wallbox', 've_opcional']).eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
   const prods = (data || []) as any[]
   const precos = await precosVigentes(admin, prods.map((p) => p.id))
   return prods
@@ -123,6 +124,7 @@ export async function carregarEquipamentosRecarga(admin: Admin): Promise<Equipam
 /** Disjuntores e DPS do catálogo: modelo (maiúsculo) → preço de venda. */
 export async function precosCatalogoMateriais(admin: Admin): Promise<Record<string, number>> {
   const { data } = await admin.from('produtos').select('id, modelo').in('categoria', ['disjuntor', 'dps']).eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
   const prods = (data || []) as any[]
   const precos = await precosVigentes(admin, prods.map((p) => p.id))
   const out: Record<string, number> = {}

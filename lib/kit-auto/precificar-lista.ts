@@ -72,7 +72,13 @@ export async function precificarLista(
     .in('categoria', Array.from(categoriasReais))
     .limit(2000)
 
-  const catalogo = (produtos || []) as ProdutoCatalogo[]
+  // Catálogo da Spin: a view não tem a coluna do fornecedor — tira os de fornecedor de API pelo id (Kalebe 2026-10-21)
+  const idsLidos = ((produtos || []) as any[]).map((p) => p.id)
+  const { data: deApi } = idsLidos.length
+    ? await supabase.from('produtos').select('id').in('id', idsLidos).not('catalogo_fornecedor_id', 'is', null)
+    : { data: [] as any[] }
+  const foraSpin = new Set(((deApi || []) as any[]).map((p) => p.id))
+  const catalogo = ((produtos || []) as ProdutoCatalogo[]).filter((p: any) => !foraSpin.has(p.id))
 
   return itens.map((item) => {
     // Preserva preço manual existente

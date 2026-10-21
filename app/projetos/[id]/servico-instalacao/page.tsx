@@ -41,6 +41,7 @@ export default async function ServicoInstalacaoPage({ params }: { params: { id: 
     .eq('categoria', 'placa')
     .eq('ativo', true)
     .is('precos_produtos.vigente_ate', null)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .order('modelo')
 
   const { data: estruturasCat } = await supabase
@@ -50,6 +51,7 @@ export default async function ServicoInstalacaoPage({ params }: { params: { id: 
     .eq('categoria', 'estrutura')
     .eq('ativo', true)
     .is('precos_produtos.vigente_ate', null)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .order('modelo')
 
   const { data: cabosCat } = await supabase
@@ -59,6 +61,7 @@ export default async function ServicoInstalacaoPage({ params }: { params: { id: 
     .in('categoria', ['cabo_cc', 'cabo_ca', 'cabo'])
     .eq('ativo', true)
     .is('precos_produtos.vigente_ate', null)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .order('modelo')
 
   const placasCatalogo = (placasCat || []).map((p: any) => ({

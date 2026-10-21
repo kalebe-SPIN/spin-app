@@ -68,6 +68,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     `)
     .eq('categoria', 'placa')
     .eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .order('specs->potencia_wp', { ascending: false })
 
   // Buscar todos os inversores solares (string + micro).
@@ -86,6 +87,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     // SIW200H/SIW400H aqui também sem sair do fluxo on-grid.
     .in('subcategoria', ['inversor_string', 'microinversor', 'inversor_hibrido'])
     .eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
 
   // Kalebe 2026-09-09 (v3): filtrar por categoria não estava confiável — os
   // SIW200H/SIW400H, DTSU666 etc podem estar cadastrados sob subcategorias
@@ -97,6 +99,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .from('produtos')
     .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, ativo, precos_produtos(preco_venda, vigente_de, vigente_ate)')
     .eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .order('modelo')
 
   // Classifica em buckets por padrão de modelo (defensivo) + fallback categoria.

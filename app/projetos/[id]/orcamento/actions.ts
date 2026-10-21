@@ -729,6 +729,7 @@ export async function buscarProdutosCatalogoAction(entrada: {
       precos_produtos(preco_venda, vigente_de, vigente_ate)
     `)
     .eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .limit(limit)
 
   if (entrada.categoria) query = query.eq('categoria', entrada.categoria)

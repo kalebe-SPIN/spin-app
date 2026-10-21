@@ -345,6 +345,7 @@ async function buscarProdutoComPreco(
     .select('id, modelo, subcategoria, categoria, descricao_curta')
     .in('categoria', filtro.categorias)
     .eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .limit(500)
   const listaAtivos = (ativos || []) as any[]
 
@@ -356,6 +357,7 @@ async function buscarProdutoComPreco(
       .select('id, modelo, subcategoria, categoria, descricao_curta')
       .in('categoria', filtro.categorias)
       .eq('ativo', false)
+      .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
       .limit(500)
     const listaInativos = (inativos || []) as any[]
     if (listaInativos.length === 0) {
@@ -469,6 +471,7 @@ export async function buscarProdutoPorRef(
     .from('produtos')
     .select('id, modelo, codigo_weg, ativo, categoria, descricao_curta')
     .or(`modelo.ilike.%${termo}%,codigo_weg.ilike.%${termo}%`)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .order('ativo', { ascending: false })
     .limit(200)
   const listaCompleta = (prods || []) as any[]
@@ -546,6 +549,7 @@ async function buscarProdutoPorNome(
     .from('produtos')
     .select('id, modelo, categoria, ativo')
     .or(orClause)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .order('ativo', { ascending: false })
     .limit(200)
   const lista = ((prods || []) as any[]).filter((p: any) => {
@@ -595,6 +599,7 @@ async function buscarProdutoPorDescricao(
     .select('id, modelo, descricao_curta, categoria, ativo')
     .or(orClause)
     .eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .limit(200)
   const lista = ((prods || []) as any[]).filter((p: any) => {
     const alvo = `${p.modelo || ''} ${p.descricao_curta || ''}`
@@ -710,6 +715,7 @@ export async function buscarDisjuntorCompativel(
     .select('id, modelo, specs, descricao_curta')
     .eq('categoria', 'disjuntor')
     .eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
     .limit(500)
   let prods: any[] = (ativos || []) as any[]
   // Kalebe 2026-09-02: usa REGEX_LIXO_MODELO tb pra cortar CAPACITOR/KVAR/BANCO
@@ -732,6 +738,7 @@ export async function buscarDisjuntorCompativel(
       .select('id, modelo, specs, descricao_curta')
       .eq('categoria', 'disjuntor')
       .eq('ativo', false)
+      .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
       .limit(500)
     prods = ((inat || []) as any[]).filter((p) => {
       const modelo = String(p.modelo || '')

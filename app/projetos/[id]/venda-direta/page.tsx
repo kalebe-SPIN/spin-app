@@ -61,6 +61,7 @@ export default async function VendaDiretaProjetoPage({ params }: { params: { id:
       .select('id, modelo, fabricante, descricao_curta, categoria, subcategoria, specs, precos_produtos(preco_venda, vigente_de, vigente_ate)')
       .eq('ativo', true)
       .neq('categoria', 'frete')
+      .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
       .order('modelo')
       .limit(5000),
     supabase

@@ -263,7 +263,9 @@ export async function dadosVendaDiretaAction(conversa_id: string): Promise<{
     a.admin.from('projeto_itens').select('id, dados').eq('projeto_id', proj.projeto_id).eq('tipo', 'venda_equipamentos').neq('status', 'removido').limit(1).maybeSingle(),
     a.admin.from('produtos')
       .select('id, modelo, fabricante, descricao_curta, categoria, subcategoria, specs, precos_produtos(preco_venda, vigente_de, vigente_ate)')
-      .eq('ativo', true).neq('categoria', 'frete').order('modelo').limit(5000),
+      .eq('ativo', true).neq('categoria', 'frete')
+      .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
+      .order('modelo').limit(5000),
     carregarParams(a.admin),
     a.admin.from('configuracoes_empresa').select('*').eq('singleton', true).maybeSingle(),
   ])

@@ -69,6 +69,7 @@ export async function listarPlacasDisponiveis(cliente?: Cliente): Promise<PlacaC
     .eq('ativo', true)
     .eq('disponivel_estoque', true)
     .is('precos_produtos.vigente_ate', null)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
 
   if (!data) return []
 
@@ -126,6 +127,7 @@ export async function escolherInversor(opts: {
     .eq('ativo', true)
     .eq('disponivel_estoque', true)
     .is('precos_produtos.vigente_ate', null)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
 
   if (!data) return null
 

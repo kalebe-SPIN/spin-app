@@ -47,7 +47,9 @@ export type CatalogoBess = {
 /** Mesmos buckets do /kit (classifica pelo nome do modelo + categoria). */
 export async function carregarCatalogoBess(admin: Admin): Promise<CatalogoBess> {
   const { data } = await admin.from('produtos')
-    .select('id, fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque').eq('ativo', true).limit(3000)
+    .select('id, fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque').eq('ativo', true)
+    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
+    .limit(3000)
   const todos = (data || []) as any[]
   const precos = await precosVigentes(admin, todos.map((p) => p.id))
   const norm = (s: any) => String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[\s\-_.]/g, '')
