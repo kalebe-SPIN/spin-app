@@ -114,6 +114,21 @@ export type FiltroCatalogo = {
   fator_preco: number | null
 }
 
+/** Condição do catálogo da empresa pra usar em .or() numa consulta de produtos. */
+export function condicaoCatalogo(filtro: FiltroCatalogo | null): string {
+  return filtro?.api && filtro.fornecedor_id ? `catalogo_fornecedor_id.eq.${filtro.fornecedor_id}` : 'catalogo_fornecedor_id.is.null'
+}
+
+/**
+ * Parâmetros de preço com o fator do fornecedor de API no lugar do fator WEG
+ * (margem, comissão e imposto continuam os da Spin). Sem fator definido: null.
+ */
+export function paramsDaEmpresa<P extends Record<string, any>>(params: P, filtro: FiltroCatalogo | null): P | null {
+  if (!filtro?.api) return params
+  if (!(Number(filtro.fator_preco) > 0)) return null
+  return { ...params, fator_kit_weg_preco_cliente: { valor_numero: Number(filtro.fator_preco), valor_json: null, unidade: '×' } }
+}
+
 export function filtroCatalogoDaEmpresa(e: Empresa): FiltroCatalogo | null {
   // Sem a migration 158 (empresa de configuracoes_empresa): catálogo de sempre, sem filtro
   if (!e.id) return null

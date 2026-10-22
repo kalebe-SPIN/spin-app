@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { calcularMetaEnergia } from '@/lib/dimensionamento/meta-energia'
 import { MetaEnergiaCard } from '@/components/MetaEnergiaCard'
 import { KitPorUcClient } from '@/components/KitPorUcClient'
+import { SeletorEmpresaProjeto } from '@/components/SeletorEmpresaProjeto'
+import { empresasAtivas, filtroCatalogoDaEmpresa, condicaoCatalogo } from '@/lib/empresas/empresas'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -59,6 +61,11 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     )
   }
 
+  // Kalebe 2026-10-22 (multiempresa): a empresa do projeto define o catálogo (fornecedor)
+  const empresas = await empresasAtivas(supabase as any)
+  const empresa = empresas.find((e) => e.id && e.id === (projeto as any).empresa_id) || empresas.find((e) => e.padrao) || empresas[0]
+  const catalogoDaEmpresa = condicaoCatalogo(filtroCatalogoDaEmpresa(empresa))
+
   // Buscar todas as placas ativas do catálogo
   const { data: placas } = await supabase
     .from('produtos')
@@ -68,7 +75,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     `)
     .eq('categoria', 'placa')
     .eq('ativo', true)
-    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
+    .or(catalogoDaEmpresa) // catálogo do fornecedor da empresa do projeto (Kalebe 2026-10-22)
     .order('specs->potencia_wp', { ascending: false })
 
   // Buscar todos os inversores solares (string + micro).
@@ -87,7 +94,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     // SIW200H/SIW400H aqui também sem sair do fluxo on-grid.
     .in('subcategoria', ['inversor_string', 'microinversor', 'inversor_hibrido'])
     .eq('ativo', true)
-    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
+    .or(catalogoDaEmpresa) // catálogo do fornecedor da empresa do projeto (Kalebe 2026-10-22)
 
   // Kalebe 2026-09-09 (v3): filtrar por categoria não estava confiável — os
   // SIW200H/SIW400H, DTSU666 etc podem estar cadastrados sob subcategorias
@@ -99,7 +106,7 @@ export default async function KitPage({ params }: { params: { id: string } }) {
     .from('produtos')
     .select('id, marca:fabricante, modelo, categoria, subcategoria, specs, disponivel_estoque, ativo, precos_produtos(preco_venda, vigente_de, vigente_ate)')
     .eq('ativo', true)
-    .is('catalogo_fornecedor_id', null) // catálogo da Spin: produto de fornecedor de API fica fora (Kalebe 2026-10-21)
+    .or(catalogoDaEmpresa) // catálogo do fornecedor da empresa do projeto (Kalebe 2026-10-22)
     .order('modelo')
 
   // Classifica em buckets por padrão de modelo (defensivo) + fallback categoria.
@@ -196,6 +203,15 @@ export default async function KitPage({ params }: { params: { id: string } }) {
           <p className="text-white/60 mt-1 text-sm">
             {projeto.cliente_razao_social} · Escolha a placa e o sistema sugere kits compatíveis
           </p>
+          {/* Kalebe 2026-10-22: de qual CNPJ é a proposta (só com mais de uma empresa) */}
+          {empresas.filter((e) => e.id).length > 1 && (
+            <SeletorEmpresaProjeto
+              projetoId={projeto.id}
+              empresaId={empresa.id}
+              empresas={empresas.filter((e) => e.id).map((e) => ({ id: e.id!, nome: e.nome, cnpj: e.cnpj, fornecedor: e.fornecedor_nome }))}
+              temKit={!!projeto.kit_selecionado}
+            />
+          )}
         </header>
 
         {projeto.analise_fatura && <MetaEnergiaCard projetoId={projeto.id} meta={meta} />}

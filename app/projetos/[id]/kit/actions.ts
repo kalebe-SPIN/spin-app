@@ -7,6 +7,27 @@ import { montarListaComplementarCA, type ItemKit } from '@/lib/kit-auto/montar-k
 import { precificarLista, calcularSubtotais } from '@/lib/kit-auto/precificar-lista'
 import { STATUS_FECHADOS } from '@/lib/financeiro/vendas-sistema'
 
+/**
+ * Kalebe 2026-10-22 (multiempresa): de qual CNPJ é a proposta do projeto —
+ * define o fornecedor (catálogo do kit) e a marca do PDF. Venda fechada não muda.
+ */
+export async function definirEmpresaProjetoAction(projetoId: string, empresaId: string): Promise<{ sucesso: true } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  const { data: pj } = await supabase.from('projetos').select('id, status').eq('id', projetoId).maybeSingle()
+  if (!pj) return { erro: 'Projeto não encontrado' }
+  if (STATUS_FECHADOS.includes(String((pj as any).status))) return { erro: 'Venda fechada: a empresa da proposta não muda mais' }
+  const { data: emp } = await supabase.from('empresas').select('id').eq('id', empresaId).eq('ativo', true).maybeSingle()
+  if (!emp) return { erro: 'Empresa não encontrada' }
+  const { error } = await supabase.from('projetos').update({ empresa_id: empresaId }).eq('id', projetoId)
+  if (error) return { erro: error.message }
+  revalidatePath(`/projetos/${projetoId}/kit`)
+  revalidatePath(`/projetos/${projetoId}/orcamento`)
+  revalidatePath('/spinzap')
+  return { sucesso: true }
+}
+
 export type InversorNoKit = {
   id: string
   codigo_weg: string | null

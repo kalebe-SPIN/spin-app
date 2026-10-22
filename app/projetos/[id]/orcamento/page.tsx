@@ -89,11 +89,9 @@ export default async function OrcamentoPage(props: {
 
   if (soServicos && itensProjeto && itensProjeto.length > 0) {
     // Projeto so servico — renderiza fluxo simplificado
-    const { data: configEmpresa } = await supabase
-      .from('configuracoes_empresa')
-      .select('*')
-      .eq('singleton', true)
-      .single()
+    // Kalebe 2026-10-22: marca da empresa do projeto (sem escolha = Spin)
+    const { empresaDoProjeto, configEmpresaDoPdf } = await import('@/lib/empresas/empresas')
+    const configEmpresa: any = configEmpresaDoPdf(await empresaDoProjeto(supabase as any, projetoId))
 
     return (
       <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
@@ -183,11 +181,11 @@ export default async function OrcamentoPage(props: {
     )
   }
 
-  const { data: configEmpresa } = await supabase
-    .from('configuracoes_empresa')
-    .select('*')
-    .eq('singleton', true)
-    .single()
+  // Kalebe 2026-10-22 (multiempresa): marca do PDF e fornecedor = empresa do projeto
+  const { empresaDoProjeto, configEmpresaDoPdf, filtroCatalogoDaEmpresa, paramsDaEmpresa } = await import('@/lib/empresas/empresas')
+  const empresaProjeto = await empresaDoProjeto(supabase as any, projetoId)
+  const configEmpresa: any = configEmpresaDoPdf(empresaProjeto)
+  const filtroEmpresa = filtroCatalogoDaEmpresa(empresaProjeto)
 
   // Kalebe 2026-09-02: se o projeto tem campanha aplicada, carrega dados
   // pra o banner "condição especial" no PDF + card do Client.
@@ -205,7 +203,23 @@ export default async function OrcamentoPage(props: {
     .eq('ativo', true)
     .is('vigente_ate', null)
 
-  const params = paramsToRecord(paramsRows || [])
+  // Fornecedor de API: o fator dele no lugar do WEG; sem fator definido, não calcula (não chutar)
+  const paramsEmpresa = paramsDaEmpresa(paramsToRecord(paramsRows || []), filtroEmpresa)
+  if (!paramsEmpresa) {
+    return (
+      <main className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12">
+        <div className="max-w-3xl mx-auto border border-coral/50 rounded-xl p-6 space-y-2">
+          <h1 className="text-xl font-bold text-white">Falta o fator de preço do fornecedor</h1>
+          <p className="text-white/70 text-sm">
+            A proposta é da empresa {empresaProjeto.nome}, que compra do fornecedor {empresaProjeto.fornecedor_nome || '—'}.
+            Defina o fator sobre o preço da API em Admin → Empresas e fornecedores — sem ele o preço do kit sairia errado.
+          </p>
+          <Link href="/admin/empresas" className="inline-block px-4 py-2 rounded-lg bg-weg-azul text-white text-sm font-bold">Abrir Empresas e fornecedores</Link>
+        </div>
+      </main>
+    )
+  }
+  const params = paramsEmpresa
 
   // Kalebe 2026-09-08: contexto v2 — carregado 1× e reusado em cada calcProposta.
   // Se flag precificacao_v2 = 0, `ctxV2.ativo` fica false e o adapter cai no v1.
@@ -445,6 +459,8 @@ export default async function OrcamentoPage(props: {
   // renderiza qtd/preço atualizados sem exigir clique em "Regerar".
   const projetoComComplementos = {
     ...projeto,
+    // Kalebe 2026-10-22: fator do kit da empresa (fornecedor de API) — a composição interna mostra com ele
+    _fator_kit: filtroEmpresa?.api ? filtroEmpresa.fator_preco : null,
     lista_complementos_cc: complementosCentralizado || (projeto as any).lista_complementos_cc,
     kits_por_uc: modoComposicao === 'por_uc'
       ? kitsPorUcRaw.map((item: any) => ({

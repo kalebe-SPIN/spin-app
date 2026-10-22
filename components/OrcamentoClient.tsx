@@ -598,6 +598,8 @@ function ComposicaoCustosAdmin({
   fmt: (v: number) => string
 }) {
   const kit = projeto.kit_selecionado || {}
+  // Kalebe 2026-10-22 (multiempresa): fornecedor de API usa o fator dele
+  const FATOR_KIT = Number(projeto._fator_kit) > 0 ? Number(projeto._fator_kit) : FATOR_WEG
   const complementos = projeto.lista_complementos_cc?.itens || []
   const avisos = projeto.lista_complementos_cc?.avisos || []
 
@@ -620,7 +622,7 @@ function ComposicaoCustosAdmin({
       unidade: 'un',
       precoUnit: kit.placa.preco_venda || 0,
       subtotal: sub,
-      comFator: sub * FATOR_WEG,
+      comFator: sub * FATOR_KIT,
     })
   }
 
@@ -637,7 +639,7 @@ function ComposicaoCustosAdmin({
       unidade: 'un',
       precoUnit: inv.preco_venda || 0,
       subtotal: sub,
-      comFator: sub * FATOR_WEG,
+      comFator: sub * FATOR_KIT,
     })
   }
 
@@ -669,7 +671,7 @@ function ComposicaoCustosAdmin({
         unidade: c.unidade || 'un',
         precoUnit: c.preco_unitario || 0,
         subtotal: c.subtotal || 0,
-        comFator: (c.subtotal || 0) * FATOR_WEG,
+        comFator: (c.subtotal || 0) * FATOR_KIT,
       })
     }
   }
@@ -678,7 +680,7 @@ function ComposicaoCustosAdmin({
   const extrasKitBruto = extrasKitWeg.reduce((s: number, e: any) => s + (Number(e.valor) || 0), 0)
   const extrasCaTotal = extrasListaCa.reduce((s: number, e: any) => s + (Number(e.valor) || 0), 0)
   const totalWegBruto = linhasWeg.reduce((s, l) => s + l.subtotal, 0) + extrasKitBruto
-  const totalWegComFator = linhasWeg.reduce((s, l) => s + l.comFator, 0) + extrasKitBruto * FATOR_WEG
+  const totalWegComFator = linhasWeg.reduce((s, l) => s + l.comFator, 0) + extrasKitBruto * FATOR_KIT
   const totalListaCa = (listaCa || []).reduce((s: number, i: any) => s + (i.preco_unitario || 0) * (i.qtd || 0), 0)
     + extrasCaTotal
 
@@ -733,7 +735,7 @@ function ComposicaoCustosAdmin({
       {/* Bloco 1 — Kit WEG */}
       <div className="mb-6">
         <div className="flex items-center justify-between gap-3 mb-2">
-          <h3 className="text-xs uppercase tracking-wider font-bold text-white/60">1. Kit WEG (revenda × fator 0,4182)</h3>
+          <h3 className="text-xs uppercase tracking-wider font-bold text-white/60">1. Kit {Number(projeto._fator_kit) > 0 ? 'do fornecedor' : 'WEG'} (revenda × fator {FATOR_KIT.toLocaleString('pt-BR', { maximumFractionDigits: 4 })})</h3>
           <BotaoAdicionarItemExtra projetoId={projeto.id} secao="kit_weg" />
         </div>
         <div className="overflow-x-auto -mx-2 sm:mx-0">
@@ -767,7 +769,7 @@ function ComposicaoCustosAdmin({
                   <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(Number(e.valor || 0) / (e.qtd || 1))}</td>
                   <td className="py-1.5 px-2 text-right whitespace-nowrap">R$ {fmt(Number(e.valor) || 0)}</td>
                   <td className="py-1.5 px-2 text-right whitespace-nowrap text-sol">
-                    R$ {fmt((Number(e.valor) || 0) * FATOR_WEG)}
+                    R$ {fmt((Number(e.valor) || 0) * FATOR_KIT)}
                     <BotaoRemoverExtra projetoId={projeto.id} index={e.__i} />
                   </td>
                 </tr>
