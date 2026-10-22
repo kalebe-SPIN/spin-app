@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getWaConfig } from '@/lib/whatsapp/config'
-import { enviarTextoPeloCanal } from '@/lib/whatsapp/enviar-canal'
+import { enviarTextoPeloCanal, enviarMidiaPeloCanal } from '@/lib/whatsapp/enviar-canal'
 import { avisarUsuario } from '@/lib/agentes/diretorio'
 import { enviarTemplatePeloCanal, primeiroNome } from '@/lib/whatsapp/templates'
 
@@ -18,17 +18,41 @@ import { enviarTemplatePeloCanal, primeiroNome } from '@/lib/whatsapp/templates'
  */
 
 const LIMITE_POR_RODADA = 15
+/** Disparo em massa (Kalebe 2026-10-22): texto exato/mídia, rápido — lote maior por rodada (cron de 60 s) */
+const LIMITE_DISPARO_POR_RODADA = 30
 const ESPERA_MAX_MODELO_DIAS = 7
 
-export async function executarFollowupsVencidos() {
+/** Quem assina o envio: Laís (agente de qualificação) ou Bianca */
+const remetenteDo = (f: any) => (f.agente === 'lais'
+  ? { remetente_agente: 'qualificacao' as const, origem_agente_nome: 'Laís' }
+  : { remetente_agente: 'bianca' as const, origem_agente_nome: 'Bianca' })
+
+/**
+ * Executa o que venceu. Com `disparoId`, só os envios daquele disparo (o
+ * "disparar agora" já manda o primeiro lote sem esperar o cron).
+ */
+export async function executarFollowupsVencidos(opcoes: { disparoId?: string; limite?: number } = {}) {
   const admin = createAdminClient()
-  const { data: fila } = await admin
-    .from('wa_followups')
-    .select('*')
-    .eq('status', 'agendado')
-    .lte('executar_em', new Date().toISOString())
-    .order('executar_em')
-    .limit(LIMITE_POR_RODADA)
+  const agoraIso = new Date().toISOString()
+  let fila: any[] = []
+  if (opcoes.disparoId) {
+    const { data } = await admin.from('wa_followups').select('*').eq('status', 'agendado').eq('disparo_id', opcoes.disparoId)
+      .lte('executar_em', agoraIso).order('executar_em').limit(opcoes.limite || 5)
+    fila = data || []
+  } else {
+    const { data: comuns, error: eComuns } = await admin.from('wa_followups').select('*').eq('status', 'agendado')
+      .is('disparo_id', null).lte('executar_em', agoraIso).order('executar_em').limit(LIMITE_POR_RODADA)
+    if (eComuns) {
+      // Banco sem a migration 159: fila como antes
+      const { data } = await admin.from('wa_followups').select('*').eq('status', 'agendado')
+        .lte('executar_em', agoraIso).order('executar_em').limit(LIMITE_POR_RODADA)
+      fila = data || []
+    } else {
+      const { data: disparos } = await admin.from('wa_followups').select('*').eq('status', 'agendado')
+        .not('disparo_id', 'is', null).lte('executar_em', agoraIso).order('executar_em').limit(LIMITE_DISPARO_POR_RODADA)
+      fila = [...(comuns || []), ...(disparos || [])]
+    }
+  }
 
   const resultado = { vencidos: (fila || []).length, enviados: 0, cancelados: 0, aguardando_humano: 0, aguardando_cliente: 0, falhas: 0 }
 
@@ -148,8 +172,7 @@ async function executarUm(
           primeiroNome(resp?.nome_completo) || 'Bianca',
           f.projeto_id ? 'o seu projeto de energia solar' : 'energia solar',
         ],
-        remetente_agente: 'bianca',
-        origem_agente_nome: 'Bianca',
+        ...remetenteDo(f),
       })
       if ('sucesso' in modelo) {
         await avisar(f, `A janela de 24h com ${nomeCliente} estava fechada, então a Bianca mandou o modelo de retomada pelo WhatsApp. Assim que o cliente responder, ela envia o follow-up.${detalhe}`)
@@ -164,16 +187,34 @@ async function executarUm(
     return 'aguardando_humano'
   }
 
-  // 3) Monta o texto e envia
-  const texto = f.modo === 'texto_exato' ? String(f.mensagem).trim() : await biancaEscreve(admin, f, nomeCliente)
-  if (!texto) throw new Error('Bianca não conseguiu escrever a mensagem')
+  // 3) Monta o texto e envia ({nome} = primeiro nome do cliente — disparo em massa)
+  const quem = remetenteDo(f)
+  const textoBruto = f.modo === 'texto_exato' ? String(f.mensagem || '').trim() : await biancaEscreve(admin, f, nomeCliente)
+  const texto = textoBruto.replace(/\{nome\}/gi, primeiroNome(contato.nome_exibicao) || '').replace(/\s+([,.!?])/g, '$1').trim()
 
+  if (f.midia_url) {
+    // Kalebe 2026-10-22: criativo (legenda = texto) ou áudio (texto antes, se tiver)
+    const audio = String(f.midia_mime || '').startsWith('audio/')
+    if (audio && texto) {
+      const t = await enviarTextoPeloCanal({ conversa_id: f.conversa_id, telefone: contato.telefone, texto, ...quem })
+      if ('erro' in t) throw new Error(t.erro)
+    }
+    const m = await enviarMidiaPeloCanal({
+      conversa_id: f.conversa_id, telefone: contato.telefone, link: f.midia_url, mime: f.midia_mime, nome: f.midia_nome,
+      legenda: audio ? null : texto, ...quem,
+    })
+    if ('erro' in m) throw new Error(m.erro)
+    await admin.from('wa_followups').update({ status: 'enviado', texto_enviado: texto || `[${audio ? 'áudio' : 'mídia'}]`, motivo: null, executado_em: agora }).eq('id', f.id)
+    await avisar(f, `${quem.origem_agente_nome} mandou ${audio ? 'o áudio' : 'o criativo'} pra ${nomeCliente}.`)
+    return 'enviados'
+  }
+
+  if (!texto) throw new Error('Bianca não conseguiu escrever a mensagem')
   const envio = await enviarTextoPeloCanal({
     conversa_id: f.conversa_id,
     telefone: contato.telefone,
     texto,
-    remetente_agente: 'bianca',
-    origem_agente_nome: 'Bianca',
+    ...quem,
   })
   if ('erro' in envio) throw new Error(envio.erro)
 
@@ -215,6 +256,8 @@ Não invente preço, prazo, desconto ou condição que não esteja no histórico
 }
 
 async function avisar(f: any, mensagem: string, urgente = false) {
+  // Disparo em massa: nada de um aviso por contato — o andamento fica no painel do disparo
+  if (f.disparo_id) return
   await avisarUsuario({
     destinatario_id: f.responsavel_id,
     agente: 'bianca',

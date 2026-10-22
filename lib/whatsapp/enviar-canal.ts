@@ -86,6 +86,65 @@ export async function enviarTextoPeloCanal(entrada: {
   }
 }
 
+/**
+ * Kalebe 2026-10-22 (disparo do Spinzap): criativo ou áudio por LINK público
+ * (a Meta baixa o arquivo) — imagem, vídeo, áudio (nota de voz ogg/opus) ou
+ * documento, com legenda quando o tipo aceita. Só dentro da janela de 24h.
+ * Grava em wa_mensagens com a mídia pro histórico mostrar.
+ */
+export async function enviarMidiaPeloCanal(entrada: {
+  conversa_id: string
+  telefone: string
+  link: string
+  mime: string | null
+  nome?: string | null
+  legenda?: string | null
+  remetente_agente: 'qualificacao' | 'bianca' | 'davi' | 'sistema'
+  origem_agente_nome: string
+}): Promise<{ sucesso: true; meta_message_id: string | null } | { erro: string }> {
+  const cfg = await getWaConfig()
+  if (!cfg.access_token || !cfg.phone_number_id) return { erro: 'Meta Cloud API não configurada' }
+  if (!/^https:\/\//.test(entrada.link)) return { erro: 'Link da mídia inválido' }
+  let tel = normalizarTelefone(entrada.telefone)
+  if (tel.length === 11) tel = '55' + tel
+  if (!tel) return { erro: 'Telefone inválido' }
+  const mime = String(entrada.mime || '')
+  const tipo: 'image' | 'video' | 'audio' | 'document' =
+    mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'document'
+  const legenda = String(entrada.legenda || '').trim()
+  const corpo: Record<string, any> = { link: entrada.link }
+  // Áudio não aceita legenda; documento leva o nome do arquivo
+  if (legenda && tipo !== 'audio') corpo.caption = `*${entrada.origem_agente_nome}:*\n${legenda}`.slice(0, 1024)
+  if (tipo === 'document') corpo.filename = entrada.nome || 'arquivo.pdf'
+  const admin = createAdminClient()
+  try {
+    const resp = await fetch(`https://graph.facebook.com/v20.0/${cfg.phone_number_id}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to: tel, type: tipo, [tipo]: corpo }),
+    })
+    const data = await resp.json()
+    const registro = {
+      conversa_id: entrada.conversa_id, direcao: 'outbound' as const, tipo,
+      texto: legenda || (tipo === 'document' ? entrada.nome || null : null),
+      midia_url: entrada.link, midia_mime: mime || null,
+      remetente_agente: entrada.remetente_agente, origem_agente_nome: entrada.origem_agente_nome,
+    }
+    if (!resp.ok) {
+      const erroMsg = data?.error?.message || 'Erro Meta API'
+      const erroCode = data?.error?.code
+      await gravarMensagem(admin, { ...registro, status_entrega: 'falhou', erro: String(erroMsg).slice(0, 300) })
+      return { erro: erroCode === 131047 || String(erroMsg).includes('24 hours') ? 'Fora da janela 24h — precisa template pré-aprovado' : `[${erroCode || 'sem código'}] ${erroMsg}` }
+    }
+    const metaMessageId: string | null = data?.messages?.[0]?.id || null
+    await gravarMensagem(admin, { ...registro, meta_message_id: metaMessageId, status_entrega: 'enviada' })
+    return { sucesso: true, meta_message_id: metaMessageId }
+  } catch (e: any) {
+    console.error('[enviarMidiaPeloCanal]', e)
+    return { erro: e?.message || 'Erro desconhecido' }
+  }
+}
+
 /** Opção de resposta: o id volta no webhook (wa_mensagens.dados.resposta_id). */
 export type OpcaoInterativa = { id: string; titulo: string; descricao?: string }
 

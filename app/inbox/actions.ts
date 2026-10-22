@@ -230,6 +230,27 @@ export async function salvarEtiquetasConversaAction(conversa_id: string, e: { ci
   return { sucesso: true }
 }
 
+/**
+ * Etiqueta "Já é cliente Spin" (Kalebe 2026-10-22): usa o tipo 'cliente' que
+ * wa_contatos já prevê ("já é cliente cadastrado"). Equipe e representante
+ * não mudam. Desmarcar volta pra lead.
+ */
+export async function marcarJaClienteAction(conversa_id: string, sim: boolean): Promise<{ sucesso: true } | { erro: string }> {
+  const check = await verificarUsuario()
+  if (check.erro || !check.user) return { erro: check.erro || 'Sem usuário' }
+  const a = await acessoConversa(conversa_id)
+  if ('erro' in a) return a
+  const admin = createAdminClient()
+  const { data: conv } = await admin.from('wa_conversas').select('contato_id, contato:contato_id(tipo)').eq('id', conversa_id).maybeSingle()
+  const atual = String((conv as any)?.contato?.tipo || '')
+  if (!(conv as any)?.contato_id) return { erro: 'Conversa sem contato' }
+  if (['colaborador', 'representante'].includes(atual)) return { erro: 'Contato da equipe não recebe essa etiqueta' }
+  const { error } = await admin.from('wa_contatos').update({ tipo: sim ? 'cliente' : 'lead', atualizado_em: new Date().toISOString() }).eq('id', (conv as any).contato_id)
+  if (error) return { erro: error.message }
+  revalidatePath('/spinzap')
+  return { sucesso: true }
+}
+
 /** Abriu a conversa = leu tudo até agora (por usuário). */
 export async function marcarConversaLidaAction(conversa_id: string): Promise<{ sucesso: true } | { erro: string }> {
   const check = await verificarUsuario()

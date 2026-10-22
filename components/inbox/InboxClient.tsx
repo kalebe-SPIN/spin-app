@@ -13,6 +13,8 @@ import { TextoFormatado } from '@/components/chat/TextoFormatado'
 import { SeletorCidade } from './SeletorCidade'
 import { ModalAgendaBianca } from '@/components/chat/ModalAgendaBianca'
 import { AgendaAbertaConversa, CartaoAgendaFixo, agendaDaMensagem } from './AgendaAbertaConversa'
+import { ModalDisparo } from './ModalDisparo'
+import { marcarJaClienteAction } from '@/app/inbox/actions'
 import { classeEtiquetaEmpresa } from '@/lib/empresas/etiqueta'
 import { SECOES } from '@/lib/spinzap/perfil'
 import { propostasDoContatoAction } from '@/app/inbox/propostas-actions'
@@ -141,7 +143,7 @@ export function InboxClient({
   const [fCidade, setFCidade] = useState('')
   // Kalebe 2026-10-14: filtro só pelas 4 categorias principais
   const [fProduto, setFProduto] = useState('')
-  const [fContato, setFContato] = useState<'' | 'clientes' | 'equipe' | 'fornecedores' | 'forn_equipamento' | 'forn_produtos' | 'forn_servico'>('')
+  const [fContato, setFContato] = useState<'' | 'clientes' | 'ja_cliente' | 'equipe' | 'fornecedores' | 'forn_equipamento' | 'forn_produtos' | 'forn_servico'>('')
   // Kalebe 2026-10-15: filtro por atividades em aberto da agenda (tarefa, follow-up, lembrete, evento)
   const [fAtividade, setFAtividade] = useState<'' | 'abertas' | 'atrasadas' | TipoPendencia>('')
   const [modalFornecedor, setModalFornecedor] = useState(false)
@@ -154,6 +156,8 @@ export function InboxClient({
   const [fecharVendaProjeto, setFecharVendaProjeto] = useState<string | null>(null)
   const [modalDemanda, setModalDemanda] = useState(false)
   const [modalAgenda, setModalAgenda] = useState(false)
+  // Kalebe 2026-10-22: disparo em massa pros contatos filtrados
+  const [modalDisparo, setModalDisparo] = useState(false)
   const [modalProposta, setModalProposta] = useState(false)
   const [modalRecarga, setModalRecarga] = useState(false)
   const [modalCategoria, setModalCategoria] = useState<Exclude<CategoriaProposta, 'fotovoltaico' | 'recarga'> | null>(null)
@@ -370,6 +374,7 @@ export function InboxClient({
     }
     if (fContato === 'clientes' && (ehEquipe(c) || ehFornecedorPuro(c))) return false
     if (fContato === 'equipe' && !ehEquipe(c)) return false
+    if (fContato === 'ja_cliente' && c.contato?.tipo !== 'cliente') return false
     if (fContato === 'fornecedores' && !ehFornecedor(c)) return false
     if (fContato.startsWith('forn_') && !(c.contato?.fornecedor?.tipos || []).includes(fContato.slice(5))) return false
     if (fCidade && semAcento(c.cidade || '') !== semAcento(fCidade)) return false
@@ -558,6 +563,19 @@ export function InboxClient({
     })
   }
 
+  // Kalebe 2026-10-22: etiqueta "Já é cliente Spin" (contato.tipo = 'cliente')
+  function marcarJaCliente(sim: boolean) {
+    if (!selecionada) return
+    const id = selecionada.id
+    setErro(null)
+    setConversas((cs) => cs.map((c) => (c.id === id && c.contato ? { ...c, contato: { ...c.contato, tipo: sim ? 'cliente' : 'lead' } } : c)))
+    startTransition(async () => {
+      const r = await marcarJaClienteAction(id, sim)
+      if ('erro' in r) setErro(r.erro)
+      refreshConversas()
+    })
+  }
+
   function salvarEtiquetas(e: { cidade?: string | null; uf?: string | null; produto?: string | null }) {
     if (!selecionada) return
     const id = selecionada.id
@@ -711,6 +729,7 @@ export function InboxClient({
                 <select value={fContato} onChange={(e) => setFContato(e.target.value as typeof fContato)} className={selCls}>
                   <option value="" className="bg-noite">Todos</option>
                   <option value="clientes" className="bg-noite">Clientes e leads</option>
+                  <option value="ja_cliente" className="bg-noite">⭐ Já é cliente Spin</option>
                   <option value="equipe" className="bg-noite">Equipe</option>
                   <option value="fornecedores" className="bg-noite">Fornecedores (todos)</option>
                   {TIPOS_FORNECEDOR.map((t) => (
@@ -734,6 +753,15 @@ export function InboxClient({
               className="w-full px-3 py-1.5 rounded bg-verde/20 border border-verde/40 text-verde text-xs font-bold hover:bg-verde/30"
             >
               + Abrir conversa manual
+            </button>
+          )}
+          {/* Kalebe 2026-10-22: mensagem, criativo ou áudio pros contatos filtrados (agora ou programado) */}
+          {conversasFiltradas.some((c) => !c.encerrada_em) && (
+            <button
+              onClick={() => setModalDisparo(true)}
+              className="w-full px-3 py-1.5 rounded bg-weg-azul text-white text-xs font-bold text-start"
+            >
+              📣 Disparo pros filtrados ({conversasFiltradas.filter((c) => !c.encerrada_em).length})
             </button>
           )}
         </div>
@@ -852,6 +880,7 @@ export function InboxClient({
               fornecedorPuro={ehFornecedorPuro(selecionada)}
               onEtapa={mudarEtapa}
               onEtiquetas={salvarEtiquetas}
+              onJaCliente={marcarJaCliente}
               onFornecedor={() => { setErro(null); setModalFornecedor(true) }}
             />
 
@@ -1082,6 +1111,20 @@ export function InboxClient({
       {modalAgenda && selecionada && (
         // Fechou o Agendar: recarrega a lista pros ícones de pendência refletirem o que foi criado/editado/excluído
         <ModalAgendaBianca conversaId={selecionada.id} onFechar={() => { setModalAgenda(false); refreshConversas() }} />
+      )}
+      {modalDisparo && (
+        <ModalDisparo
+          contatos={conversasFiltradas.filter((c) => !c.encerrada_em).map((c) => ({
+            id: c.id,
+            nome: c.contato?.nome_exibicao || c.contato?.telefone || 'Sem nome',
+            telefone: c.contato?.telefone || null,
+            janela_aberta: !!c.janela_24h_expira_em && new Date(c.janela_24h_expira_em).getTime() > Date.now(),
+            // Equipe e fornecedor ficam desmarcados (dá pra marcar à mão)
+            marcado: !ehEquipe(c) && !ehFornecedorPuro(c),
+          }))}
+          resumoFiltros={`${conversasFiltradas.filter((c) => !c.encerrada_em).length} conversas na lista${filtrosAtivos ? ` · ${filtrosAtivos} filtro${filtrosAtivos === 1 ? '' : 's'}` : ''}${setorSel !== 'todos' ? ` · ${chipsSetor.find((x) => x.chave === setorSel)?.rotulo || setorSel}` : ''}`}
+          onFechar={() => { setModalDisparo(false); refreshConversas() }}
+        />
       )}
 
       {modalFornecedor && selecionada && (
@@ -1367,7 +1410,7 @@ function ModalTransferir({ conversaId, nomeCliente, responsavelAtualId, onFechar
  * etapa do atendimento (cor da barra lateral), produto/serviço, perfil de
  * compra, cidade/UF e data de entrada do lead. A Laís preenche; aqui corrige.
  */
-function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onEtiquetas, onFornecedor }: {
+function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onEtiquetas, onJaCliente, onFornecedor }: {
   c: Conversa
   pendente: boolean
   ehEquipe: boolean
@@ -1375,6 +1418,7 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
   fornecedorPuro: boolean
   onEtapa: (etapa: string) => void
   onEtiquetas: (e: { cidade?: string | null; uf?: string | null; produto?: string | null }) => void
+  onJaCliente: (sim: boolean) => void
   onFornecedor: () => void
 }) {
   const [editando, setEditando] = useState<null | 'produto' | 'cidade'>(null)
@@ -1414,6 +1458,13 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
       >
         {ETAPAS.map((e) => <option key={e.chave} value={e.chave} className="bg-noite text-white">{e.emoji} {e.rotulo}</option>)}
       </select>
+
+      {/* Kalebe 2026-10-22: etiqueta "Já é cliente Spin" — clique liga/desliga */}
+      <button data-etiqueta type="button" disabled={pendente} onClick={() => onJaCliente(c.contato?.tipo !== 'cliente')}
+        title={c.contato?.tipo === 'cliente' ? 'Já é cliente Spin — clique pra tirar' : 'Marcar como já é cliente Spin'}
+        className={`${chip} ${c.contato?.tipo === 'cliente' ? 'border-verde/60 text-white/85' : 'border-white/15 text-white/45 hover:text-white/75'}`}>
+        {c.contato?.tipo === 'cliente' ? '⭐ Já é cliente Spin' : '＋ Já é cliente Spin'}
+      </button>
 
       {/* Kalebe 2026-10-14: só as 4 categorias principais (fotovoltaico,
           recarga, BESS, O&M). Subtipo que a Laís marcou (ex.: híbrido) é
@@ -1784,6 +1835,11 @@ function ItemConversa({ c, selecionada, onClick }: {
         {(c.contato?.tipo === 'colaborador' || c.contato?.tipo === 'representante') && (
           <span className="text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded bg-weg-azul/15 text-weg-azul">
             👥 Equipe
+          </span>
+        )}
+        {c.contato?.tipo === 'cliente' && (
+          <span data-etiqueta className="text-[9px] uppercase tracking-wider font-bold px-1 py-0.5 rounded border border-verde/60 text-white/75 shrink-0" title="Já é cliente Spin">
+            ⭐ Cliente
           </span>
         )}
         {(c.empresas || []).map((e) => (
