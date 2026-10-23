@@ -1,5 +1,6 @@
 'use client'
 
+import { UsinasDoContato } from '@/components/usina/UsinasDoContato'
 import { useEffect, useRef, useState } from 'react'
 import {
   carregarPerfilAction, salvarSecaoPerfilAction, vincularMidiaPerfilAction,
@@ -317,6 +318,8 @@ function Arquivos({ secao, conversaId, dados, onSalvo, onEditarProposta, onFecha
 
       {secao === 'arquivos' && (
         <>
+          {/* Kalebe 2026-10-22: usina do cliente (potências, equipamentos, login e senha do monitoramento) */}
+          <UsinasDoContato conversaId={conversaId} />
           <div className="rounded-lg border border-white/10 p-3 space-y-1.5">
             <p className="text-sm font-semibold text-white">Orçamentos gerados</p>
             {dados.propostas.length === 0 ? <p className="text-[11px] text-white/40">Nenhuma proposta gerada ainda.</p> : dados.propostas.map((p) => {
