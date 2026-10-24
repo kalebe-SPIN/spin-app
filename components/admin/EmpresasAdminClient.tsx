@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import {
-  dadosEmpresasAdminAction, salvarEmpresaAction, salvarFornecedorCatalogoAction,
+  dadosEmpresasAdminAction, salvarEmpresaAction, salvarFornecedorCatalogoAction, testarFornecedorAction,
   type CorEtiqueta, type EmpresaAdmin, type FornecedorCatalogoAdmin,
 } from '@/app/admin/empresas/actions'
 import { UploadImagem } from '@/components/UploadImagem'
@@ -39,7 +39,16 @@ export function EmpresasAdminClient() {
   const [empresas, setEmpresas] = useState<EmpresaAdmin[] | null>(null)
   const [fornecedores, setFornecedores] = useState<FornecedorCatalogoAdmin[]>([])
   const [editEmpresa, setEditEmpresa] = useState<typeof VAZIA | null>(null)
-  const [editForn, setEditForn] = useState<null | { id: string | null; nome: string; tipo: 'planilha' | 'api'; api_base_url: string; ativo: boolean; api_chave: string; chave_atual: string; fator: string }>(null)
+  const [editForn, setEditForn] = useState<null | { id: string | null; nome: string; tipo: 'planilha' | 'api'; api_base_url: string; ativo: boolean; api_chave: string; chave_atual: string; fator: string; proxy_url: string; proxy_atual: string }>(null)
+  // Kalebe 2026-10-23: teste da integração (IP de saída + resposta da API)
+  const [teste, setTeste] = useState<Record<string, { carregando: boolean; texto: string | null; erro: boolean }>>({})
+  async function testar(id: string) {
+    setTeste((t) => ({ ...t, [id]: { carregando: true, texto: null, erro: false } }))
+    const r = await testarFornecedorAction(id)
+    setTeste((t) => ({ ...t, [id]: 'erro' in r
+      ? { carregando: false, texto: r.erro, erro: true }
+      : { carregando: false, texto: `IP de saída: ${r.ip_saida}${r.via_proxy ? ' (servidor intermediário — é este IP que o fornecedor libera)' : ' (sem servidor intermediário: esse IP muda)'} · API: ${r.api}`, erro: false } }))
+  }
   const [erro, setErro] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -165,7 +174,7 @@ export function EmpresasAdminClient() {
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-black text-white">🔌 Fornecedores (catálogo e kit)</h2>
           {!editForn && (
-            <button type="button" onClick={() => setEditForn({ id: null, nome: '', tipo: 'api', api_base_url: '', ativo: true, api_chave: '', chave_atual: 'não cadastrada', fator: '' })}
+            <button type="button" onClick={() => setEditForn({ id: null, nome: '', tipo: 'api', api_base_url: '', ativo: true, api_chave: '', chave_atual: 'não cadastrada', fator: '', proxy_url: '', proxy_atual: 'não cadastrado' })}
               className="px-3 py-2 rounded-lg bg-weg-azul text-white text-xs font-bold text-start">＋ Novo fornecedor</button>
           )}
         </div>
@@ -174,12 +183,18 @@ export function EmpresasAdminClient() {
             <div className="min-w-0">
               <p className="text-sm font-bold text-white truncate">{f.nome} <span className="text-white/50 font-normal">· {f.tipo === 'api' ? 'API' : 'planilha'}</span></p>
               <p className="text-[12px] text-white/60 truncate">
-                {f.tipo === 'api' ? `${f.api_base_url || 'sem endereço'} · chave ${f.chave} · fator ${f.fator_preco != null ? f.fator_preco.toLocaleString('pt-BR', { maximumFractionDigits: 4 }) : 'não definido'}` : 'Importação pela planilha (Catálogo)'}
+                {f.tipo === 'api' ? `${f.api_base_url || 'sem endereço'} · chave ${f.chave} · IP fixo ${f.tem_proxy ? f.proxy : 'não cadastrado'} · fator ${f.fator_preco != null ? f.fator_preco.toLocaleString('pt-BR', { maximumFractionDigits: 4 }) : 'não definido'}` : 'Importação pela planilha (Catálogo)'}
                 {f.ultima_sincronizacao_em ? ` · sincronizado em ${new Date(f.ultima_sincronizacao_em).toLocaleString('pt-BR')}` : ''}
               </p>
             </div>
-            <button type="button" onClick={() => setEditForn({ id: f.id, nome: f.nome, tipo: f.tipo, api_base_url: f.api_base_url, ativo: f.ativo, api_chave: '', chave_atual: f.chave, fator: f.fator_preco != null ? String(f.fator_preco).replace('.', ',') : '' })}
-              className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-xs font-bold text-start shrink-0">Editar</button>
+            <div className="flex gap-2 shrink-0">
+              {f.tipo === 'api' && (
+                <button type="button" onClick={() => testar(f.id)} disabled={teste[f.id]?.carregando}
+                  className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-xs font-bold text-start disabled:opacity-40">{teste[f.id]?.carregando ? 'Testando…' : '🔌 Testar conexão'}</button>
+              )}
+              <button type="button" onClick={() => setEditForn({ id: f.id, nome: f.nome, tipo: f.tipo, api_base_url: f.api_base_url, ativo: f.ativo, api_chave: '', chave_atual: f.chave, fator: f.fator_preco != null ? String(f.fator_preco).replace('.', ',') : '', proxy_url: '', proxy_atual: f.proxy })}
+                className="px-3 py-1.5 rounded-lg bg-weg-azul text-white text-xs font-bold text-start">Editar</button>
+            </div>
           </div>
         ))}
         {editForn && (
@@ -198,6 +213,11 @@ export function EmpresasAdminClient() {
                     <input type="password" value={editForn.api_chave} onChange={(ev) => setEditForn({ ...editForn, api_chave: ev.target.value })} className={inputCls}
                       placeholder="Cole a chave nova aqui (em branco mantém a atual)" autoComplete="new-password" />
                     <span className="block text-[10px] text-white/45 mt-1">Fica guardada só no servidor; depois de salvar ela não aparece mais, só mascarada.</span>
+                  </label>
+                  <label className="block md:col-span-2"><span className="block text-[11px] font-bold text-white/60 mb-1">Servidor intermediário (IP fixo) — atual: {editForn.proxy_atual}</span>
+                    <input type="password" value={editForn.proxy_url} onChange={(ev) => setEditForn({ ...editForn, proxy_url: ev.target.value })} className={inputCls}
+                      placeholder="http://usuario:senha@IP:3128 (em branco mantém o atual)" autoComplete="new-password" />
+                    <span className="block text-[10px] text-white/45 mt-1">As chamadas ao fornecedor saem por ele; o IP dele é o que o fornecedor libera. Fica só no servidor.</span>
                   </label>
                   <label className="block">
                     <span className="block text-[11px] font-bold text-white/60 mb-1">Fator sobre o preço da API</span>

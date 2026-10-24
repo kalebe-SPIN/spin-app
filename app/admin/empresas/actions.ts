@@ -58,6 +58,15 @@ export type FornecedorCatalogoAdmin = {
   ultima_sincronizacao_em: string | null
   /** Fator sobre o preço que a API devolve (null = ainda não definido — o cálculo trava) */
   fator_preco: number | null
+  /** Servidor intermediário (IP fixo) mascarado: "http://usuario:••••@IP:porta" */
+  proxy: string
+  tem_proxy: boolean
+}
+
+/** Mostra o servidor intermediário sem a senha */
+const mascararProxy = (v: string | null | undefined) => {
+  if (!v) return 'não cadastrado'
+  try { const u = new URL(v); return `${u.protocol}//${u.username ? `${decodeURIComponent(u.username)}:••••@` : ''}${u.hostname}${u.port ? `:${u.port}` : ''}` } catch { return 'endereço inválido' }
 }
 
 const mascarar = (v: string | null | undefined) =>
@@ -76,10 +85,11 @@ export async function dadosEmpresasAdminAction(): Promise<
   const [e, f, cred] = await Promise.all([
     admin.from('empresas').select('*').order('padrao', { ascending: false }).order('nome'),
     admin.from('catalogo_fornecedores').select('*').order('nome'),
-    admin.from('catalogo_fornecedores_credenciais').select('catalogo_fornecedor_id, api_chave'),
+    admin.from('catalogo_fornecedores_credenciais').select('*'),
   ])
   if (e.error || f.error) return { erro: 'Falta rodar a migration 158 (multiempresa) no Supabase.' }
   const chaves = new Map(((cred.data || []) as any[]).map((x) => [x.catalogo_fornecedor_id, x.api_chave as string | null]))
+  const proxies = new Map(((cred.data || []) as any[]).map((x) => [x.catalogo_fornecedor_id, (x.proxy_url as string | null) || null]))
   return {
     empresas: ((e.data || []) as any[]).map((x) => ({
       id: x.id, nome: x.nome || '', razao_social: x.razao_social || '', cnpj: x.cnpj || '', catalogo_fornecedor_id: x.catalogo_fornecedor_id || null,
@@ -93,6 +103,7 @@ export async function dadosEmpresasAdminAction(): Promise<
       id: x.id, nome: x.nome, tipo: x.tipo === 'api' ? 'api' : 'planilha', api_base_url: x.api_base_url || '', ativo: x.ativo !== false,
       chave: mascarar(chaves.get(x.id)), tem_chave: !!chaves.get(x.id), ultima_sincronizacao_em: x.ultima_sincronizacao_em || null,
       fator_preco: Number(x.api_config?.fator_preco) > 0 ? Number(x.api_config.fator_preco) : null,
+      proxy: mascararProxy(proxies.get(x.id)), tem_proxy: !!proxies.get(x.id),
     })),
   }
 }
@@ -139,6 +150,8 @@ export async function salvarFornecedorCatalogoAction(input: {
   api_chave?: string
   /** Fator sobre o preço da API (vazio = ainda não definido) */
   fator_preco?: number | null
+  /** Servidor intermediário com IP fixo (vazio = mantém o atual) */
+  proxy_url?: string
 }): Promise<{ sucesso: true; id: string } | { erro: string }> {
   const c = await verificarAdmin()
   if ('erro' in c) return { erro: c.erro as string }
@@ -163,11 +176,47 @@ export async function salvarFornecedorCatalogoAction(input: {
   if (error) return { erro: /duplicate|unique/i.test(error.message) ? 'Já existe um fornecedor com esse nome' : error.message }
   const id = (data as any).id as string
   const chave = t(input.api_chave)
-  if (chave) {
+  const proxy = t(input.proxy_url)
+  if (proxy) {
+    try {
+      const u = new URL(proxy)
+      if (u.protocol !== 'http:' || !u.port) return { erro: 'Servidor intermediário no formato http://usuario:senha@IP:porta (ex.: porta 3128)' }
+    } catch { return { erro: 'Servidor intermediário no formato http://usuario:senha@IP:porta' } }
+  }
+  if (chave || proxy) {
+    // Só os campos preenchidos: o que ficou em branco mantém o que já estava
     const { error: e2 } = await admin.from('catalogo_fornecedores_credenciais')
-      .upsert({ catalogo_fornecedor_id: id, api_chave: chave, atualizado_em: new Date().toISOString(), atualizado_por: c.user_id }, { onConflict: 'catalogo_fornecedor_id' })
-    if (e2) return { erro: `Fornecedor salvo, mas a chave não: ${e2.message}` }
+      .upsert({
+        catalogo_fornecedor_id: id, ...(chave ? { api_chave: chave } : {}), ...(proxy ? { proxy_url: proxy } : {}),
+        atualizado_em: new Date().toISOString(), atualizado_por: c.user_id,
+      }, { onConflict: 'catalogo_fornecedor_id' })
+    if (e2) return { erro: /proxy_url/.test(e2.message) ? 'Fornecedor salvo, mas falta rodar a migration 161 (servidor intermediário).' : `Fornecedor salvo, mas a chave não: ${e2.message}` }
   }
   revalidatePath('/admin/empresas')
   return { sucesso: true, id }
+}
+
+/**
+ * Testa a integração (Kalebe 2026-10-23): mostra o IP com que as chamadas
+ * saem (o que o fornecedor libera) e se a API respondeu — sem mostrar o
+ * conteúdo da resposta.
+ */
+export async function testarFornecedorAction(id: string): Promise<{ ip_saida: string; via_proxy: boolean; api: string } | { erro: string }> {
+  const c = await verificarAdmin()
+  if ('erro' in c) return { erro: c.erro as string }
+  const { configFornecedorApi, ipDeSaida, chamarFornecedor } = await import('@/lib/fornecedores/api')
+  const cfg = await configFornecedorApi(createAdminClient(), id)
+  if ('erro' in cfg) return cfg
+  let ip: string
+  try { ip = await ipDeSaida(cfg) } catch (e: any) { return { erro: e?.message || 'Falha ao testar o servidor intermediário' } }
+  let api = 'endereço da API não cadastrado'
+  if (cfg.base_url) {
+    try {
+      const r = await chamarFornecedor(cfg, '', { timeoutMs: 15_000 })
+      api = r.status >= 200 && r.status < 300 ? `respondeu ${r.status} (ok)`
+        : r.status === 401 || r.status === 403 ? `respondeu ${r.status} — acesso negado (chave errada ou IP ainda não liberado)`
+        : `respondeu ${r.status}`
+    } catch (e: any) { api = `não respondeu: ${e?.message || e}` }
+  }
+  return { ip_saida: ip, via_proxy: !!cfg.proxy_url, api }
 }
