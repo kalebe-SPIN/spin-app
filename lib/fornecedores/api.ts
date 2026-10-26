@@ -1,5 +1,5 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
-import { requisicaoDireta, requisicaoViaProxy, type OpcoesHttp, type RespostaHttp } from './http'
+import { requisicaoPelaSaida, type OpcoesHttp, type RespostaHttp } from './http'
 
 /**
  * Chamada à API de um fornecedor de catálogo (Kalebe 2026-10-23): endereço
@@ -46,13 +46,13 @@ export async function chamarFornecedor(cfg: ConfigFornecedorApi, caminho: string
   const headers: Record<string, string> = { Accept: 'application/json', ...(opcoes.headers || {}) }
   if (cfg.chave) headers[cfg.auth_header] = `${cfg.auth_prefixo}${cfg.chave}`
   const o = { ...opcoes, headers }
-  return cfg.proxy_url ? requisicaoViaProxy(url, cfg.proxy_url, o) : requisicaoDireta(url, o)
+  return requisicaoPelaSaida(url, cfg.proxy_url, o)
 }
 
 /** IP com que as chamadas saem (pelo servidor intermediário, quando houver) — é o IP que o fornecedor libera. */
 export async function ipDeSaida(cfg: ConfigFornecedorApi): Promise<string> {
   const url = 'https://api.ipify.org?format=json'
-  const r = cfg.proxy_url ? await requisicaoViaProxy(url, cfg.proxy_url, { timeoutMs: 15_000 }) : await requisicaoDireta(url, { timeoutMs: 15_000 })
+  const r = await requisicaoPelaSaida(url, cfg.proxy_url, { timeoutMs: 15_000 })
   const ip = (() => { try { return JSON.parse(r.corpo).ip } catch { return null } })()
   if (!ip) throw new Error(`Não consegui descobrir o IP de saída (status ${r.status})`)
   return String(ip)

@@ -214,10 +214,10 @@ export function EmpresasAdminClient() {
                       placeholder="Cole a chave nova aqui (em branco mantém a atual)" autoComplete="new-password" />
                     <span className="block text-[10px] text-white/45 mt-1">Fica guardada só no servidor; depois de salvar ela não aparece mais, só mascarada.</span>
                   </label>
-                  <label className="block md:col-span-2"><span className="block text-[11px] font-bold text-white/60 mb-1">Servidor intermediário (IP fixo) — atual: {editForn.proxy_atual}</span>
+                  <label className="block md:col-span-2"><span className="block text-[11px] font-bold text-white/60 mb-1">Saída com IP fixo (ponte no site ou servidor intermediário) — atual: {editForn.proxy_atual}</span>
                     <input type="password" value={editForn.proxy_url} onChange={(ev) => setEditForn({ ...editForn, proxy_url: ev.target.value })} className={inputCls}
-                      placeholder="http://usuario:senha@IP:3128 (em branco mantém o atual)" autoComplete="new-password" />
-                    <span className="block text-[10px] text-white/45 mt-1">As chamadas ao fornecedor saem por ele; o IP dele é o que o fornecedor libera. Fica só no servidor.</span>
+                      placeholder="https://TOKEN@spinsolar.com.br/spin-ponte/ponte.php (em branco mantém o atual)" autoComplete="new-password" />
+                    <span className="block text-[10px] text-white/45 mt-1">As chamadas ao fornecedor saem por aí; o IP de lá é o que o fornecedor libera. Também aceita http://usuario:senha@IP:porta (servidor intermediário). Fica só no servidor.</span>
                   </label>
                   <label className="block">
                     <span className="block text-[11px] font-bold text-white/60 mb-1">Fator sobre o preço da API</span>

@@ -66,7 +66,12 @@ export type FornecedorCatalogoAdmin = {
 /** Mostra o servidor intermediário sem a senha */
 const mascararProxy = (v: string | null | undefined) => {
   if (!v) return 'não cadastrado'
-  try { const u = new URL(v); return `${u.protocol}//${u.username ? `${decodeURIComponent(u.username)}:••••@` : ''}${u.hostname}${u.port ? `:${u.port}` : ''}` } catch { return 'endereço inválido' }
+  try {
+    const u = new URL(v)
+    // Ponte (https://TOKEN@site/caminho): esconde o token; servidor intermediário: esconde a senha
+    if (u.protocol === 'https:') return `ponte ${u.hostname}${u.pathname}`
+    return `${u.protocol}//${u.username ? `${decodeURIComponent(u.username)}:••••@` : ''}${u.hostname}${u.port ? `:${u.port}` : ''}`
+  } catch { return 'endereço inválido' }
 }
 
 const mascarar = (v: string | null | undefined) =>
@@ -178,10 +183,14 @@ export async function salvarFornecedorCatalogoAction(input: {
   const chave = t(input.api_chave)
   const proxy = t(input.proxy_url)
   if (proxy) {
+    // Ponte no site (https://TOKEN@spinsolar.com.br/spin-ponte/ponte.php) ou servidor intermediário (http://usuario:senha@IP:porta)
+    const formato = 'Use https://TOKEN@site/caminho/ponte.php (ponte) ou http://usuario:senha@IP:porta (servidor intermediário)'
     try {
       const u = new URL(proxy)
-      if (u.protocol !== 'http:' || !u.port) return { erro: 'Servidor intermediário no formato http://usuario:senha@IP:porta (ex.: porta 3128)' }
-    } catch { return { erro: 'Servidor intermediário no formato http://usuario:senha@IP:porta' } }
+      const ponteOk = u.protocol === 'https:' && !!u.username && u.pathname.length > 1
+      const proxyOk = u.protocol === 'http:' && !!u.port
+      if (!ponteOk && !proxyOk) return { erro: formato }
+    } catch { return { erro: formato } }
   }
   if (chave || proxy) {
     // Só os campos preenchidos: o que ficou em branco mantém o que já estava

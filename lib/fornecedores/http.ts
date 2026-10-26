@@ -77,3 +77,36 @@ export async function requisicaoDireta(urlAlvo: string, opcoes: OpcoesHttp = {})
     return { status: r.status, headers: Object.fromEntries(r.headers.entries()), corpo: await r.text() }
   } finally { clearTimeout(t) }
 }
+
+/**
+ * Ponte (Kalebe 2026-10-26): arquivo de repasse num site com IP fixo — o
+ * spinsolar.com.br na HostGator (docs/ponte-hostgator/ponte.php). O sistema
+ * manda pra ponte (com o token) o que quer chamar; ela chama o fornecedor e
+ * devolve status e corpo. Formato: https://TOKEN@site/caminho/ponte.php
+ */
+export async function requisicaoViaPonte(urlAlvo: string, ponteUrl: string, opcoes: OpcoesHttp = {}): Promise<RespostaHttp> {
+  let ponte: URL
+  try { ponte = new URL(ponteUrl) } catch { throw new Error('Endereço da ponte inválido') }
+  const token = decodeURIComponent(ponte.username || '')
+  if (!token) throw new Error('Ponte sem token (formato https://TOKEN@site/caminho/ponte.php)')
+  ponte.username = ''
+  ponte.password = ''
+  const r = await requisicaoDireta(ponte.toString(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Spin-Token': token },
+    body: JSON.stringify({ url: urlAlvo, method: opcoes.method || 'GET', headers: opcoes.headers || {}, body: opcoes.body ?? null }),
+    timeoutMs: (opcoes.timeoutMs || 20_000) + 10_000,
+  })
+  let j: any = null
+  try { j = JSON.parse(r.corpo) } catch { /* resposta fora do formato */ }
+  if (r.status !== 200 || !j || typeof j.status !== 'number') {
+    throw new Error(j?.erro ? `Ponte: ${j.erro}` : `A ponte respondeu ${r.status}${r.status === 404 ? ' (arquivo não encontrado no site)' : ''}`)
+  }
+  return { status: j.status, headers: {}, corpo: String(j.corpo ?? '') }
+}
+
+/** Saída pelo IP fixo: ponte (https://…) ou servidor intermediário (http://…); vazio = direto. */
+export function requisicaoPelaSaida(urlAlvo: string, saida: string | null, opcoes: OpcoesHttp = {}): Promise<RespostaHttp> {
+  if (!saida) return requisicaoDireta(urlAlvo, opcoes)
+  return saida.startsWith('https://') ? requisicaoViaPonte(urlAlvo, saida, opcoes) : requisicaoViaProxy(urlAlvo, saida, opcoes)
+}
