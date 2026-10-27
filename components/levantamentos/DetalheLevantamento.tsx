@@ -4,20 +4,27 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { devolverComPendenciaAction, mudarStatusLevantamentoAction } from '@/app/levantamentos/actions'
+import { gerarArquivosDoLevantamentoAction } from '@/app/projetos/[id]/diagrama/actions'
 import { valorExibido } from '@/lib/levantamentos/comum'
 import { calcularProgresso } from '@/lib/levantamentos/progresso'
 import { numeroLevantamento } from '@/lib/levantamentos/types'
-import type { ArquivoTela, LevantamentoTela } from '@/lib/levantamentos/tela'
+import type { ArquivoTela, DiagramaTela, LevantamentoTela } from '@/lib/levantamentos/tela'
 import { AtualizaAoMudar, BarraProgresso, EtiquetaStatus, Historico, cardCls, dataHoraBR, inputCls, type EventoTela } from './ui'
 
 const PRANCHA: Record<string, string> = { prancha_pdf: 'PDF', prancha_dxf: 'DXF', prancha_svg: 'SVG', preview: 'Prévia' }
 
-/** Levantamento em modo leitura + ações da equipe de projeto. */
-export function DetalheLevantamento({ lev, arquivos, eventos, ehEquipe }: {
+const FOLHA: Record<string, string> = {
+  unifilar_ongrid: 'Unifilar on-grid', unifilar_hibrido: 'Unifilar híbrido',
+  padrao_entrada: 'Padrão de entrada', layout_instalacao: 'Layout de instalação',
+}
+
+/** Levantamento em modo leitura + ações da equipe de projeto (admin). */
+export function DetalheLevantamento({ lev, arquivos, eventos, ehEquipe, diagramas }: {
   lev: LevantamentoTela
   arquivos: ArquivoTela[]
   eventos: EventoTela[]
   ehEquipe: boolean
+  diagramas: DiagramaTela[]
 }) {
   const router = useRouter()
   const modelo = lev.modelo
@@ -46,13 +53,23 @@ export function DetalheLevantamento({ lev, arquivos, eventos, ehEquipe }: {
     router.refresh()
   }
 
+  async function gerarArquivos() {
+    setOcupado(true); setErro(null); setConfirmar(null)
+    const r = await gerarArquivosDoLevantamentoAction(lev.id)
+    setOcupado(false)
+    if (!r.sucesso) { setErro(r.erro); return }
+    router.refresh()
+  }
+  const gerando = diagramas.some((d) => d.status === 'gerando')
+  const podeGerar = ehEquipe && !!lev.projeto_id && !gerando && ['enviado', 'em_projeto', 'aguardando_aprovacao'].includes(lev.status)
+
   const pendProjetista = lev.pendencias.filter((p) => p.origem === 'projetista')
   const pendApp = lev.pendencias.filter((p) => p.origem === 'app')
 
   const situacao: Record<string, string> = {
-    enviado: `Enviado ao projeto em ${dataHoraBR(lev.enviado_em)}. O projetista já pode montar as pranchas deste levantamento.`,
-    em_projeto: 'Em projeto: as pranchas estão sendo geradas.',
-    aguardando_aprovacao: `Pranchas prontas${lev.processado_em ? ` em ${dataHoraBR(lev.processado_em)}` : ''}. Aguardando a aprovação do responsável técnico.`,
+    enviado: `Enviado ao projeto em ${dataHoraBR(lev.enviado_em)}. O admin segue com a geração dos diagramas e arquivos.`,
+    em_projeto: gerando ? 'Em projeto: o robô está gerando os arquivos (alguns minutos).' : 'Em projeto: os arquivos estão sendo preparados.',
+    aguardando_aprovacao: `Arquivos gerados${lev.processado_em ? ` em ${dataHoraBR(lev.processado_em)}` : ''}. Aguardando a aprovação do responsável técnico.`,
     aprovado: `Aprovado em ${dataHoraBR(lev.aprovado_em)} — liberado para a CELESC.`,
     com_pendencia: 'Devolvido ao consultor com pendências para corrigir.',
     cancelado: 'Levantamento cancelado.',
@@ -94,8 +111,13 @@ export function DetalheLevantamento({ lev, arquivos, eventos, ehEquipe }: {
         <section className="rounded-xl border border-sol/40 bg-white/[0.03] p-4 space-y-3">
           <h2 className="text-sm font-bold text-white">Equipe de projeto</h2>
           <div className="flex flex-wrap gap-2">
+            {podeGerar && (
+              <button type="button" disabled={ocupado} onClick={gerarArquivos} className="px-4 py-2.5 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-50">
+                {ocupado ? 'Disparando…' : diagramas.length ? 'Gerar os arquivos de novo' : 'Gerar os arquivos'}
+              </button>
+            )}
             {lev.status === 'enviado' && (
-              <button type="button" disabled={ocupado} onClick={() => passo('assumir')} className="px-4 py-2.5 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-50">Assumir</button>
+              <button type="button" disabled={ocupado} onClick={() => passo('assumir')} className="px-4 py-2.5 border border-white/15 text-white/80 text-sm rounded-lg">Assumir</button>
             )}
             {lev.status === 'aguardando_aprovacao' && (
               confirmar === 'aprovar'
@@ -115,11 +137,34 @@ export function DetalheLevantamento({ lev, arquivos, eventos, ehEquipe }: {
           {lev.status === 'aguardando_aprovacao' && !versoes.length && confirmar === 'aprovar' && (
             <p className="text-xs text-white/70">⚠ Nenhuma prancha anexada a este levantamento.</p>
           )}
-          {lev.projeto_id && ['enviado', 'em_projeto'].includes(lev.status) && (
+          {lev.projeto_id ? (
             <p className="text-xs text-white/60">
-              O relatório do gerador de diagramas do projeto já inclui as respostas e as fotos deste levantamento.{' '}
+              {lev.modelo.codigo === 'fv' ? 'Gera o unifilar' : 'Gera o padrão de entrada'} pelo robô, com as respostas e as fotos deste levantamento no relatório; quando termina, o levantamento vem para aprovação.{' '}
               <Link href={`/projetos/${lev.projeto_id}/diagrama`} className="underline decoration-sol/60 underline-offset-2 text-white/85">Abrir gerador do projeto →</Link>
             </p>
+          ) : (
+            <p className="text-xs text-white/60">Sem projeto ligado: o robô de diagramas precisa do projeto. Fica na fila para o projetista.</p>
+          )}
+          {diagramas.length > 0 && (
+            <ul className="space-y-2">
+              {diagramas.map((d) => (
+                <li key={d.id} className="rounded-lg border border-white/10 p-2.5 space-y-1">
+                  <p className="text-sm text-white">
+                    {FOLHA[d.tipo_desenho] || d.tipo_desenho} v{d.versao}{' '}
+                    <span className="text-white/50 text-xs">· {d.status === 'gerando' ? 'gerando…' : d.status === 'pronto' ? 'pronto' : 'não concluiu'} · {dataHoraBR(d.created_at)}</span>
+                  </p>
+                  {d.status === 'pronto' && (
+                    <div className="flex flex-wrap gap-2">
+                      {d.url_pdf && <a href={d.url_pdf} target="_blank" rel="noreferrer" className="px-2.5 py-1 border border-white/15 rounded text-xs text-white/85">PDF</a>}
+                      {d.url_dxf && <a href={d.url_dxf} target="_blank" rel="noreferrer" className="px-2.5 py-1 border border-white/15 rounded text-xs text-white/85">DXF</a>}
+                      {d.url_svg && <a href={d.url_svg} target="_blank" rel="noreferrer" className="px-2.5 py-1 border border-white/15 rounded text-xs text-white/85">SVG</a>}
+                    </div>
+                  )}
+                  {d.avisos.length > 0 && <p className="text-xs text-white/60">A confirmar: {d.avisos.join(' · ')}</p>}
+                  {d.erro && <p className="text-xs text-coral">{d.erro}</p>}
+                </li>
+              ))}
+            </ul>
           )}
           {devolvendo && (
             <FormDevolver lev={lev} onCancelar={() => setDevolvendo(false)} onDevolvido={() => { setDevolvendo(false); router.refresh() }} />

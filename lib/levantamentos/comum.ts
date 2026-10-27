@@ -5,6 +5,15 @@ import type { CampoModelo, Finalidade, ModeloChecklist, StatusLevantamento } fro
 export const BUCKET_LEVANTAMENTOS = 'levantamentos'
 export const FINALIDADES: Finalidade[] = ['fv', 'padrao_novo', 'aumento_carga']
 
+/**
+ * Kalebe 2026-10-27: só o admin e o setor campo abrem, preenchem e atualizam
+ * os levantamentos (o representante preenche o projeto; os dados dele entram
+ * sozinhos no formulário). Mesma regra da migration 164.
+ */
+export const PAPEIS_CAMPO = ['profissional_campo', 'instalador']
+export const podeUsarLevantamentos = (role: string | null | undefined, ativo: boolean | null | undefined) =>
+  !!ativo && (role === 'admin' || PAPEIS_CAMPO.includes(String(role)))
+
 /** Rótulos curtos das abas (página de referência). */
 export const CURTO_FINALIDADE: Record<Finalidade, string> = {
   fv: 'Sistema FV',

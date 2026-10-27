@@ -108,7 +108,7 @@ export function ListaLevantamentos({ itens, modelos, ehEquipe, podeCriar }: {
                   <span>{CURTO_FINALIDADE[i.finalidade]}</span>
                   {i.cidade && <span>{i.cidade}</span>}
                   {i.projeto_codigo && <span>Projeto {i.projeto_codigo}</span>}
-                  {ehEquipe && i.consultor && <span>{i.consultor}</span>}
+                  {i.consultor && <span>{i.consultor}</span>}
                   <span>{i.progresso}% · {new Date(i.updated_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span>
                   {i.status === 'com_pendencia' && i.pendencias_projetista > 0 && (
                     <span className="text-white/80">⚠ {i.pendencias_projetista} pendência{i.pendencias_projetista > 1 ? 's' : ''} para corrigir</span>

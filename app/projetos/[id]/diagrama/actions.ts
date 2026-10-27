@@ -161,6 +161,87 @@ export async function gerarDiagramaAction(
   return { sucesso: true, diagrama_id: novoDiagrama.id }
 }
 
+/**
+ * Kalebe 2026-10-27: o setor campo preenche e envia o levantamento; "apenas o
+ * admin segue na geração dos diagramas, desenhos e arquivos". Gera a folha da
+ * finalidade (FV → unifilar; padrão novo / aumento de carga → padrão de
+ * entrada) pelo robô, com o levantamento no relatório, e liga o diagrama ao
+ * levantamento: o robô devolve o levantamento para aprovação quando termina.
+ */
+export async function gerarArquivosDoLevantamentoAction(
+  levantamentoId: string,
+): Promise<{ sucesso: true } | { sucesso: false; erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { sucesso: false, erro: 'Não autenticado' }
+  const { data: perfil } = await supabase.from('profiles').select('role, ativo').eq('id', user.id).maybeSingle()
+  if (perfil?.role !== 'admin' || !perfil.ativo) return { sucesso: false, erro: 'Só o admin gera os arquivos do projeto.' }
+  if (!process.env.GITHUB_DIAGRAMAS_TOKEN) {
+    return { sucesso: false, erro: 'Robô de diagramas ainda não configurado (falta GITHUB_DIAGRAMAS_TOKEN na Vercel).' }
+  }
+
+  const { data: lev } = await supabase.from('levantamentos')
+    .select('id, finalidade, status, projeto_id, respostas').eq('id', levantamentoId).maybeSingle()
+  if (!lev) return { sucesso: false, erro: 'Levantamento não encontrado.' }
+  if (!lev.projeto_id) return { sucesso: false, erro: 'Este levantamento não está ligado a um projeto — o gerador precisa do projeto.' }
+  if (!['enviado', 'em_projeto', 'aguardando_aprovacao'].includes(lev.status)) {
+    return { sucesso: false, erro: 'O levantamento precisa estar enviado ao projeto para gerar os arquivos.' }
+  }
+
+  const supabaseAdmin = createAdminClient()
+  const { data: rodando, error: eRodando } = await supabaseAdmin.from('projetos_diagramas')
+    .select('id').eq('levantamento_id', lev.id).eq('status', 'gerando').limit(1)
+  if (eRodando) return { sucesso: false, erro: 'Falta rodar a migration 164 no Supabase.' }
+  if (rodando?.length) return { sucesso: false, erro: 'O robô já está gerando os arquivos deste levantamento.' }
+
+  const [{ data: config }, { data: projeto }] = await Promise.all([
+    supabaseAdmin.from('configuracoes_empresa').select('*').eq('singleton', true).maybeSingle(),
+    supabaseAdmin.from('projetos').select('tipo_projeto').eq('id', lev.projeto_id).maybeSingle(),
+  ])
+  if (!config || !config.rt_nome || !config.rt_crea) {
+    return { sucesso: false, erro: 'Configuração da empresa incompleta. Preencha nome e CREA do responsável técnico em /admin/empresa.' }
+  }
+  const respostas = (lev.respostas || {}) as Record<string, unknown>
+  const tipoDesenho: TipoDesenho = lev.finalidade !== 'fv' ? 'padrao_entrada'
+    : respostas.inv_tipo === 'Híbrido' || /hibrido/.test(String(projeto?.tipo_projeto || '')) ? 'unifilar_hibrido'
+    : 'unifilar_ongrid'
+
+  // o admin assume (ou refaz) — o relatório já sai com a situação certa
+  if (lev.status !== 'em_projeto') {
+    const { error } = await supabase.from('levantamentos').update({ status: 'em_projeto' }).eq('id', lev.id).eq('status', lev.status)
+    if (error) return { sucesso: false, erro: `Não consegui assumir o levantamento: ${error.message}` }
+  }
+
+  const { data: ultimas } = await supabaseAdmin.from('projetos_diagramas')
+    .select('versao').eq('projeto_id', lev.projeto_id).eq('tipo_desenho', tipoDesenho)
+    .order('versao', { ascending: false }).limit(1)
+  const relatorio = await montarRelatorioProjeto(supabaseAdmin, lev.projeto_id, tipoDesenho)
+  if (!relatorio) return { sucesso: false, erro: 'Não consegui montar o relatório técnico do projeto' }
+
+  const { data: novo, error: insErr } = await supabaseAdmin.from('projetos_diagramas').insert({
+    projeto_id: lev.projeto_id,
+    levantamento_id: lev.id,
+    versao: (ultimas?.[0]?.versao || 0) + 1,
+    tipo_desenho: tipoDesenho,
+    status: 'gerando',
+    gerado_por: user.id,
+    snapshot_empresa: config,
+    eh_previa: false,
+    memoria_calculo: { _meta: { origem: 'levantamento', relatorio, solicitado_em: new Date().toISOString() } },
+  }).select('id').single()
+  if (insErr || !novo) return { sucesso: false, erro: insErr?.message || 'Erro ao criar registro do diagrama' }
+
+  const disparo = await dispararRoboDiagrama(novo.id)
+  if (!disparo.ok) {
+    await supabaseAdmin.from('projetos_diagramas').update({ status: 'erro', erro_mensagem: disparo.erro }).eq('id', novo.id)
+    await supabase.from('levantamentos').update({ status: 'enviado' }).eq('id', lev.id).eq('status', 'em_projeto')
+    return { sucesso: false, erro: disparo.erro }
+  }
+  revalidatePath(`/levantamentos/${lev.id}`)
+  revalidatePath(`/projetos/${lev.projeto_id}/diagrama`)
+  return { sucesso: true }
+}
+
 /** Dispara o workflow gerar-diagrama.yml no GitHub (workflow_dispatch). */
 async function dispararRoboDiagrama(diagramaId: string): Promise<{ ok: true } | { ok: false; erro: string }> {
   const token = process.env.GITHUB_DIAGRAMAS_TOKEN

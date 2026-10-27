@@ -3,10 +3,10 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
-import { BUCKET_LEVANTAMENTOS, STATUS_EDITAVEIS, faltaMigration } from '@/lib/levantamentos/comum'
+import { BUCKET_LEVANTAMENTOS, STATUS_EDITAVEIS, faltaMigration, podeUsarLevantamentos } from '@/lib/levantamentos/comum'
 import { completarRespostas, respostasIniciais } from '@/lib/levantamentos/servidor'
 import type { ModeloChecklist, Pendencia, Respostas } from '@/lib/levantamentos/types'
-import type { ArquivoTela, LevantamentoTela } from '@/lib/levantamentos/tela'
+import type { ArquivoTela, DiagramaTela, LevantamentoTela } from '@/lib/levantamentos/tela'
 import type { EventoTela } from '@/components/levantamentos/ui'
 import { FormularioLevantamento } from '@/components/levantamentos/FormularioLevantamento'
 import { DetalheLevantamento } from '@/components/levantamentos/DetalheLevantamento'
@@ -16,8 +16,9 @@ export const dynamic = 'force-dynamic'
 const PAPEL: Record<string, string> = { admin: 'admin', automacao: 'projetista Claude', profissional_campo: 'campo' }
 
 /**
- * /levantamentos/[id] — formulário (autor em rascunho ou com pendência) ou
- * detalhe com pranchas, histórico e ações da equipe de projeto.
+ * /levantamentos/[id] — formulário (admin/setor campo, em rascunho ou com
+ * pendência) ou detalhe com histórico e, só para o admin, os arquivos
+ * gerados e as ações de projeto (gerar, devolver, aprovar).
  * Leitura pelo cliente do usuário (RLS); service role só pra nomes e pro
  * pré-preenchimento depois de o RLS liberar o levantamento.
  */
@@ -26,6 +27,8 @@ export default async function LevantamentoPage({ params }: { params: { id: strin
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect(`/login?redirect=/levantamentos/${params.id}`)
   const { modo, ehAdminReal } = await getModoVisualizacao()
+  const { data: perfil } = await supabase.from('profiles').select('role, ativo').eq('id', user.id).maybeSingle()
+  if (!podeUsarLevantamentos(perfil?.role, perfil?.ativo)) redirect('/dashboard')
   const ehEquipe = ehAdminReal && modo === 'admin'
 
   const { data: lev, error } = await supabase.from('levantamentos').select('*').eq('id', params.id).maybeSingle()
@@ -60,13 +63,25 @@ export default async function LevantamentoPage({ params }: { params: { id: strin
     lev.projeto_id ? admin.from('projetos').select('codigo').eq('id', lev.projeto_id).maybeSingle() : Promise.resolve({ data: null as any }),
   ])
   const nome = new Map((pessoas || []).map((p: any) => [p.id, p.nome_completo || '']))
+
+  // Diagramas que o admin gerou a partir deste levantamento (migration 164).
+  // O campo só vê a situação; links e avisos ficam com o admin.
+  const { data: diagRows } = await admin.from('projetos_diagramas')
+    .select('id, tipo_desenho, versao, status, created_at, url_pdf, url_dxf, url_svg, avisos, erro_mensagem')
+    .eq('levantamento_id', lev.id).order('created_at', { ascending: false }).limit(10)
+  const diagramas: DiagramaTela[] = ((diagRows || []) as any[]).map((d) => ({
+    id: d.id, tipo_desenho: d.tipo_desenho, versao: d.versao, status: d.status, created_at: d.created_at,
+    url_pdf: ehEquipe ? d.url_pdf : null, url_dxf: ehEquipe ? d.url_dxf : null, url_svg: ehEquipe ? d.url_svg : null,
+    avisos: ehEquipe && Array.isArray(d.avisos) ? d.avisos : [], erro: ehEquipe ? d.erro_mensagem : null,
+  }))
   const eventos: EventoTela[] = (eventosRows || []).map((e: any) => ({
     id: e.id, tipo: e.tipo, de_status: e.de_status, para_status: e.para_status, mensagem: e.mensagem, created_at: e.created_at,
     autor: nome.get(e.autor_id) || PAPEL[e.autor_papel] || 'sistema',
   }))
 
+  // admin e todo o setor campo preenchem enquanto está em rascunho/com pendência
   const ehAutor = lev.consultor_id === user.id
-  const editavel = STATUS_EDITAVEIS.includes(lev.status) && (ehAutor || ehAdminReal)
+  const editavel = STATUS_EDITAVEIS.includes(lev.status)
 
   // Kalebe 2026-10-27: ao abrir, o que já foi preenchido em etapas anteriores
   // (projeto, fatura, padrão, kit, telhado, outros levantamentos) entra nos
@@ -111,7 +126,7 @@ export default async function LevantamentoPage({ params }: { params: { id: strin
         </div>
         {editavel
           ? <FormularioLevantamento key={lev.status} lev={dados} arquivosIniciais={arquivos} eventos={eventos} />
-          : <DetalheLevantamento lev={dados} arquivos={arquivos} eventos={eventos} ehEquipe={ehEquipe} />}
+          : <DetalheLevantamento lev={dados} arquivos={arquivos} eventos={eventos} ehEquipe={ehEquipe} diagramas={diagramas} />}
       </div>
     </main>
   )

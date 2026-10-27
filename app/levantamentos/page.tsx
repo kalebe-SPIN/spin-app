@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getModoVisualizacao } from '@/lib/modo-visualizacao'
-import { faltaMigration } from '@/lib/levantamentos/comum'
+import { faltaMigration, podeUsarLevantamentos } from '@/lib/levantamentos/comum'
 import { modelosParaEscolha } from '@/lib/levantamentos/servidor'
 import type { Pendencia } from '@/lib/levantamentos/types'
 import { ListaLevantamentos, type ItemLista } from '@/components/levantamentos/ListaLevantamentos'
@@ -10,16 +10,18 @@ import { ListaLevantamentos, type ItemLista } from '@/components/levantamentos/L
 export const dynamic = 'force-dynamic'
 
 /**
- * /levantamentos — checklists de campo (Kalebe 2026-10-26): o consultor ou o
- * técnico preenche no celular e envia ao projeto; a equipe de projeto vê a
- * fila, assume, devolve com pendência e aprova.
+ * /levantamentos — checklists de campo (Kalebe 2026-10-26/27): o setor campo
+ * ou o admin preenche na visita técnica e envia ao projeto; só o admin gera
+ * os diagramas/arquivos, devolve com pendência e aprova. Representante não
+ * acessa (os dados do projeto dele entram sozinhos no formulário).
  */
 export default async function LevantamentosPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login?redirect=/levantamentos')
-  const { modo, ehAdminReal, perfil } = await getModoVisualizacao()
-  if (perfil?.role === 'candidato') redirect('/vaga')
+  const { modo, ehAdminReal } = await getModoVisualizacao()
+  const { data: perfil } = await supabase.from('profiles').select('role, ativo').eq('id', user.id).maybeSingle()
+  if (!podeUsarLevantamentos(perfil?.role, perfil?.ativo)) redirect('/dashboard')
   const ehEquipe = ehAdminReal && modo === 'admin'
 
   const [modelos, { data: levs, error }] = await Promise.all([
@@ -45,7 +47,7 @@ export default async function LevantamentosPage() {
   const consultorIds = [...new Set(lista.map((l) => l.consultor_id))]
   const projetoIds = [...new Set(lista.map((l) => l.projeto_id).filter(Boolean))]
   const [{ data: pessoas }, { data: projetos }] = await Promise.all([
-    ehEquipe && consultorIds.length ? admin.from('profiles').select('id, nome_completo').in('id', consultorIds) : Promise.resolve({ data: [] as any[] }),
+    consultorIds.length ? admin.from('profiles').select('id, nome_completo').in('id', consultorIds) : Promise.resolve({ data: [] as any[] }),
     projetoIds.length ? admin.from('projetos').select('id, codigo').in('id', projetoIds) : Promise.resolve({ data: [] as any[] }),
   ])
   const nome = new Map((pessoas || []).map((p: any) => [p.id, p.nome_completo || null]))
@@ -79,7 +81,7 @@ function Moldura({ children }: { children: React.ReactNode }) {
         <header>
           <h1 className="text-2xl sm:text-3xl font-black text-white">Levantamentos de campo</h1>
           <p className="text-white/60 text-sm mt-0.5">
-            Um checklist para cada finalidade: sistema fotovoltaico, padrão de entrada novo e alteração ou aumento de carga. Os itens com * são obrigatórios para o projetista montar a prancha.
+            Um checklist para cada finalidade: sistema fotovoltaico, padrão de entrada novo e alteração ou aumento de carga. Os itens com * são obrigatórios para o projetista montar a prancha. Os dados que o projeto já tem entram preenchidos.
           </p>
         </header>
         {children}

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { BUCKET_LEVANTAMENTOS, STATUS_EDITAVEIS, erroAmigavel, faltaMigration } from '@/lib/levantamentos/comum'
+import { BUCKET_LEVANTAMENTOS, STATUS_EDITAVEIS, erroAmigavel, faltaMigration, podeUsarLevantamentos } from '@/lib/levantamentos/comum'
 import { calcularProgresso } from '@/lib/levantamentos/progresso'
 import { respostasIniciais } from '@/lib/levantamentos/servidor'
 import type { Finalidade, ModeloChecklist, Pendencia, Respostas, StatusLevantamento } from '@/lib/levantamentos/types'
@@ -51,7 +51,9 @@ export async function criarLevantamentoAction(args: {
 }): Promise<{ id: string } | Erro> {
   const s = await sessao()
   if (!s) return { erro: 'Faça login de novo.' }
-  if (!s.perfil?.ativo || s.perfil.role === 'candidato') return { erro: 'Seu acesso não permite criar levantamentos.' }
+  if (!podeUsarLevantamentos(s.perfil?.role, s.perfil?.ativo)) {
+    return { erro: 'O levantamento é feito pelo setor campo ou pelo admin na visita técnica.' }
+  }
   if (!['fv', 'padrao_novo', 'aumento_carga'].includes(args.finalidade)) return { erro: 'Finalidade inválida.' }
 
   const { data: modelo, error: eModelo } = await s.supabase.from('checklist_modelos')
@@ -66,7 +68,7 @@ export async function criarLevantamentoAction(args: {
     const { data } = await admin.from('execucoes_servicos')
       .select('id, projeto_id, responsavel_tecnico, cliente_nome, contato_telefone, endereco, endereco_execucao')
       .eq('id', args.osId).maybeSingle()
-    if (!data || (s.perfil.role !== 'admin' && data.responsavel_tecnico !== s.user.id)) return { erro: 'Ordem de serviço não encontrada.' }
+    if (!data || (s.perfil?.role !== 'admin' && data.responsavel_tecnico !== s.user.id)) return { erro: 'Ordem de serviço não encontrada.' }
     os = data
     projetoId = data.projeto_id || null
   }
@@ -77,7 +79,7 @@ export async function criarLevantamentoAction(args: {
 
   const definicao = modelo.definicao as ModeloChecklist
   const respostas = await respostasIniciais(admin, {
-    modelo: definicao, nomeConsultor: s.perfil.nome_completo || '', projetoId, os,
+    modelo: definicao, nomeConsultor: s.perfil?.nome_completo || '', projetoId, os,
   })
   const { data: novo, error } = await s.supabase.from('levantamentos').insert({
     finalidade: args.finalidade,

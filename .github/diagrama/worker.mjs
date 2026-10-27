@@ -187,6 +187,24 @@ async function finalizar() {
     },
   })
 
+  // Kalebe 2026-10-27: gerado a partir de um levantamento → levantamento vai
+  // pra aprovação do admin (o banco trata a chave do robô como 'automacao':
+  // avança o status, nunca aprova)
+  if (d.levantamento_id) {
+    try {
+      await rest(`levantamentos?id=eq.${d.levantamento_id}&status=eq.em_projeto`, {
+        method: 'PATCH',
+        body: {
+          status: 'aguardando_aprovacao',
+          observacao_projetista: `Arquivos gerados pelo robô: ${NOME_FOLHA[d.tipo_desenho] || d.tipo_desenho} v${d.versao}`
+            + (pendencias.length ? ` · ${pendencias.length} item(ns) a confirmar.` : '.'),
+        },
+      })
+    } catch (e) {
+      console.warn('Levantamento não atualizado:', e.message)
+    }
+  }
+
   // Unifilar pronto → etapa da homologação aponta pro arquivo (mesmo do upload manual)
   if (d.tipo_desenho === 'unifilar_ongrid' || d.tipo_desenho === 'unifilar_hibrido') {
     try {
@@ -223,6 +241,19 @@ async function erro() {
     status: 'erro',
     erro_mensagem: `O robô não concluiu${detalhe ? `: ${detalhe}` : ''}. Execução: ${RUN_URL}`,
   })
+  // levantamento volta pra fila (o admin gera de novo)
+  try {
+    const d = await umaLinha(`projetos_diagramas?id=eq.${ID}&select=levantamento_id`)
+    if (d?.levantamento_id) {
+      await rest(`levantamentos?id=eq.${d.levantamento_id}&status=eq.em_projeto`, { method: 'PATCH', body: { status: 'enviado' } })
+      await rest('levantamento_eventos', {
+        method: 'POST',
+        body: { levantamento_id: d.levantamento_id, tipo: 'comentario', mensagem: 'O robô não concluiu os arquivos; gere de novo.' },
+      })
+    }
+  } catch (e) {
+    console.warn('Levantamento não atualizado:', e.message)
+  }
 }
 
 const cmd = process.argv[2]

@@ -22,6 +22,20 @@ export type LevantamentoTela = {
   modelo: ModeloChecklist
 }
 
+/** Diagrama gerado pelo robô a partir do levantamento. Links e avisos só vão pro admin. */
+export type DiagramaTela = {
+  id: string
+  tipo_desenho: string
+  versao: number
+  status: 'gerando' | 'pronto' | 'erro' | string
+  created_at: string
+  url_pdf: string | null
+  url_dxf: string | null
+  url_svg: string | null
+  avisos: string[]
+  erro: string | null
+}
+
 export type ArquivoTela = {
   id: string
   tipo: TipoArquivo
