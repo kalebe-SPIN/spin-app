@@ -32,11 +32,12 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
   const router = useRouter()
   const modelo = lev.modelo
   const [respostas, setRespostas] = useState<Respostas>(lev.respostas)
-  const [textos, setTextos] = useState<Record<string, string>>(() => {
+  const textosDe = useCallback((r: Respostas) => {
     const t: Record<string, string> = {}
-    for (const s of modelo.secoes) for (const c of s.campos) if (c.tipo === 'number') t[c.id] = numeroParaCampo(lev.respostas[c.id])
+    for (const s of modelo.secoes) for (const c of s.campos) if (c.tipo === 'number') t[c.id] = numeroParaCampo(r[c.id])
     return t
-  })
+  }, [modelo])
+  const [textos, setTextos] = useState<Record<string, string>>(() => textosDe(lev.respostas))
   const [auto, setAuto] = useState<Set<string>>(() => new Set(lev.preenchidosAuto))
   const [arquivos, setArquivos] = useState<ArquivoTela[]>(arquivosIniciais.filter((a) => a.tipo === 'foto' || a.tipo === 'documento'))
   const [msg, setMsg] = useState(lev.preenchidosAuto.length ? 'Trazendo o que já foi preenchido antes…' : `Última alteração ${new Date(lev.updated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`)
@@ -54,6 +55,19 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
   const fila = useRef<Promise<void>>(Promise.resolve())
   const parado = useRef(false)
 
+  // Kalebe 2026-10-27: "caso o formulário não seja finalizado deve ter a opção
+  // de salvar o que tem feito para não se perder o trabalho". Além do botão
+  // Salvar, o que ainda não subiu fica guardado no aparelho (sem internet na
+  // visita, app fechado…) e volta sozinho ao reabrir. "base" = versão do
+  // servidor em cima da qual a cópia foi feita — se outra pessoa salvou
+  // depois, a cópia velha é descartada.
+  const chaveLocal = `lev_rascunho_${lev.id}`
+  const baseServidor = useRef(lev.updated_at)
+  const guardarLocal = useCallback((r: Respostas) => {
+    try { localStorage.setItem(chaveLocal, JSON.stringify({ base: baseServidor.current, respostas: r, em: new Date().toISOString() })) } catch {}
+  }, [chaveLocal])
+  const limparLocal = useCallback(() => { try { localStorage.removeItem(chaveLocal) } catch {} }, [chaveLocal])
+
   const salvar = useCallback((): Promise<void> => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null }
     if (!pendente.current || parado.current) return fila.current
@@ -64,33 +78,58 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
       try {
         const r = await salvarLevantamentoAction(lev.id, corpo, pct)
         if ('erro' in r) { parado.current = true; setMsg(r.erro); return }
-        if (!pendente.current) setMsg(`Salvo às ${horaBR()}`)
+        baseServidor.current = r.salvoEm
+        if (pendente.current) guardarLocal(ultimo.current)
+        else { limparLocal(); setMsg(`Salvo às ${horaBR()}`) }
       } catch {
         pendente.current = true
-        setMsg('Falha ao salvar (sem internet?). Tentando de novo em instantes…')
-        timer.current = setTimeout(() => { salvar() }, 4000)
+        setMsg('Sem internet agora — ficou guardado neste aparelho e sobe sozinho quando a conexão voltar.')
+        timer.current = setTimeout(() => { salvar() }, 5000)
       }
     })
     return fila.current
-  }, [lev.id, modelo])
+  }, [lev.id, modelo, guardarLocal, limparLocal])
 
   const agendar = useCallback((novas: Respostas) => {
     ultimo.current = novas
     pendente.current = true
+    guardarLocal(novas)
     setMsg('Alterações não salvas…')
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => { salvar() }, 1200)
-  }, [salvar])
+  }, [salvar, guardarLocal])
+
+  /** Botão Salvar: grava agora (mesmo sem mudança pendente, atualiza o progresso). */
+  async function salvarAgora() {
+    pendente.current = true
+    await salvar()
+    if (!pendente.current && !parado.current) setMsg(`Salvo às ${horaBR()} — pode fechar e continuar depois.`)
+  }
 
   useEffect(() => {
-    if (lev.preenchidosAuto.length) agendar(ultimo.current)
+    // cópia do aparelho feita em cima desta mesma versão → recupera
+    let recuperou = false
+    try {
+      const copia = JSON.parse(localStorage.getItem(chaveLocal) || 'null')
+      if (copia?.base === lev.updated_at && copia.respostas && JSON.stringify(copia.respostas) !== JSON.stringify(lev.respostas)) {
+        ultimo.current = copia.respostas
+        setRespostas(copia.respostas)
+        setTextos(textosDe(copia.respostas))
+        recuperou = true
+      } else if (copia) localStorage.removeItem(chaveLocal)
+    } catch {}
+    if (recuperou || lev.preenchidosAuto.length) agendar(ultimo.current)
+    if (recuperou) setMsg('Recuperamos o que estava preenchido e ainda não tinha subido. Salvando…')
     const aoEsconder = () => { if (document.visibilityState === 'hidden') salvar() }
     const aoSair = () => { salvar() }
+    const aoVoltarInternet = () => { if (pendente.current) salvar() }
     document.addEventListener('visibilitychange', aoEsconder)
     window.addEventListener('pagehide', aoSair)
+    window.addEventListener('online', aoVoltarInternet)
     return () => {
       document.removeEventListener('visibilitychange', aoEsconder)
       window.removeEventListener('pagehide', aoSair)
+      window.removeEventListener('online', aoVoltarInternet)
       salvar()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -167,6 +206,7 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
     parado.current = true
     const r = await excluirLevantamentoAction(lev.id)
     if ('erro' in r) { setOcupado(false); parado.current = false; setErro(r.erro); return }
+    limparLocal()
     router.push('/levantamentos')
   }
 
@@ -189,8 +229,13 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
         </div>
         <BarraProgresso pct={prog.pct} />
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[11px] text-white/50 min-w-0 truncate">{msg}</span>
-          <EtiquetaStatus status={lev.status} />
+          <span className="text-[11px] text-white/50 min-w-0 line-clamp-2">{msg}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button type="button" onClick={salvarAgora} disabled={ocupado} className="px-2.5 py-1 border border-sol/60 text-white text-[11px] font-semibold rounded-lg disabled:opacity-50">
+              Salvar
+            </button>
+            <EtiquetaStatus status={lev.status} />
+          </div>
         </div>
       </div>
 
@@ -276,6 +321,9 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
         <button type="button" onClick={enviar} disabled={ocupado || !!enviandoSlot} className="px-5 py-3 bg-sol text-noite font-bold rounded-lg disabled:opacity-50">
           {ocupado ? 'Enviando…' : reenviar ? 'Reenviar ao projeto' : 'Enviar ao projeto'}
         </button>
+        <button type="button" onClick={salvarAgora} disabled={ocupado} className="px-4 py-3 border border-sol/60 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
+          Salvar e continuar depois
+        </button>
         {!podeExcluir ? null : confirmar === 'excluir' ? (
           <>
             <button type="button" onClick={excluir} disabled={ocupado} className="px-4 py-3 bg-coral text-white font-bold rounded-lg disabled:opacity-50">Confirmar exclusão</button>
@@ -287,7 +335,7 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
       </div>
       <p className="text-xs text-white/50">
         {prog.faltando.length
-          ? 'Pode enviar com pendências; elas aparecem como “A PREENCHER” no projeto.'
+          ? 'Não terminou? Salve e continue depois — fica como rascunho. Também dá para enviar com pendências; elas aparecem como “A PREENCHER” no projeto.'
           : 'Tudo preenchido.'}
       </p>
 
