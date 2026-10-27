@@ -38,13 +38,16 @@ export function AtualizaAoMudar({ id }: { id?: string }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     const supabase = createClient()
-    const canal = supabase
+    const atualizar = () => {
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(() => router.refresh(), 600)
+    }
+    let canal = supabase
       .channel(`levantamentos-${id || 'lista'}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'levantamentos', ...(id ? { filter: `id=eq.${id}` } : {}) }, () => {
-        if (timer.current) clearTimeout(timer.current)
-        timer.current = setTimeout(() => router.refresh(), 600)
-      })
-      .subscribe()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'levantamentos', ...(id ? { filter: `id=eq.${id}` } : {}) }, atualizar)
+    // na lista: o admin concedeu (ou tirou) um acesso → aparece/some sozinho
+    if (!id) canal = canal.on('postgres_changes', { event: '*', schema: 'public', table: 'levantamento_compartilhamentos' }, atualizar)
+    canal.subscribe()
     return () => {
       if (timer.current) clearTimeout(timer.current)
       supabase.removeChannel(canal)

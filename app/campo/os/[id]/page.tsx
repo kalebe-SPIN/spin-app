@@ -5,8 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checklistPadrao } from '@/lib/campo/checklists'
 import type { ItemChecklist } from '@/lib/campo/comum'
 import { OrdemServicoClient, type OsTela } from '@/components/campo/OrdemServicoClient'
-import { NovoLevantamento } from '@/components/levantamentos/NovoLevantamento'
-import { modelosParaEscolha } from '@/lib/levantamentos/servidor'
+import { CURTO_FINALIDADE } from '@/lib/levantamentos/comum'
+import { numeroLevantamento, ROTULO_STATUS, type Finalidade, type StatusLevantamento } from '@/lib/levantamentos/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +50,12 @@ export default async function OrdemServicoPage({ params }: { params: { id: strin
   const { data: custos } = await admin.from('fluxo_lancamentos')
     .select('id, descricao, valor_previsto, detalhes').contains('detalhes', { execucao_id: os.id }).is('cancelado_em', null)
 
-  const modelos = await modelosParaEscolha(supabase)
+  // levantamentos do projeto desta OS que o admin liberou pra quem está vendo (RLS)
+  const { data: libs } = os.projeto_id
+    ? await supabase.from('levantamentos').select('id, numero, finalidade, status, progresso')
+        .eq('projeto_id', os.projeto_id).neq('status', 'cancelado').order('updated_at', { ascending: false })
+    : { data: [] as any[] }
+  const liberados = (libs || []) as { id: string; numero: number; finalidade: string; status: string; progresso: number }[]
 
   const checklist: ItemChecklist[] = Array.isArray(os.checklist) && os.checklist.length ? os.checklist : checklistPadrao(os.tipo_servico)
   const dados: OsTela = {
@@ -86,12 +91,20 @@ export default async function OrdemServicoPage({ params }: { params: { id: strin
       <div className="max-w-2xl mx-auto space-y-4">
         <Link href="/campo" className="text-sm text-white/60 hover:text-white">← Campo</Link>
         <OrdemServicoClient key={os.status} os={dados} />
-        {/* Kalebe 2026-10-26: checklist da visita pro gerador de diagramas / padrão de entrada */}
-        {modelos && modelos.length > 0 && (
-          <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-2">
-            <h2 className="text-sm font-bold text-white">📋 Levantamento de campo</h2>
-            <p className="text-xs text-white/55">Fotos e medidas para o projeto (unifilar ou padrão de entrada). Já entra com os dados do cliente.</p>
-            <NovoLevantamento modelos={modelos} osId={os.id} rotulo="Levantamento de campo" />
+        {/* Kalebe 2026-10-27: levantamento da visita liberado pelo admin pra este técnico */}
+        {liberados.length > 0 && (
+          <section className="rounded-xl border border-sol/40 bg-white/[0.03] p-4 space-y-2">
+            <h2 className="text-sm font-bold text-white">📋 Levantamento técnico para preencher</h2>
+            <ul className="grid gap-1.5">
+              {liberados.map((l) => (
+                <li key={l.id}>
+                  <Link href={`/levantamentos/${l.id}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2 hover:border-sol/40">
+                    <span className="text-sm text-white">{CURTO_FINALIDADE[l.finalidade as Finalidade] || l.finalidade} <span className="text-white/45">· {numeroLevantamento(l.numero)} · {l.progresso}%</span></span>
+                    <span className="text-xs text-white/70">{ROTULO_STATUS[l.status as StatusLevantamento] || l.status}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
       </div>

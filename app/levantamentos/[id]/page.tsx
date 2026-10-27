@@ -10,6 +10,7 @@ import type { ArquivoTela, DiagramaTela, LevantamentoTela } from '@/lib/levantam
 import type { EventoTela } from '@/components/levantamentos/ui'
 import { FormularioLevantamento } from '@/components/levantamentos/FormularioLevantamento'
 import { DetalheLevantamento } from '@/components/levantamentos/DetalheLevantamento'
+import { CompartilharLevantamento, type PessoaCampo } from '@/components/levantamentos/CompartilharLevantamento'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,7 +34,7 @@ export default async function LevantamentoPage({ params }: { params: { id: strin
 
   const { data: lev, error } = await supabase.from('levantamentos').select('*').eq('id', params.id).maybeSingle()
   if (faltaMigration(error)) return <Aviso texto="O módulo de levantamentos ainda não foi ativado no banco (migrations 162 e 163)." />
-  if (!lev) return <Aviso texto="Levantamento não encontrado ou você não tem acesso a ele." />
+  if (!lev) return <Aviso texto="Levantamento não encontrado ou ainda não liberado para você. O admin concede o acesso e você recebe o link no sino." />
 
   const [{ data: modeloRow }, { data: arquivosRows }, { data: eventosRows }] = await Promise.all([
     supabase.from('checklist_modelos').select('definicao').eq('id', lev.modelo_id).maybeSingle(),
@@ -95,6 +96,26 @@ export default async function LevantamentoPage({ params }: { params: { id: strin
     ;({ respostas, preenchidos: preenchidosAuto } = completarRespostas(respostas, sugestoes))
   }
 
+  // Acesso do campo (só o admin vê e concede) — pessoas em ordem A→Z
+  let compartilhados: PessoaCampo[] = []
+  let pessoasCampo: PessoaCampo[] = []
+  if (ehEquipe) {
+    const [{ data: comps }, { data: campo }] = await Promise.all([
+      supabase.from('levantamento_compartilhamentos').select('usuario_id').eq('levantamento_id', lev.id),
+      admin.from('profiles').select('id, nome_completo').in('role', ['profissional_campo', 'instalador']).eq('ativo', true),
+    ])
+    pessoasCampo = ((campo || []) as any[])
+      .map((p) => ({ id: p.id, nome: p.nome_completo || 'Sem nome' }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    const ids = new Set(((comps || []) as any[]).map((c) => c.usuario_id))
+    const { data: nomesComp } = ids.size
+      ? await admin.from('profiles').select('id, nome_completo').in('id', [...ids])
+      : { data: [] as any[] }
+    compartilhados = ((nomesComp || []) as any[])
+      .map((p) => ({ id: p.id, nome: p.nome_completo || 'Sem nome' }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  }
+
   const dados: LevantamentoTela = {
     id: lev.id,
     numero: lev.numero,
@@ -124,8 +145,11 @@ export default async function LevantamentoPage({ params }: { params: { id: strin
             <Link href={`/projetos/${lev.projeto_id}`} className="text-white/60 hover:text-white">Projeto {dados.projeto_codigo}</Link>
           )}
         </div>
+        {ehEquipe && !['aprovado', 'cancelado'].includes(lev.status) && (
+          <CompartilharLevantamento levantamentoId={lev.id} compartilhados={compartilhados} campo={pessoasCampo} />
+        )}
         {editavel
-          ? <FormularioLevantamento key={lev.status} lev={dados} arquivosIniciais={arquivos} eventos={eventos} />
+          ? <FormularioLevantamento key={lev.status} lev={dados} arquivosIniciais={arquivos} eventos={eventos} podeExcluir={ehAdminReal} />
           : <DetalheLevantamento lev={dados} arquivos={arquivos} eventos={eventos} ehEquipe={ehEquipe} diagramas={diagramas} />}
       </div>
     </main>

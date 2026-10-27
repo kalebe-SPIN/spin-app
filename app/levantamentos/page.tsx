@@ -10,8 +10,9 @@ import { ListaLevantamentos, type ItemLista } from '@/components/levantamentos/L
 export const dynamic = 'force-dynamic'
 
 /**
- * /levantamentos — checklists de campo (Kalebe 2026-10-26/27): o setor campo
- * ou o admin preenche na visita técnica e envia ao projeto; só o admin gera
+ * /levantamentos — checklists de campo (Kalebe 2026-10-26/27): o admin cria
+ * (já preenchido pelo projeto), corrige e concede o acesso a quem é do campo;
+ * o técnico vê só o que recebeu, completa na visita e envia. Só o admin gera
  * os diagramas/arquivos, devolve com pendência e aprova. Representante não
  * acessa (os dados do projeto dele entram sozinhos no formulário).
  */
@@ -69,7 +70,7 @@ export default async function LevantamentosPage() {
 
   return (
     <Moldura>
-      <ListaLevantamentos itens={itens} modelos={modelos} ehEquipe={ehEquipe} podeCriar={!!modelos.length} />
+      <ListaLevantamentos itens={itens} modelos={modelos} ehEquipe={ehEquipe} podeCriar={ehEquipe && !!modelos.length} />
     </Moldura>
   )
 }

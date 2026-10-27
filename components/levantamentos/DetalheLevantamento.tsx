@@ -100,7 +100,7 @@ export function DetalheLevantamento({ lev, arquivos, eventos, ehEquipe, diagrama
             {pendProjetista.map((p, i) => <li key={i}>⚠ {p.mensagem}</li>)}
           </ul>
         )}
-        {lev.status === 'enviado' && lev.ehAutor && (
+        {lev.status === 'enviado' && (
           <button type="button" disabled={ocupado} onClick={() => passo('desfazer_envio')} className="px-3 py-2 border border-white/15 text-white/80 text-sm rounded-lg">
             Desfazer envio (voltar a editar)
           </button>

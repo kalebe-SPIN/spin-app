@@ -91,7 +91,9 @@ export function ListaLevantamentos({ itens, modelos, ehEquipe, podeCriar }: {
         <div className="rounded-xl border border-dashed border-white/15 p-5 space-y-1">
           <p className="font-bold text-white">Nenhum levantamento{aba !== 'todos' ? ` de “${modelos.find((m) => m.codigo === aba)?.nome || CURTO_FINALIDADE[aba]}”` : ''}{statusDoFiltro || termo ? ' com esse filtro' : ' ainda'}.</p>
           <p className="text-sm text-white/60">
-            Toque em “Novo levantamento”, escolha a finalidade e siga as seções. As fotos podem ser tiradas na hora pelo celular. O que você preencher fica salvo sozinho.
+            {podeCriar
+              ? 'Toque em “Novo levantamento”, escolha a finalidade, confira os dados que vieram do projeto e conceda o acesso a quem vai fazer a visita.'
+              : 'Quando o admin liberar o levantamento da visita técnica, ele aparece aqui e você recebe o link no sino. As fotos podem ser tiradas na hora pelo celular; o que você preencher fica salvo sozinho.'}
           </p>
         </div>
       ) : (

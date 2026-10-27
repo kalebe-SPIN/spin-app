@@ -23,10 +23,11 @@ const horaBR = () => new Date().toLocaleTimeString('pt-BR', { timeZone: 'America
  * Mobile-first; salva sozinho (1,2 s depois da última mudança, uma gravação
  * por vez, e grava o pendente ao sair da tela).
  */
-export function FormularioLevantamento({ lev, arquivosIniciais, eventos }: {
+export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExcluir }: {
   lev: LevantamentoTela
   arquivosIniciais: ArquivoTela[]
   eventos: EventoTela[]
+  podeExcluir: boolean
 }) {
   const router = useRouter()
   const modelo = lev.modelo
@@ -275,7 +276,7 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos }: {
         <button type="button" onClick={enviar} disabled={ocupado || !!enviandoSlot} className="px-5 py-3 bg-sol text-noite font-bold rounded-lg disabled:opacity-50">
           {ocupado ? 'Enviando…' : reenviar ? 'Reenviar ao projeto' : 'Enviar ao projeto'}
         </button>
-        {confirmar === 'excluir' ? (
+        {!podeExcluir ? null : confirmar === 'excluir' ? (
           <>
             <button type="button" onClick={excluir} disabled={ocupado} className="px-4 py-3 bg-coral text-white font-bold rounded-lg disabled:opacity-50">Confirmar exclusão</button>
             <button type="button" onClick={() => setConfirmar(null)} className="px-4 py-3 text-white/60 text-sm">Cancelar</button>

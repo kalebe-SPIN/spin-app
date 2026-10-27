@@ -101,7 +101,6 @@ export async function respostasIniciais(admin: Admin, args: {
     if (!ids.has(id) || v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return
     r[id] = v
   }
-  pôr('consultor', args.nomeConsultor)
   pôr('data', hojeBRT())
 
   let projeto: any = null
@@ -109,6 +108,14 @@ export async function respostasIniciais(admin: Admin, args: {
     const { data } = await admin.from('projetos').select('*').eq('id', args.projetoId).maybeSingle()
     projeto = data
   }
+  // Kalebe 2026-10-27: "Consultor" = o vendedor do projeto (quem cadastrou as
+  // informações); sem projeto, quem criou o levantamento
+  let nomeVendedor: string | null = null
+  if (projeto?.consultor_id) {
+    const { data: v } = await admin.from('profiles').select('nome_completo').eq('id', projeto.consultor_id).maybeSingle()
+    nomeVendedor = v?.nome_completo || null
+  }
+  pôr('consultor', nomeVendedor || args.nomeConsultor)
 
   if (projeto) {
     if (projeto.cliente_id && (!projeto.cliente_razao_social || !projeto.cliente_cpf_cnpj || !projeto.cliente_endereco)) {

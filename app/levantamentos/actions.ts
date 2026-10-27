@@ -3,10 +3,12 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { BUCKET_LEVANTAMENTOS, STATUS_EDITAVEIS, erroAmigavel, faltaMigration, itensCarga, podeUsarLevantamentos } from '@/lib/levantamentos/comum'
+import { BUCKET_LEVANTAMENTOS, STATUS_EDITAVEIS, erroAmigavel, faltaMigration, itensCarga } from '@/lib/levantamentos/comum'
 import { calcularProgresso } from '@/lib/levantamentos/progresso'
 import { respostasIniciais } from '@/lib/levantamentos/servidor'
-import type { Finalidade, ModeloChecklist, Pendencia, Respostas, StatusLevantamento } from '@/lib/levantamentos/types'
+import { numeroLevantamento, type Finalidade, type ModeloChecklist, type Pendencia, type Respostas, type StatusLevantamento } from '@/lib/levantamentos/types'
+import { avisarUsuario } from '@/lib/agentes/diretorio'
+import { URL_PORTAL } from '@/lib/agentes/nomes'
 
 /**
  * Levantamentos de campo (Kalebe 2026-10-26). Tudo pelo cliente do usuário
@@ -52,8 +54,9 @@ export async function criarLevantamentoAction(args: {
 }): Promise<{ id: string } | Erro> {
   const s = await sessao()
   if (!s) return { erro: 'Faça login de novo.' }
-  if (!podeUsarLevantamentos(s.perfil?.role, s.perfil?.ativo)) {
-    return { erro: 'O levantamento é feito pelo setor campo ou pelo admin na visita técnica.' }
+  // Kalebe 2026-10-27: só o admin cria; o campo recebe o acesso concedido
+  if (s.perfil?.role !== 'admin' || !s.perfil.ativo) {
+    return { erro: 'Só o admin cria o levantamento; o campo recebe o acesso pelo link que o admin concede.' }
   }
   if (!['fv', 'padrao_novo', 'aumento_carga'].includes(args.finalidade)) return { erro: 'Finalidade inválida.' }
 
@@ -187,6 +190,48 @@ export async function devolverComPendenciaAction(
   if (error) return { erro: erroAmigavel(error.message) }
   if (!data?.length) return { erro: MUDOU }
   revalidar(id, lev.projeto_id)
+  return { ok: true }
+}
+
+/**
+ * Kalebe 2026-10-27: o admin abre o levantamento já preenchido pelo projeto,
+ * corrige, e concede o acesso a um usuário do campo — que recebe o link no
+ * sino e no WhatsApp (avisarUsuario) e completa o restante.
+ */
+export async function compartilharLevantamentoAction(
+  id: string, usuarioId: string,
+): Promise<{ ok: true; whatsapp: boolean } | Erro> {
+  const s = await sessao()
+  if (!s) return { erro: 'Sua sessão expirou. Entre de novo.' }
+  if (s.perfil?.role !== 'admin' || !s.perfil.ativo) return { erro: 'Só o admin concede acesso ao levantamento.' }
+  const { data: lev } = await s.supabase.from('levantamentos')
+    .select('id, numero, modelo_id, cliente_nome, cidade, projeto_id, status').eq('id', id).maybeSingle()
+  if (!lev) return { erro: 'Levantamento não encontrado.' }
+  const { error } = await s.supabase.from('levantamento_compartilhamentos')
+    .upsert({ levantamento_id: id, usuario_id: usuarioId }, { onConflict: 'levantamento_id,usuario_id', ignoreDuplicates: true })
+  if (error) return { erro: /setor campo/.test(error.message) ? 'Só dá para conceder a quem é do setor campo e está ativo.' : erroAmigavel(error.message) }
+
+  const { data: modelo } = await s.supabase.from('checklist_modelos').select('nome').eq('id', lev.modelo_id).maybeSingle()
+  const aviso = await avisarUsuario({
+    destinatario_id: usuarioId,
+    agente: 'bianca',
+    remetente_usuario_id: s.user.id,
+    titulo: 'Levantamento liberado para você',
+    mensagem: `${numeroLevantamento(lev.numero)} · ${modelo?.nome || 'Levantamento técnico'} — ${lev.cliente_nome || 'cliente'}`
+      + `${lev.cidade ? ` (${lev.cidade})` : ''}. Complete o formulário na visita técnica e envie: ${URL_PORTAL}/levantamentos/${id}`,
+    projeto_id: lev.projeto_id,
+  }).catch(() => null)
+  revalidar(id, lev.projeto_id)
+  return { ok: true, whatsapp: aviso?.whatsapp_status === 'enviado' || aviso?.whatsapp_status === 'enviado_modelo' }
+}
+
+export async function removerCompartilhamentoAction(id: string, usuarioId: string): Promise<{ ok: true } | Erro> {
+  const s = await sessao()
+  if (!s) return { erro: 'Sua sessão expirou. Entre de novo.' }
+  if (s.perfil?.role !== 'admin' || !s.perfil.ativo) return { erro: 'Só o admin tira o acesso ao levantamento.' }
+  const { error } = await s.supabase.from('levantamento_compartilhamentos').delete().eq('levantamento_id', id).eq('usuario_id', usuarioId)
+  if (error) return { erro: erroAmigavel(error.message) }
+  revalidar(id)
   return { ok: true }
 }
 

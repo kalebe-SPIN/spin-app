@@ -53,6 +53,7 @@ create table public.projetos_diagramas (id uuid primary key default gen_random_u
     await db.exec(migration("163_checklist_modelos.sql"));
     await db.exec(migration("164_levantamentos_campo_admin.sql"));
     await db.exec(migration("167_modelos_v2_cargas.sql"));
+    await db.exec(migration("168_levantamentos_compartilhar.sql"));
   }
   await db.exec(`
 grant usage on schema public, auth, storage to authenticated;
@@ -118,28 +119,43 @@ describe("levantamentos — RLS e fluxo de status", () => {
       where m.codigo = 'padrao_novo' and m.versao = 2 and c->>'id' = 'cargas_esp'`)).rows[0]?.t;
     ok(tipoCargas === "cargas", "v2: cargas especiais é lista de equipamentos");
 
-    // ── quem cria
-    let r = await criar(U.tec, "fv", mFv, P1); ok(!r.erro, `técnico cria ligado ao projeto da OS dele${r.erro ? " — " + r.erro : ""}`);
+    const compartilhar = (quem: string, lev: string, com: string) => como(quem, () => tenta(() =>
+      q(`insert into public.levantamento_compartilhamentos (levantamento_id, usuario_id) values ($1, $2)`, [lev, com])));
+
+    // ── quem cria: só o admin
+    let r = await criar(U.admin, "fv", mFv, P1); ok(!r.erro, `admin cria ligado ao projeto${r.erro ? " — " + r.erro : ""}`);
     const L1: string = r.r!.rows[0].id;
-    r = await criar(U.tec, "fv", mFv, P2); ok(/acesso a esse projeto/.test(r.erro || ""), "técnico não liga a projeto sem OS dele");
     r = await criar(U.admin, "padrao_novo", mPn, P2); ok(!r.erro, "admin cria ligado a qualquer projeto");
     const L2: string = r.r!.rows[0].id;
+    ok((await criar(U.tec, "fv", mFv, P1)).erro, "campo NÃO cria (nem no projeto da OS dele)");
+    ok((await criar(U.tec, "fv", mFv, null)).erro, "campo NÃO cria avulso");
     ok((await criar(U.rep, "fv", mFv, P1)).erro, "representante NÃO cria (nem no próprio projeto)");
-    ok((await criar(U.rep, "fv", mFv, null)).erro, "representante NÃO cria avulso");
     ok((await criar(U.inativo, "fv", mFv, null)).erro, "inativo não cria");
     ok((await criar(U.cand, "fv", mFv, null)).erro, "candidato não cria");
     ok((await criar(U.auto, "fv", mFv, null)).erro, "automação não cria");
-    r = await como(U.tec, () => tenta(() => q(`insert into public.levantamentos (finalidade, modelo_id, modelo_versao, consultor_id, status) values ('fv', $1, 1, $2, 'enviado')`, [mFv.id, U.tec])));
+    r = await como(U.admin, () => tenta(() => q(`insert into public.levantamentos (finalidade, modelo_id, modelo_versao, consultor_id, status) values ('fv', $1, 1, $2, 'enviado')`, [mFv.id, U.admin])));
     ok(/começa como rascunho/.test(r.erro || ""), "novo não nasce enviado");
-    r = await como(U.tec, () => tenta(() => q(`insert into public.levantamentos (finalidade, modelo_id, modelo_versao, consultor_id) values ('fv', $1, 1, $2)`, [mFv.id, U.tec2])));
+    r = await como(U.admin, () => tenta(() => q(`insert into public.levantamentos (finalidade, modelo_id, modelo_versao, consultor_id) values ('fv', $1, 1, $2)`, [mFv.id, U.tec])));
     ok(r.erro, "ninguém cria em nome de outro");
 
-    // ── quem vê
+    // ── compartilhamento: o campo só vê o que o admin concede
+    ok(!(await ve(U.tec, L1)) && !(await ve(U.tec2, L1)), "antes de compartilhar o campo não vê");
+    ok((await compartilhar(U.tec, L1, U.tec)).erro, "campo não se auto-compartilha");
+    ok((await compartilhar(U.rep, L1, U.tec)).erro, "representante não compartilha");
+    ok(/setor campo/.test((await compartilhar(U.admin, L1, U.rep)).erro || ""), "admin não compartilha com quem não é do campo");
+    ok(/setor campo/.test((await compartilhar(U.admin, L1, U.inativo)).erro || ""), "admin não compartilha com inativo");
+    ok(!(await compartilhar(U.admin, L1, U.tec)).erro, "admin compartilha com o técnico");
+    ok(await ve(U.tec, L1), "técnico vê o que foi compartilhado com ele");
+    ok(!(await ve(U.tec2, L1)), "outro do campo NÃO vê o que não foi compartilhado com ele");
+    ok(!(await ve(U.tec, L2)), "técnico não vê os outros levantamentos");
+    ok((await conta(U.tec2, `select count(*)::int n from public.levantamento_compartilhamentos where levantamento_id = $1`, [L1])) === 0,
+      "outro do campo não vê os compartilhamentos alheios");
     ok(!(await ve(U.rep, L1)) && !(await ve(U.rep2, L1)), "representante (mesmo dono do projeto) NÃO vê o levantamento");
-    ok(await ve(U.tec2, L1), "outro do setor campo vê");
     ok((await ve(U.admin, L1)) && (await ve(U.auto, L1)), "admin e automação veem");
     ok((await como(U.rep, () => q(`update public.levantamentos set cliente_nome = 'hack' where id = $1`, [L1]))).affectedRows === 0, "representante não altera");
+    ok((await como(U.tec2, () => q(`update public.levantamentos set cliente_nome = 'hack' where id = $1`, [L1]))).affectedRows === 0, "campo sem compartilhamento não altera");
     ok((await conta(U.rep, `select count(*)::int n from public.levantamento_eventos where levantamento_id = $1`, [L1])) === 0, "representante não vê o histórico");
+    ok(!(await compartilhar(U.admin, L1, U.tec2)).erro && (await ve(U.tec2, L1)), "admin compartilha com mais de um técnico");
 
     // ── edição pelo campo
     r = await como(U.tec, () => tenta(() => q(`update public.levantamentos set status = 'aguardando_aprovacao' where id = $1`, [L1])));
@@ -148,7 +164,9 @@ describe("levantamentos — RLS e fluxo de status", () => {
       observacao_projetista = 'hack', finalidade = 'padrao_novo' where id = $1`, [L1]));
     let l = await linha(L1);
     ok(l.respostas.consumo === 350 && l.observacao_projetista === null && l.finalidade === "fv",
-      "colega do campo preenche; campo do projetista e finalidade não mudam");
+      "técnico compartilhado preenche; campo do projetista e finalidade não mudam");
+    await como(U.admin, () => q(`delete from public.levantamento_compartilhamentos where levantamento_id = $1 and usuario_id = $2`, [L1, U.tec2]));
+    ok(!(await ve(U.tec2, L1)), "admin tira o compartilhamento e o técnico perde o acesso");
 
     // ── arquivos e storage
     ok(!(await objeto(U.tec, `${L1}/fotos/fatura/a.jpg`)).erro, "campo envia foto");
@@ -208,8 +226,9 @@ describe("levantamentos — RLS e fluxo de status", () => {
     ok(["rascunho", "enviado", "em_projeto", "aguardando_aprovacao", "aprovado"].every((s) => hist.includes(s)), "histórico registra tudo");
 
     // ── servidor do app / robô (service_role) = automação
-    r = await criar(U.tec, "fv", mFv, P1);
+    r = await criar(U.admin, "fv", mFv, P1);
     const L4: string = r.r!.rows[0].id;
+    await compartilhar(U.admin, L4, U.tec);
     await como(U.tec, () => q(`update public.levantamentos set status = 'enviado' where id = $1`, [L4]));
     await como(U.admin, () => q(`update public.levantamentos set status = 'em_projeto' where id = $1`, [L4]));
     r = await comoServidor(() => tenta(() => q(`update public.levantamentos set status = 'aguardando_aprovacao' where id = $1 and status = 'em_projeto'`, [L4])));
@@ -223,6 +242,7 @@ describe("levantamentos — RLS e fluxo de status", () => {
     ok(!r.erro && (await linha(L4)).status === "enviado", "robô com erro devolve para a fila (enviado)");
 
     // ── pendência (devolvida pelo admin, corrigida pelo campo)
+    await compartilhar(U.admin, L2, U.tec);
     await como(U.tec, () => q(`update public.levantamentos set status = 'enviado' where id = $1`, [L2]));
     r = await como(U.admin, () => tenta(() => q(`update public.levantamentos set status = 'com_pendencia' where id = $1`, [L2])));
     ok(/não permitida/.test(r.erro || ""), "devolver exige assumir antes");
@@ -231,7 +251,8 @@ describe("levantamentos — RLS e fluxo de status", () => {
     await como(U.tec, () => q(`update public.levantamentos set respostas = '{"num_poste":"123"}', pendencias = '[]' where id = $1`, [L2]));
     l = await linha(L2);
     ok(l.pendencias.length === 1 && l.respostas.num_poste === "123", "campo corrige; pendências só saem ao reenviar");
-    ok(!(await objeto(U.tec2, `${L2}/fotos/poste/n.jpg`)).erro, "com pendência o campo refaz a foto");
+    ok(!(await objeto(U.tec, `${L2}/fotos/poste/n.jpg`)).erro, "com pendência o campo refaz a foto");
+    ok((await objeto(U.tec2, `${L2}/fotos/poste/m.jpg`)).erro, "técnico sem compartilhamento não envia foto");
     await como(U.tec, () => q(`update public.levantamentos set status = 'enviado', pendencias = '[]' where id = $1`, [L2]));
     l = await linha(L2);
     ok(l.status === "enviado" && l.pendencias.length === 0, "campo reenvia e limpa as pendências");
@@ -240,16 +261,17 @@ describe("levantamentos — RLS e fluxo de status", () => {
 
     // ── exclusão e remoção de arquivos
     ok(/Só dá para excluir/.test((await como(U.tec, () => tenta(() => q(`select public.excluir_levantamento($1)`, [L2])))).erro || ""), "não exclui o já enviado");
-    r = await criar(U.tec, "fv", mFv, null);
+    r = await criar(U.admin, "fv", mFv, null);
     const L3: string = r.r!.rows[0].id;
+    await compartilhar(U.admin, L3, U.tec);
     await objeto(U.tec, `${L3}/fotos/qd/q.jpg`);
     const A3: string = (await como(U.tec, () => q(`insert into public.levantamento_arquivos (levantamento_id, tipo, slot, storage_path, mime) values ($1, 'foto', 'qd', $2, 'image/jpeg') returning id`, [L3, `${L3}/fotos/qd/q.jpg`]))).rows[0].id;
     ok((await como(U.rep, () => tenta(() => q(`select public.remover_arquivo_levantamento($1)`, [A3])))).erro, "representante não remove foto");
     ok(!(await como(U.tec, () => tenta(() => q(`select public.remover_arquivo_levantamento($1)`, [A3])))).erro, "campo remove foto do rascunho");
     ok((await como(U.tec, () => tenta(() => q(`select public.remover_arquivo_levantamento($1)`, [PR])))).erro, "campo não remove prancha");
-    ok((await como(U.tec2, () => tenta(() => q(`select public.excluir_levantamento($1)`, [L3])))).erro, "colega do campo não exclui o rascunho de outro");
+    ok((await como(U.tec, () => tenta(() => q(`select public.excluir_levantamento($1)`, [L3])))).erro, "campo não exclui levantamento (é do admin)");
     ok((await como(U.rep, () => tenta(() => q(`select public.excluir_levantamento($1)`, [L3])))).erro, "representante não exclui");
-    ok(!(await como(U.tec, () => tenta(() => q(`select public.excluir_levantamento($1)`, [L3])))).erro, "autor exclui o próprio rascunho");
+    ok(!(await como(U.admin, () => tenta(() => q(`select public.excluir_levantamento($1)`, [L3])))).erro, "admin exclui o rascunho");
     ok(!(await ve(U.tec, L3)) && !(await ve(U.admin, L3)), "excluído some para todos");
     ok(/não permitida/.test((await como(U.auto, () => tenta(() => q(`update public.levantamentos set status = 'cancelado' where id = $1`, [L2])))).erro || ""),
       "automação não cancela");
