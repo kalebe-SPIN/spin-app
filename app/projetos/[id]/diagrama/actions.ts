@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { linhasLevantamentosDoProjeto } from '@/lib/levantamentos/servidor'
 
 export async function usuarioPodeGerarDiagramas() {
   const supabase = createClient()
@@ -529,6 +530,9 @@ async function montarRelatorioProjeto(
     hibridoAn = an
   }
 
+  // Kalebe 2026-10-26: o checklist de campo (levantamento) alimenta o gerador
+  const levantamento = await linhasLevantamentosDoProjeto(supabaseAdmin, projetoId, tipoDesenho).catch(() => [])
+
   return montarRelatorioTecnico({
     projeto,
     telhadoSecoes: telhadoSecoes || [],
@@ -538,6 +542,7 @@ async function montarRelatorioProjeto(
     hibridoAn,
     homologacao,
     eletrotecnicoNome,
+    levantamento,
   })
 }
 
@@ -554,6 +559,8 @@ function montarRelatorioTecnico(args: {
   hibridoAn: any
   homologacao: any
   eletrotecnicoNome: string | null
+  /** bloco do levantamento de campo (lib/levantamentos/servidor.ts) */
+  levantamento?: string[]
 }): string {
   const { projeto, telhadoSecoes, configEmpresa, tipoDesenho, hibridoDim, hibridoAn, homologacao, eletrotecnicoNome } = args
 
@@ -807,6 +814,8 @@ function montarRelatorioTecnico(args: {
     || configEmpresa?.rt_art_padrao
     || '⚠ preencher em /homologacoes'
   const rtNome = eletrotecnicoNome || 'Kalebe Grün'
+
+  if (args.levantamento?.length) partes.push(...args.levantamento)
 
   partes.push(
     `## ${tipoDesenho === 'unifilar_hibrido' && hibridoDim ? '10' : '9'}. ETIQUETA / CARIMBO DA PRANCHA`,

@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checklistPadrao } from '@/lib/campo/checklists'
 import type { ItemChecklist } from '@/lib/campo/comum'
 import { OrdemServicoClient, type OsTela } from '@/components/campo/OrdemServicoClient'
+import { NovoLevantamento } from '@/components/levantamentos/NovoLevantamento'
+import { modelosParaEscolha } from '@/lib/levantamentos/servidor'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,6 +50,8 @@ export default async function OrdemServicoPage({ params }: { params: { id: strin
   const { data: custos } = await admin.from('fluxo_lancamentos')
     .select('id, descricao, valor_previsto, detalhes').contains('detalhes', { execucao_id: os.id }).is('cancelado_em', null)
 
+  const modelos = await modelosParaEscolha(supabase)
+
   const checklist: ItemChecklist[] = Array.isArray(os.checklist) && os.checklist.length ? os.checklist : checklistPadrao(os.tipo_servico)
   const dados: OsTela = {
     id: os.id,
@@ -82,6 +86,14 @@ export default async function OrdemServicoPage({ params }: { params: { id: strin
       <div className="max-w-2xl mx-auto space-y-4">
         <Link href="/campo" className="text-sm text-white/60 hover:text-white">← Campo</Link>
         <OrdemServicoClient key={os.status} os={dados} />
+        {/* Kalebe 2026-10-26: checklist da visita pro gerador de diagramas / padrão de entrada */}
+        {modelos && modelos.length > 0 && (
+          <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-2">
+            <h2 className="text-sm font-bold text-white">📋 Levantamento de campo</h2>
+            <p className="text-xs text-white/55">Fotos e medidas para o projeto (unifilar ou padrão de entrada). Já entra com os dados do cliente.</p>
+            <NovoLevantamento modelos={modelos} osId={os.id} rotulo="Levantamento de campo" />
+          </section>
+        )}
       </div>
     </main>
   )

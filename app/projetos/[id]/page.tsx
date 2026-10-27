@@ -13,6 +13,7 @@ import { BotaoAbrirCanalCliente } from '@/components/BotaoAbrirCanalCliente'
 import { ConversaClienteCard } from '@/components/ConversaClienteCard'
 import { ContatosProjetoCard } from '@/components/ContatosProjetoCard'
 import { UsinaProjeto } from '@/components/usina/UsinaProjeto'
+import { LevantamentosProjetoCard } from '@/components/levantamentos/LevantamentosProjetoCard'
 import { ValorItemManual } from '@/components/ValorItemManual'
 import { DocumentosObrigatoriosCard } from '@/components/DocumentosObrigatoriosCard'
 import { ErrorBoundaryClient } from '@/components/ErrorBoundaryClient'
@@ -230,6 +231,8 @@ export default async function ProjetoDetalhePage({ params }: { params: { id: str
         <ContatosProjetoCard projetoId={projeto.id} />
         {/* Kalebe 2026-10-22: dados da usina do cliente (equipamentos e monitoramento) */}
         <UsinaProjeto projetoId={projeto.id} />
+        {/* Kalebe 2026-10-26: checklists de campo que alimentam o gerador de diagramas */}
+        <LevantamentosProjetoCard projetoId={projeto.id} />
 
         {/* Card CRM — mudar etapa (adaptativo: se só serviço, pula passos FV) */}
         <div className="mb-6">
