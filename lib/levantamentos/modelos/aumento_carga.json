@@ -3,7 +3,7 @@
   "finalidade": "alt",
   "nome": "Alteração / aumento de carga",
   "descricao": "Padrão existente que muda de categoria, de ligação ou de lugar: situação atual e pretendida.",
-  "versao": 2,
+  "versao": 3,
   "secoes": [
     {
       "id": "proj",
@@ -170,6 +170,29 @@
       "id": "pad",
       "titulo": "Padrão de entrada",
       "campos": [
+        {
+          "id": "medicao",
+          "rotulo": "Tipo de medição",
+          "tipo": "radio",
+          "obrigatorio": true,
+          "opcoes": [
+            "Individual (um relógio)",
+            "Coletiva (mais de um relógio no mesmo padrão)"
+          ],
+          "ajuda": "Coletiva: cada relógio (unidade consumidora) com disjuntor próprio; o disjuntor geral é calculado pela CELESC N-321.0003.",
+          "largura": "inteira"
+        },
+        {
+          "id": "coletiva",
+          "rotulo": "Relógios da medição coletiva — unidades, cargas e disjuntor geral",
+          "tipo": "coletiva",
+          "obrigatorio": true,
+          "mostrar_se": {
+            "campo": "medicao",
+            "igual": "Coletiva (mais de um relógio no mesmo padrão)"
+          },
+          "largura": "inteira"
+        },
         {
           "id": "alteracao",
           "rotulo": "O que muda no padrão",

@@ -1,6 +1,7 @@
 // Tipos do módulo Levantamentos (checklists de campo) — Kalebe 2026-10-26.
 // Os modelos vêm da tabela public.checklist_modelos (coluna `definicao`),
 // no mesmo formato dos arquivos em ./modelos/*.json.
+import type { MedicaoColetiva } from "./n3210003";
 
 export type Finalidade = "fv" | "padrao_novo" | "aumento_carga";
 
@@ -15,7 +16,9 @@ export type StatusLevantamento =
 
 // "cargas" (Kalebe 2026-10-27, modelos v2): lista de equipamentos com
 // quantidade e potência — do catálogo do sistema ou digitados à mão.
-export type TipoCampo = "text" | "tel" | "date" | "number" | "select" | "radio" | "checks" | "textarea" | "cargas";
+// "coletiva" (modelos v3): unidades, cargas comuns e disjuntor geral calculado
+// pela CELESC N-321.0003 (lib/levantamentos/n3210003.ts).
+export type TipoCampo = "text" | "tel" | "date" | "number" | "select" | "radio" | "checks" | "textarea" | "cargas" | "coletiva";
 
 export interface CampoModelo {
   id: string;
@@ -26,6 +29,8 @@ export interface CampoModelo {
   unidade?: string;
   ajuda?: string;
   largura?: "inteira";
+  /** só aparece (e só conta como obrigatório) quando outro campo tem este valor */
+  mostrar_se?: { campo: string; igual: string };
 }
 
 export interface SecaoModelo {
@@ -60,7 +65,7 @@ export interface ItemCarga {
   equipamento_id?: string;
 }
 
-export type Respostas = Record<string, string | number | string[] | ItemCarga[] | null>;
+export type Respostas = Record<string, string | number | string[] | ItemCarga[] | MedicaoColetiva | null>;
 
 export interface Pendencia {
   campo: string;        // id do campo ou 'foto:<slot>'

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { devolverComPendenciaAction, mudarStatusLevantamentoAction } from '@/app/levantamentos/actions'
 import { gerarArquivosDoLevantamentoAction } from '@/app/projetos/[id]/diagrama/actions'
 import { valorExibido } from '@/lib/levantamentos/comum'
-import { calcularProgresso } from '@/lib/levantamentos/progresso'
+import { calcularProgresso, campoVisivel } from '@/lib/levantamentos/progresso'
 import { numeroLevantamento } from '@/lib/levantamentos/types'
 import type { ArquivoTela, DiagramaTela, LevantamentoTela } from '@/lib/levantamentos/tela'
 import { AtualizaAoMudar, BarraProgresso, EtiquetaStatus, Historico, cardCls, dataHoraBR, inputCls, type EventoTela } from './ui'
@@ -204,10 +204,11 @@ export function DetalheLevantamento({ lev, arquivos, eventos, ehEquipe, diagrama
           <h2 className="text-sm font-bold uppercase tracking-wider text-white">{s.titulo}</h2>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
             {s.campos.map((c) => {
+              if (!campoVisivel(c, lev.respostas)) return null
               const v = valorExibido(c, lev.respostas[c.id])
               if (!v && !c.obrigatorio) return null
               return (
-                <div key={c.id} className={`min-w-0 ${c.largura === 'inteira' || c.tipo === 'textarea' || c.tipo === 'cargas' ? 'sm:col-span-2' : ''}`}>
+                <div key={c.id} className={`min-w-0 ${c.largura === 'inteira' || c.tipo === 'textarea' || c.tipo === 'cargas' || c.tipo === 'coletiva' ? 'sm:col-span-2' : ''}`}>
                   <dt className="text-[11px] uppercase tracking-wider text-white/50">{c.rotulo}</dt>
                   <dd className={`text-sm break-words whitespace-pre-wrap ${v ? 'text-white' : 'text-white/60'}`}>{v || '⚠ A PREENCHER'}</dd>
                 </div>

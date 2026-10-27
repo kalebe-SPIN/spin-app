@@ -5,7 +5,8 @@ import type { createAdminClient } from '@/lib/supabase/admin'
 import { formatarCpfCnpj, formatarTelefone } from '@/lib/formatters'
 import { hojeBRT } from '@/lib/campo/comum'
 import { BUCKET_LEVANTAMENTOS, camposDoModelo, faltaMigration, itensCarga, valorExibido } from './comum'
-import { calcularProgresso, preenchido } from './progresso'
+import { calcularProgresso, campoVisivel, preenchido } from './progresso'
+import { medicaoColetiva } from './n3210003'
 import {
   numeroLevantamento, ROTULO_STATUS,
   type CampoModelo, type Finalidade, type ModeloChecklist, type Pendencia, type Respostas,
@@ -52,6 +53,8 @@ function opcaoDe(m: ModeloChecklist, campoId: string, teste: (opcaoNormalizada: 
 function valorCompativel(c: CampoModelo, v: unknown): Respostas[string] | undefined {
   if (!preenchido(v)) return undefined
   if (c.tipo === 'cargas') { const itens = itensCarga(v); return itens.length ? itens : undefined }
+  if (c.tipo === 'coletiva') { const m = medicaoColetiva(v); return m && m.unidades.length ? m : undefined }
+  if (v && typeof v === 'object' && !Array.isArray(v)) return undefined
   if (c.tipo === 'number') return typeof v === 'number' && Number.isFinite(v) ? v : undefined
   if (c.tipo === 'checks') {
     const ok = (Array.isArray(v) ? v : []).filter((x) => c.opcoes?.includes(String(x))).map(String)
@@ -256,6 +259,7 @@ export async function linhasLevantamentosDoProjeto(
     for (const secao of modelo.secoes) {
       out.push(`### ${secao.titulo}`, ``)
       for (const c of secao.campos) {
+        if (!campoVisivel(c, lev.respostas || {})) continue
         const v = valorExibido(c, lev.respostas?.[c.id])
         if (!v && !c.obrigatorio) continue
         out.push(`- ${c.rotulo}: ${v || 'A PREENCHER'}`)

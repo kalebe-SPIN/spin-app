@@ -54,6 +54,7 @@ create table public.projetos_diagramas (id uuid primary key default gen_random_u
     await db.exec(migration("164_levantamentos_campo_admin.sql"));
     await db.exec(migration("167_modelos_v2_cargas.sql"));
     await db.exec(migration("168_levantamentos_compartilhar.sql"));
+    await db.exec(migration("169_modelos_v3_medicao_coletiva.sql"));
   }
   await db.exec(`
 grant usage on schema public, auth, storage to authenticated;
@@ -112,8 +113,11 @@ describe("levantamentos — RLS e fluxo de status", () => {
 
     const mFv = await modelo("fv"), mPn = await modelo("padrao_novo");
     ok(mFv && mPn && (await modelo("aumento_carga")), "seed criou os 3 modelos ativos");
-    ok((await q(`select count(*)::int n from public.checklist_modelos`)).rows[0].n === 5, "reaplicar não duplicou os modelos (3 v1 + 2 v2)");
-    ok(mFv.versao === 1 && mPn.versao === 2 && (await modelo("aumento_carga")).versao === 2, "167: padrão novo e aumento de carga ativos no v2; FV segue no v1");
+    ok((await q(`select count(*)::int n from public.checklist_modelos`)).rows[0].n === 7, "reaplicar não duplicou os modelos (3 v1 + 2 v2 + 2 v3)");
+    ok(mFv.versao === 1 && mPn.versao === 3 && (await modelo("aumento_carga")).versao === 3, "169: padrão novo e aumento de carga ativos no v3; FV segue no v1");
+    const tipoColetiva = (await q(`select c->>'tipo' t from public.checklist_modelos m, jsonb_array_elements(m.definicao->'secoes') s, jsonb_array_elements(s->'campos') c
+      where m.codigo = 'aumento_carga' and m.versao = 3 and c->>'id' = 'coletiva'`)).rows[0]?.t;
+    ok(tipoColetiva === "coletiva", "v3: relógios da medição coletiva");
     ok((await q(`select count(*)::int n from public.checklist_modelos where ativo`)).rows[0].n === 3, "um modelo ativo por finalidade");
     const tipoCargas = (await q(`select c->>'tipo' t from public.checklist_modelos m, jsonb_array_elements(m.definicao->'secoes') s, jsonb_array_elements(s->'campos') c
       where m.codigo = 'padrao_novo' and m.versao = 2 and c->>'id' = 'cargas_esp'`)).rows[0]?.t;

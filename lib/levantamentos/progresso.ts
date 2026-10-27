@@ -1,6 +1,6 @@
 // Cálculo de progresso e pendências de um levantamento — função pura,
 // usada no formulário (barra de progresso) e antes de gravar `progresso`.
-import type { ModeloChecklist, Respostas, ArquivoLevantamento, Pendencia } from "./types";
+import type { ModeloChecklist, Respostas, ArquivoLevantamento, Pendencia, CampoModelo } from "./types";
 
 export interface Progresso {
   total: number;
@@ -14,6 +14,20 @@ export function preenchido(v: unknown): boolean {
   return v !== undefined && v !== null && String(v).trim() !== "";
 }
 
+/** Campo com `mostrar_se` só aparece (e só conta) quando a condição bate. */
+export function campoVisivel(c: Pick<CampoModelo, "mostrar_se">, respostas: Respostas): boolean {
+  return !c.mostrar_se || respostas[c.mostrar_se.campo] === c.mostrar_se.igual;
+}
+
+/** Preenchido de acordo com o tipo (medição coletiva = pelo menos 2 unidades). */
+export function campoPreenchido(c: Pick<CampoModelo, "tipo">, v: unknown): boolean {
+  if (c.tipo === "coletiva") {
+    const u = v && typeof v === "object" && !Array.isArray(v) ? (v as { unidades?: unknown }).unidades : null;
+    return Array.isArray(u) && u.length >= 2;
+  }
+  return preenchido(v);
+}
+
 export function calcularProgresso(
   modelo: ModeloChecklist,
   respostas: Respostas,
@@ -24,9 +38,9 @@ export function calcularProgresso(
   const faltando: Pendencia[] = [];
   for (const secao of modelo.secoes) {
     for (const c of secao.campos) {
-      if (!c.obrigatorio) continue;
+      if (!c.obrigatorio || !campoVisivel(c, respostas)) continue;
       total++;
-      if (preenchido(respostas[c.id])) ok++;
+      if (campoPreenchido(c, respostas[c.id])) ok++;
       else faltando.push({ campo: c.id, mensagem: c.rotulo, origem: "app" });
     }
   }

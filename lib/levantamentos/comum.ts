@@ -1,5 +1,6 @@
 // Partes do módulo Levantamentos usadas no servidor e nas telas.
 import { fmtNum } from '@/lib/formatters'
+import { medicaoColetiva, textoColetiva } from './n3210003'
 import type { CampoModelo, Finalidade, ItemCarga, ModeloChecklist, StatusLevantamento } from './types'
 
 export const BUCKET_LEVANTAMENTOS = 'levantamentos'
@@ -85,6 +86,10 @@ export const somaCargasW = (itens: ItemCarga[]) => itens.reduce((s, i) => s + (i
 
 /** Valor de uma resposta pronto pra leitura (números no padrão brasileiro). */
 export function valorExibido(c: CampoModelo, v: unknown): string {
+  if (c.tipo === 'coletiva') {
+    const m = medicaoColetiva(v)
+    return m && m.unidades.length ? textoColetiva(m) : ''
+  }
   if (c.tipo === 'cargas') {
     const itens = itensCarga(v)
     if (!itens.length) return typeof v === 'string' ? v : ''

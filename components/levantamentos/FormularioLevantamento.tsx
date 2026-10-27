@@ -10,7 +10,9 @@ import {
 import { BUCKET_LEVANTAMENTOS, itensCarga, numeroBR, numeroParaCampo } from '@/lib/levantamentos/comum'
 import { ListaCargas } from './ListaCargas'
 import { prepararArquivo } from '@/lib/levantamentos/imagem'
-import { calcularProgresso, preenchido } from '@/lib/levantamentos/progresso'
+import { calcularProgresso, campoPreenchido, campoVisivel } from '@/lib/levantamentos/progresso'
+import { medicaoColetiva } from '@/lib/levantamentos/n3210003'
+import { MedicaoColetivaCampo } from './MedicaoColetivaCampo'
 import { numeroLevantamento, type CampoModelo, type FotoModelo, type Respostas } from '@/lib/levantamentos/types'
 import type { ArquivoTela, LevantamentoTela } from '@/lib/levantamentos/tela'
 import { BarraProgresso, EtiquetaStatus, Historico, cardCls, inputCls, type EventoTela } from './ui'
@@ -211,6 +213,7 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
   }
 
   const temCampoCarga = modelo.secoes.some((s) => s.campos.some((c) => c.id === 'carga' && c.tipo === 'number'))
+  const temDisjNovo = modelo.secoes.some((s) => s.campos.some((c) => c.id === 'disj_novo' && c.tipo === 'number'))
   const irPara = (id: string) => document.getElementById(`lev-${id.replace(':', '-')}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   const reenviar = lev.status === 'com_pendencia'
 
@@ -262,8 +265,9 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
       )}
 
       {modelo.secoes.map((s) => {
-        const obrig = s.campos.filter((c) => c.obrigatorio)
-        const ok = obrig.filter((c) => preenchido(respostas[c.id])).length
+        const visiveis = s.campos.filter((c) => campoVisivel(c, respostas))
+        const obrig = visiveis.filter((c) => c.obrigatorio)
+        const ok = obrig.filter((c) => campoPreenchido(c, respostas[c.id])).length
         return (
           <details key={s.id} open className={cardCls}>
             <summary className="cursor-pointer flex items-center justify-between gap-3 list-none">
@@ -271,13 +275,16 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
               <span className={`text-xs tabular-nums ${ok === obrig.length ? 'text-white/85' : 'text-white/50'}`}>{ok === obrig.length ? '✓ ' : ''}{ok}/{obrig.length}</span>
             </summary>
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {s.campos.map((c) => (
+              {visiveis.map((c) => (
                 <Campo key={c.id} c={c} valor={respostas[c.id]} texto={textos[c.id] ?? ''}
                   doCadastro={auto.has(c.id)} pendencias={pendProjetista.get(c.id) || []}
                   onTexto={(t) => { setTextos((x) => ({ ...x, [c.id]: t })); mudar(c.id, numeroBR(t)) }}
                   onValor={(v) => mudar(c.id, v)}
                   onUsarSoma={c.tipo === 'cargas' && temCampoCarga ? (kw) => {
                     setTextos((x) => ({ ...x, carga: numeroParaCampo(kw) })); mudar('carga', kw)
+                  } : undefined}
+                  onUsarDisjuntor={c.tipo === 'coletiva' && temDisjNovo ? (a) => {
+                    setTextos((x) => ({ ...x, disj_novo: numeroParaCampo(a) })); mudar('disj_novo', a)
                   } : undefined} />
               ))}
             </div>
@@ -344,7 +351,7 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
   )
 }
 
-function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor, onUsarSoma }: {
+function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor, onUsarSoma, onUsarDisjuntor }: {
   c: CampoModelo
   valor: Respostas[string] | undefined
   texto: string
@@ -353,11 +360,12 @@ function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor, onUs
   onTexto: (t: string) => void
   onValor: (v: Respostas[string]) => void
   onUsarSoma?: (kw: number) => void
+  onUsarDisjuntor?: (a: number) => void
 }) {
-  const falta = c.obrigatorio && !preenchido(valor)
+  const falta = c.obrigatorio && !campoPreenchido(c, valor)
   const borda = pendencias.length ? 'border-coral/70' : falta ? 'border-sol/70' : 'border-white/10 focus:border-sol/50'
   let avisos = pendencias
-  const largo = c.largura === 'inteira' || c.tipo === 'textarea' || c.tipo === 'radio' || c.tipo === 'checks' || c.tipo === 'cargas'
+  const largo = c.largura === 'inteira' || c.tipo === 'textarea' || c.tipo === 'radio' || c.tipo === 'checks' || c.tipo === 'cargas' || c.tipo === 'coletiva'
   const idHtml = `lev-${c.id}`
   const rotulo = (
     <span className="text-[11px] font-semibold uppercase tracking-wider text-white/60">
@@ -365,7 +373,14 @@ function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor, onUs
     </span>
   )
   let entrada: React.ReactNode
-  if (c.tipo === 'cargas') {
+  if (c.tipo === 'coletiva') {
+    entrada = (
+      <div id={idHtml}>
+        <MedicaoColetivaCampo valor={medicaoColetiva(valor)} onChange={(m) => onValor(m)} onUsarDisjuntor={onUsarDisjuntor}
+          borda={pendencias.length ? 'border-coral/70' : falta ? 'border-sol/70' : 'border-white/10'} />
+      </div>
+    )
+  } else if (c.tipo === 'cargas') {
     entrada = (
       <div id={idHtml}>
         <ListaCargas itens={itensCarga(valor)} onChange={(l) => onValor(l)} onUsarSoma={onUsarSoma}
@@ -414,7 +429,7 @@ function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor, onUs
   }
   return (
     <div className={`grid gap-1.5 min-w-0 ${largo ? 'sm:col-span-2' : ''}`}>
-      {c.tipo === 'radio' || c.tipo === 'checks' || c.tipo === 'cargas' ? rotulo : <label htmlFor={idHtml}>{rotulo}</label>}
+      {c.tipo === 'radio' || c.tipo === 'checks' || c.tipo === 'cargas' || c.tipo === 'coletiva' ? rotulo : <label htmlFor={idHtml}>{rotulo}</label>}
       {entrada}
       {c.ajuda && <span className="text-xs text-white/50">{c.ajuda}</span>}
       {doCadastro && <span className="text-[11px] text-white/45">↺ veio do que já estava preenchido — confira</span>}
