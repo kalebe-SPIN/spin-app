@@ -1,0 +1,348 @@
+{
+  "codigo": "padrao_novo",
+  "finalidade": "pe",
+  "nome": "Padrão de entrada novo",
+  "descricao": "Ligação nova na CELESC: poste da rede, caminho do ramal, local do padrão e cargas previstas.",
+  "versao": 1,
+  "secoes": [
+    {
+      "id": "proj",
+      "titulo": "Cliente e obra",
+      "campos": [
+        {
+          "id": "consultor",
+          "rotulo": "Consultor",
+          "tipo": "text",
+          "obrigatorio": true
+        },
+        {
+          "id": "data",
+          "rotulo": "Data da visita",
+          "tipo": "date",
+          "obrigatorio": true
+        },
+        {
+          "id": "cliente",
+          "rotulo": "Nome do cliente / razão social",
+          "tipo": "text",
+          "obrigatorio": true,
+          "largura": "inteira"
+        },
+        {
+          "id": "doc",
+          "rotulo": "CPF / CNPJ",
+          "tipo": "text",
+          "obrigatorio": true
+        },
+        {
+          "id": "fone",
+          "rotulo": "Telefone do cliente",
+          "tipo": "tel",
+          "obrigatorio": false
+        },
+        {
+          "id": "endereco",
+          "rotulo": "Endereço da obra (rua, nº, complemento)",
+          "tipo": "text",
+          "obrigatorio": true,
+          "largura": "inteira"
+        },
+        {
+          "id": "bairro",
+          "rotulo": "Bairro",
+          "tipo": "text",
+          "obrigatorio": false
+        },
+        {
+          "id": "cidade",
+          "rotulo": "Cidade / UF",
+          "tipo": "text",
+          "obrigatorio": true
+        },
+        {
+          "id": "cep",
+          "rotulo": "CEP",
+          "tipo": "text",
+          "obrigatorio": true
+        },
+        {
+          "id": "pedido",
+          "rotulo": "ID do pedido no ERP",
+          "tipo": "text",
+          "obrigatorio": false
+        },
+        {
+          "id": "coord",
+          "rotulo": "Coordenadas (lat, long)",
+          "tipo": "text",
+          "obrigatorio": true,
+          "ajuda": "Copie do Google Maps segurando o dedo no local."
+        }
+      ]
+    },
+    {
+      "id": "uc",
+      "titulo": "Unidade consumidora",
+      "campos": [
+        {
+          "id": "classe",
+          "rotulo": "Classe",
+          "tipo": "select",
+          "obrigatorio": true,
+          "opcoes": [
+            "Residencial",
+            "Comercial",
+            "Industrial",
+            "Rural",
+            "Poder público"
+          ]
+        },
+        {
+          "id": "carga",
+          "rotulo": "Carga instalada total prevista",
+          "tipo": "number",
+          "obrigatorio": true,
+          "unidade": "kW",
+          "ajuda": "Soma das potências de todos os equipamentos (incluindo os novos)."
+        },
+        {
+          "id": "cargas_esp",
+          "rotulo": "Cargas especiais",
+          "tipo": "textarea",
+          "obrigatorio": true,
+          "ajuda": "Chuveiros, ar-condicionado, motores, fornos, bombas, carregador de veículo elétrico (potência de cada).",
+          "largura": "inteira"
+        }
+      ]
+    },
+    {
+      "id": "pad",
+      "titulo": "Padrão de entrada",
+      "campos": [
+        {
+          "id": "lig_nova",
+          "rotulo": "Ligação pretendida",
+          "tipo": "select",
+          "obrigatorio": true,
+          "opcoes": [
+            "Monofásica (1F+N)",
+            "Bifásica (2F+N)",
+            "Trifásica (3F+N)"
+          ]
+        },
+        {
+          "id": "disj_novo",
+          "rotulo": "Disjuntor pretendido",
+          "tipo": "number",
+          "obrigatorio": false,
+          "unidade": "A",
+          "ajuda": "Se já combinado com o cliente."
+        },
+        {
+          "id": "ramal",
+          "rotulo": "Tipo de ramal",
+          "tipo": "radio",
+          "obrigatorio": true,
+          "opcoes": [
+            "Aéreo",
+            "Subterrâneo"
+          ]
+        },
+        {
+          "id": "tipo_padrao",
+          "rotulo": "Tipo de padrão",
+          "tipo": "select",
+          "obrigatorio": true,
+          "opcoes": [
+            "Poste particular + mureta",
+            "Mureta sem poste (pontalete)",
+            "Caixa embutida em muro ou fachada"
+          ]
+        },
+        {
+          "id": "lado_poste",
+          "rotulo": "Poste da CELESC em relação ao lote",
+          "tipo": "radio",
+          "obrigatorio": true,
+          "opcoes": [
+            "Mesmo lado da rua",
+            "Lado oposto da rua"
+          ]
+        },
+        {
+          "id": "num_poste",
+          "rotulo": "Número do poste da CELESC",
+          "tipo": "text",
+          "obrigatorio": true,
+          "ajuda": "Plaqueta metálica no poste."
+        },
+        {
+          "id": "rede",
+          "rotulo": "Rede no poste",
+          "tipo": "select",
+          "obrigatorio": true,
+          "opcoes": [
+            "BT trifásica",
+            "BT monofásica",
+            "Não identificado"
+          ]
+        },
+        {
+          "id": "dist_poste",
+          "rotulo": "Distância poste CELESC → padrão",
+          "tipo": "number",
+          "obrigatorio": true,
+          "unidade": "m",
+          "ajuda": "Ramal aéreo: máximo 35 m."
+        },
+        {
+          "id": "travessia",
+          "rotulo": "O ramal atravessa",
+          "tipo": "select",
+          "obrigatorio": true,
+          "opcoes": [
+            "Rua comum",
+            "Rodovia",
+            "Não atravessa via"
+          ]
+        },
+        {
+          "id": "larg_via",
+          "rotulo": "Largura da rua",
+          "tipo": "number",
+          "obrigatorio": false,
+          "unidade": "m"
+        },
+        {
+          "id": "larg_calcada",
+          "rotulo": "Largura da calçada",
+          "tipo": "number",
+          "obrigatorio": true,
+          "unidade": "m"
+        },
+        {
+          "id": "dist_qd",
+          "rotulo": "Distância padrão → quadro (QD)",
+          "tipo": "number",
+          "obrigatorio": true,
+          "unidade": "m"
+        },
+        {
+          "id": "local_padrao",
+          "rotulo": "Posição do padrão no lote",
+          "tipo": "select",
+          "obrigatorio": true,
+          "opcoes": [
+            "No alinhamento (divisa com a calçada)",
+            "Recuado do alinhamento"
+          ]
+        },
+        {
+          "id": "solo",
+          "rotulo": "Tipo de solo (aterramento)",
+          "tipo": "select",
+          "obrigatorio": true,
+          "opcoes": [
+            "Terra",
+            "Aterro",
+            "Rocha / pedra",
+            "Não sei"
+          ]
+        },
+        {
+          "id": "spda",
+          "rotulo": "A edificação tem para-raios (SPDA)?",
+          "tipo": "radio",
+          "obrigatorio": true,
+          "opcoes": [
+            "Sim",
+            "Não"
+          ],
+          "ajuda": "Com SPDA o DPS do padrão passa a ser classe I."
+        },
+        {
+          "id": "fv_futuro",
+          "rotulo": "Haverá geração solar nesta UC?",
+          "tipo": "radio",
+          "obrigatorio": true,
+          "opcoes": [
+            "Sim",
+            "Não",
+            "Ainda não sei"
+          ],
+          "ajuda": "Define placa de advertência e espaço no padrão."
+        },
+        {
+          "id": "obs_pad",
+          "rotulo": "Observações do padrão",
+          "tipo": "textarea",
+          "obrigatorio": false,
+          "ajuda": "Árvores no caminho do ramal, muro existente, desnível, acesso para leitura.",
+          "largura": "inteira"
+        }
+      ]
+    }
+  ],
+  "fotos": [
+    {
+      "id": "poste",
+      "titulo": "Poste da CELESC",
+      "instrucao": "Uma foto de longe e uma de perto da plaqueta com o número.",
+      "obrigatorio": true,
+      "aceita": [
+        "image/*",
+        "application/pdf"
+      ]
+    },
+    {
+      "id": "rua",
+      "titulo": "Caminho do ramal",
+      "instrucao": "Do poste da CELESC até o lote, mostrando rua, calçada e obstáculos.",
+      "obrigatorio": true,
+      "aceita": [
+        "image/*",
+        "application/pdf"
+      ]
+    },
+    {
+      "id": "local_novo",
+      "titulo": "Local do novo padrão",
+      "instrucao": "Onde ficará o poste/mureta, com a trena aberta à vista se possível.",
+      "obrigatorio": true,
+      "aceita": [
+        "image/*",
+        "application/pdf"
+      ]
+    },
+    {
+      "id": "fachada",
+      "titulo": "Fachada do imóvel",
+      "instrucao": "Frente do lote ou da obra inteira, de dentro da rua.",
+      "obrigatorio": true,
+      "aceita": [
+        "image/*",
+        "application/pdf"
+      ]
+    },
+    {
+      "id": "qd",
+      "titulo": "Quadro de distribuição (QD)",
+      "instrucao": "Aberto, com os disjuntores visíveis.",
+      "obrigatorio": false,
+      "aceita": [
+        "image/*",
+        "application/pdf"
+      ]
+    },
+    {
+      "id": "croqui",
+      "titulo": "Croqui com medidas",
+      "instrucao": "Desenho à mão: poste → padrão → QD (→ inversor), com distâncias.",
+      "obrigatorio": true,
+      "aceita": [
+        "image/*",
+        "application/pdf"
+      ]
+    }
+  ]
+}
