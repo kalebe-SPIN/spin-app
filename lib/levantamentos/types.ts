@@ -13,7 +13,9 @@ export type StatusLevantamento =
   | "aprovado"
   | "cancelado";
 
-export type TipoCampo = "text" | "tel" | "date" | "number" | "select" | "radio" | "checks" | "textarea";
+// "cargas" (Kalebe 2026-10-27, modelos v2): lista de equipamentos com
+// quantidade e potência — do catálogo do sistema ou digitados à mão.
+export type TipoCampo = "text" | "tel" | "date" | "number" | "select" | "radio" | "checks" | "textarea" | "cargas";
 
 export interface CampoModelo {
   id: string;
@@ -50,7 +52,15 @@ export interface ModeloChecklist {
   fotos: FotoModelo[];
 }
 
-export type Respostas = Record<string, string | number | string[] | null>;
+/** Item de um campo "cargas". equipamento_id = id em lib/hibrido/catalogo-equipamentos (vazio = digitado). */
+export interface ItemCarga {
+  item: string;
+  qtd: number;
+  potencia_w: number | null;   // potência de cada unidade, em W
+  equipamento_id?: string;
+}
+
+export type Respostas = Record<string, string | number | string[] | ItemCarga[] | null>;
 
 export interface Pendencia {
   campo: string;        // id do campo ou 'foto:<slot>'

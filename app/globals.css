@@ -66,6 +66,15 @@ html, body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
+/* Kalebe 2026-10-27: a lista aberta das caixas de seleção vinha com fundo
+   branco e letra branca (só a opção destacada aparecia). As opções seguem a
+   cor do site — escuro no escuro, claro no claro. */
+select option,
+select optgroup {
+  background-color: rgb(var(--c-noite));
+  color: rgb(var(--c-branco));
+}
+
 /* Kalebe 2026-10-15: tela travada na largura do aparelho — nada de arrastar
    pros lados. "clip" corta o que passar sem virar área de rolagem (não quebra
    cabeçalho fixo nem as listas com rolagem própria, como a grade da agenda). */

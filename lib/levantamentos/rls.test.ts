@@ -52,6 +52,7 @@ create table public.projetos_diagramas (id uuid primary key default gen_random_u
     await db.exec(migration("162_levantamentos.sql"));
     await db.exec(migration("163_checklist_modelos.sql"));
     await db.exec(migration("164_levantamentos_campo_admin.sql"));
+    await db.exec(migration("167_modelos_v2_cargas.sql"));
   }
   await db.exec(`
 grant usage on schema public, auth, storage to authenticated;
@@ -110,7 +111,12 @@ describe("levantamentos — RLS e fluxo de status", () => {
 
     const mFv = await modelo("fv"), mPn = await modelo("padrao_novo");
     ok(mFv && mPn && (await modelo("aumento_carga")), "seed criou os 3 modelos ativos");
-    ok((await q(`select count(*)::int n from public.checklist_modelos`)).rows[0].n === 3, "reaplicar não duplicou os modelos");
+    ok((await q(`select count(*)::int n from public.checklist_modelos`)).rows[0].n === 5, "reaplicar não duplicou os modelos (3 v1 + 2 v2)");
+    ok(mFv.versao === 1 && mPn.versao === 2 && (await modelo("aumento_carga")).versao === 2, "167: padrão novo e aumento de carga ativos no v2; FV segue no v1");
+    ok((await q(`select count(*)::int n from public.checklist_modelos where ativo`)).rows[0].n === 3, "um modelo ativo por finalidade");
+    const tipoCargas = (await q(`select c->>'tipo' t from public.checklist_modelos m, jsonb_array_elements(m.definicao->'secoes') s, jsonb_array_elements(s->'campos') c
+      where m.codigo = 'padrao_novo' and m.versao = 2 and c->>'id' = 'cargas_esp'`)).rows[0]?.t;
+    ok(tipoCargas === "cargas", "v2: cargas especiais é lista de equipamentos");
 
     // ── quem cria
     let r = await criar(U.tec, "fv", mFv, P1); ok(!r.erro, `técnico cria ligado ao projeto da OS dele${r.erro ? " — " + r.erro : ""}`);

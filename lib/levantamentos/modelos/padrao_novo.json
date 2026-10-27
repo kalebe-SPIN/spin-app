@@ -3,7 +3,7 @@
   "finalidade": "pe",
   "nome": "Padrão de entrada novo",
   "descricao": "Ligação nova na CELESC: poste da rede, caminho do ramal, local do padrão e cargas previstas.",
-  "versao": 1,
+  "versao": 2,
   "secoes": [
     {
       "id": "proj",
@@ -108,7 +108,7 @@
         {
           "id": "cargas_esp",
           "rotulo": "Cargas especiais",
-          "tipo": "textarea",
+          "tipo": "cargas",
           "obrigatorio": true,
           "ajuda": "Chuveiros, ar-condicionado, motores, fornos, bombas, carregador de veículo elétrico (potência de cada).",
           "largura": "inteira"

@@ -207,7 +207,7 @@ export function DetalheLevantamento({ lev, arquivos, eventos, ehEquipe, diagrama
               const v = valorExibido(c, lev.respostas[c.id])
               if (!v && !c.obrigatorio) return null
               return (
-                <div key={c.id} className={`min-w-0 ${c.largura === 'inteira' || c.tipo === 'textarea' ? 'sm:col-span-2' : ''}`}>
+                <div key={c.id} className={`min-w-0 ${c.largura === 'inteira' || c.tipo === 'textarea' || c.tipo === 'cargas' ? 'sm:col-span-2' : ''}`}>
                   <dt className="text-[11px] uppercase tracking-wider text-white/50">{c.rotulo}</dt>
                   <dd className={`text-sm break-words whitespace-pre-wrap ${v ? 'text-white' : 'text-white/60'}`}>{v || '⚠ A PREENCHER'}</dd>
                 </div>

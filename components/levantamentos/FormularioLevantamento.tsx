@@ -7,7 +7,8 @@ import {
   enviarLevantamentoAction, excluirLevantamentoAction, registrarArquivoLevantamentoAction,
   removerArquivoLevantamentoAction, salvarLevantamentoAction,
 } from '@/app/levantamentos/actions'
-import { BUCKET_LEVANTAMENTOS, numeroBR, numeroParaCampo } from '@/lib/levantamentos/comum'
+import { BUCKET_LEVANTAMENTOS, itensCarga, numeroBR, numeroParaCampo } from '@/lib/levantamentos/comum'
+import { ListaCargas } from './ListaCargas'
 import { prepararArquivo } from '@/lib/levantamentos/imagem'
 import { calcularProgresso, preenchido } from '@/lib/levantamentos/progresso'
 import { numeroLevantamento, type CampoModelo, type FotoModelo, type Respostas } from '@/lib/levantamentos/types'
@@ -168,6 +169,7 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos }: {
     router.push('/levantamentos')
   }
 
+  const temCampoCarga = modelo.secoes.some((s) => s.campos.some((c) => c.id === 'carga' && c.tipo === 'number'))
   const irPara = (id: string) => document.getElementById(`lev-${id.replace(':', '-')}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   const reenviar = lev.status === 'com_pendencia'
 
@@ -227,7 +229,10 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos }: {
                 <Campo key={c.id} c={c} valor={respostas[c.id]} texto={textos[c.id] ?? ''}
                   doCadastro={auto.has(c.id)} pendencias={pendProjetista.get(c.id) || []}
                   onTexto={(t) => { setTextos((x) => ({ ...x, [c.id]: t })); mudar(c.id, numeroBR(t)) }}
-                  onValor={(v) => mudar(c.id, v)} />
+                  onValor={(v) => mudar(c.id, v)}
+                  onUsarSoma={c.tipo === 'cargas' && temCampoCarga ? (kw) => {
+                    setTextos((x) => ({ ...x, carga: numeroParaCampo(kw) })); mudar('carga', kw)
+                  } : undefined} />
               ))}
             </div>
           </details>
@@ -290,7 +295,7 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos }: {
   )
 }
 
-function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor }: {
+function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor, onUsarSoma }: {
   c: CampoModelo
   valor: Respostas[string] | undefined
   texto: string
@@ -298,11 +303,12 @@ function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor }: {
   pendencias: string[]
   onTexto: (t: string) => void
   onValor: (v: Respostas[string]) => void
+  onUsarSoma?: (kw: number) => void
 }) {
   const falta = c.obrigatorio && !preenchido(valor)
   const borda = pendencias.length ? 'border-coral/70' : falta ? 'border-sol/70' : 'border-white/10 focus:border-sol/50'
   let avisos = pendencias
-  const largo = c.largura === 'inteira' || c.tipo === 'textarea' || c.tipo === 'radio' || c.tipo === 'checks'
+  const largo = c.largura === 'inteira' || c.tipo === 'textarea' || c.tipo === 'radio' || c.tipo === 'checks' || c.tipo === 'cargas'
   const idHtml = `lev-${c.id}`
   const rotulo = (
     <span className="text-[11px] font-semibold uppercase tracking-wider text-white/60">
@@ -310,7 +316,14 @@ function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor }: {
     </span>
   )
   let entrada: React.ReactNode
-  if (c.tipo === 'select') {
+  if (c.tipo === 'cargas') {
+    entrada = (
+      <div id={idHtml}>
+        <ListaCargas itens={itensCarga(valor)} onChange={(l) => onValor(l)} onUsarSoma={onUsarSoma}
+          borda={pendencias.length ? 'border-coral/70' : falta ? 'border-sol/70' : 'border-white/10'} />
+      </div>
+    )
+  } else if (c.tipo === 'select') {
     entrada = (
       <select id={idHtml} value={typeof valor === 'string' ? valor : ''} onChange={(e) => onValor(e.target.value || null)} className={`${inputCls} ${borda}`}>
         <option value="">Selecione…</option>
@@ -318,7 +331,7 @@ function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor }: {
       </select>
     )
   } else if (c.tipo === 'radio' || c.tipo === 'checks') {
-    const marcados = c.tipo === 'checks' ? (Array.isArray(valor) ? valor : []) : typeof valor === 'string' ? [valor] : []
+    const marcados: string[] = c.tipo === 'checks' ? (Array.isArray(valor) ? valor.filter((x): x is string => typeof x === 'string') : []) : typeof valor === 'string' ? [valor] : []
     entrada = (
       <div id={idHtml} role={c.tipo === 'radio' ? 'radiogroup' : 'group'} className="flex flex-wrap gap-2">
         {(c.opcoes || []).map((o) => {
@@ -352,7 +365,7 @@ function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor }: {
   }
   return (
     <div className={`grid gap-1.5 min-w-0 ${largo ? 'sm:col-span-2' : ''}`}>
-      {c.tipo === 'radio' || c.tipo === 'checks' ? rotulo : <label htmlFor={idHtml}>{rotulo}</label>}
+      {c.tipo === 'radio' || c.tipo === 'checks' || c.tipo === 'cargas' ? rotulo : <label htmlFor={idHtml}>{rotulo}</label>}
       {entrada}
       {c.ajuda && <span className="text-xs text-white/50">{c.ajuda}</span>}
       {doCadastro && <span className="text-[11px] text-white/45">↺ veio do que já estava preenchido — confira</span>}

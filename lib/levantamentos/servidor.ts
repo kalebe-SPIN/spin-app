@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { formatarCpfCnpj, formatarTelefone } from '@/lib/formatters'
 import { hojeBRT } from '@/lib/campo/comum'
-import { BUCKET_LEVANTAMENTOS, camposDoModelo, faltaMigration, valorExibido } from './comum'
+import { BUCKET_LEVANTAMENTOS, camposDoModelo, faltaMigration, itensCarga, valorExibido } from './comum'
 import { calcularProgresso, preenchido } from './progresso'
 import {
   numeroLevantamento, ROTULO_STATUS,
@@ -51,6 +51,7 @@ function opcaoDe(m: ModeloChecklist, campoId: string, teste: (opcaoNormalizada: 
 /** Valor de outro levantamento serve neste campo? (opção tem que existir no modelo) */
 function valorCompativel(c: CampoModelo, v: unknown): Respostas[string] | undefined {
   if (!preenchido(v)) return undefined
+  if (c.tipo === 'cargas') { const itens = itensCarga(v); return itens.length ? itens : undefined }
   if (c.tipo === 'number') return typeof v === 'number' && Number.isFinite(v) ? v : undefined
   if (c.tipo === 'checks') {
     const ok = (Array.isArray(v) ? v : []).filter((x) => c.opcoes?.includes(String(x))).map(String)

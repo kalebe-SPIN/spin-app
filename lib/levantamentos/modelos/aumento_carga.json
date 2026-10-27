@@ -3,7 +3,7 @@
   "finalidade": "alt",
   "nome": "Alteração / aumento de carga",
   "descricao": "Padrão existente que muda de categoria, de ligação ou de lugar: situação atual e pretendida.",
-  "versao": 1,
+  "versao": 2,
   "secoes": [
     {
       "id": "proj",
@@ -159,7 +159,7 @@
         {
           "id": "cargas_esp",
           "rotulo": "Cargas especiais",
-          "tipo": "textarea",
+          "tipo": "cargas",
           "obrigatorio": true,
           "ajuda": "Chuveiros, ar-condicionado, motores, fornos, bombas, carregador de veículo elétrico (potência de cada).",
           "largura": "inteira"

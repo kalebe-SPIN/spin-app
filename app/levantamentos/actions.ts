@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { BUCKET_LEVANTAMENTOS, STATUS_EDITAVEIS, erroAmigavel, faltaMigration, podeUsarLevantamentos } from '@/lib/levantamentos/comum'
+import { BUCKET_LEVANTAMENTOS, STATUS_EDITAVEIS, erroAmigavel, faltaMigration, itensCarga, podeUsarLevantamentos } from '@/lib/levantamentos/comum'
 import { calcularProgresso } from '@/lib/levantamentos/progresso'
 import { respostasIniciais } from '@/lib/levantamentos/servidor'
 import type { Finalidade, ModeloChecklist, Pendencia, Respostas, StatusLevantamento } from '@/lib/levantamentos/types'
@@ -37,6 +37,7 @@ function limparRespostas(r: unknown): Respostas {
   for (const [k, v] of Object.entries(r as Record<string, unknown>)) {
     if (!/^[a-z0-9_]{1,40}$/.test(k)) continue
     if (v === null || typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) out[k] = v as string | number | null
+    else if (Array.isArray(v) && v.some((x) => x && typeof x === 'object')) out[k] = itensCarga(v).slice(0, 80)
     else if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === 'string').slice(0, 30) as string[]
   }
   return out

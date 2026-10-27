@@ -1,6 +1,6 @@
 // Partes do módulo Levantamentos usadas no servidor e nas telas.
 import { fmtNum } from '@/lib/formatters'
-import type { CampoModelo, Finalidade, ModeloChecklist, StatusLevantamento } from './types'
+import type { CampoModelo, Finalidade, ItemCarga, ModeloChecklist, StatusLevantamento } from './types'
 
 export const BUCKET_LEVANTAMENTOS = 'levantamentos'
 export const FINALIDADES: Finalidade[] = ['fv', 'padrao_novo', 'aumento_carga']
@@ -64,8 +64,34 @@ export function numeroParaCampo(v: unknown): string {
   return v == null ? '' : String(v)
 }
 
+/** Itens válidos de um campo "cargas" (o resto é descartado). */
+export function itensCarga(v: unknown): ItemCarga[] {
+  if (!Array.isArray(v)) return []
+  return v.flatMap((x) => {
+    if (!x || typeof x !== 'object') return []
+    const o = x as Record<string, unknown>
+    const item = String(o.item || '').trim().slice(0, 120)
+    if (!item) return []
+    const qtd = Math.max(1, Math.min(999, Math.round(Number(o.qtd) || 1)))
+    const p = Number(o.potencia_w)
+    const potencia_w = Number.isFinite(p) && p > 0 ? Math.round(p * 100) / 100 : null
+    const equipamento_id = typeof o.equipamento_id === 'string' && o.equipamento_id ? o.equipamento_id.slice(0, 60) : undefined
+    return [{ item, qtd, potencia_w, ...(equipamento_id ? { equipamento_id } : {}) }]
+  })
+}
+
+/** Soma em W dos itens com potência informada. */
+export const somaCargasW = (itens: ItemCarga[]) => itens.reduce((s, i) => s + (i.potencia_w || 0) * i.qtd, 0)
+
 /** Valor de uma resposta pronto pra leitura (números no padrão brasileiro). */
 export function valorExibido(c: CampoModelo, v: unknown): string {
+  if (c.tipo === 'cargas') {
+    const itens = itensCarga(v)
+    if (!itens.length) return typeof v === 'string' ? v : ''
+    const linhas = itens.map((i) => `${i.qtd}× ${i.item} (${i.potencia_w ? `${fmtNum(i.potencia_w, 0)} W cada` : 'potência a informar'})`)
+    const soma = somaCargasW(itens)
+    return `${linhas.join('; ')}${soma ? ` — soma ${fmtNum(soma, 0)} W (${fmtNum(soma / 1000, 2)} kW)` : ''}`
+  }
   if (v == null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length)) return ''
   if (Array.isArray(v)) return v.join(', ')
   if (c.tipo === 'number') {
