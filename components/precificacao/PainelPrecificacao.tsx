@@ -24,7 +24,11 @@ const mini = 'bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-whit
 function LinhaParametro({ p, motivo, onSalvo, def }: { p: ParametroPainel; motivo: string; onSalvo: () => void; def?: { grupo?: string; padrao?: number; unidade?: string } }) {
   const [valor, setValor] = useState<number>(p.valor ?? def?.padrao ?? 0)
   const [estado, setEstado] = useState<string | null>(null)
-  const mudou = p.existe ? valor !== p.valor : true
+  // Parâmetro novo só nasce com valor digitado (vazio = 0 destravaria o PDF com R$ 0)
+  const mudou = p.existe ? valor !== p.valor : valor > 0
+  const situacao = p.existe ? p.chave
+    : def?.padrao != null ? `não cadastrado — usando ${def.padrao.toLocaleString('pt-BR')} até criar`
+    : 'não cadastrado — digite o valor e clique em Criar'
   async function salvar() {
     setEstado('salvando…')
     const r = await salvarParametroPainelAction(p.chave, valor, motivo, p.existe ? undefined : { grupo: def?.grupo || 'geral', descricao: p.rotulo, unidade: def?.unidade || p.unidade || '' })
@@ -35,10 +39,10 @@ function LinhaParametro({ p, motivo, onSalvo, def }: { p: ParametroPainel; motiv
     <div className="grid grid-cols-[1fr_110px_auto] gap-2 items-center py-1 border-b border-white/5">
       <div className="min-w-0">
         <p className="text-[12px] text-white truncate">{p.rotulo} <span className="text-white/40">{p.unidade ? `(${p.unidade})` : ''}</span></p>
-        <p className="text-[10px] text-white/40 truncate">{p.existe ? p.chave : `não cadastrado — usando ${def?.padrao ?? '—'}`}{estado ? ` · ${estado}` : ''}</p>
+        <p className="text-[10px] text-white/40 truncate">{situacao}{estado ? ` · ${estado}` : ''}</p>
       </div>
       <CampoNumero valor={valor} onChange={setValor} casas={4} className={mini} />
-      <button type="button" onClick={salvar} disabled={!mudou || motivo.trim().length < 10}
+      <button type="button" onClick={salvar} disabled={!mudou || estado === 'salvando…'}
         className="px-3 py-1.5 rounded-lg bg-verde text-white text-[11px] font-bold disabled:opacity-30">{p.existe ? 'Salvar' : 'Criar'}</button>
     </div>
   )
@@ -169,6 +173,11 @@ export function PainelPrecificacao({ contexto, onFechar, onAlterado }: { context
   useEffect(() => { carregar() // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contexto])
   const salvo = () => { setAlterou(true); setNovaVar(false); carregar() }
+  // Motivo opcional (Kalebe 2026-10-28: a trava escondida de 10 letras apagava
+  // todos os botões). O histórico exige ≥ 10 letras, então completa sozinho.
+  const motivoPadrao = `Ajuste pelo painel de precificação (${ctx.titulo})`
+  const m = motivo.trim()
+  const motivoFinal = m.length >= 10 ? m : m ? `${m} — ${motivoPadrao}` : motivoPadrao
   const fechar = () => { if (alterou) onAlterado?.(); onFechar() }
   const itemSel: ItemPainel | undefined = dados?.itens.find((i) => i.chave_servico === item)
 
@@ -194,10 +203,10 @@ export function PainelPrecificacao({ contexto, onFechar, onAlterado }: { context
             {aba === 'parametros' && (
               <div className="space-y-2">
                 <label className="block">
-                  <span className="block text-[11px] font-bold text-white/60 mb-1">Motivo da alteração (fica no histórico)</span>
+                  <span className="block text-[11px] font-bold text-white/60 mb-1">Motivo da alteração (opcional — fica no histórico)</span>
                   <input value={motivo} onChange={(e) => setMotivo(e.target.value)} className={inputCls} placeholder="Ex.: reajuste da diária do eletricista em outubro" />
                 </label>
-                {dados.parametros.map((p) => <LinhaParametro key={p.chave} p={p} motivo={motivo} onSalvo={salvo} def={ctx.parametros.find((d) => d.chave === p.chave)} />)}
+                {dados.parametros.map((p) => <LinhaParametro key={p.chave} p={p} motivo={motivoFinal} onSalvo={salvo} def={ctx.parametros.find((d) => d.chave === p.chave)} />)}
               </div>
             )}
             {aba === 'servicos' && (

@@ -87,6 +87,7 @@ export async function salvarParametroPainelAction(chave: string, valor: number, 
     if (!novo) return { erro: 'Parâmetro não existe' }
     const { error } = await a.admin.from('parametros_precificacao').insert({
       grupo: novo.grupo, chave, descricao: novo.descricao, valor_numero: valor, unidade: novo.unidade, requer_aprovacao_kalebe: false,
+      alterado_por: a.user.id, motivo_alteracao: motivo.trim(),
     })
     if (error) return { erro: error.message }
   } else {
