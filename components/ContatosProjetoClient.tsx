@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { formatarTelefoneExibicao, type PapelContato } from '@/lib/whatsapp/contatos-projeto'
 import { formatarTelefone } from '@/lib/formatters'
 import {
+  abrirContatoNoSpinzapAction,
   adicionarContatoProjetoAction,
   atualizarPapelContatoAction,
   removerContatoProjetoAction,
@@ -72,6 +73,20 @@ export function ContatosProjetoClient({ projetoId, contatos }: { projetoId: stri
                 {PAPEIS.map((p) => <option key={p.v} value={p.v} className="bg-noite text-white">{p.l}</option>)}
               </select>
               <span className="text-[10px] text-white/35 ml-auto">{ORIGEM[c.origem] || c.origem}</span>
+              {c.telefone && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => start(async () => {
+                    setErro(null)
+                    const r = await abrirContatoNoSpinzapAction(c.id)
+                    if ('erro' in r) { setErro(r.erro); return }
+                    router.push(`/spinzap?c=${r.conversa_id}`)
+                  })}
+                  className="px-2 py-1 bg-[#25D366] text-white text-[11px] font-bold rounded-md disabled:opacity-50"
+                  title="Abrir a conversa deste contato no Spinzap"
+                >💬 Spinzap</button>
+              )}
               <button
                 type="button"
                 disabled={pending}

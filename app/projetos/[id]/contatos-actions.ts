@@ -2,7 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizarTelefoneContato, salvarContatosNoProjeto, type PapelContato } from '@/lib/whatsapp/contatos-projeto'
+import { garantirContatoNoSpinzap } from '@/lib/whatsapp/contato-spinzap'
 
 /** Contatos do projeto (decisor, financeiro…) — Kalebe 2026-09-29. RLS: quem vê o projeto. */
 
@@ -30,8 +32,27 @@ export async function adicionarContatoProjetoAction(input: {
   } catch (e: any) {
     return { erro: e?.message || 'Falha ao salvar' }
   }
+  // Kalebe 2026-10-28: o contato também aparece no Spinzap (o insert acima já
+  // passou pelo RLS do projeto, então o acesso está conferido)
+  if (telefone) {
+    await garantirContatoNoSpinzap(createAdminClient(), { projeto_id: input.projeto_id, nome: input.nome, telefone }).catch(() => null)
+  }
   revalidatePath(`/projetos/${input.projeto_id}`)
+  revalidatePath('/spinzap')
   return { sucesso: true }
+}
+
+/** Botão "Spinzap" de um contato do projeto: garante o contato e abre a conversa. */
+export async function abrirContatoNoSpinzapAction(contatoId: string): Promise<{ conversa_id: string } | { erro: string }> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { erro: 'Não autenticado' }
+  const { data: c } = await supabase.from('projeto_contatos').select('projeto_id, nome, telefone').eq('id', contatoId).maybeSingle()
+  if (!c) return { erro: 'Contato não encontrado' }
+  if (!c.telefone) return { erro: 'Esse contato está sem telefone.' }
+  const r = await garantirContatoNoSpinzap(createAdminClient(), { projeto_id: c.projeto_id, nome: c.nome, telefone: c.telefone })
+  if ('conversa_id' in r) revalidatePath('/spinzap')
+  return r
 }
 
 export async function atualizarPapelContatoAction(id: string, projetoId: string, papel: PapelContato) {

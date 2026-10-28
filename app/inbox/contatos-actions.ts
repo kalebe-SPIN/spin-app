@@ -8,6 +8,7 @@ import {
   salvarContatosNoProjeto,
   type PapelContato,
 } from '@/lib/whatsapp/contatos-projeto'
+import { garantirContatoNoSpinzap } from '@/lib/whatsapp/contato-spinzap'
 
 /**
  * Contatos do projeto a partir da conversa (Kalebe 2026-09-29): o cliente
@@ -77,6 +78,8 @@ export async function salvarContatoDaConversaAction(input: {
     return { erro: e?.message || 'Falha ao salvar o contato' }
   }
   if (n === 0) return { erro: 'Esse telefone já está nos contatos do projeto' }
+  // Kalebe 2026-10-28: o contato repassado também vira contato do Spinzap
+  await garantirContatoNoSpinzap(r.admin, { projeto_id: r.projeto_id, nome: input.nome, telefone }).catch(() => null)
   revalidatePath(`/projetos/${r.projeto_id}`)
   return { sucesso: true, codigo: r.codigo }
 }
