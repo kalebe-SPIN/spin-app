@@ -1,4 +1,5 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
+import { fmtInt, fmtKw, fmtKwp, fmtNum } from '@/lib/formatters'
 
 /**
  * Usina do cliente (Kalebe 2026-10-22 — migration 160): potências,
@@ -57,8 +58,8 @@ const txt = (v: unknown, max = 300) => { const s = String(v ?? '').trim(); retur
 function equipamentosDoKit(k: any): EquipamentoUsina[] {
   if (!k) return []
   const lista: EquipamentoUsina[] = []
-  if (k.placa?.modelo && Number(k.qtd_placas) > 0) {
-    lista.push({ tipo: 'placa', modelo: String(k.placa.modelo), qtd: Number(k.qtd_placas), potencia: num(k.placa.potencia_wp), numeros_serie: null })
+  if (Number(k.qtd_placas) > 0) {
+    lista.push({ tipo: 'placa', modelo: String(k.placa?.modelo || ''), qtd: Number(k.qtd_placas), potencia: num(k.placa?.potencia_wp), numeros_serie: null })
   }
   const invs: any[] = Array.isArray(k.inversores) && k.inversores.length
     ? k.inversores
@@ -86,7 +87,8 @@ export function normalizarDadosUsina(d: Partial<DadosUsina>): DadosUsina {
         potencia: num(e?.potencia),
         numeros_serie: txt(e?.numeros_serie, 2000),
       }))
-      .filter((e) => e.modelo)
+      // Placa vale sem modelo: a quantidade importa mesmo sem saber a marca
+      .filter((e) => e.modelo || e.tipo === 'placa')
       .slice(0, 50),
     monitoramento_plataforma: txt(d.monitoramento_plataforma, 120),
     // Só link web (nada de javascript: etc.)
@@ -94,6 +96,47 @@ export function normalizarDadosUsina(d: Partial<DadosUsina>): DadosUsina {
     monitoramento_login: txt(d.monitoramento_login, 200),
     observacoes: txt(d.observacoes, 2000),
   }
+}
+
+/** Placas (Kalebe 2026-10-28): total, Wp de cada (se for um só) e kWp somados (se todas têm Wp). */
+export function resumoPlacas(eqs: EquipamentoUsina[]): { qtd: number; wp: number | null; kwp: number | null } {
+  const ps = eqs.filter((e) => e.tipo === 'placa' && e.qtd > 0)
+  const wps = Array.from(new Set(ps.map((e) => e.potencia)))
+  return {
+    qtd: ps.reduce((s, e) => s + e.qtd, 0),
+    wp: wps.length === 1 ? wps[0] : null,
+    kwp: ps.length && ps.every((e) => e.potencia) ? ps.reduce((s, e) => s + e.qtd * (e.potencia as number), 0) / 1000 : null,
+  }
+}
+
+/** kW somados dos inversores (null se falta a potência de algum). */
+export function somaInversoresKw(eqs: EquipamentoUsina[]): number | null {
+  const is = eqs.filter((e) => e.tipo === 'inversor' && e.qtd > 0)
+  return is.length && is.every((e) => e.potencia) ? is.reduce((s, e) => s + e.qtd * (e.potencia as number), 0) : null
+}
+
+/**
+ * Conferência das quantidades (Kalebe 2026-10-28): no SPIN-2026-0151 a
+ * potência da placa (560) entrou como quantidade. Só avisa, não bloqueia.
+ */
+export function avisosUsina(d: Pick<DadosUsina, 'potencia_cc_kwp' | 'potencia_ca_kw' | 'equipamentos'>): string[] {
+  const avisos: string[] = []
+  const p = resumoPlacas(d.equipamentos)
+  const cc = d.potencia_cc_kwp
+  if (p.qtd && cc) {
+    if (p.kwp != null) {
+      if (Math.abs(p.kwp - cc) / cc > 0.05) avisos.push(`As placas somam ${fmtKwp(p.kwp)}, mas a potência CC está ${fmtKwp(cc)}. Confira a quantidade e a potência das placas.`)
+    } else {
+      const wp = (cc * 1000) / p.qtd
+      if (wp < 150 || wp > 800) avisos.push(`${fmtInt(p.qtd)} placas não fecham com ${fmtKwp(cc)} (daria ${fmtNum(wp, 0)} Wp por placa). A potência da placa não foi digitada no lugar da quantidade?`)
+    }
+  }
+  const inv = somaInversoresKw(d.equipamentos)
+  const ca = d.potencia_ca_kw
+  if (inv != null && ca && Math.abs(inv - ca) / ca > 0.05) {
+    avisos.push(`Os inversores somam ${fmtKw(inv)}, mas a potência CA está ${fmtKw(ca)}. Confira a quantidade e a potência dos inversores.`)
+  }
+  return avisos
 }
 
 export async function usinaDoProjeto(admin: Admin, projetoId: string): Promise<UsinaTela | { erro: string }> {
