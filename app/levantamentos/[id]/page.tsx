@@ -116,6 +116,10 @@ export default async function LevantamentoPage({ params }: { params: { id: strin
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
   }
 
+  // versão ativa do checklist desta finalidade (admin pode atualizar o levantamento pra ela)
+  const { data: ativo } = await supabase.from('checklist_modelos').select('versao').eq('codigo', lev.finalidade).eq('ativo', true).maybeSingle()
+  const versaoAtiva: number = ativo?.versao ?? lev.modelo_versao
+
   const dados: LevantamentoTela = {
     id: lev.id,
     numero: lev.numero,
@@ -149,7 +153,8 @@ export default async function LevantamentoPage({ params }: { params: { id: strin
           <CompartilharLevantamento levantamentoId={lev.id} compartilhados={compartilhados} campo={pessoasCampo} />
         )}
         {editavel
-          ? <FormularioLevantamento key={lev.status} lev={dados} arquivosIniciais={arquivos} eventos={eventos} podeExcluir={ehAdminReal} />
+          ? <FormularioLevantamento key={`${lev.status}-${lev.modelo_versao}`} lev={dados} arquivosIniciais={arquivos} eventos={eventos}
+              podeExcluir={ehAdminReal} versaoAtiva={ehAdminReal ? versaoAtiva : null} />
           : <DetalheLevantamento lev={dados} arquivos={arquivos} eventos={eventos} ehEquipe={ehEquipe} diagramas={diagramas} />}
       </div>
     </main>

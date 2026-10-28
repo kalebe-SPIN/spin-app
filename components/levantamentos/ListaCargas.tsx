@@ -101,6 +101,12 @@ export function ListaCargas({ itens, onChange, borda, onUsarSoma }: {
         </button>
       </div>
 
+      {itens.some((i) => /gerador|fotovolt|placa solar|painel solar|m[oó]dulo solar|inversor|usina/i.test(i.item)) && (
+        <p className="text-xs text-white/85 border-l-2 border-sol/70 pl-2">
+          ⚠ Geração não é carga: gerador fotovoltaico/inversor não entra na carga instalada. A geração vai em “Haverá geração solar nesta UC?” e nas observações.
+        </p>
+      )}
+
       {itens.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/10">
           <span className="text-sm text-white">Soma: <b>{fmtNum(soma, 0)} W</b> <span className="text-white/60">({fmtNum(soma / 1000, 2)} kW)</span></span>

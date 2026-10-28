@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  enviarLevantamentoAction, excluirLevantamentoAction, registrarArquivoLevantamentoAction,
-  removerArquivoLevantamentoAction, salvarLevantamentoAction,
+  atualizarModeloLevantamentoAction, enviarLevantamentoAction, excluirLevantamentoAction,
+  registrarArquivoLevantamentoAction, removerArquivoLevantamentoAction, salvarLevantamentoAction,
 } from '@/app/levantamentos/actions'
 import { BUCKET_LEVANTAMENTOS, itensCarga, numeroBR, numeroParaCampo } from '@/lib/levantamentos/comum'
 import { ListaCargas } from './ListaCargas'
@@ -25,11 +25,13 @@ const horaBR = () => new Date().toLocaleTimeString('pt-BR', { timeZone: 'America
  * Mobile-first; salva sozinho (1,2 s depois da última mudança, uma gravação
  * por vez, e grava o pendente ao sair da tela).
  */
-export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExcluir }: {
+export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExcluir, versaoAtiva }: {
   lev: LevantamentoTela
   arquivosIniciais: ArquivoTela[]
   eventos: EventoTela[]
   podeExcluir: boolean
+  /** versão ativa do checklist (só pro admin; null = não mostra a atualização) */
+  versaoAtiva: number | null
 }) {
   const router = useRouter()
   const modelo = lev.modelo
@@ -203,6 +205,17 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
     router.refresh()
   }
 
+  async function atualizarVersao() {
+    setOcupado(true); setErro(null)
+    pendente.current = true
+    await salvar()
+    const r = await atualizarModeloLevantamentoAction(lev.id)
+    setOcupado(false)
+    if ('erro' in r) { setErro(r.erro); return }
+    limparLocal()
+    router.refresh()
+  }
+
   async function excluir() {
     setOcupado(true); setErro(null)
     parado.current = true
@@ -214,6 +227,10 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
 
   const temCampoCarga = modelo.secoes.some((s) => s.campos.some((c) => c.id === 'carga' && c.tipo === 'number'))
   const temDisjNovo = modelo.secoes.some((s) => s.campos.some((c) => c.id === 'disj_novo' && c.tipo === 'number'))
+  // N-321.0003 item 5.3.1: BT até 75 kW de carga instalada (na coletiva o limite é por unidade)
+  const avisoCarga = !String(respostas.medicao || '').startsWith('Coletiva') && typeof respostas.carga === 'number' && respostas.carga > 75
+    ? 'Carga instalada acima de 75 kW sai da baixa tensão (N-321.0003, item 5.3.1) — confira o atendimento em média tensão.'
+    : null
   const irPara = (id: string) => document.getElementById(`lev-${id.replace(':', '-')}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   const reenviar = lev.status === 'com_pendencia'
 
@@ -241,6 +258,19 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
           </div>
         </div>
       </div>
+
+      {versaoAtiva !== null && versaoAtiva > (Number(modelo.versao) || 0) && (
+        <div className="rounded-xl border border-sol/60 bg-white/[0.03] p-4 space-y-2">
+          <p className="text-sm text-white">
+            Este levantamento está na <b>versão {modelo.versao}</b> do checklist. A <b>versão {versaoAtiva}</b> tem novidades
+            (lista de cargas especiais com quantidade e potência, relógios da medição coletiva com o disjuntor geral calculado).
+          </p>
+          <p className="text-xs text-white/60">As respostas, as fotos, o acesso do campo e o histórico continuam. Texto antigo de um campo que virou lista vai para as observações.</p>
+          <button type="button" onClick={atualizarVersao} disabled={ocupado} className="px-4 py-2.5 bg-sol text-noite font-bold text-sm rounded-lg disabled:opacity-50">
+            {ocupado ? 'Atualizando…' : `Atualizar para a versão ${versaoAtiva}`}
+          </button>
+        </div>
+      )}
 
       {pendProjetista.size > 0 && (
         <div className="rounded-xl border border-sol/60 bg-white/[0.03] p-4 space-y-2">
@@ -278,6 +308,7 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
               {visiveis.map((c) => (
                 <Campo key={c.id} c={c} valor={respostas[c.id]} texto={textos[c.id] ?? ''}
                   doCadastro={auto.has(c.id)} pendencias={pendProjetista.get(c.id) || []}
+                  aviso={c.id === 'carga' ? avisoCarga : null}
                   onTexto={(t) => { setTextos((x) => ({ ...x, [c.id]: t })); mudar(c.id, numeroBR(t)) }}
                   onValor={(v) => mudar(c.id, v)}
                   onUsarSoma={c.tipo === 'cargas' && temCampoCarga ? (kw) => {
@@ -351,12 +382,13 @@ export function FormularioLevantamento({ lev, arquivosIniciais, eventos, podeExc
   )
 }
 
-function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor, onUsarSoma, onUsarDisjuntor }: {
+function Campo({ c, valor, texto, doCadastro, pendencias, aviso, onTexto, onValor, onUsarSoma, onUsarDisjuntor }: {
   c: CampoModelo
   valor: Respostas[string] | undefined
   texto: string
   doCadastro: boolean
   pendencias: string[]
+  aviso?: string | null
   onTexto: (t: string) => void
   onValor: (v: Respostas[string]) => void
   onUsarSoma?: (kw: number) => void
@@ -433,6 +465,7 @@ function Campo({ c, valor, texto, doCadastro, pendencias, onTexto, onValor, onUs
       {entrada}
       {c.ajuda && <span className="text-xs text-white/50">{c.ajuda}</span>}
       {doCadastro && <span className="text-[11px] text-white/45">↺ veio do que já estava preenchido — confira</span>}
+      {aviso && <span className="text-xs text-white/85 border-l-2 border-sol/70 pl-2">⚠ {aviso}</span>}
       {avisos.map((p, i) => <span key={i} className="text-xs text-coral">⚠ {p}</span>)}
     </div>
   )

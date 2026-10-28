@@ -55,6 +55,7 @@ create table public.projetos_diagramas (id uuid primary key default gen_random_u
     await db.exec(migration("167_modelos_v2_cargas.sql"));
     await db.exec(migration("168_levantamentos_compartilhar.sql"));
     await db.exec(migration("169_modelos_v3_medicao_coletiva.sql"));
+    await db.exec(migration("170_levantamento_atualizar_modelo.sql"));
   }
   await db.exec(`
 grant usage on schema public, auth, storage to authenticated;
@@ -280,6 +281,26 @@ describe("levantamentos — RLS e fluxo de status", () => {
     ok(/não permitida/.test((await como(U.auto, () => tenta(() => q(`update public.levantamentos set status = 'cancelado' where id = $1`, [L2])))).erro || ""),
       "automação não cancela");
     ok(!(await como(U.admin, () => tenta(() => q(`update public.levantamentos set status = 'cancelado' where id = $1`, [L2])))).erro, "admin cancela");
+
+    // ── 170: admin leva um levantamento aberto pra versão nova do checklist
+    const v1pn = (await q(`select id, versao from public.checklist_modelos where codigo = 'padrao_novo' and versao = 1`)).rows[0];
+    r = await criar(U.admin, "padrao_novo", v1pn, P1);
+    const L5: string = r.r!.rows[0].id;
+    await compartilhar(U.admin, L5, U.tec);
+    await como(U.admin, () => q(`update public.levantamentos set respostas = '{"num_poste":"999"}' where id = $1`, [L5]));
+    await como(U.admin, () => q(`update public.levantamentos set modelo_id = $2, modelo_versao = 3 where id = $1`, [L5, mPn.id]));
+    ok((await linha(L5)).modelo_versao === 1, "troca direta de modelo é ignorada (nem o admin)");
+    ok(/Só o admin/.test((await como(U.tec, () => tenta(() => q(`select public.atualizar_modelo_levantamento($1)`, [L5])))).erro || ""), "campo não atualiza a versão");
+    r = await como(U.admin, () => tenta(() => q(`select public.atualizar_modelo_levantamento($1) v`, [L5])));
+    l = await linha(L5);
+    ok(!r.erro && r.r!.rows[0].v === 3 && l.modelo_versao === 3 && l.modelo_id === mPn.id && l.respostas.num_poste === "999",
+      `admin atualiza pra versão 3 mantendo as respostas${r.erro ? " — " + r.erro : ""}`);
+    ok((await q(`select count(*)::int n from public.levantamento_eventos where levantamento_id = $1 and mensagem like 'Checklist atualizado%'`, [L5])).rows[0].n === 1,
+      "histórico registra a atualização");
+    ok((await como(U.admin, () => q(`select public.atualizar_modelo_levantamento($1) v`, [L5]))).rows[0].v === 3, "rodar de novo não muda nada");
+    await como(U.tec, () => q(`update public.levantamentos set status = 'enviado' where id = $1`, [L5]));
+    ok(/rascunho ou com pendência/.test((await como(U.admin, () => tenta(() => q(`select public.atualizar_modelo_levantamento($1)`, [L5])))).erro || ""),
+      "não atualiza a versão de levantamento já enviado");
 
     // ── modelos
     ok((await conta(U.tec, `select count(*)::int n from public.checklist_modelos where ativo`)) === 3, "campo lê os modelos");

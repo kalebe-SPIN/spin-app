@@ -237,6 +237,46 @@ export async function removerCompartilhamentoAction(id: string, usuarioId: strin
   return { ok: true }
 }
 
+/**
+ * Kalebe 2026-10-27: leva um levantamento aberto pra versão ativa do checklist
+ * (mesma finalidade), mantendo número, respostas, fotos, acessos e histórico.
+ * Texto antigo de um campo que virou lista (v1 "Cargas especiais") vai pras
+ * observações — nada se perde.
+ */
+export async function atualizarModeloLevantamentoAction(id: string): Promise<{ versao: number } | Erro> {
+  const s = await sessao()
+  if (!s) return { erro: 'Sua sessão expirou. Entre de novo.' }
+  if (s.perfil?.role !== 'admin' || !s.perfil.ativo) return { erro: 'Só o admin atualiza a versão do checklist.' }
+  const { data: antes } = await s.supabase.from('levantamentos').select('respostas, modelo_versao, projeto_id').eq('id', id).maybeSingle()
+  if (!antes) return { erro: 'Levantamento não encontrado.' }
+  const { data: versao, error } = await s.supabase.rpc('atualizar_modelo_levantamento', { p_id: id })
+  if (error) return { erro: /does not exist|schema cache/i.test(error.message) ? 'Falta rodar a migration 170 no Supabase.' : erroAmigavel(error.message) }
+
+  const { data: lev } = await s.supabase.from('levantamentos').select('respostas, modelo_id').eq('id', id).maybeSingle()
+  const { data: modelo } = lev ? await s.supabase.from('checklist_modelos').select('definicao').eq('id', lev.modelo_id).maybeSingle() : { data: null }
+  if (lev && modelo) {
+    const def = modelo.definicao as ModeloChecklist
+    const respostas = { ...(lev.respostas as Respostas) }
+    const campos = def.secoes.flatMap((sec) => sec.campos)
+    const obs = campos.find((c) => c.tipo === 'textarea' && c.id.startsWith('obs_'))
+    let mudou = false
+    for (const c of campos) {
+      const v = respostas[c.id]
+      if (c.tipo === 'cargas' && typeof v === 'string') {
+        if (v.trim() && obs) {
+          const atual = typeof respostas[obs.id] === 'string' ? String(respostas[obs.id]) : ''
+          respostas[obs.id] = `${atual ? `${atual}\n\n` : ''}${c.rotulo} (anotado na versão anterior): ${v.trim()}`
+        }
+        delete respostas[c.id]
+        mudou = true
+      }
+    }
+    if (mudou) await s.supabase.from('levantamentos').update({ respostas }).eq('id', id)
+  }
+  revalidar(id, antes.projeto_id)
+  return { versao: Number(versao) || antes.modelo_versao }
+}
+
 export async function excluirLevantamentoAction(id: string): Promise<{ ok: true } | Erro> {
   const s = await sessao()
   if (!s) return { erro: 'Sua sessão expirou. Entre de novo.' }
