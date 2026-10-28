@@ -1459,12 +1459,20 @@ function EtiquetasConversa({ c, pendente, ehEquipe, fornecedorPuro, onEtapa, onE
         {ETAPAS.map((e) => <option key={e.chave} value={e.chave} className="bg-noite text-white">{e.emoji} {e.rotulo}</option>)}
       </select>
 
-      {/* Kalebe 2026-10-22: etiqueta "Já é cliente Spin" — clique liga/desliga */}
-      <button data-etiqueta type="button" disabled={pendente} onClick={() => onJaCliente(c.contato?.tipo !== 'cliente')}
-        title={c.contato?.tipo === 'cliente' ? 'Já é cliente Spin — clique pra tirar' : 'Marcar como já é cliente Spin'}
-        className={`${chip} ${c.contato?.tipo === 'cliente' ? 'border-verde/60 text-white/85' : 'border-white/15 text-white/45 hover:text-white/75'}`}>
-        {c.contato?.tipo === 'cliente' ? '⭐ Já é cliente Spin' : '＋ Já é cliente Spin'}
-      </button>
+      {/* Kalebe 2026-10-22: etiqueta "Já é cliente Spin". 2026-10-28: tirar
+          fica à vista (✕) pra desfazer o clique sem querer — só o ✕ tira */}
+      {c.contato?.tipo === 'cliente' ? (
+        <span data-etiqueta className={`${chip} border-verde/60 text-white/85 inline-flex items-center gap-1.5`}>
+          ⭐ Já é cliente Spin
+          <button type="button" disabled={pendente} onClick={() => onJaCliente(false)}
+            title="Tirar a etiqueta de cliente Spin" aria-label="Tirar a etiqueta de cliente Spin"
+            className="-mr-0.5 w-4 h-4 rounded-full bg-white/10 text-white/70 hover:bg-white/25 hover:text-white text-[9px] leading-none disabled:opacity-40">✕</button>
+        </span>
+      ) : (
+        <button data-etiqueta type="button" disabled={pendente} onClick={() => onJaCliente(true)}
+          title="Marcar como já é cliente Spin"
+          className={`${chip} border-white/15 text-white/45 hover:text-white/75`}>＋ Já é cliente Spin</button>
+      )}
 
       {/* Kalebe 2026-10-14: só as 4 categorias principais (fotovoltaico,
           recarga, BESS, O&M). Subtipo que a Laís marcou (ex.: híbrido) é
